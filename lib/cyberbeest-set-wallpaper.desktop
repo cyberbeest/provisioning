@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Set Cyberbeest wallpaper
+Comment=Sets the desktop background regardless of the monitor's XRandR name
+Exec=/home/cyberbeest/.local/bin/set-desktop-background.sh
+NoDisplay=true
+OnlyShowIn=XFCE;
+X-XFCE-Autostart-Phase=Application
