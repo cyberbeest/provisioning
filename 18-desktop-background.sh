@@ -14,6 +14,10 @@ echo "=== $(date) : installing desktop background ==="
 TARGET_USER="${SUDO_USER:-cyberbeest}"
 TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
 
+echo "--- Installing xrandr (used to find the real monitor name) ---"
+apt-get update -qq
+apt-get install -y x11-xserver-utils
+
 echo "--- Installing wallpaper images ---"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/Pictures"
 install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 \
