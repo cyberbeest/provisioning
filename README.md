@@ -9,11 +9,8 @@ Each script:
 - Is named `NN-short-description.sh` (numbered = run order).
 - Is idempotent — safe to re-run on a machine that already has it applied.
 - Logs its own output to `NN-short-description.log` in this directory.
-- Expects to be run as root itself (`sudo bash NN-*.sh`) — it does not use the
-  RUNME/`claude-sudo-helper.sh` convention from the dev machine's `CLAUDE.md`.
-  That convention exists for Claude to request sudo without holding it; during
-  an actual install there's a human at the keyboard who can just type their
-  password.
+- Expects to be run as root itself (`sudo bash NN-*.sh`), since there's a
+  human at the keyboard during an install who can just type their password.
 
 `lib/` holds the underlying scripts each `NN-*.sh` step wraps (installers,
 helper scripts, the messenger catalog builder). They're not meant to be run
