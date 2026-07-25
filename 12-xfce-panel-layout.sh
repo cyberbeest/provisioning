@@ -2,11 +2,12 @@
 # Lays out the xfce4 panel to match the dev machine: Whisker menu, the
 # custom monitoring plugins (built by 11-xfce-panel-plugins.sh), a genmon
 # security-status widget (fed by 07-security-update-timer.sh), the power
-# manager plugin, and launchers for a terminal and Cyberbeest Power Settings
-# (08-cyberbeest-power-settings.sh).
-# Depends on: 07-security-update-timer.sh, 08-cyberbeest-power-settings.sh,
-# 09-cyberbeest-logout-dialog.sh, 10-browser-sandbox.sh,
-# 11-xfce-panel-plugins.sh.
+# manager plugin, and launchers for a terminal and for Power (lock/restart/
+# shut down, via 09-cyberbeest-logout-dialog.sh's cyberbeest-logout). The
+# Cyberbeest Power Settings GUI (08-cyberbeest-power-settings.sh) isn't
+# pinned to the panel -- it shows up in Whisker's Settings category instead.
+# Depends on: 07-security-update-timer.sh, 09-cyberbeest-logout-dialog.sh,
+# 10-browser-sandbox.sh, 11-xfce-panel-plugins.sh.
 # Idempotent: safe to re-run (overwrites its own config files; backs up any
 # pre-existing xfce4-panel.xml the first time). Also removes any other panel
 # (e.g. Debian's stock second panel) so only this one is left, since a live
@@ -39,6 +40,12 @@ install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/Pictures"
 install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 \
 	"$DIR/lib/assets/Cyberbeest-panel-icon.png" "$TARGET_HOME/Pictures/Cyberbeest-panel-icon.png"
 
+echo "--- Installing cyberbeest-power-symbolic icon (used by the Power launcher) ---"
+install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.local/share/icons/hicolor/scalable/actions"
+install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 \
+	"$DIR/lib/assets/cyberbeest-power-symbolic.svg" \
+	"$TARGET_HOME/.local/share/icons/hicolor/scalable/actions/cyberbeest-power-symbolic.svg"
+
 echo "--- Writing genmon-11.rc ---"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.config/xfce4/panel"
 sed "s|__HOME__|$TARGET_HOME|g" "$LAYOUT/genmon.rc.template" > "$TARGET_HOME/.config/xfce4/panel/genmon-11.rc"
@@ -48,18 +55,20 @@ install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.config/xfce4/panel
 install -m 644 "$LAYOUT/terminal-emulator.desktop" \
 	"$TARGET_HOME/.config/xfce4/panel/launcher-9/terminal-emulator.desktop"
 
-echo "--- Writing launcher-10 (Cyberbeest Power Settings) ---"
+echo "--- Writing launcher-10 (Power: lock/restart/shut down) ---"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.config/xfce4/panel/launcher-10"
 cat > "$TARGET_HOME/.config/xfce4/panel/launcher-10/cyberbeest-power.desktop" <<EOF
 [Desktop Entry]
+Version=1.0
 Type=Application
-Name=Cyberbeest Power Settings
-Comment=Configure Cyberbeest lock/suspend/notification behavior
-Exec=$TARGET_HOME/.local/bin/cyberbeest-power-settings
-Icon=$TARGET_HOME/Pictures/Cyberbeest-black.png
+Exec=$TARGET_HOME/.local/bin/cyberbeest-logout
+Icon=cyberbeest-power-symbolic
+StartupNotify=false
 Terminal=false
-Categories=Cyberbeest;Settings;
-StartupNotify=true
+Categories=Utility;X-XFCE;X-Xfce-Toplevel;
+Name=Power
+Comment=Lock, restart, or shut down
+OnlyShowIn=XFCE;
 EOF
 
 echo "--- Writing xfce4-panel.xml ---"

@@ -1,6 +1,8 @@
 #!/bin/bash
 # Installs the Cyberbeest Power Settings GUI (lock/shutdown timing config)
-# and its Whisker-menu launcher -- see lib/cyberbeest-power-settings.py.
+# as a regular app under Whisker's Settings category (not pinned to the
+# panel -- the panel's own "Power" launcher is the logout dialog, see
+# 12-xfce-panel-layout.sh) -- see lib/cyberbeest-power-settings.py.
 # This GUI only edits ~/.config/cyberbeest/power-settings.conf; the
 # lock-shutdown-watcher user service that actually reads that file and
 # enforces the lock/shutdown/suspend-cycle behavior is installed separately
@@ -32,9 +34,9 @@ install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 \
 	"$DIR/lib/assets/Cyberbeest-black.png" \
 	"$TARGET_HOME/Pictures/Cyberbeest-black.png"
 
-echo "--- Installing launcher desktop entry ---"
+echo "--- Installing app menu entry (Whisker menu, Settings category) ---"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.local/share/applications"
-cat > "$TARGET_HOME/.local/share/applications/cyberbeest-power.desktop" <<EOF
+cat > "$TARGET_HOME/.local/share/applications/cyberbeest-power-settings.desktop" <<EOF
 [Desktop Entry]
 Type=Application
 Name=Cyberbeest Power Settings
@@ -45,6 +47,6 @@ Terminal=false
 Categories=Cyberbeest;Settings;
 StartupNotify=true
 EOF
-chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.local/share/applications/cyberbeest-power.desktop"
+chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.local/share/applications/cyberbeest-power-settings.desktop"
 
 echo "=== $(date) : done ==="
