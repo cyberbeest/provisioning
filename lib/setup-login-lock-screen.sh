@@ -14,6 +14,7 @@ install -m 644 "$SRC/cyberbeest-login-background.png" \
 	/usr/share/backgrounds/cyberbeest-login-background.png
 
 echo "--- Installing single-user lockdown drop-in ---"
+install -d /etc/lightdm/lightdm.conf.d
 install -m 644 "$SRC/60-single-user.conf" /etc/lightdm/lightdm.conf.d/60-single-user.conf
 
 echo "--- Configuring lightdm-gtk-greeter.conf ---"
