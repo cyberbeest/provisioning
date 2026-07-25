@@ -77,3 +77,8 @@ for script in "${selected[@]}"; do
 done
 
 echo "=== all selected provisioning scripts completed ==="
+
+if command -v xfce4-panel >/dev/null 2>&1; then
+	echo "Reloading xfce4-panel to pick up new/changed desktop entries..."
+	xfce4-panel -r || true
+fi
