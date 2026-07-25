@@ -21,7 +21,22 @@ log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >>"$LOG"; }
 
 export DEBIAN_FRONTEND=noninteractive
 
+ensure_repo_deps() {
+    # curl/gnupg aren't guaranteed present on a stock Debian install; wget is
+    # more commonly there by default, but install it too for consistency.
+    local missing=()
+    for pkg in curl gnupg wget; do
+        dpkg -s "$pkg" >/dev/null 2>&1 || missing+=("$pkg")
+    done
+    if [ "${#missing[@]}" -gt 0 ]; then
+        log "Installing missing deps for repo setup: ${missing[*]}"
+        apt-get update >>"$LOG" 2>&1 || { log "apt-get update failed while installing deps"; return 1; }
+        apt-get install -y "${missing[@]}" >>"$LOG" 2>&1 || { log "apt-get install failed: ${missing[*]}"; return 1; }
+    fi
+}
+
 do_setup_repo() {
+    ensure_repo_deps || return 1
     case "$1" in
     signal)
         if [ ! -f /etc/apt/sources.list.d/signal-desktop.sources ]; then
