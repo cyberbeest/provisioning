@@ -15,7 +15,8 @@ echo "=== $(date) : building custom xfce4-panel plugins ==="
 echo "--- Installing build dependencies ---"
 apt-get update -qq
 apt-get install -y build-essential pkg-config \
-	libxfce4panel-2.0-dev libxfce4util-dev libgtk-3-dev libx11-dev libxext-dev
+	libxfce4panel-2.0-dev libxfce4util-dev libxfce4ui-2-dev \
+	libgtk-3-dev libx11-dev libxext-dev
 
 echo "--- Building and installing plugins ---"
 make -C "$DIR/lib/xfce-panel-plugins" clean install

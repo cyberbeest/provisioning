@@ -6,7 +6,13 @@ cd "$(dirname "$0")"
 
 for script in [0-9][0-9]-*.sh; do
 	echo "=== running $script ==="
-	bash "$script"
+	if bash "$script"; then
+		echo "=== $script done (log: ${script%.sh}.log) ==="
+	else
+		echo "=== $script FAILED (log: ${script%.sh}.log) ===" >&2
+		echo "Stopping here since later scripts may depend on this one." >&2
+		exit 1
+	fi
 done
 
 # Best-effort: run-all.sh may be invoked headlessly (no X session), so a

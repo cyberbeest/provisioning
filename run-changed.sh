@@ -17,7 +17,13 @@ for script in [0-9][0-9]-*.sh; do
 		continue
 	fi
 	echo "=== running $script ==="
-	bash "$script"
+	if bash "$script"; then
+		echo "=== $script done (log: $log) ==="
+	else
+		echo "=== $script FAILED (log: $log) ===" >&2
+		echo "Stopping here since later scripts may depend on this one." >&2
+		exit 1
+	fi
 	ran_something=1
 done
 
