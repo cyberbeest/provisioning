@@ -41,7 +41,7 @@ do_setup_repo() {
     signal)
         if [ ! -f /etc/apt/sources.list.d/signal-desktop.sources ]; then
             log "Setting up Signal apt repository"
-            curl -fsSL https://updates.signal.org/desktop/apt/keys.asc | gpg --dearmor -o /usr/share/keyrings/signal-desktop-keyring.gpg \
+            curl -fsSL https://updates.signal.org/desktop/apt/keys.asc | gpg --yes --dearmor -o /usr/share/keyrings/signal-desktop-keyring.gpg \
                 || { log "Signal keyring fetch failed"; return 1; }
             curl -fsSL -o /etc/apt/sources.list.d/signal-desktop.sources https://updates.signal.org/static/desktop/apt/signal-desktop.sources \
                 || { log "Signal sources fetch failed"; return 1; }
