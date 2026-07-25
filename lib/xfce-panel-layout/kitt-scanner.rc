@@ -1,0 +1,10 @@
+[General]
+MinRate=0
+MaxRate=4
+FPS=20
+UsePanelBg=true
+OffIsBg=true
+Gamma=1.5
+SineSweep=true
+Enabled=true
+ShowPercent=true

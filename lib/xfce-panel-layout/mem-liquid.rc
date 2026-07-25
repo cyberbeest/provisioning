@@ -1,0 +1,5 @@
+[General]
+FPS=6
+ShowPercent=false
+Enabled=true
+MarginColor=rgb(246,245,244)

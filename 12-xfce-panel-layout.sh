@@ -46,9 +46,11 @@ install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 \
 	"$DIR/lib/assets/cyberbeest-power-symbolic.svg" \
 	"$TARGET_HOME/.local/share/icons/hicolor/scalable/actions/cyberbeest-power-symbolic.svg"
 
-echo "--- Writing genmon-11.rc ---"
+echo "--- Writing genmon-11.rc, kitt-scanner-14.rc, mem-liquid-15.rc ---"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.config/xfce4/panel"
 sed "s|__HOME__|$TARGET_HOME|g" "$LAYOUT/genmon.rc.template" > "$TARGET_HOME/.config/xfce4/panel/genmon-11.rc"
+install -m 644 "$LAYOUT/kitt-scanner.rc" "$TARGET_HOME/.config/xfce4/panel/kitt-scanner-14.rc"
+install -m 644 "$LAYOUT/mem-liquid.rc" "$TARGET_HOME/.config/xfce4/panel/mem-liquid-15.rc"
 
 echo "--- Writing launcher-9 (terminal) ---"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.config/xfce4/panel/launcher-9"
