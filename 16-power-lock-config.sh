@@ -1,7 +1,8 @@
 #!/bin/bash
-# Installs this machine's power-manager and screen-lock settings: no DPMS/
-# auto-suspend (that's handled separately by lock-shutdown-watcher.sh), and
-# the screen locks after 5 minutes idle -- see
+# Installs this machine's power-manager and screen-lock settings: display
+# sleeps after 6 minutes idle and turns off after 7 (DPMS), the screen
+# locks after 5 minutes idle, and there's no separate system auto-suspend
+# (that's handled by lock-shutdown-watcher.sh instead) -- see
 # lib/xfce-perchannel-xml/xfce4-power-manager.xml and xfce4-screensaver.xml.
 # Idempotent: safe to re-run (backs up any pre-existing config the first
 # time, as *.pre-cyberbeest). A live session needs to log out/in (or

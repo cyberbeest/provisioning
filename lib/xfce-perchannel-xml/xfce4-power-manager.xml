@@ -7,7 +7,7 @@
     <property name="brightness-switch" type="int" value="0"/>
     <property name="dpms-on-ac-sleep" type="uint" value="6"/>
     <property name="dpms-on-ac-off" type="uint" value="7"/>
-    <property name="dpms-enabled" type="bool" value="false"/>
+    <property name="dpms-enabled" type="bool" value="true"/>
     <property name="inactivity-on-ac" type="uint" value="0"/>
     <property name="inactivity-on-battery" type="uint" value="0"/>
     <property name="show-tray-icon" type="bool" value="false"/>
