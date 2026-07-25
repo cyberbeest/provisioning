@@ -25,6 +25,13 @@ install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 \
 install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 \
 	"$DIR/lib/assets/cyberbeest-desktop-bg-simplified.png" "$TARGET_HOME/Pictures/Cyberbeest-simplified.png"
 
+echo "--- Also dropping it into /usr/share/backgrounds/xfce/ ---"
+# So it's directly pickable from Desktop Settings' "xfce" folder (the one
+# xfdesktop4-data ships) without needing xfconf automation to have run at
+# all -- a human can just click it in the grid.
+install -m 644 "$DIR/lib/assets/cyberbeest-desktop-bg.png" \
+	/usr/share/backgrounds/xfce/cyberbeest.png
+
 echo "--- Installing set-desktop-background.sh ---"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.local/bin"
 install -o "$TARGET_USER" -g "$TARGET_USER" -m 755 \
@@ -39,7 +46,13 @@ chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.config/autostart/cyberbeest-set
 echo "--- Running it now, if the target user has an active session ---"
 TARGET_UID="$(id -u "$TARGET_USER")"
 if [ -d "/run/user/$TARGET_UID" ]; then
-	su - "$TARGET_USER" -c "DISPLAY='${DISPLAY:-:0}' $TARGET_HOME/.local/bin/set-desktop-background.sh" || true
+	SESSION_PID="$(pgrep -u "$TARGET_USER" -x xfce4-session | head -1)"
+	DBUS_ADDR=""
+	if [ -n "$SESSION_PID" ]; then
+		DBUS_ADDR="$(cat "/proc/$SESSION_PID/environ" 2>/dev/null | tr '\0' '\n' | sed -n 's/^DBUS_SESSION_BUS_ADDRESS=//p')" || true
+	fi
+	DBUS_ADDR="${DBUS_ADDR:-unix:path=/run/user/$TARGET_UID/bus}"
+	su - "$TARGET_USER" -c "DISPLAY='${DISPLAY:-:0}' DBUS_SESSION_BUS_ADDRESS='$DBUS_ADDR' $TARGET_HOME/.local/bin/set-desktop-background.sh" || true
 else
 	echo "no active session for $TARGET_USER -- it'll run at next login"
 fi
