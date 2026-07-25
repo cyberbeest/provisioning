@@ -2,7 +2,7 @@
 # Configures the LightDM login screen and the xfce4-screensaver lock
 # screen: Cyberbeest background on the login screen, single-user lockdown
 # (no manual/remote/guest login, no user switching -- just the one
-# cyberbeest account tile), and the same "Enter quick password to unlock
+# cyberbeest account tile), and the same "Enter short password to unlock
 # desktop" message via PAM's pam_echo.so on both screens (lightdm-gtk-greeter
 # has no native custom-text option, so this is the standard mechanism).
 set -euo pipefail
@@ -34,7 +34,7 @@ set_greeter_var user-background false
 
 echo "--- Writing shared welcome message ---"
 MSG_FILE="/etc/lightdm/welcome-message.txt"
-echo "Enter quick password to unlock desktop" > "$MSG_FILE"
+echo "Enter short password to unlock desktop" > "$MSG_FILE"
 chmod 644 "$MSG_FILE"
 
 PAM_LINE="auth      optional  pam_echo.so file=$MSG_FILE"

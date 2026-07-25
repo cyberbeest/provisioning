@@ -1,7 +1,7 @@
 #!/bin/bash
 # Brands the LightDM login screen and the xfce4-screensaver lock screen:
 # Cyberbeest background + single-user lockdown on login, and the same
-# "Enter quick password to unlock desktop" message via PAM on both --
+# "Enter short password to unlock desktop" message via PAM on both --
 # see lib/setup-login-lock-screen.sh.
 # Idempotent: safe to re-run (backs up any pre-existing config the first
 # time, as *.pre-cyberbeest).
