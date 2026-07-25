@@ -1,22 +1,34 @@
 #!/bin/bash
-# Runs every provisioning script in this directory in numeric order.
-# Each NN-*.sh script is expected to be idempotent and self-logging.
+# Like run-all.sh, but skips any NN-*.sh script whose log file is newer than
+# the script itself -- i.e. it already ran successfully since it was last
+# edited. Useful for re-running just the scripts you've touched instead of
+# the whole set (each script is idempotent anyway, so this is a speed
+# optimization, not a correctness requirement).
+#
+# Caveat: this compares file mtimes, so a fresh `git clone`/checkout (which
+# resets mtimes on all files) will make everything look "changed" again.
 set -euo pipefail
 cd "$(dirname "$0")"
 
 for script in [0-9][0-9]-*.sh; do
+	log="${script%.sh}.log"
+	if [ -e "$log" ] && [ "$log" -nt "$script" ]; then
+		echo "=== skipping $script (unchanged since $log) ==="
+		continue
+	fi
 	echo "=== running $script ==="
 	bash "$script"
+	ran_something=1
 done
 
-# Best-effort: run-all.sh may be invoked headlessly (no X session), so a
-# missing/failing panel reload here is not an error. It may also be invoked
-# via `sudo ./run-all.sh` (see README), in which case this whole script runs
+# Best-effort: may be invoked headlessly (no X session), so a missing/failing
+# panel reload here is not an error. It may also be invoked via
+# `sudo ./run-changed.sh` (see README), in which case this whole script runs
 # as root and can't reach the logged-in user's D-Bus session bus directly --
 # drop back to that user for the reload, reading the bus address off their
 # actual running panel process (most reliable) rather than assuming the
 # standard /run/user/<uid>/bus path.
-if command -v xfce4-panel >/dev/null 2>&1; then
+if [ -n "${ran_something:-}" ] && command -v xfce4-panel >/dev/null 2>&1; then
 	echo "Reloading xfce4-panel to pick up new/changed desktop entries..."
 	if [ "$(id -u)" -eq 0 ] && [ -n "${SUDO_USER:-}" ]; then
 		TARGET_UID="$(id -u "$SUDO_USER")"

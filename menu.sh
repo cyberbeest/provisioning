@@ -78,7 +78,24 @@ done
 
 echo "=== all selected provisioning scripts completed ==="
 
+# menu.sh itself normally runs as the invoking user (it sudos per-script, see
+# above), so this reload usually just works. But if someone runs the whole
+# thing via `sudo ./menu.sh`, this runs as root and can't reach the logged-in
+# user's D-Bus session bus directly -- drop back to that user for the reload,
+# reading the bus address off their actual running panel process (most
+# reliable) rather than assuming the standard /run/user/<uid>/bus path.
 if command -v xfce4-panel >/dev/null 2>&1; then
 	echo "Reloading xfce4-panel to pick up new/changed desktop entries..."
-	xfce4-panel -r || true
+	if [ "$(id -u)" -eq 0 ] && [ -n "${SUDO_USER:-}" ]; then
+		TARGET_UID="$(id -u "$SUDO_USER")"
+		PANEL_PID="$(pgrep -u "$SUDO_USER" -x xfce4-panel | head -1)"
+		DBUS_ADDR=""
+		if [ -n "$PANEL_PID" ] && [ -r "/proc/$PANEL_PID/environ" ]; then
+			DBUS_ADDR="$(tr '\0' '\n' < "/proc/$PANEL_PID/environ" | sed -n 's/^DBUS_SESSION_BUS_ADDRESS=//p')"
+		fi
+		DBUS_ADDR="${DBUS_ADDR:-unix:path=/run/user/$TARGET_UID/bus}"
+		su - "$SUDO_USER" -c "DISPLAY='${DISPLAY:-:0}' DBUS_SESSION_BUS_ADDRESS='$DBUS_ADDR' xfce4-panel -r" || true
+	else
+		xfce4-panel -r || true
+	fi
 fi

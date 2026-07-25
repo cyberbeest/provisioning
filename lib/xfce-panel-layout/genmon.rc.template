@@ -1,0 +1,5 @@
+Command=__HOME__/.local/bin/update-genmon.sh
+UpdatePeriod=60000
+UseLabel=0
+Text=(genmon)
+Font=Sans 10
