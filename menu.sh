@@ -90,8 +90,10 @@ if command -v xfce4-panel >/dev/null 2>&1; then
 		TARGET_UID="$(id -u "$SUDO_USER")"
 		PANEL_PID="$(pgrep -u "$SUDO_USER" -x xfce4-panel | head -1)"
 		DBUS_ADDR=""
-		if [ -n "$PANEL_PID" ] && [ -r "/proc/$PANEL_PID/environ" ]; then
-			DBUS_ADDR="$(tr '\0' '\n' < "/proc/$PANEL_PID/environ" | sed -n 's/^DBUS_SESSION_BUS_ADDRESS=//p')"
+		if [ -n "$PANEL_PID" ]; then
+			# cat (not `< file`) so a PID that vanishes between pgrep and here
+			# just yields empty output instead of a fatal shell redirection error.
+			DBUS_ADDR="$(cat "/proc/$PANEL_PID/environ" 2>/dev/null | tr '\0' '\n' | sed -n 's/^DBUS_SESSION_BUS_ADDRESS=//p')" || true
 		fi
 		DBUS_ADDR="${DBUS_ADDR:-unix:path=/run/user/$TARGET_UID/bus}"
 		su - "$SUDO_USER" -c "DISPLAY='${DISPLAY:-:0}' DBUS_SESSION_BUS_ADDRESS='$DBUS_ADDR' xfce4-panel -r" || true

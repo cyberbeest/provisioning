@@ -89,9 +89,9 @@ if command -v xfce4-panel >/dev/null 2>&1; then
 	PANEL_PID="$(pgrep -u "$TARGET_USER" -x xfce4-panel | head -1)"
 	if [ -n "$PANEL_PID" ]; then
 		DBUS_ADDR=""
-		if [ -r "/proc/$PANEL_PID/environ" ]; then
-			DBUS_ADDR="$(tr '\0' '\n' < "/proc/$PANEL_PID/environ" | sed -n 's/^DBUS_SESSION_BUS_ADDRESS=//p')"
-		fi
+		# cat (not `< file`) so a PID that vanishes between pgrep and here
+		# just yields empty output instead of a fatal shell redirection error.
+		DBUS_ADDR="$(cat "/proc/$PANEL_PID/environ" 2>/dev/null | tr '\0' '\n' | sed -n 's/^DBUS_SESSION_BUS_ADDRESS=//p')" || true
 		DBUS_ADDR="${DBUS_ADDR:-unix:path=/run/user/$(id -u "$TARGET_USER")/bus}"
 
 		# Debian's stock xfce4-panel default (or a first login that happened
