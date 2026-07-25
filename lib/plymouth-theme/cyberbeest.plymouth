@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=Cyberbeest
+Description=Cyberbeest boot theme with logo persistent through password prompts
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/cyberbeest
+ScriptFile=/usr/share/plymouth/themes/cyberbeest/cyberbeest.script

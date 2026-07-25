@@ -1,0 +1,182 @@
+# cyberbeest.script - minimal boot splash: logo stays visible through
+# boot animation, password/LUKS prompts, and shutdown/reboot.
+
+Window.SetBackgroundTopColor(0, 0, 0);
+Window.SetBackgroundBottomColor(0, 0, 0);
+
+screen.w = Window.GetWidth();
+screen.h = Window.GetHeight();
+
+# ---------------------------------------------------------------------
+# Logo watermark - always on screen, sized relative to the display
+# ---------------------------------------------------------------------
+logo_target_h = screen.h * 0.42;
+if (Plymouth.GetMode() == "shutdown")
+    logo.image = Image("watermark-shutdown.png");
+else
+    logo.image = Image("watermark.png");
+logo_scale = logo_target_h / logo.image.GetHeight();
+logo.image = logo.image.Scale(logo.image.GetWidth() * logo_scale, logo_target_h);
+logo.sprite = Sprite(logo.image);
+logo.x = screen.w / 2 - logo.image.GetWidth() / 2;
+logo.y = screen.h * 0.38 - logo.image.GetHeight() / 2;
+logo.sprite.SetX(logo.x);
+logo.sprite.SetY(logo.y);
+logo.sprite.SetZ(1);
+
+# ---------------------------------------------------------------------
+# Throbber animation, centered below the logo
+# ---------------------------------------------------------------------
+throbber_frame_count = 30;
+for (i = 1; i <= throbber_frame_count; i++) {
+    if (i < 10)
+        throbber.image[i] = Image("throbber-000" + i + ".png");
+    else
+        throbber.image[i] = Image("throbber-00" + i + ".png");
+}
+
+throbber.sprite = Sprite();
+throbber.sprite.SetImage(throbber.image[1]);
+throbber.width = throbber.image[1].GetWidth();
+throbber.height = throbber.image[1].GetHeight();
+throbber.x = screen.w / 2 - throbber.width / 2;
+throbber.y = screen.h * 0.72 - throbber.height / 2;
+throbber.sprite.SetX(throbber.x);
+throbber.sprite.SetY(throbber.y);
+throbber.sprite.SetZ(10);
+
+throbber.current_frame = 1;
+throbber.frame_skip = 0;
+
+fun refresh_callback() {
+    throbber.frame_skip++;
+    if (throbber.frame_skip >= 2) {
+        throbber.frame_skip = 0;
+        throbber.current_frame++;
+        if (throbber.current_frame > throbber_frame_count)
+            throbber.current_frame = 1;
+        throbber.sprite.SetImage(throbber.image[throbber.current_frame]);
+    }
+
+    if (message.hide_countdown > 0) {
+        message.hide_countdown--;
+        if (message.hide_countdown == 0)
+            message.sprite.SetOpacity(0);
+    }
+}
+Plymouth.SetRefreshFunction(refresh_callback);
+
+# ---------------------------------------------------------------------
+# Password / LUKS unlock dialog
+# ---------------------------------------------------------------------
+password_dialog.entry_image = Image("entry.png");
+password_dialog.bullet_image = Image("bullet.png");
+password_dialog.lock_image = Image("lock.png");
+
+password_dialog.active = 0;
+
+fun password_dialog_setup(prompt) {
+    local = password_dialog;
+
+    if (prompt == NULL || prompt == "")
+        prompt = "Enter master password to decrypt hard drive";
+    local.prompt_image = Image.Text(prompt, 1, 1, 1);
+    local.prompt_sprite = Sprite(local.prompt_image);
+    local.prompt_x = screen.w / 2 - local.prompt_image.GetWidth() / 2;
+    local.prompt_y = screen.h * 0.82 - local.entry_image.GetHeight();
+    local.prompt_sprite.SetX(local.prompt_x);
+    local.prompt_sprite.SetY(local.prompt_y);
+    local.prompt_sprite.SetZ(20);
+
+    # Center the lock+entry cluster as a single unit (rather than centering
+    # the entry box alone and hanging the lock off its left edge), so its
+    # visual center lines up with the prompt text centered above it.
+    local.gap = 8;
+    local.group_w = local.lock_image.GetWidth() + local.gap + local.entry_image.GetWidth();
+    local.group_x = screen.w / 2 - local.group_w / 2;
+    local.entry_y = screen.h * 0.82;
+
+    local.lock_sprite = Sprite(local.lock_image);
+    local.lock_sprite.SetX(local.group_x);
+    local.lock_sprite.SetY(local.entry_y + local.entry_image.GetHeight() / 2 - local.lock_image.GetHeight() / 2);
+    local.lock_sprite.SetZ(20);
+
+    local.entry_x = local.group_x + local.lock_image.GetWidth() + local.gap;
+    local.entry_sprite = Sprite(local.entry_image);
+    local.entry_sprite.SetX(local.entry_x);
+    local.entry_sprite.SetY(local.entry_y);
+    local.entry_sprite.SetZ(20);
+
+    global.password_dialog = local;
+}
+
+fun display_password_callback(prompt, bullets) {
+    throbber.sprite.SetOpacity(0);
+
+    if (!password_dialog.entry_sprite)
+        password_dialog_setup(prompt);
+
+    bullet_w = password_dialog.bullet_image.GetWidth();
+    max_bullets = Math.Int(password_dialog.entry_image.GetWidth() / bullet_w) - 1;
+    if (bullets > max_bullets)
+        bullets = max_bullets;
+
+    bullet_y = password_dialog.entry_y + password_dialog.entry_image.GetHeight() / 2
+               - password_dialog.bullet_image.GetHeight() / 2;
+    row_width = bullets * bullet_w;
+    row_x = password_dialog.entry_x + password_dialog.entry_image.GetWidth() / 2 - row_width / 2;
+
+    for (i = 0; password_dialog.bullet_sprite[i] || i < bullets; i++) {
+        if (!password_dialog.bullet_sprite[i]) {
+            password_dialog.bullet_sprite[i] = Sprite(password_dialog.bullet_image);
+            password_dialog.bullet_sprite[i].SetZ(21);
+        }
+        if (i < bullets) {
+            password_dialog.bullet_sprite[i].SetX(row_x + i * bullet_w);
+            password_dialog.bullet_sprite[i].SetY(bullet_y);
+            password_dialog.bullet_sprite[i].SetOpacity(1);
+        } else {
+            password_dialog.bullet_sprite[i].SetOpacity(0);
+        }
+    }
+}
+Plymouth.SetDisplayPasswordFunction(display_password_callback);
+
+fun display_normal_callback() {
+    throbber.sprite.SetOpacity(1);
+
+    if (password_dialog.entry_sprite) {
+        password_dialog.entry_sprite.SetOpacity(0);
+        password_dialog.prompt_sprite.SetOpacity(0);
+        password_dialog.lock_sprite.SetOpacity(0);
+        for (i = 0; password_dialog.bullet_sprite[i]; i++)
+            password_dialog.bullet_sprite[i].SetOpacity(0);
+    }
+}
+Plymouth.SetDisplayNormalFunction(display_normal_callback);
+
+fun quit_callback() {
+}
+Plymouth.SetQuitFunction(quit_callback);
+
+# ---------------------------------------------------------------------
+# Status/error messages (e.g. cryptsetup "bad password, try again"),
+# sent via `plymouth message --text=...`. Without a handler these are
+# silently dropped, which is why a failed unlock attempt looked like the
+# screen just freezing.
+# ---------------------------------------------------------------------
+message.sprite = Sprite();
+message.sprite.SetZ(30);
+message.hide_countdown = 0;
+
+fun message_callback(text) {
+    message.image = Image.Text(text, 1, 0.35, 0.35, 1);
+    message.sprite.SetImage(message.image);
+    message.x = screen.w / 2 - message.image.GetWidth() / 2;
+    message.y = screen.h * 0.9;
+    message.sprite.SetX(message.x);
+    message.sprite.SetY(message.y);
+    message.sprite.SetOpacity(1);
+    message.hide_countdown = 150;  # ~5s, decremented in refresh_callback
+}
+Plymouth.SetMessageFunction(message_callback);
