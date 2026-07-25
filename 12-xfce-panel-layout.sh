@@ -8,7 +8,10 @@
 # 09-cyberbeest-logout-dialog.sh, 10-browser-sandbox.sh,
 # 11-xfce-panel-plugins.sh.
 # Idempotent: safe to re-run (overwrites its own config files; backs up any
-# pre-existing xfce4-panel.xml the first time).
+# pre-existing xfce4-panel.xml the first time). Also removes any other panel
+# (e.g. Debian's stock second panel) so only this one is left, since a live
+# xfconfd won't drop a panel it already has in memory just because the file
+# on disk changed underneath it.
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG="$DIR/12-xfce-panel-layout.log"
@@ -79,10 +82,23 @@ if command -v xfce4-panel >/dev/null 2>&1; then
 			DBUS_ADDR="$(tr '\0' '\n' < "/proc/$PANEL_PID/environ" | sed -n 's/^DBUS_SESSION_BUS_ADDRESS=//p')"
 		fi
 		DBUS_ADDR="${DBUS_ADDR:-unix:path=/run/user/$(id -u "$TARGET_USER")/bus}"
-		# xfconfd holds the panel config in memory and can clobber the file we
-		# just wrote if it's still running from before this script ran -- kill
-		# it too so xfce4-panel -r starts a fresh one that reads our new file.
+
+		# Debian's stock xfce4-panel default (or a first login that happened
+		# before this script ran) may have created a second panel (its own
+		# top/bottom bar, id != 1). Overwriting the file above doesn't remove
+		# it from a *live* xfconfd's in-memory state -- kill xfconfd so it
+		# comes back reading only our file, before restarting the panel.
 		pkill -u "$TARGET_USER" -x xfconfd || true
+		sleep 1
+		su - "$TARGET_USER" -c "DISPLAY='${DISPLAY:-:0}' DBUS_SESSION_BUS_ADDRESS='$DBUS_ADDR' xfconf-query -c xfce4-panel -p /panels" \
+			| tail -n +2 | sed '/^$/d' \
+			| grep -v '^1$' | while read -r stray_id; do
+			[ -n "$stray_id" ] || continue
+			echo "removing stray panel-$stray_id"
+			su - "$TARGET_USER" -c "DISPLAY='${DISPLAY:-:0}' DBUS_SESSION_BUS_ADDRESS='$DBUS_ADDR' xfconf-query -c xfce4-panel -p /panels/panel-$stray_id --reset -R" || true
+		done
+		su - "$TARGET_USER" -c "DISPLAY='${DISPLAY:-:0}' DBUS_SESSION_BUS_ADDRESS='$DBUS_ADDR' xfconf-query -c xfce4-panel -p /panels -t int -s 1 --force-array" || true
+
 		su - "$TARGET_USER" -c "DISPLAY='${DISPLAY:-:0}' DBUS_SESSION_BUS_ADDRESS='$DBUS_ADDR' xfce4-panel -r" || true
 	fi
 fi
