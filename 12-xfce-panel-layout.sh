@@ -99,13 +99,17 @@ if command -v xfce4-panel >/dev/null 2>&1; then
 		# comes back reading only our file, before restarting the panel.
 		pkill -u "$TARGET_USER" -x xfconfd || true
 		sleep 1
+		# grep/while both legitimately exit non-zero when there are no stray
+		# panels to remove (the normal case) -- under pipefail+set -e that
+		# would otherwise kill the whole script right here, so guard the
+		# entire pipeline with || true.
 		su - "$TARGET_USER" -c "DISPLAY='${DISPLAY:-:0}' DBUS_SESSION_BUS_ADDRESS='$DBUS_ADDR' xfconf-query -c xfce4-panel -p /panels" \
 			| tail -n +2 | sed '/^$/d' \
 			| grep -v '^1$' | while read -r stray_id; do
 			[ -n "$stray_id" ] || continue
 			echo "removing stray panel-$stray_id"
 			su - "$TARGET_USER" -c "DISPLAY='${DISPLAY:-:0}' DBUS_SESSION_BUS_ADDRESS='$DBUS_ADDR' xfconf-query -c xfce4-panel -p /panels/panel-$stray_id --reset -R" || true
-		done
+		done || true
 		su - "$TARGET_USER" -c "DISPLAY='${DISPLAY:-:0}' DBUS_SESSION_BUS_ADDRESS='$DBUS_ADDR' xfconf-query -c xfce4-panel -p /panels -t int -s 1 --force-array" || true
 
 		su - "$TARGET_USER" -c "DISPLAY='${DISPLAY:-:0}' DBUS_SESSION_BUS_ADDRESS='$DBUS_ADDR' xfce4-panel -r" || true
