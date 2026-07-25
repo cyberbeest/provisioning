@@ -10,9 +10,14 @@ Each script:
 - Is idempotent — safe to re-run on a machine that already has it applied.
 - Logs its own output to `NN-short-description.log` in this directory.
 - Expects to be run as root itself (`sudo bash NN-*.sh`) — it does not use the
-  RUNME/`claude-sudo-helper.sh` convention from `../CLAUDE.md`. That convention
-  exists for Claude to request sudo without holding it; during an actual
-  install there's a human at the keyboard who can just type their password.
+  RUNME/`claude-sudo-helper.sh` convention from the dev machine's `CLAUDE.md`.
+  That convention exists for Claude to request sudo without holding it; during
+  an actual install there's a human at the keyboard who can just type their
+  password.
+
+`lib/` holds the underlying scripts each `NN-*.sh` step wraps (installers,
+helper scripts, the messenger catalog builder). They're not meant to be run
+directly except for one-off debugging of a single step.
 
 ## Running the full set
 
@@ -33,9 +38,16 @@ This repo is public on GitHub, so on a freshly installed Debian machine
 
 ```
 sudo apt install git
-git clone <repo-url>
-cd <repo>/provisioning
+git clone https://github.com/cyberbeest/provisioning.git
+cd provisioning
 ./menu.sh
+```
+
+Or, via the `beestify.sh` bootstrap script (installs git, clones this repo,
+and runs `./menu.sh` for you):
+
+```
+curl -fsSL https://cyberbeest.com/beestify.sh | bash
 ```
 
 ## What's NOT provisioned here
