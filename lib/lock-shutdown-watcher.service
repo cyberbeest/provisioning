@@ -1,0 +1,10 @@
+[Unit]
+Description=Shut down machine after being continuously locked
+
+[Service]
+Type=simple
+ExecStart=%h/bin/lock-shutdown-watcher.sh
+Restart=on-failure
+
+[Install]
+WantedBy=default.target

@@ -1,12 +1,10 @@
 #!/bin/bash
 # Installs the Cyberbeest Power Settings GUI (lock/shutdown timing config)
 # and its Whisker-menu launcher -- see lib/cyberbeest-power-settings.py.
-#
-# Note: this GUI only edits ~/.config/cyberbeest/power-settings.conf: the
+# This GUI only edits ~/.config/cyberbeest/power-settings.conf; the
 # lock-shutdown-watcher user service that actually reads that file and
-# enforces the lock/shutdown/suspend-cycle behavior is a separate piece of
-# this machine's setup not yet migrated into this repo. Until that lands,
-# installing this GUI gives users a settings screen with no effect yet.
+# enforces the lock/shutdown/suspend-cycle behavior is installed separately
+# by 13-lock-shutdown-watcher.sh.
 # Idempotent: safe to re-run.
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
