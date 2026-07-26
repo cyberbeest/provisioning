@@ -1,0 +1,10 @@
+[Unit]
+Description=Play a chime on shutdown via a logind delay-inhibitor lock
+
+[Service]
+ExecStart=%h/.local/bin/cyberbeest-shutdown-chime-daemon.py
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=default.target

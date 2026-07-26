@@ -26,7 +26,7 @@ set_phase() {
 start_epoch="$(date +%s)"
 
 set_phase checking
-update_out="$(apt-get update -qq 2>&1)"
+update_out="$(apt-get -o DPkg::Lock::Timeout=60 update -qq 2>&1)"
 update_status=$?
 
 result=ok

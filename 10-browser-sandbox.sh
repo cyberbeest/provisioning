@@ -15,8 +15,8 @@ TARGET_USER="${SUDO_USER:-cyberbeest}"
 TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
 
 echo "--- Installing firejail + profiles, and firefox-esr if not already present ---"
-apt-get update -qq
-apt-get install -y firejail firejail-profiles firefox-esr
+apt-get -o DPkg::Lock::Timeout=60 update -qq
+apt-get -o DPkg::Lock::Timeout=60 install -y firejail firejail-profiles firefox-esr
 
 echo "--- Allowing pulseaudio/dbus through the sandbox (firefox-esr.local override) ---"
 install -m 644 "$DIR/lib/firefox-esr.local" /etc/firejail/firefox-esr.local

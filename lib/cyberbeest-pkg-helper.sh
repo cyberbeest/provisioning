@@ -30,8 +30,8 @@ ensure_repo_deps() {
     done
     if [ "${#missing[@]}" -gt 0 ]; then
         log "Installing missing deps for repo setup: ${missing[*]}"
-        apt-get update >>"$LOG" 2>&1 || { log "apt-get update failed while installing deps"; return 1; }
-        apt-get install -y "${missing[@]}" >>"$LOG" 2>&1 || { log "apt-get install failed: ${missing[*]}"; return 1; }
+        apt-get -o DPkg::Lock::Timeout=60 update >>"$LOG" 2>&1 || { log "apt-get update failed while installing deps"; return 1; }
+        apt-get -o DPkg::Lock::Timeout=60 install -y "${missing[@]}" >>"$LOG" 2>&1 || { log "apt-get install failed: ${missing[*]}"; return 1; }
     fi
 }
 
@@ -45,7 +45,7 @@ do_setup_repo() {
                 || { log "Signal keyring fetch failed"; return 1; }
             curl -fsSL -o /etc/apt/sources.list.d/signal-desktop.sources https://updates.signal.org/static/desktop/apt/signal-desktop.sources \
                 || { log "Signal sources fetch failed"; return 1; }
-            apt-get update >>"$LOG" 2>&1 || { log "apt-get update failed after adding Signal repo"; return 1; }
+            apt-get -o DPkg::Lock::Timeout=60 update >>"$LOG" 2>&1 || { log "apt-get update failed after adding Signal repo"; return 1; }
             log "Signal apt repository set up"
         else
             log "Signal apt repository already present, skipping"
@@ -58,7 +58,7 @@ do_setup_repo() {
                 || { log "Element keyring fetch failed"; return 1; }
             echo "deb [signed-by=/usr/share/keyrings/element-io-archive-keyring.gpg] https://packages.element.io/debian/ default main" >/etc/apt/sources.list.d/element-io.list \
                 || { log "Element sources write failed"; return 1; }
-            apt-get update >>"$LOG" 2>&1 || { log "apt-get update failed after adding Element repo"; return 1; }
+            apt-get -o DPkg::Lock::Timeout=60 update >>"$LOG" 2>&1 || { log "apt-get update failed after adding Element repo"; return 1; }
             log "Element apt repository set up"
         else
             log "Element apt repository already present, skipping"
@@ -73,14 +73,14 @@ do_setup_repo() {
 
 do_install() {
     log "Installing: $*"
-    apt-get update >>"$LOG" 2>&1 || { log "apt-get update failed"; return 1; }
-    apt-get install -y "$@" >>"$LOG" 2>&1 || { log "apt-get install failed: $*"; return 1; }
+    apt-get -o DPkg::Lock::Timeout=60 update >>"$LOG" 2>&1 || { log "apt-get update failed"; return 1; }
+    apt-get -o DPkg::Lock::Timeout=60 install -y "$@" >>"$LOG" 2>&1 || { log "apt-get install failed: $*"; return 1; }
     log "Install finished: $*"
 }
 
 do_remove() {
     log "Removing: $*"
-    apt-get remove -y "$@" >>"$LOG" 2>&1 || { log "apt-get remove failed: $*"; return 1; }
+    apt-get -o DPkg::Lock::Timeout=60 remove -y "$@" >>"$LOG" 2>&1 || { log "apt-get remove failed: $*"; return 1; }
     log "Remove finished: $*"
 }
 

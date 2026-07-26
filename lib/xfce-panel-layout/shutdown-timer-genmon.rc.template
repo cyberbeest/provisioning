@@ -1,0 +1,5 @@
+Command=__HOME__/.local/bin/shutdown-timer-genmon.sh
+UpdatePeriod=30000
+UseLabel=0
+Text=(genmon)
+Font=Sans 10

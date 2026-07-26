@@ -27,8 +27,8 @@ echo "=== $(date '+%Y-%m-%d %H:%M:%S') install-software-warning.sh ==="
 if dpkg -s zenity >/dev/null 2>&1; then
     echo "zenity already installed, skipping apt install"
 else
-    apt-get update
-    apt-get install -y zenity
+    apt-get -o DPkg::Lock::Timeout=60 update
+    apt-get -o DPkg::Lock::Timeout=60 install -y zenity
 fi
 
 install -m 755 "$DIR/cyberbeest-launch-software.sh" /usr/local/bin/cyberbeest-launch-software

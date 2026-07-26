@@ -19,8 +19,8 @@ TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
 XML_DIR="$TARGET_HOME/.config/xfce4/xfconf/xfce-perchannel-xml"
 
 echo "--- Installing xfce4-power-manager and xfce4-screensaver ---"
-apt-get update -qq
-apt-get install -y xfce4-power-manager xfce4-screensaver
+apt-get -o DPkg::Lock::Timeout=60 update -qq
+apt-get -o DPkg::Lock::Timeout=60 install -y xfce4-power-manager xfce4-screensaver
 
 echo "--- Installing xfconf channel files ---"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$XML_DIR"

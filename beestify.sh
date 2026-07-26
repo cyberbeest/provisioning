@@ -9,8 +9,8 @@ if ! command -v git >/dev/null 2>&1; then
   # Fresh installs from DVD media leave a cdrom:// source in sources.list,
   # which has no Release file and makes apt-get update fail outright.
   sudo sed -i '/^deb cdrom:/ s/^/# /' /etc/apt/sources.list
-  sudo apt-get update
-  sudo apt-get install -y git
+  sudo apt-get -o DPkg::Lock::Timeout=60 update
+  sudo apt-get -o DPkg::Lock::Timeout=60 install -y git
 fi
 
 if [ -d "$CLONE_DIR/.git" ]; then

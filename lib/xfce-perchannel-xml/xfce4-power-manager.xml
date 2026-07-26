@@ -5,8 +5,14 @@
     <property name="power-button-action" type="uint" value="0"/>
     <property name="brightness-switch-restore-on-exit" type="int" value="1"/>
     <property name="brightness-switch" type="int" value="0"/>
-    <property name="dpms-on-ac-sleep" type="uint" value="6"/>
-    <property name="dpms-on-ac-off" type="uint" value="7"/>
+    <!-- Kept in step with the screen-lock delay (org.gnome.desktop.session
+         idle-delay, default 5min): sleep == lock delay, off == +1min. The
+         shutdown-timer panel menu's "Lock screen after" picker re-syncs
+         both whenever the lock delay changes (see shutdown-timer-menu.py's
+         set_idle_delay_minutes()); these are just the matching defaults
+         for a fresh install. -->
+    <property name="dpms-on-ac-sleep" type="uint" value="5"/>
+    <property name="dpms-on-ac-off" type="uint" value="6"/>
     <property name="dpms-enabled" type="bool" value="true"/>
     <property name="inactivity-on-ac" type="uint" value="0"/>
     <property name="inactivity-on-battery" type="uint" value="0"/>

@@ -41,6 +41,15 @@ notifications_when_locked_enabled() {
     [ "$(read_setting NOTIFICATIONS_WHEN_LOCKED false)" = "true" ]
 }
 
+shutdown_minutes_for() {
+    # shutdown_minutes_for AC|BATTERY -- falls back to the pre-split
+    # SHUTDOWN_MINUTES key if the config file predates the AC/battery split.
+    local value
+    value=$(read_setting "${1}_SHUTDOWN_MINUTES" "")
+    [ -n "$value" ] || value=$(read_setting SHUTDOWN_MINUTES "$DEFAULT_SHUTDOWN_MIN")
+    echo "$value"
+}
+
 is_locked() {
     dbus-send --session --dest=org.xfce.ScreenSaver --type=method_call \
         --print-reply /org/xfce/ScreenSaver org.xfce.ScreenSaver.GetActive \
@@ -121,34 +130,46 @@ while true; do
             locked_since=$now
         fi
 
-        shutdown_min=$(read_setting SHUTDOWN_MINUTES "$DEFAULT_SHUTDOWN_MIN")
-        SHUTDOWN_AFTER=$(( shutdown_min * 60 ))
-
-        elapsed=$(( now - locked_since ))
-        if [ "$elapsed" -ge "$SHUTDOWN_AFTER" ]; then
-            logger -t lock-shutdown-watcher "Locked for >= ${SHUTDOWN_AFTER}s, shutting down"
-            systemctl poweroff
-            exit 0
+        if on_battery; then
+            shutdown_min=$(shutdown_minutes_for BATTERY)
+        else
+            shutdown_min=$(shutdown_minutes_for AC)
         fi
 
-        if on_battery && notifications_when_locked_enabled; then
-            remaining=$(( SHUTDOWN_AFTER - elapsed ))
-            asleep_min=$(read_setting ASLEEP_MINUTES "$DEFAULT_ASLEEP_MIN")
-            awake_min=$(read_setting AWAKE_MINUTES "$DEFAULT_AWAKE_MIN")
-            asleep_s=$(( asleep_min * 60 ))
-            if [ "$asleep_s" -gt "$remaining" ]; then
-                asleep_s=$remaining
+        if [ "$shutdown_min" -eq 0 ]; then
+            # 0 == "Never" for this power source: skip the shutdown deadline
+            # and the notification suspend-cycle (which is defined relative
+            # to that deadline) entirely, just poll.
+            sleep "$POLL_INTERVAL"
+        else
+            SHUTDOWN_AFTER=$(( shutdown_min * 60 ))
+
+            elapsed=$(( now - locked_since ))
+            if [ "$elapsed" -ge "$SHUTDOWN_AFTER" ]; then
+                logger -t lock-shutdown-watcher "Locked for >= ${SHUTDOWN_AFTER}s, shutting down"
+                systemctl poweroff
+                exit 0
             fi
-            if suspend_for "$asleep_s"; then
-                screen_off
-                wait_awake_window "$(( awake_min * 60 ))"
+
+            if on_battery && notifications_when_locked_enabled; then
+                remaining=$(( SHUTDOWN_AFTER - elapsed ))
+                asleep_min=$(read_setting ASLEEP_MINUTES "$DEFAULT_ASLEEP_MIN")
+                awake_min=$(read_setting AWAKE_MINUTES "$DEFAULT_AWAKE_MIN")
+                asleep_s=$(( asleep_min * 60 ))
+                if [ "$asleep_s" -gt "$remaining" ]; then
+                    asleep_s=$remaining
+                fi
+                if suspend_for "$asleep_s"; then
+                    screen_off
+                    wait_awake_window "$(( awake_min * 60 ))"
+                else
+                    sleep "$POLL_INTERVAL"
+                fi
             else
+                # Experimental cycling off (or on AC): never suspend, just stay
+                # awake and poll until the lock either clears or hits the deadline.
                 sleep "$POLL_INTERVAL"
             fi
-        else
-            # Experimental cycling off (or on AC): never suspend, just stay
-            # awake and poll until the lock either clears or hits the deadline.
-            sleep "$POLL_INTERVAL"
         fi
     else
         locked_since=0

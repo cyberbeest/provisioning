@@ -15,8 +15,8 @@ TARGET_USER="${SUDO_USER:-cyberbeest}"
 TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
 
 echo "--- Installing xrandr (used to find the real monitor name) ---"
-apt-get update -qq
-apt-get install -y x11-xserver-utils
+apt-get -o DPkg::Lock::Timeout=60 update -qq
+apt-get -o DPkg::Lock::Timeout=60 install -y x11-xserver-utils
 
 echo "--- Installing wallpaper images ---"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/Pictures"

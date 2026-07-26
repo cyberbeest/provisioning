@@ -14,8 +14,8 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 echo "--- Installing unattended-upgrades ---"
-apt-get update
-apt-get install -y unattended-upgrades
+apt-get -o DPkg::Lock::Timeout=60 update
+apt-get -o DPkg::Lock::Timeout=60 install -y unattended-upgrades
 
 CODENAME="$(. /etc/os-release && echo "$VERSION_CODENAME")"
 echo "Detected codename: $CODENAME"

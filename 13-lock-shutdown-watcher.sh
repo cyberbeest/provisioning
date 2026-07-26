@@ -19,8 +19,8 @@ TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
 TARGET_UID="$(id -u "$TARGET_USER")"
 
 echo "--- Installing dependencies (xprintidle, dbus-send, xset) ---"
-apt-get update -qq
-apt-get install -y xprintidle dbus-bin x11-xserver-utils
+apt-get -o DPkg::Lock::Timeout=60 update -qq
+apt-get -o DPkg::Lock::Timeout=60 install -y xprintidle dbus-bin x11-xserver-utils
 
 echo "--- Installing watcher script to $TARGET_HOME/bin/lock-shutdown-watcher.sh ---"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/bin"

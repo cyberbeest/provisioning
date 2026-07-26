@@ -10,8 +10,8 @@ THEME_DIR="/usr/share/plymouth/themes/cyberbeest"
 GRUB_FILE="/etc/default/grub"
 
 echo "--- Installing plymouth-themes (base spinner assets our theme reuses) ---"
-apt-get update -qq
-apt-get install -y plymouth plymouth-themes
+apt-get -o DPkg::Lock::Timeout=60 update -qq
+apt-get -o DPkg::Lock::Timeout=60 install -y plymouth plymouth-themes
 
 echo "--- Assembling the cyberbeest Plymouth theme ---"
 install -d "$THEME_DIR"

@@ -21,12 +21,12 @@
         <value type="int" value="7"/>
         <value type="int" value="8"/>
         <value type="int" value="9"/>
-        <value type="int" value="10"/>
         <value type="int" value="11"/>
         <value type="int" value="12"/>
         <value type="int" value="13"/>
         <value type="int" value="14"/>
         <value type="int" value="15"/>
+        <value type="int" value="16"/>
       </property>
     </property>
   </property>
@@ -67,16 +67,12 @@
         <value type="string" value="terminal-emulator.desktop"/>
       </property>
     </property>
-    <property name="plugin-10" type="string" value="launcher">
-      <property name="items" type="array">
-        <value type="string" value="cyberbeest-power.desktop"/>
-      </property>
-    </property>
     <property name="plugin-11" type="string" value="genmon"/>
     <property name="plugin-12" type="string" value="power-manager-plugin"/>
     <property name="plugin-13" type="string" value="wattage-panel"/>
     <property name="plugin-14" type="string" value="kitt-scanner"/>
     <property name="plugin-15" type="string" value="mem-liquid"/>
+    <property name="plugin-16" type="string" value="genmon"/>
     <property name="notes" type="empty">
       <property name="global" type="empty">
         <property name="version" type="string" value="1.11.1"/>

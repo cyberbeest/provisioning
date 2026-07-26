@@ -19,14 +19,18 @@ TARGET_USER="${SUDO_USER:-cyberbeest}"
 TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
 
 echo "--- Installing python3-gi (GTK bindings the GUI needs) ---"
-apt-get update -qq
-apt-get install -y python3-gi gir1.2-gtk-3.0
+apt-get -o DPkg::Lock::Timeout=60 update -qq
+apt-get -o DPkg::Lock::Timeout=60 install -y python3-gi gir1.2-gtk-3.0
 
 echo "--- Installing GUI script to $TARGET_HOME/.local/bin/cyberbeest-power-settings ---"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.local/bin"
-install -o "$TARGET_USER" -g "$TARGET_USER" -m 755 \
-	"$DIR/lib/cyberbeest-power-settings.py" \
-	"$TARGET_HOME/.local/bin/cyberbeest-power-settings"
+# GENMON_WIDGET_NAME must match the shutdown-timer genmon plugin id that
+# 12-xfce-panel-layout.sh's panel template assigns (genmon-16), so the
+# "refresh the panel icon now" call in the GUI targets the right widget.
+sed "s|__GENMON_WIDGET__|genmon-16|g" "$DIR/lib/cyberbeest-power-settings.py" \
+	> "$TARGET_HOME/.local/bin/cyberbeest-power-settings"
+chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.local/bin/cyberbeest-power-settings"
+chmod 755 "$TARGET_HOME/.local/bin/cyberbeest-power-settings"
 
 echo "--- Installing icon ---"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/Pictures"

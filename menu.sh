@@ -17,8 +17,8 @@ cd "$DIR"
 
 if ! command -v whiptail >/dev/null 2>&1; then
 	echo "Installing whiptail (needed for the selection menu)..."
-	sudo apt-get update
-	sudo apt-get install -y whiptail
+	sudo apt-get -o DPkg::Lock::Timeout=60 update
+	sudo apt-get -o DPkg::Lock::Timeout=60 install -y whiptail
 fi
 
 scripts=()

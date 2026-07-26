@@ -14,8 +14,8 @@ LOG="$DIR/install-gnome-software.log"
 exec > >(tee -a "$LOG") 2>&1
 echo "=== $(date '+%Y-%m-%d %H:%M:%S') install-gnome-software.sh ==="
 
-apt-get update
-apt-get install -y gnome-software gnome-software-plugin-deb
+apt-get -o DPkg::Lock::Timeout=60 update
+apt-get -o DPkg::Lock::Timeout=60 install -y gnome-software gnome-software-plugin-deb
 
 echo "Confirming no flatpak/snap plugins were pulled in:"
 dpkg -l | grep -i 'gnome-software-plugin' || true

@@ -13,14 +13,14 @@ echo "=== $(date) : provisioning bluetooth tethering support ==="
 if dpkg -s blueman >/dev/null 2>&1; then
 	echo "blueman already installed, skipping apt install"
 else
-	apt-get update
-	apt-get install -y blueman
+	apt-get -o DPkg::Lock::Timeout=60 update
+	apt-get -o DPkg::Lock::Timeout=60 install -y blueman
 fi
 
 if dpkg -s rfkill >/dev/null 2>&1; then
 	echo "rfkill already installed, skipping apt install"
 else
-	apt-get install -y rfkill
+	apt-get -o DPkg::Lock::Timeout=60 install -y rfkill
 fi
 
 update-desktop-database /usr/share/applications || true

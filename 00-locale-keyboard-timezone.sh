@@ -23,6 +23,13 @@ set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG="$DIR/00-locale-keyboard-timezone.log"
 
+# rsync goes in first, and ahead of the TTY gate below, so it's available
+# from the very start of provisioning (including headless run-all.sh passes)
+# to send the NN-*.log files this and later steps produce back to the dev
+# machine as you go, rather than only after the whole run finishes.
+apt-get -o DPkg::Lock::Timeout=60 update -qq
+apt-get -o DPkg::Lock::Timeout=60 install -y rsync
+
 if [ ! -t 0 ]; then
 	echo "Not running on a terminal -- skipping interactive locale/keyboard/timezone setup." | tee "$LOG"
 	echo "Run this script directly later (sudo bash 00-locale-keyboard-timezone.sh) to configure it." | tee -a "$LOG"
@@ -31,14 +38,26 @@ fi
 
 echo "=== $(date) : configuring locale/keyboard/timezone ===" | tee "$LOG"
 
-apt-get update -qq
-apt-get install -y locales keyboard-configuration tzdata console-setup
+apt-get -o DPkg::Lock::Timeout=60 install -y locales keyboard-configuration tzdata console-setup
 
 echo "--- Language/locale ---"
+echo "Tip: in the checklist, just tick the locale(s) you actually plan to use"
+echo "(e.g. de_DE.UTF-8), plus en_US.UTF-8 as a fallback if you want it for"
+echo "tools/logs that assume it -- no need to generate every locale in the"
+echo "list. The next screen picks which of your ticked locales is the default."
 dpkg-reconfigure locales
 
 echo "--- Keyboard layout ---"
-dpkg-reconfigure keyboard-configuration
+# -p high skips the keyboard *model* question (medium priority, always
+# "Generic 105-key PC" in practice -- there's no real choice to make here on
+# a PC/VM) while still asking the actual layout/language question (critical
+# priority, always shown regardless of -p). Preseed the model too, as a
+# belt-and-braces default in case anything reads it before this runs.
+debconf-set-selections <<-EOF
+	keyboard-configuration keyboard-configuration/modelcode string pc105
+	keyboard-configuration keyboard-configuration/model select Generic 105-key PC
+EOF
+dpkg-reconfigure -p high keyboard-configuration
 setupcon || true
 
 echo "--- Timezone ---"

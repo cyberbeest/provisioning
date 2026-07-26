@@ -13,8 +13,8 @@ TARGET_USER="${SUDO_USER:-cyberbeest}"
 TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
 
 echo "--- Installing python3-gi (GTK bindings the dialog needs) ---"
-apt-get update -qq
-apt-get install -y python3-gi gir1.2-gtk-3.0
+apt-get -o DPkg::Lock::Timeout=60 update -qq
+apt-get -o DPkg::Lock::Timeout=60 install -y python3-gi gir1.2-gtk-3.0
 
 echo "--- Installing dialog script to $TARGET_HOME/.local/bin/cyberbeest-logout ---"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.local/bin"
