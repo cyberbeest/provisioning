@@ -116,6 +116,10 @@ fun display_password_callback(prompt, bullets) {
     if (!password_dialog.entry_sprite)
         password_dialog_setup(prompt);
 
+    password_dialog.entry_sprite.SetOpacity(1);
+    password_dialog.prompt_sprite.SetOpacity(1);
+    password_dialog.lock_sprite.SetOpacity(1);
+
     bullet_w = password_dialog.bullet_image.GetWidth();
     max_bullets = Math.Int(password_dialog.entry_image.GetWidth() / bullet_w) - 1;
     if (bullets > max_bullets)
