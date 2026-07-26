@@ -57,6 +57,27 @@ and runs `./menu.sh` for you):
 curl -fsSL https://cyberbeest.com/beestify.sh | bash
 ```
 
+## Default-password nag (21-default-password-nag.sh)
+
+Installs the change-password GUI and a login-time nag that checks whether
+the LUKS master password and/or the cyberbeest login (short) password still
+match whatever they were initially set to, prompting a change if so. It only
+has anything to check against `/etc/cyberbeest/initial-passwords.conf`, a
+root-only local file that is **never** part of this repo — create it by hand
+right after actually setting the password:
+
+```
+sudo cyberbeest-record-initial-password master '<the value you just set it to>' weak
+sudo cyberbeest-record-initial-password short '<the value you just set it to>' weak
+```
+
+For a shipped unit, generate a real per-device passphrase instead (e.g. via
+the change-password GUI's own "Generate" button), put it on a sticker, and
+record it tagged `secure` rather than `weak` — that's what lets the nag
+offer "keep it" instead of forcing a change. A self-installer who sets their
+own password during the Debian install never runs this, so nothing gets
+recorded and the nag never appears.
+
 ## What's NOT provisioned here
 
 Per-user setup that only makes sense on the end-user's own device — e.g.
