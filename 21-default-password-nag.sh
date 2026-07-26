@@ -106,4 +106,27 @@ sed "s|/home/cyberbeest/|$TARGET_HOME/|g" "$DIR/lib/cyberbeest-password-nag.desk
 	> "$TARGET_HOME/.config/autostart/cyberbeest-password-nag.desktop"
 chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.config/autostart/cyberbeest-password-nag.desktop"
 
+echo "--- Auto-recording dev-default passwords from the environment, if applicable ---"
+# Convenience for repeat local/VM test runs only: if nothing has been
+# recorded yet AND you've exported CYBERBEEST_DEV_MASTER_PASSWORD /
+# CYBERBEEST_DEV_SHORT_PASSWORD in your own shell (e.g. your local
+# ~/.bashrc -- NEVER committed to this repo) before running this script,
+# record them as "weak" so you don't have to run
+# cyberbeest-record-initial-password by hand every time. Silently does
+# nothing if the conf already exists (something's already recorded) or the
+# env vars aren't set -- this is not how a shipped unit's real per-device
+# password gets recorded, that's still always the manual "secure"-tagged
+# step described in README.md.
+#
+# `sudo` strips the environment by default, so these only come through if
+# you invoke this script (or menu.sh/run-all.sh) with `sudo -E`.
+if [ ! -e /etc/cyberbeest/initial-passwords.conf ]; then
+	if [ -n "${CYBERBEEST_DEV_MASTER_PASSWORD:-}" ]; then
+		/usr/local/sbin/cyberbeest-record-initial-password master "$CYBERBEEST_DEV_MASTER_PASSWORD" weak
+	fi
+	if [ -n "${CYBERBEEST_DEV_SHORT_PASSWORD:-}" ]; then
+		/usr/local/sbin/cyberbeest-record-initial-password short "$CYBERBEEST_DEV_SHORT_PASSWORD" weak
+	fi
+fi
+
 echo "=== $(date) : done. Nag runs at next login; run cyberbeest-password-nag now to test. ==="
