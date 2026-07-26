@@ -2,7 +2,9 @@
 Type=X-XFCE-PanelPlugin
 Encoding=UTF-8
 Name=Memory Liquid
+Name[de]=Speicher-Füllstand
 Comment=Square liquid-fill tank showing RAM usage (swap excluded, shown in tooltip)
+Comment[de]=Quadratischer Flüssigkeitsstand für die RAM-Auslastung (Swap ausgeschlossen, in der Tooltip angezeigt)
 Icon=utilities-system-monitor
 X-XFCE-Module=mem-liquid
 X-XFCE-Internal=FALSE

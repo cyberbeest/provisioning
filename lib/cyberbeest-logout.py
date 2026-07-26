@@ -6,12 +6,14 @@ from gi.repository import Gtk, GdkPixbuf, Gdk
 import subprocess
 import sys
 
+from i18n import t
+
 LOGO_PATH = os.path.expanduser("~/Pictures/Cyberbeest-green.png")
 
 ACTIONS = [
-    ("Lock", ["xflock4"]),
-    ("Restart", ["xfce4-session-logout", "--reboot"]),
-    ("Shut Down", ["xfce4-session-logout", "--halt"]),
+    (t("logout.lock"), ["xflock4"]),
+    (t("logout.restart"), ["xfce4-session-logout", "--reboot"]),
+    (t("logout.shutdown"), ["xfce4-session-logout", "--halt"]),
 ]
 
 CSS = b"""
@@ -30,7 +32,7 @@ button:hover { background: #3a3a3a; border-color: #7a5cff; }
 
 class LogoutDialog(Gtk.Window):
     def __init__(self):
-        super().__init__(title="Log Out")
+        super().__init__(title=t("logout.title"))
         self.set_decorated(False)
         self.set_position(Gtk.WindowPosition.CENTER)
         self.set_default_size(360, 260)
@@ -66,7 +68,7 @@ class LogoutDialog(Gtk.Window):
             btn.connect("clicked", self.on_action, cmd)
             grid.attach(btn, 0, i, 1, 1)
 
-        cancel = Gtk.Button(label="Cancel")
+        cancel = Gtk.Button(label=t("logout.cancel"))
         cancel.connect("clicked", lambda *_: Gtk.main_quit())
         outer.pack_start(cancel, False, False, 0)
 

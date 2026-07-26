@@ -22,6 +22,13 @@ install -o "$TARGET_USER" -g "$TARGET_USER" -m 755 \
 	"$DIR/lib/cyberbeest-logout.py" \
 	"$TARGET_HOME/.local/bin/cyberbeest-logout"
 
+# i18n.py does `from i18n import t`, which only resolves if i18n.py (and its
+# strings_*.py catalogs) sit next to the installed script -- see lib/i18n.py.
+echo "--- Installing shared i18n runtime ---"
+install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 "$DIR/lib/i18n.py" "$TARGET_HOME/.local/bin/i18n.py"
+install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.local/bin/i18n"
+install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 "$DIR"/lib/i18n/strings_*.py "$TARGET_HOME/.local/bin/i18n/"
+
 echo "--- Installing logo ---"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/Pictures"
 install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 \

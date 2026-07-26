@@ -7,15 +7,16 @@
 
 set -euo pipefail
 
-MESSAGE="\"Software\" lets you browse and install any package from the Debian archive -- not just Cyberbeest-approved apps.
-
-Installing something here is at your own risk. For a curated, pre-approved list instead, use the Cyberbeest Package Manager."
+# i18n.sh only resolves lib/i18n/ relative to its own location, so this
+# script's install step (install-software-warning.sh) has to deploy i18n.sh
+# and lib/i18n/ next to it too -- see there.
+. "$(cd "$(dirname "$0")" && pwd)/i18n.sh"
 
 if zenity --question \
-    --title="Cyberbeest Notice" \
-    --text="$MESSAGE" \
-    --ok-label="Continue to \"Software\"" \
-    --cancel-label="Cancel" \
+    --title="$(t launch_software.dialog_title)" \
+    --text="$(t launch_software.message)" \
+    --ok-label="$(t launch_software.continue)" \
+    --cancel-label="$(t launch_software.cancel)" \
     --width=420; then
     exec /usr/bin/gnome-software "$@"
 fi

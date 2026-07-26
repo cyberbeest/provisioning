@@ -25,11 +25,13 @@ import gi
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk
 
+from i18n import t
+
 CHECKER = "/usr/local/sbin/cyberbeest-check-default-passwords"
 CHANGE_GUI = os.path.expanduser("~/.local/bin/cyberbeest-change-password")
 DISMISS_FILE = os.path.expanduser("~/.config/cyberbeest/password-nag-dismissed")
 
-TITLES = {"master": "Master password", "short": "Short password"}
+TITLES = {"master": t("pw.master_title"), "short": t("pw.short_title")}
 
 
 def run_check():
@@ -80,32 +82,28 @@ def show_nag(pending):
     """Returns ("change", ptype), ("keep", ptype), or ("later", None)."""
     dialog = Gtk.MessageDialog(
         message_type=Gtk.MessageType.WARNING,
-        text="Still using the password set up for you",
+        text=t("nag.title"),
     )
 
     lines = []
     for ptype, tag in pending.items():
         title = TITLES[ptype]
         if tag == "secure":
-            lines.append(
-                f"{title}: still the randomly-generated password from setup. "
-                "That's secure on its own -- but only as long as the paper it's "
-                "written on is stored somewhere separate from this machine."
-            )
+            lines.append(f"{title}: {t('nag.still_secure_default')}")
         else:
-            lines.append(f"{title}: still the temporary default. Please change it.")
+            lines.append(f"{title}: {t('nag.still_temp_default')}")
     dialog.format_secondary_text("\n\n".join(lines))
 
-    dialog.add_button("Remind me later", 0)
+    dialog.add_button(t("nag.remind_later"), 0)
     action_for_response = {}
     next_id = 1
     for ptype in pending:
-        dialog.add_button(f"Change {TITLES[ptype]} now", next_id)
+        dialog.add_button(t("nag.change_now").format(title=TITLES[ptype]), next_id)
         action_for_response[next_id] = ("change", ptype)
         next_id += 1
     for ptype, tag in pending.items():
         if tag == "secure":
-            dialog.add_button(f"Keep {TITLES[ptype]}", next_id)
+            dialog.add_button(t("nag.keep").format(title=TITLES[ptype]), next_id)
             action_for_response[next_id] = ("keep", ptype)
             next_id += 1
 

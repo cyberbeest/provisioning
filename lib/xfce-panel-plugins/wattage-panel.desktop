@@ -2,7 +2,9 @@
 Type=X-XFCE-PanelPlugin
 Encoding=UTF-8
 Name=Battery Wattage
+Name[de]=Akku-Leistung
 Comment=Battery power draw and remaining time, with a stabilized long-term average option
+Comment[de]=Akku-Leistungsaufnahme und Restzeit, mit optionalem stabilisiertem Langzeitmittel
 Icon=battery
 X-XFCE-Module=wattage-panel
 X-XFCE-Internal=FALSE

@@ -2,7 +2,9 @@
 Type=X-XFCE-PanelPlugin
 Encoding=UTF-8
 Name=CPU Load Color
+Name[de]=CPU-Last-Farbe
 Comment=Solid color panel indicator for CPU load (black=idle, red=100%)
+Comment[de]=Einfarbige Panel-Anzeige für die CPU-Last (schwarz=inaktiv, rot=100 %)
 Icon=utilities-system-monitor
 X-XFCE-Module=cpuload-color
 X-XFCE-Internal=FALSE

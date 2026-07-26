@@ -19,6 +19,8 @@ gi.require_version("Gtk", "3.0")
 gi.require_version("Gdk", "3.0")
 from gi.repository import Gdk, Gtk
 
+from i18n import t
+
 CONFIG_DIR = os.path.expanduser("~/.config/cyberbeest")
 CONFIG_PATH = os.path.join(CONFIG_DIR, "power-settings.conf")
 SETTINGS_GUI = os.path.expanduser("~/claude/cyberbeest_power_settings_gui.py")
@@ -86,7 +88,7 @@ def write_settings(updates):
 def fmt(mins):
     mins = int(mins)
     if mins == 0:
-        return "Never"
+        return t("timer.never")
     if mins % 60 == 0:
         return f"{mins // 60}h"
     if mins >= 60:
@@ -190,7 +192,7 @@ def add_preset_section(menu, label, key, current, linked):
 
 
 def add_lock_delay_section(menu):
-    header = Gtk.MenuItem(label="Lock screen after:")
+    header = Gtk.MenuItem(label=t("timer.lock_screen_after"))
     header.set_sensitive(False)
     menu.append(header)
 
@@ -226,9 +228,9 @@ def build_menu():
 
     # Same actions/commands as the Power launcher's cyberbeest-logout dialog.
     for label, cmd in (
-        ("Lock now", ["xflock4"]),
-        ("Restart now", ["xfce4-session-logout", "--reboot"]),
-        ("Shut down now", ["xfce4-session-logout", "--halt"]),
+        (t("timer.lock_now"), ["xflock4"]),
+        (t("timer.restart_now"), ["xfce4-session-logout", "--reboot"]),
+        (t("timer.shutdown_now"), ["xfce4-session-logout", "--halt"]),
     ):
         logout_item = Gtk.MenuItem(label=label)
         logout_item.connect("activate", run_logout_action, cmd)
@@ -238,12 +240,12 @@ def build_menu():
     add_lock_delay_section(menu)
     menu.append(Gtk.SeparatorMenuItem())
 
-    title = Gtk.MenuItem(label="Auto-shutdown while locked")
+    title = Gtk.MenuItem(label=t("timer.auto_shutdown_while_locked"))
     title.set_sensitive(False)
     menu.append(title)
     menu.append(Gtk.SeparatorMenuItem())
 
-    link_item = Gtk.CheckMenuItem(label="Use the same time for AC and battery")
+    link_item = Gtk.CheckMenuItem(label=t("timer.use_same_time"))
     link_item.set_active(linked)
 
     def on_link_toggled(item):
@@ -259,14 +261,14 @@ def build_menu():
     menu.append(Gtk.SeparatorMenuItem())
 
     if linked:
-        add_preset_section(menu, "Shutdown after (AC and battery):", "AC_SHUTDOWN_MINUTES", ac_min, linked)
+        add_preset_section(menu, t("timer.shutdown_after_both"), "AC_SHUTDOWN_MINUTES", ac_min, linked)
     else:
-        add_preset_section(menu, "On AC power:", "AC_SHUTDOWN_MINUTES", ac_min, linked)
+        add_preset_section(menu, t("timer.on_ac"), "AC_SHUTDOWN_MINUTES", ac_min, linked)
         menu.append(Gtk.SeparatorMenuItem())
-        add_preset_section(menu, "On battery:", "BATTERY_SHUTDOWN_MINUTES", bat_min, linked)
+        add_preset_section(menu, t("timer.on_battery"), "BATTERY_SHUTDOWN_MINUTES", bat_min, linked)
 
     menu.append(Gtk.SeparatorMenuItem())
-    more_item = Gtk.MenuItem(label="More settings…")
+    more_item = Gtk.MenuItem(label=t("timer.more_settings"))
     more_item.connect("activate", open_settings)
     menu.append(more_item)
 

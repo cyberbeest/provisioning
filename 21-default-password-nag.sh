@@ -54,6 +54,13 @@ install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.local/bin/wordlist
 install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 \
 	"$DIR/lib/wordlists/wordlist_en.txt" "$DIR/lib/wordlists/wordlist_de.txt" \
 	"$TARGET_HOME/.local/bin/wordlists/"
+# i18n.py does `from i18n import t`, which only resolves if i18n.py (and its
+# strings_*.py catalogs) sit next to the installed script -- see lib/i18n.py.
+# Covers both disk_password_gui.py and cyberbeest-password-nag.py below,
+# since they're installed into the same directory.
+install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 "$DIR/lib/i18n.py" "$TARGET_HOME/.local/bin/i18n.py"
+install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.local/bin/i18n"
+install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 "$DIR"/lib/i18n/strings_*.py "$TARGET_HOME/.local/bin/i18n/"
 
 echo "--- Installing icon (in case 08-cyberbeest-power-settings.sh hasn't run) ---"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/Pictures"
@@ -66,7 +73,9 @@ cat > "$TARGET_HOME/.local/share/applications/cyberbeest-change-password.desktop
 [Desktop Entry]
 Type=Application
 Name=Cyberbeest Change Password
+Name[de]=Cyberbeest-Passwort ändern
 Comment=Change the master (disk) or short (login) password
+Comment[de]=Master-Passwort (Festplatte) oder kurzes Passwort (Anmeldung) ändern
 Exec=$TARGET_HOME/.local/bin/cyberbeest-change-password
 Icon=$TARGET_HOME/Pictures/Cyberbeest-black.png
 Terminal=false

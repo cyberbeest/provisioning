@@ -32,6 +32,13 @@ sed "s|__GENMON_WIDGET__|genmon-16|g" "$DIR/lib/cyberbeest-power-settings.py" \
 chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.local/bin/cyberbeest-power-settings"
 chmod 755 "$TARGET_HOME/.local/bin/cyberbeest-power-settings"
 
+# i18n.py does `from i18n import t`, which only resolves if i18n.py (and its
+# strings_*.py catalogs) sit next to the installed script -- see lib/i18n.py.
+echo "--- Installing shared i18n runtime ---"
+install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 "$DIR/lib/i18n.py" "$TARGET_HOME/.local/bin/i18n.py"
+install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.local/bin/i18n"
+install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 "$DIR"/lib/i18n/strings_*.py "$TARGET_HOME/.local/bin/i18n/"
+
 echo "--- Installing icon ---"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/Pictures"
 install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 \
@@ -44,7 +51,9 @@ cat > "$TARGET_HOME/.local/share/applications/cyberbeest-power-settings.desktop"
 [Desktop Entry]
 Type=Application
 Name=Cyberbeest Power Settings
+Name[de]=Cyberbeest-Energieeinstellungen
 Comment=Configure Cyberbeest lock/suspend/notification behavior
+Comment[de]=Sperr-/Ruhezustands-/Benachrichtigungsverhalten von Cyberbeest konfigurieren
 Exec=$TARGET_HOME/.local/bin/cyberbeest-power-settings
 Icon=$TARGET_HOME/Pictures/Cyberbeest-black.png
 Terminal=false

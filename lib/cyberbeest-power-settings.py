@@ -27,6 +27,8 @@ import gi
 gi.require_version("Gtk", "3.0")
 from gi.repository import GLib, Gtk
 
+from i18n import t
+
 CONFIG_DIR = os.path.expanduser("~/.config/cyberbeest")
 CONFIG_PATH = os.path.join(CONFIG_DIR, "power-settings.conf")
 
@@ -91,22 +93,18 @@ class PowerSettingsPage(Gtk.Box):
         settings = read_settings()
 
         heading = Gtk.Label(xalign=0)
-        heading.set_markup("<b>Locked screen behavior</b>")
+        heading.set_markup(f"<b>{t('power.heading')}</b>")
         self.pack_start(heading, False, False, 0)
 
         info = Gtk.Label(
             wrap=True,
             max_width_chars=40,
             xalign=0,
-            label=(
-                "This machine locks after 5 minutes idle and, by default, fully shuts "
-                "down after being continuously locked, for safety. Set a time to 0 for "
-                "“Never” to disable auto-shutdown for that power source."
-            ),
+            label=t("power.info"),
         )
         self.pack_start(info, False, False, 0)
 
-        self.link_check = Gtk.CheckButton(label="Use the same time on AC and battery")
+        self.link_check = Gtk.CheckButton(label=t("power.link_same_time"))
         self.link_check.set_active(settings["LINK_AC_BATTERY"] == "true")
         self.link_check.connect("toggled", self.on_link_toggled)
         self.pack_start(self.link_check, False, False, 0)
@@ -122,7 +120,7 @@ class PowerSettingsPage(Gtk.Box):
         self.ac_spin.connect("output", self.on_spin_output)
         shutdown_grid.attach(self.ac_spin, 1, 0, 1, 1)
 
-        self.battery_label = Gtk.Label(label="On battery (minutes locked):", xalign=0)
+        self.battery_label = Gtk.Label(label=t("power.on_battery"), xalign=0)
         self.battery_label.set_no_show_all(True)
         shutdown_grid.attach(self.battery_label, 0, 1, 1, 1)
         self.battery_spin = Gtk.SpinButton.new_with_range(0, 480, 5)
@@ -135,14 +133,14 @@ class PowerSettingsPage(Gtk.Box):
         self._update_link_visibility()
 
         experimental_frame = Gtk.Frame()
-        experimental_frame.set_label_widget(Gtk.Label(label="  Experimental  "))
+        experimental_frame.set_label_widget(Gtk.Label(label=f"  {t('power.experimental')}  "))
         experimental_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
         experimental_box.set_border_width(10)
         experimental_frame.add(experimental_box)
         self.pack_start(experimental_frame, False, False, 0)
 
         self.notif_check = Gtk.CheckButton(
-            label="Play notifications while locked, on battery"
+            label=t("power.notif_checkbox")
         )
         self.notif_check.set_active(settings["NOTIFICATIONS_WHEN_LOCKED"] == "true")
         self.notif_check.connect("toggled", self.on_toggled)
@@ -152,14 +150,7 @@ class PowerSettingsPage(Gtk.Box):
             wrap=True,
             max_width_chars=40,
             xalign=0,
-            label=(
-                "When enabled, on battery the machine cycles suspend and wake during "
-                "that hour instead of staying fully awake, so notification sounds can "
-                "still come through periodically while using much less power. "
-                "Messages may arrive late, up to the asleep time below. "
-                "On AC power this has no effect — the machine just "
-                "stays awake for the whole locked period."
-            ),
+            label=t("power.detail"),
         )
         detail.get_style_context().add_class("dim-label")
         experimental_box.pack_start(detail, False, False, 0)
@@ -167,13 +158,13 @@ class PowerSettingsPage(Gtk.Box):
         cycle_grid = Gtk.Grid(column_spacing=10, row_spacing=8)
         experimental_box.pack_start(cycle_grid, False, False, 0)
 
-        cycle_grid.attach(Gtk.Label(label="Awake minutes per cycle:", xalign=0), 0, 0, 1, 1)
+        cycle_grid.attach(Gtk.Label(label=t("power.awake_minutes"), xalign=0), 0, 0, 1, 1)
         self.awake_spin = Gtk.SpinButton.new_with_range(1, 60, 1)
         self.awake_spin.set_value(int(settings["AWAKE_MINUTES"]))
         self.awake_spin.connect("value-changed", self.on_awake_changed)
         cycle_grid.attach(self.awake_spin, 1, 0, 1, 1)
 
-        cycle_grid.attach(Gtk.Label(label="Asleep minutes per cycle:", xalign=0), 0, 1, 1, 1)
+        cycle_grid.attach(Gtk.Label(label=t("power.asleep_minutes"), xalign=0), 0, 1, 1, 1)
         self.asleep_spin = Gtk.SpinButton.new_with_range(1, 60, 1)
         self.asleep_spin.set_value(int(settings["ASLEEP_MINUTES"]))
         self.asleep_spin.connect("value-changed", self.on_asleep_changed)
@@ -185,9 +176,7 @@ class PowerSettingsPage(Gtk.Box):
         self._hide_status_timeout = None
 
     def _saved(self):
-        self.status_label.set_text(
-            "Saved. Takes effect on the next lock cycle, no restart needed."
-        )
+        self.status_label.set_text(t("power.saved"))
         self.status_label.set_no_show_all(False)
         self.status_label.show()
 
@@ -203,7 +192,7 @@ class PowerSettingsPage(Gtk.Box):
     def _update_link_visibility(self):
         linked = self.link_check.get_active()
         self.ac_label.set_text(
-            "Shutdown after (minutes locked):" if linked else "On AC power (minutes locked):"
+            t("power.shutdown_after") if linked else t("power.on_ac")
         )
         if linked:
             self.battery_label.hide()
@@ -224,7 +213,7 @@ class PowerSettingsPage(Gtk.Box):
         # 0 means "Never" (auto-shutdown disabled for that power source) --
         # display it as text instead of "0".
         value = spin.get_value_as_int()
-        spin.set_text("Never" if value == 0 else str(value))
+        spin.set_text(t("power.never") if value == 0 else str(value))
         return True
 
     def on_ac_changed(self, _spin):
@@ -253,7 +242,7 @@ class PowerSettingsPage(Gtk.Box):
 
 class PowerSettingsWindow(Gtk.Window):
     def __init__(self):
-        super().__init__(title="Cyberbeest Power Settings")
+        super().__init__(title=t("power.window_title"))
         self.set_default_size(380, -1)
         self.set_position(Gtk.WindowPosition.CENTER)
         self.connect("destroy", Gtk.main_quit)

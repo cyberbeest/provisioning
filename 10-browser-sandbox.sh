@@ -34,6 +34,7 @@ cat > "$TARGET_HOME/.local/share/applications/browser-sandbox.desktop" <<EOF
 Type=Application
 Name=Firefox
 Comment=Secured browser (Firejail)
+Comment[de]=Abgesicherter Browser (Firejail)
 Exec=$TARGET_HOME/bin/browser-sandbox.sh %u
 Icon=firefox-esr
 Terminal=false

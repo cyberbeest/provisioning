@@ -30,6 +30,8 @@ gi.require_version("Gtk", "3.0")
 gi.require_version("GdkPixbuf", "2.0")
 from gi.repository import GdkPixbuf, GLib, Gtk
 
+from i18n import t
+
 DEVICE = "/dev/sda3"
 CRYPTSETUP = "/sbin/cryptsetup"
 PASSWD = "/usr/bin/passwd"
@@ -79,22 +81,22 @@ def change_luks_passphrase(device, slot, old_password, new_password):
             text=True,
         )
     except FileNotFoundError as e:
-        return False, f"Could not start pkexec: {e}"
+        return False, f"{t('pw.pkexec_error')} {e}"
 
     stdin_data = f"{old_password}\n{new_password}\n"
     stdout, stderr = proc.communicate(input=stdin_data)
 
     if proc.returncode == 0:
-        return True, "The password was changed successfully."
+        return True, t("pw.success")
 
     if proc.returncode in (126, 127):
-        return False, "Authentication was cancelled, so the password was not changed."
+        return False, t("pw.auth_cancelled")
 
     detail = (stderr or stdout or "").strip()
     if "No key available" in detail or "incorrect" in detail.lower():
-        return False, "The current password you entered was not correct."
+        return False, t("pw.wrong_current")
 
-    return False, f"The password could not be changed.\n\nDetails: {detail or 'unknown error'}"
+    return False, f"{t('pw.change_failed')}\n\n{t('pw.details')}: {detail or t('pw.unknown_error')}"
 
 
 def change_user_password(current_password, new_password):
@@ -120,7 +122,7 @@ def change_user_password(current_password, new_password):
     try:
         pid, master_fd = pty.fork()
     except OSError as e:
-        return False, f"Could not open a pty: {e}"
+        return False, f"{t('pw.pty_error')} {e}"
 
     if pid == 0:
         try:
@@ -175,26 +177,23 @@ def change_user_password(current_password, new_password):
         returncode = -1
 
     if returncode == 0:
-        return True, "The password was changed successfully."
+        return True, t("pw.success")
 
-    return False, (
-        "The password could not be changed. This usually means the current "
-        "password was incorrect."
-    )
+    return False, t("pw.change_failed_wrong_current")
 
 
 PASSWORD_TYPES = {
     "master": {
-        "title": "Master password",
-        "description": "The password used to decrypt your hard drive at startup.",
+        "title": t("pw.master_title"),
+        "description": t("pw.master_desc"),
         "requires_current": True,
         "change": lambda old, new: change_luks_passphrase(DEVICE, 0, old, new),
         "word_count": 4,
         "min_length": 12,
     },
     "short": {
-        "title": "Short password",
-        "description": "The password used to enter your desktop or unlock the screen. Both passwords are required to start the device.",
+        "title": t("pw.short_title"),
+        "description": t("pw.short_desc"),
         "requires_current": True,
         "change": change_user_password,
         "word_count": 2,
@@ -207,7 +206,7 @@ PASSWORD_ORDER = ["master", "short"]
 
 class PasswordWindow(Gtk.Window):
     def __init__(self):
-        super().__init__(title="Cyberbeest Change Password")
+        super().__init__(title=t("pw.window_title"))
         self.set_border_width(16)
         self.set_resizable(False)
         self.set_default_size(520, -1)
@@ -249,13 +248,13 @@ class PasswordWindow(Gtk.Window):
         grid.set_hexpand(True)
         content.pack_start(grid, False, False, 0)
 
-        self.current_label, self.current_entry = self._add_row(grid, 0, "Current password:")
-        self._add_row_widgets(grid, 1, "New password:")
+        self.current_label, self.current_entry = self._add_row(grid, 0, t("pw.current_password"))
+        self._add_row_widgets(grid, 1, t("pw.new_password"))
         self.new_entry = self._last_entry
-        self._add_row_widgets(grid, 2, "Confirm new password:")
+        self._add_row_widgets(grid, 2, t("pw.confirm_password"))
         self.confirm_entry = self._last_entry
 
-        self.generate_button = Gtk.Button(label="Generate")
+        self.generate_button = Gtk.Button(label=t("pw.generate"))
         self.generate_button.connect("clicked", self.on_generate_clicked)
         grid.attach(self.generate_button, 2, 2, 1, 1)
         grid.attach(self.language_selector, 3, 2, 1, 1)
@@ -267,11 +266,11 @@ class PasswordWindow(Gtk.Window):
         button_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
         content.pack_start(button_box, False, False, 0)
 
-        self.change_button = Gtk.Button(label="Change Password")
+        self.change_button = Gtk.Button(label=t("pw.change_password"))
         self.change_button.connect("clicked", self.on_change_clicked)
         button_box.pack_end(self.change_button, False, False, 0)
 
-        cancel_button = Gtk.Button(label="Cancel")
+        cancel_button = Gtk.Button(label=t("pw.cancel"))
         cancel_button.connect("clicked", lambda _b: Gtk.main_quit())
         button_box.pack_end(cancel_button, False, False, 0)
 
@@ -308,7 +307,7 @@ class PasswordWindow(Gtk.Window):
     def _set_entry_visibility(self, entry, visible):
         entry.set_visibility(visible)
         icon = "view-conceal-symbolic" if visible else "view-reveal-symbolic"
-        tooltip = "Hide password" if visible else "Show password"
+        tooltip = t("pw.hide_password") if visible else t("pw.show_password")
         entry.set_icon_from_icon_name(Gtk.EntryIconPosition.SECONDARY, icon)
         entry.set_icon_activatable(Gtk.EntryIconPosition.SECONDARY, True)
         entry.set_icon_tooltip_text(Gtk.EntryIconPosition.SECONDARY, tooltip)
@@ -328,7 +327,7 @@ class PasswordWindow(Gtk.Window):
         self._set_entry_visibility(self.confirm_entry, True)
         self.new_entry.set_text(passphrase)
         self.confirm_entry.set_text(passphrase)
-        self.set_status("Generated a new passphrase below — write it down or memorize it before changing the password.", is_error=False)
+        self.set_status(t("pw.generated_passphrase"), is_error=False)
 
     def on_tab_switched(self, _notebook, _page, page_num):
         self._apply_type(PASSWORD_ORDER[page_num])
@@ -338,8 +337,10 @@ class PasswordWindow(Gtk.Window):
         info = PASSWORD_TYPES[type_key]
 
         self.description_label.set_text(
-            f"{info['description']}\nRecommended format: {info['word_count']} random words"
-            f" (minimum length: {info['min_length']} characters)"
+            f"{info['description']}\n"
+            + t("pw.recommended_format").format(
+                word_count=info["word_count"], min_length=info["min_length"]
+            )
         )
 
         self.current_entry.set_text("")
@@ -371,23 +372,23 @@ class PasswordWindow(Gtk.Window):
         confirm = self.confirm_entry.get_text()
 
         if info["requires_current"] and not current:
-            self.set_status("Please fill in all fields.")
+            self.set_status(t("pw.fill_all_fields"))
             return
         if not new:
-            self.set_status("Please fill in all fields.")
+            self.set_status(t("pw.fill_all_fields"))
             return
         if new != confirm:
-            self.set_status("The new password and confirmation do not match.")
+            self.set_status(t("pw.mismatch"))
             return
         if len(new) < info["min_length"]:
-            self.set_status(f"The new password should be at least {info['min_length']} characters long.")
+            self.set_status(t("pw.too_short").format(min_length=info["min_length"]))
             return
 
         if not self._confirm_written_down(info["title"], new):
             return
 
         self.change_button.set_sensitive(False)
-        self.set_status("Waiting for authentication...", is_error=False)
+        self.set_status(t("pw.waiting_auth"), is_error=False)
 
         # Run on a background thread so the pkexec prompt doesn't freeze the window.
         threading.Thread(
@@ -400,10 +401,11 @@ class PasswordWindow(Gtk.Window):
             modal=True,
             message_type=Gtk.MessageType.WARNING,
             buttons=Gtk.ButtonsType.YES_NO,
-            text="DID YOU REALLY WRITE THIS DOWN OR MEMORIZE IT?",
+            text=t("pw.confirm_written_title"),
         )
-        word = title.split()[0].upper()
-        dialog.format_secondary_text(f"My Cyberbeest {word} password is: {new_password}")
+        dialog.format_secondary_text(
+            t("pw.confirm_written_secondary").format(title=title, password=new_password)
+        )
         response = dialog.run()
         dialog.destroy()
         return response == Gtk.ResponseType.YES

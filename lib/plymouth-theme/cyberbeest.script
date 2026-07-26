@@ -78,8 +78,13 @@ password_dialog.active = 0;
 fun password_dialog_setup(prompt) {
     local = password_dialog;
 
+    # Substituted at install time (setup-grub-plymouth-theme.sh) from
+    # lib/i18n's plymouth.luks_prompt key, based on the locale active when
+    # provisioning last ran -- plymouth runs before any filesystem holding
+    # /etc/default/locale is even decrypted, so this can't be looked up live
+    # at boot the way the desktop-session strings are.
     if (prompt == NULL || prompt == "")
-        prompt = "Enter master password to decrypt hard drive";
+        prompt = "__LUKS_PROMPT__";
     local.prompt_image = Image.Text(prompt, 1, 1, 1);
     local.prompt_sprite = Sprite(local.prompt_image);
     local.prompt_x = screen.w / 2 - local.prompt_image.GetWidth() / 2;

@@ -10,4 +10,6 @@ Keywords=terminal;command line;shell;console;xfce;
 OnlyShowIn=XFCE;
 X-AppStream-Ignore=True
 Name=Terminal Emulator
+Name[de]=Terminal
 Comment=Use the command line
+Comment[de]=Kommandozeile öffnen

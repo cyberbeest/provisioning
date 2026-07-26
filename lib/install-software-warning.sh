@@ -32,6 +32,11 @@ else
 fi
 
 install -m 755 "$DIR/cyberbeest-launch-software.sh" /usr/local/bin/cyberbeest-launch-software
+# i18n.sh only resolves lib/i18n/ relative to its own location, so it and its
+# catalogs need to live next to the installed script too -- see lib/i18n.sh.
+install -m 644 "$DIR/i18n.sh" /usr/local/bin/i18n.sh
+mkdir -p /usr/local/bin/i18n
+install -m 644 "$DIR"/i18n/strings.*.sh /usr/local/bin/i18n/
 
 mkdir -p /usr/local/share/applications
 sed \

@@ -5,9 +5,17 @@
 # on the console). See lib/plymouth-theme/.
 set -euo pipefail
 
-THEME_SRC="$(dirname "$(readlink -f "$0")")/plymouth-theme"
+SELF_DIR="$(dirname "$(readlink -f "$0")")"
+THEME_SRC="$SELF_DIR/plymouth-theme"
 THEME_DIR="/usr/share/plymouth/themes/cyberbeest"
 GRUB_FILE="/etc/default/grub"
+
+# Plymouth runs before any filesystem holding /etc/default/locale is even
+# decrypted, so its LUKS prompt text can't be looked up live at boot like
+# the desktop-session strings -- it has to be resolved now, from whatever
+# locale is active when this provisioning step runs, and baked into the
+# theme. Re-run this script (then reboot) after a locale change to update it.
+. "$SELF_DIR/i18n.sh"
 
 echo "--- Installing plymouth-themes (base spinner assets our theme reuses) ---"
 apt-get -o DPkg::Lock::Timeout=60 update -qq
@@ -26,9 +34,15 @@ install -m 644 /usr/share/plymouth/themes/spinner/bullet.png \
 	/usr/share/plymouth/themes/spinner/lock.png \
 	/usr/share/plymouth/themes/spinner/throbber-*.png \
 	"$THEME_DIR/"
-install -m 644 "$THEME_SRC/cyberbeest.script" "$THEME_SRC/cyberbeest.plymouth" \
+install -m 644 "$THEME_SRC/cyberbeest.plymouth" \
 	"$THEME_SRC/watermark.png" "$THEME_SRC/watermark-shutdown.png" \
 	"$THEME_DIR/"
+# cyberbeest.script itself gets the LUKS prompt substituted in for the
+# current locale rather than being copied verbatim -- see the i18n.sh
+# comment above and the __LUKS_PROMPT__ placeholder in the .script source.
+sed "s|__LUKS_PROMPT__|$(t plymouth.luks_prompt)|" "$THEME_SRC/cyberbeest.script" \
+	> "$THEME_DIR/cyberbeest.script"
+chmod 644 "$THEME_DIR/cyberbeest.script"
 
 echo "--- Activating the theme (rebuilds initramfs) ---"
 plymouth-set-default-theme -R cyberbeest
