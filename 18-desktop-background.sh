@@ -42,7 +42,7 @@ echo "--- Removing the old xfconf-automation autostart entry/script, if present 
 rm -f "$TARGET_HOME/.config/autostart/cyberbeest-set-wallpaper.desktop"
 rm -f "$TARGET_HOME/.local/bin/set-desktop-background.sh"
 
-echo "=== $(date) : done. Set it via Desktop Settings -> pick Cyberbeest (one-time, per monitor). ==="
+echo "=== $(date) : done. Set it via Desktop Settings -> pick Cyberbeest (one-time). ==="
 
 echo "--> Desktop background installed but not auto-selected -- open Desktop Settings" >&3
-echo "    (right-click desktop) and pick Cyberbeest yourself, once per monitor." >&3
+echo "    (right-click desktop) and pick Cyberbeest yourself." >&3
