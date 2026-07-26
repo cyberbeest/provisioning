@@ -45,8 +45,10 @@ PRESETS = [15, 30, 60, 120, 240, 0]
 
 # The idle-to-lock delay isn't part of power-settings.conf -- xfce4-screensaver
 # 4.18 reads it from gsettings directly (org.gnome.desktop.session idle-delay,
-# in seconds), same as lock-countdown-genmon.sh already does.
-LOCK_PRESETS = [1, 2, 5, 10, 15, 30]
+# in seconds), same as lock-countdown-genmon.sh already does. 0 is the same
+# "Never" sentinel as PRESETS above -- gsettings' idle-delay=0 is the
+# documented way to disable idle-triggered locking/blanking entirely.
+LOCK_PRESETS = [1, 2, 5, 10, 15, 30, 0]
 
 
 def read_settings():
@@ -105,6 +107,8 @@ def get_idle_delay_minutes():
         seconds = int(out.split()[-1])  # e.g. "uint32 300"
     except Exception:
         seconds = 300
+    if seconds == 0:
+        return 0  # Never -- don't clamp this one up to 1 minute below
     return max(1, round(seconds / 60))
 
 
@@ -119,13 +123,16 @@ def set_idle_delay_minutes(mins):
     # state instead of jumping straight to fully off. This can't track a
     # mid-lock wake-by-click-without-unlocking perfectly (DPMS then restarts
     # its own countdown from that click), but it keeps the common path --
-    # idle straight through to lock -- in sync.
+    # idle straight through to lock -- in sync. mins=0 (Never) disables DPMS
+    # auto-sleep/off too, rather than leaving "off" dangling at 1 minute
+    # below a disabled "sleep".
+    dpms_off = mins + 1 if mins > 0 else 0
     subprocess.run(
         ["xfconf-query", "-c", "xfce4-power-manager", "-p", "/xfce4-power-manager/dpms-on-ac-sleep", "-s", str(mins)],
         check=False,
     )
     subprocess.run(
-        ["xfconf-query", "-c", "xfce4-power-manager", "-p", "/xfce4-power-manager/dpms-on-ac-off", "-s", str(mins + 1)],
+        ["xfconf-query", "-c", "xfce4-power-manager", "-p", "/xfce4-power-manager/dpms-on-ac-off", "-s", str(dpms_off)],
         check=False,
     )
     restart_screensaver()
