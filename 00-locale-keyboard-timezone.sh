@@ -15,24 +15,37 @@
 # TTY (e.g. a scripted/automated run-all.sh pass), this step is skipped with
 # a warning rather than hanging, and can be run manually afterwards.
 #
-# Re-running always re-prompts (like every dpkg-reconfigure), so under
-# run-changed.sh it naturally only asks once (skipped on later passes unless
-# this script itself changes); under run-all.sh it asks every time, same as
-# that script's documented "run everything unconditionally" behavior.
+# Unlike every other NN-*.sh step, re-running this one always re-prompts
+# (like every dpkg-reconfigure) rather than being a no-op -- so it self-skips
+# the interactive part if it's already completed successfully since it was
+# last edited (log newer than script, same test run-changed.sh uses), even
+# under run-all.sh/menu.sh which otherwise always run every step. Delete the
+# log (or edit this script) to force it to prompt again.
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG="$DIR/00-locale-keyboard-timezone.log"
 
-# rsync goes in first, and ahead of the TTY gate below, so it's available
-# from the very start of provisioning (including headless run-all.sh passes)
-# to send the NN-*.log files this and later steps produce back to the dev
-# machine as you go, rather than only after the whole run finishes.
+# rsync goes in first, and ahead of the skip/TTY checks below, so it's
+# available from the very start of provisioning (including headless
+# run-all.sh passes) to send the NN-*.log files this and later steps produce
+# back to the dev machine as you go, rather than only after the whole run
+# finishes.
 apt-get -o DPkg::Lock::Timeout=60 update -qq
 apt-get -o DPkg::Lock::Timeout=60 install -y rsync
 
+if [ -e "$LOG" ] && [ "$LOG" -nt "$0" ]; then
+	echo "Already configured locale/keyboard/timezone since this script was last edited -- skipping."
+	echo "Delete $LOG (or edit this script) to be prompted again."
+	exit 0
+fi
+
 if [ ! -t 0 ]; then
+	# Deliberately not treated as "done" by the skip check above: backdate the
+	# log so it stays older than this script and a later interactive run still
+	# prompts, instead of this headless skip permanently masking it.
 	echo "Not running on a terminal -- skipping interactive locale/keyboard/timezone setup." | tee "$LOG"
 	echo "Run this script directly later (sudo bash 00-locale-keyboard-timezone.sh) to configure it." | tee -a "$LOG"
+	touch -d @0 "$LOG"
 	exit 0
 fi
 
