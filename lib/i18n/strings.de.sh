@@ -12,4 +12,5 @@ Die Installation hier erfolgt auf eigenes Risiko. Für eine kuratierte, freigege
 	[launch_software.continue]="Weiter zu „Software“"
 	[launch_software.cancel]="Abbrechen"
 	[plymouth.luks_prompt]="Master-Passwort zum Entschlüsseln der Festplatte eingeben"
+	[login.welcome_message]="Kurzes Passwort eingeben, um den Desktop zu entsperren"
 )

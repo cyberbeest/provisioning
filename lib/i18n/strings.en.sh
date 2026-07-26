@@ -10,4 +10,5 @@ Installing something here is at your own risk. For a curated, pre-approved list 
 	[launch_software.continue]="Continue to \"Software\""
 	[launch_software.cancel]="Cancel"
 	[plymouth.luks_prompt]="Enter master password to decrypt hard drive"
+	[login.welcome_message]="Enter short password to unlock desktop"
 )

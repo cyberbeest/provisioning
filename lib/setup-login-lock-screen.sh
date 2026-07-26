@@ -7,7 +7,14 @@
 # has no native custom-text option, so this is the standard mechanism).
 set -euo pipefail
 
-SRC="$(dirname "$(readlink -f "$0")")/lightdm"
+SELF_DIR="$(dirname "$(readlink -f "$0")")"
+SRC="$SELF_DIR/lightdm"
+
+# pam_echo.so just cats a static file -- it can't look up the locale live at
+# login/lock time -- so the message text is resolved now, from whatever
+# locale is active when this provisioning step runs, same as the plymouth
+# LUKS prompt. Re-run this script after a locale change to update it.
+. "$SELF_DIR/i18n.sh"
 
 echo "--- Installing login background image ---"
 install -m 644 "$SRC/cyberbeest-login-background.png" \
@@ -35,7 +42,7 @@ set_greeter_var user-background false
 
 echo "--- Writing shared welcome message ---"
 MSG_FILE="/etc/lightdm/welcome-message.txt"
-echo "Enter short password to unlock desktop" > "$MSG_FILE"
+echo "$(t login.welcome_message)" > "$MSG_FILE"
 chmod 644 "$MSG_FILE"
 
 PAM_LINE="auth      optional  pam_echo.so file=$MSG_FILE"
