@@ -12,6 +12,11 @@
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG="$DIR/18-desktop-background.log"
+# Save the real console on fd 3 before redirecting stdout/stderr to the log,
+# so the manual-selection reminder at the end can still reach the person
+# running this (whether directly, via menu.sh, or run-all.sh/run-changed.sh)
+# instead of getting silently swallowed into the log file with everything else.
+exec 3>&1
 exec > "$LOG" 2>&1
 
 echo "=== $(date) : installing desktop background ==="
@@ -38,3 +43,6 @@ rm -f "$TARGET_HOME/.config/autostart/cyberbeest-set-wallpaper.desktop"
 rm -f "$TARGET_HOME/.local/bin/set-desktop-background.sh"
 
 echo "=== $(date) : done. Set it via Desktop Settings -> pick Cyberbeest (one-time, per monitor). ==="
+
+echo "--> Desktop background installed but not auto-selected -- open Desktop Settings" >&3
+echo "    (right-click desktop) and pick Cyberbeest yourself, once per monitor." >&3
