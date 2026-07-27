@@ -11,7 +11,10 @@ screen.h = Window.GetHeight();
 # Logo watermark - always on screen, sized relative to the display
 # ---------------------------------------------------------------------
 logo_target_h = screen.h * 0.42;
-if (Plymouth.GetMode() == "shutdown")
+# Reboot uses --mode=reboot, poweroff/halt/kexec use --mode=shutdown --
+# both are "going down", so both get the shutdown watermark/text.
+is_going_down = Plymouth.GetMode() == "shutdown" || Plymouth.GetMode() == "reboot";
+if (is_going_down)
     logo.image = Image("watermark-shutdown.png");
 else
     logo.image = Image("watermark.png");
@@ -54,7 +57,7 @@ throbber.frame_skip = 0;
 # key, same as the LUKS prompt above -- plymouth's shutdown mode reads
 # this script live from disk, but the locale it should use is resolved
 # once at provisioning time, not looked up at shutdown.
-if (Plymouth.GetMode() == "shutdown") {
+if (is_going_down) {
     shutdown_text_image = Image.Text("__SHUTDOWN_TEXT__", 1, 1, 1);
     shutdown_text_sprite = Sprite(shutdown_text_image);
     shutdown_text_sprite.SetX(screen.w / 2 - shutdown_text_image.GetWidth() / 2);
