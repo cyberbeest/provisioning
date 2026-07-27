@@ -12,7 +12,6 @@ Die Installation hier erfolgt auf eigenes Risiko. Für eine kuratierte, freigege
 	[launch_software.continue]="Weiter zu „Software“"
 	[launch_software.cancel]="Abbrechen"
 	[plymouth.luks_prompt]="Master-Passwort zum Entschlüsseln der Festplatte eingeben"
-	[plymouth.unlock_success]="Festplatte entsperrt"
 	[plymouth.shutdown_text]="Festplatte wird gesperrt und heruntergefahren"
 	[plymouth.grub_background]="grub-background-de.png"
 	[login.welcome_message]="Kurzes Passwort eingeben, um den Desktop zu entsperren"

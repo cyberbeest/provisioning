@@ -91,8 +91,6 @@ password_dialog.entry_image = Image("entry.png");
 password_dialog.bullet_image = Image("bullet.png");
 password_dialog.lock_image = Image("lock.png");
 
-password_dialog.active = 0;
-
 fun password_dialog_setup(prompt) {
     local = password_dialog;
 
@@ -135,7 +133,6 @@ fun password_dialog_setup(prompt) {
 
 fun display_password_callback(prompt, bullets) {
     throbber.sprite.SetOpacity(0);
-    password_dialog.active = 1;
 
     if (!password_dialog.entry_sprite)
         password_dialog_setup(prompt);
@@ -179,15 +176,6 @@ fun display_normal_callback() {
         password_dialog.lock_sprite.SetOpacity(0);
         for (i = 0; password_dialog.bullet_sprite[i]; i++)
             password_dialog.bullet_sprite[i].SetOpacity(0);
-
-        # Only right after a password was actually entered (active flag set
-        # in display_password_callback), not on every display_normal call --
-        # this callback also fires at plain boot start, before any LUKS
-        # prompt was ever shown, when there's nothing to announce.
-        if (password_dialog.active == 1) {
-            password_dialog.active = 0;
-            message_callback("__UNLOCK_SUCCESS__");
-        }
     }
 }
 Plymouth.SetDisplayNormalFunction(display_normal_callback);

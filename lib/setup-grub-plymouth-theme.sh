@@ -37,12 +37,11 @@ install -m 644 /usr/share/plymouth/themes/spinner/bullet.png \
 install -m 644 "$THEME_SRC/cyberbeest.plymouth" \
 	"$THEME_SRC/watermark.png" "$THEME_SRC/watermark-shutdown.png" \
 	"$THEME_DIR/"
-# cyberbeest.script itself gets the LUKS prompt and unlock-success message
+# cyberbeest.script itself gets the LUKS prompt and shutdown text
 # substituted in for the current locale rather than being copied verbatim --
-# see the i18n.sh comment above and the __LUKS_PROMPT__/__UNLOCK_SUCCESS__
+# see the i18n.sh comment above and the __LUKS_PROMPT__/__SHUTDOWN_TEXT__
 # placeholders in the .script source.
 sed -e "s|__LUKS_PROMPT__|$(t plymouth.luks_prompt)|" \
-    -e "s|__UNLOCK_SUCCESS__|$(t plymouth.unlock_success)|" \
     -e "s|__SHUTDOWN_TEXT__|$(t plymouth.shutdown_text)|" \
     "$THEME_SRC/cyberbeest.script" \
 	> "$THEME_DIR/cyberbeest.script"
