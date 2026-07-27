@@ -41,16 +41,20 @@ CHECK_INTERVAL_SECONDS=$(( 120 * 60 ))
 BOOT_SEC=$(( 5 * 60 ))  # matches OnBootSec=5min in security-update-check.timer
 BOOT_GRACE_SECONDS=$(( 6 * 60 ))
 
-# security-update-check.timer only fires OnBootSec=5min after startup, so a
-# stale LAST_CHECK_EPOCH from before a reboot looks "overdue" for the first
-# few minutes even though the timer just hasn't had its first chance to run
-# yet. Give it a grace window (OnBootSec + a small buffer) before flagging.
+# security-update-check.timer has both OnBootSec=5min and
+# OnUnitActiveSec=120min triggers, but security-update-check.sh now skips
+# without running if the last real check was under 120 minutes ago (so
+# frequent reboots don't hammer Debian's mirrors). That means a boot-driven
+# run only actually does anything if a check was already due -- so only
+# treat this as "waiting for the first check" when the 120-minute interval
+# had already elapsed before boot; otherwise the OnBootSec trigger will just
+# skip and the existing last-check status stands.
 uptime_seconds="$(awk '{print int($1)}' /proc/uptime 2>/dev/null)"
 boot_epoch=""
 [ -n "$uptime_seconds" ] && boot_epoch=$(( now_epoch - uptime_seconds ))
 awaiting_first_check=false
 if [ -n "$boot_epoch" ] && [ $(( now_epoch - boot_epoch )) -lt "$BOOT_GRACE_SECONDS" ] \
-   && { [ -z "$last_check_epoch" ] || [ "$last_check_epoch" -lt "$boot_epoch" ]; }; then
+   && { [ -z "$last_check_epoch" ] || [ $(( boot_epoch - last_check_epoch )) -ge "$CHECK_INTERVAL_SECONDS" ]; }; then
     awaiting_first_check=true
 fi
 

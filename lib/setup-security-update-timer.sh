@@ -17,6 +17,7 @@ set -uo pipefail
 STATUS_FILE=/var/lib/security-update-status
 STATUS_TMP="${STATUS_FILE}.tmp.$$"
 PHASE_FILE=/run/security-update-check.phase
+CHECK_INTERVAL_SECONDS=$(( 120 * 60 ))
 
 set_phase() {
     echo "$1" > "$PHASE_FILE"
@@ -24,6 +25,21 @@ set_phase() {
 }
 
 start_epoch="$(date +%s)"
+
+# The timer's OnBootSec=5min trigger fires on every boot regardless of when
+# the last real check ran, and Persistent=true can also fire a catch-up run
+# right after boot. Skip without touching the network if we already checked
+# recently, so frequent reboots don't hammer Debian's mirrors more often
+# than the intended 120-minute cadence.
+if [ -r "$STATUS_FILE" ]; then
+    # shellcheck disable=SC1090
+    . "$STATUS_FILE"
+    if [ -n "${LAST_CHECK_EPOCH:-}" ] \
+       && [ $(( start_epoch - LAST_CHECK_EPOCH )) -lt "$CHECK_INTERVAL_SECONDS" ]; then
+        echo "Last check was $(( (start_epoch - LAST_CHECK_EPOCH) / 60 )) min ago, under the ${CHECK_INTERVAL_SECONDS}s interval -- skipping."
+        exit 0
+    fi
+fi
 
 set_phase checking
 update_out="$(apt-get -o DPkg::Lock::Timeout=60 update -qq 2>&1)"
