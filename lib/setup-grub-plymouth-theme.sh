@@ -43,6 +43,7 @@ install -m 644 "$THEME_SRC/cyberbeest.plymouth" \
 # placeholders in the .script source.
 sed -e "s|__LUKS_PROMPT__|$(t plymouth.luks_prompt)|" \
     -e "s|__UNLOCK_SUCCESS__|$(t plymouth.unlock_success)|" \
+    -e "s|__SHUTDOWN_TEXT__|$(t plymouth.shutdown_text)|" \
     "$THEME_SRC/cyberbeest.script" \
 	> "$THEME_DIR/cyberbeest.script"
 chmod 644 "$THEME_DIR/cyberbeest.script"
@@ -51,7 +52,10 @@ echo "--- Activating the theme (rebuilds initramfs) ---"
 plymouth-set-default-theme -R cyberbeest
 
 echo "--- Installing GRUB background image ---"
-install -m 644 "$THEME_SRC/grub-background.png" /boot/grub/cyberbeest-bg.png
+# Locale-specific, since the artwork itself has translated text baked in
+# (e.g. "Waking Up" vs "Das Biest erwacht") -- see plymouth.grub_background
+# in lib/i18n.
+install -m 644 "$THEME_SRC/$(t plymouth.grub_background)" /boot/grub/cyberbeest-bg.png
 
 echo "--- Configuring $GRUB_FILE ---"
 backup="${GRUB_FILE}.pre-cyberbeest"

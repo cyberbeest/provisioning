@@ -11,5 +11,7 @@ Installing something here is at your own risk. For a curated, pre-approved list 
 	[launch_software.cancel]="Cancel"
 	[plymouth.luks_prompt]="Enter master password to decrypt hard drive"
 	[plymouth.unlock_success]="Hard drive unlocked"
+	[plymouth.shutdown_text]="Locking hard disk and shutting down"
+	[plymouth.grub_background]="grub-background-en.png"
 	[login.welcome_message]="Enter short password to unlock desktop"
 )

@@ -48,6 +48,21 @@ throbber.sprite.SetZ(10);
 throbber.current_frame = 1;
 throbber.frame_skip = 0;
 
+# ---------------------------------------------------------------------
+# Shutdown status text. Substituted at install time
+# (setup-grub-plymouth-theme.sh) from lib/i18n's plymouth.shutdown_text
+# key, same as the LUKS prompt above -- plymouth's shutdown mode reads
+# this script live from disk, but the locale it should use is resolved
+# once at provisioning time, not looked up at shutdown.
+if (Plymouth.GetMode() == "shutdown") {
+    shutdown_text_image = Image.Text("__SHUTDOWN_TEXT__", 1, 1, 1);
+    shutdown_text_sprite = Sprite(shutdown_text_image);
+    shutdown_text_sprite.SetX(screen.w / 2 - shutdown_text_image.GetWidth() / 2);
+    shutdown_text_sprite.SetY(screen.h * 0.82);
+    shutdown_text_sprite.SetZ(20);
+    shutdown_text_sprite.SetOpacity(1);
+}
+
 fun refresh_callback() {
     throbber.frame_skip++;
     if (throbber.frame_skip >= 2) {
