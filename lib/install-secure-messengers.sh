@@ -11,12 +11,14 @@
 # - Tor Browser: installed via Debian's own torbrowser-launcher package
 #   (downloads/verifies/self-updates the actual browser from the Tor
 #   Project), which lives in the "contrib" component -- enabled below.
-#   Since that download lands as a tarball under the user's home directory
-#   rather than an apt package, it has no AppArmor profile covering it --
-#   Firefox (which Tor Browser is a patched build of) then runs its content
-#   processes without the unprivileged-user-namespace sandboxing layer, and
-#   warns about it. A profile for its actual binary path is installed below
-#   so that layer is actually enabled, not just silencing the warning.
+#   torbrowser-launcher ships its own real AppArmor profile
+#   (/etc/apparmor.d/torbrowser.Browser.firefox, profile name
+#   torbrowser_firefox) already covering the downloaded browser -- but it
+#   predates AppArmor's dedicated "userns" rule (it only grants the older
+#   sys_admin/sys_chroot capabilities), so Firefox still can't get its
+#   unprivileged-user-namespace content-process sandboxing layer and warns
+#   about it. Fixed below via the profile's own local-override hook rather
+#   than adding a competing profile.
 #
 # Everything else (Viber, and whatever else gets added later) is optional,
 # installed on demand via the cyberbeest-install: URI scheme -- see
@@ -35,9 +37,6 @@ LOG="$DIR/install-secure-messengers.log"
 exec > >(tee -a "$LOG") 2>&1
 echo "=== $(date '+%Y-%m-%d %H:%M:%S') install-secure-messengers.sh ==="
 HELPER="$DIR/cyberbeest-pkg-helper.sh"
-
-TARGET_USER="${SUDO_USER:-cyberbeest}"
-TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
 
 echo "--- Enabling 'contrib' component (needed for torbrowser-launcher) ---"
 SOURCES=/etc/apt/sources.list
@@ -68,25 +67,20 @@ apt-get -o DPkg::Lock::Timeout=60 update
 echo "--- Installing signal-desktop, element-desktop, telegram-desktop, torbrowser-launcher ---"
 apt-get -o DPkg::Lock::Timeout=60 install -y signal-desktop element-desktop telegram-desktop torbrowser-launcher
 
-echo "--- Installing AppArmor profile for Tor Browser ---"
-# torbrowser-launcher downloads the actual browser to this fixed path on
-# first run (doesn't need to exist yet for the profile to load -- AppArmor
-# just starts enforcing it whenever a process at this path executes).
-# "unconfined" + explicit "userns" is Mozilla's own recommended profile
-# shape for exactly this case (see
-# https://support.mozilla.org/en-US/kb/linux-security-warning): it doesn't
-# lock the browser down further, it only re-enables the namespace-based
-# sandboxing layer Firefox otherwise disables when no profile covers it.
-cat > /etc/apparmor.d/torbrowser-firefox <<EOF
-abi <abi/4.0>,
-include <tunables/global>
-
-profile torbrowser-firefox $TARGET_HOME/.local/share/torbrowser/tbb/x86_64/tor-browser/Browser/firefox flags=(unconfined) {
-  userns,
-  include if exists <local/torbrowser-firefox>
-}
+echo "--- Enabling userns in Tor Browser's AppArmor profile ---"
+# torbrowser-launcher's shipped profile already includes this local-override
+# hook (empty by default) specifically so admins can extend it without
+# editing the shipped file. Verified end-to-end: after adding this and
+# reloading, Tor Browser's own security-warning notice about its sandbox is
+# gone (torbrowser_firefox stays in `enforce` mode throughout, unaffected).
+cat > /etc/apparmor.d/local/torbrowser.Browser.firefox <<EOF
+# Needed for Firefox's unprivileged-user-namespace content-process
+# sandboxing layer -- the shipped profile grants the older sys_admin/
+# sys_chroot capabilities for this but not the newer explicit "userns"
+# rule that current AppArmor/kernel versions actually gate on.
+userns,
 EOF
-apparmor_parser -r /etc/apparmor.d/torbrowser-firefox
+apparmor_parser -r /etc/apparmor.d/torbrowser.Browser.firefox
 
 echo "--- Installing Proton Mail webapp launcher (no native Linux app exists) ---"
 cat > /usr/share/applications/cyberbeest-proton-mail.desktop <<'EOF'
