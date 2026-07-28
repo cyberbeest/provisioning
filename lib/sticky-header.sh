@@ -44,6 +44,11 @@ sticky_header_set() {
 sticky_header_stop() {
 	[ "$_STICKY_ACTIVE" = 1 ] || return 0
 	printf '\e[r'                             # reset scroll region to full screen
+	# Resetting the scroll region homes the cursor back to row 1 as a side
+	# effect on most terminals, which would otherwise leave the next shell
+	# prompt sitting where the header used to be instead of at the bottom.
+	tput cup "$(( $(tput lines) - 1 ))" 0
 	tput cnorm 2>/dev/null                    # show cursor
+	printf '\n'
 	_STICKY_ACTIVE=0
 }
