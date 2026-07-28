@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Cyberbeest App Installer
+Comment=Handles cyberbeest-install: links from web pages
+Exec=/usr/local/lib/cyberbeest/cyberbeest-web-install-handler.sh %u
+Icon=system-software-install
+NoDisplay=true
+MimeType=x-scheme-handler/cyberbeest-install;
+Terminal=false

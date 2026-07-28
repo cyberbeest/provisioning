@@ -13,7 +13,7 @@ Each script:
   human at the keyboard during an install who can just type their password.
 
 `lib/` holds the underlying scripts each `NN-*.sh` step wraps (installers,
-helper scripts, the messenger catalog builder). They're not meant to be run
+helper scripts, the secure-messengers installer). They're not meant to be run
 directly except for one-off debugging of a single step.
 
 Scripts `08` onward assume a single desktop account named `cyberbeest` (same
@@ -77,6 +77,37 @@ record it tagged `secure` rather than `weak` — that's what lets the nag
 offer "keep it" instead of forcing a change. A self-installer who sets their
 own password during the Debian install never runs this, so nothing gets
 recorded and the nag never appears.
+
+## Secure messengers (03-secure-messengers.sh)
+
+Installs the always-on set directly (not just made discoverable in GNOME
+Software): Signal, Element (Matrix), Telegram, and Tor Browser
+(`torbrowser-launcher`). Reasoning per app is in
+`lib/install-secure-messengers.sh`; short version: these are the mainstream,
+non-redundant options, one per protocol where it matters (skips qTox, Gajim,
+Nheko, Dino as too niche/redundant for a general-audience machine). Proton
+Mail has no native Linux app at all (Snap-only, itself just wrapping their
+web app), so it's installed as a plain browser-bookmark launcher instead of
+a package.
+
+Everything else is opt-in, installed on demand by clicking an "Install" link
+on a cyberbeest.com info page (or any trusted local page) rather than
+shipped by default. That's implemented as a `cyberbeest-install:<app-id>`
+URI scheme, e.g. `cyberbeest-install:viber` — the browser hands the link to
+`cyberbeest-web-install-handler.sh` (registered via
+`cyberbeest-web-install-handler.desktop` and
+`/etc/xdg/mimeapps.list`), which shows a confirmation dialog (zenity) and,
+if accepted, installs via `pkexec` + `cyberbeest-pkg-helper.sh` (its own
+polkit action, `com.cyberbeest.web-install.policy`, distinct from the
+dev-machine-only Cyberbeest Package Manager GUI's policy). The handler only
+recognizes a hardcoded allowlist of app ids — a link can never run arbitrary
+commands, at most name one of the apps in that list. Viber is the first
+(and so far only) optional app: it has no apt repo, just a stable "always
+latest" download URL, so accepting its install also sets up a daily
+`systemd` timer (`viber-update-check.timer`) re-checking that URL, since a
+one-time install would otherwise silently go stale with no security
+updates. All of this is deployed to `/usr/local/lib/cyberbeest/` so it's
+independent of wherever this repo happens to be checked out.
 
 ## What's NOT provisioned here
 

@@ -135,6 +135,14 @@ def set_idle_delay_minutes(mins):
         ["xfconf-query", "-c", "xfce4-power-manager", "-p", "/xfce4-power-manager/dpms-on-ac-off", "-s", str(dpms_off)],
         check=False,
     )
+    # Also clear/sync the legacy X11 screensaver timeout (xset s). It's a
+    # separate mechanism from gsettings idle-delay and from xfce4-power-manager's
+    # DPMS keys above, and nothing else in this stack ever touches it -- a
+    # leftover value (e.g. from an old autostart script) would otherwise sit
+    # there forever, silently re-blanking/re-locking on its own schedule even
+    # after idle-delay is set to "Never".
+    xset_secs = mins * 60
+    subprocess.run(["xset", "s", str(xset_secs), str(xset_secs)], check=False)
     restart_screensaver()
 
 

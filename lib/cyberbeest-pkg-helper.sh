@@ -2,13 +2,23 @@
 # Root-side helper for Cyberbeest Packages (cyberbeest_package_manager_gui.py).
 # The dev-machine copy is invoked via pkexec from a fixed path (see
 # com.cyberbeest.package-manager.policy in this same directory); this copy
-# is called directly as root during provisioning (build_messenger_catalog.py
+# is called directly as root during provisioning (install-secure-messengers.sh
 # calls it for setup-repo), so no pkexec/fixed-path requirement applies here.
 #
 # Usage:
 #   cyberbeest-pkg-helper.sh setup-repo <signal|element>
 #   cyberbeest-pkg-helper.sh install <pkg>...
 #   cyberbeest-pkg-helper.sh remove <pkg>...
+#   cyberbeest-pkg-helper.sh install-deb-url <url>   (for vendors with no apt
+#                                             repo at all, e.g. Viber: just a
+#                                             stable "always latest" .deb URL;
+#                                             dpkg -i --skip-same-version, so
+#                                             re-running is a safe no-op)
+#   cyberbeest-pkg-helper.sh setup-viber-updater     (installs the daily
+#                                             systemd timer that re-runs the
+#                                             install-deb-url check, since
+#                                             Viber has no repo to piggyback
+#                                             updates on)
 #   cyberbeest-pkg-helper.sh batch          (reads one step per line on stdin,
 #                                             e.g. "install telegram-desktop";
 #                                             lets a whole queue run under a
@@ -84,6 +94,63 @@ do_remove() {
     log "Remove finished: $*"
 }
 
+do_install_deb_url() {
+    local url="$1" deb
+    deb="$(mktemp /tmp/cyberbeest-deb-XXXXXX.deb)"
+    log "Downloading $url"
+    curl -fsSL -o "$deb" "$url" || { log "Download failed: $url"; rm -f "$deb"; return 1; }
+    if ! dpkg -i --skip-same-version "$deb" >>"$LOG" 2>&1; then
+        log "dpkg -i failed, retrying after apt-get install -f"
+        apt-get -o DPkg::Lock::Timeout=60 install -f -y >>"$LOG" 2>&1 || { log "apt-get install -f failed"; rm -f "$deb"; return 1; }
+        dpkg -i --skip-same-version "$deb" >>"$LOG" 2>&1 || { log "dpkg -i failed after dependency fix: $url"; rm -f "$deb"; return 1; }
+    fi
+    rm -f "$deb"
+    log "Installed from $url"
+}
+
+do_setup_viber_updater() {
+    log "Installing Viber daily update-check timer"
+    cat > /usr/local/sbin/viber-update-check.sh <<'EOF'
+#!/bin/bash
+# Viber has no apt repo, just a stable "always latest" download URL.
+# dpkg -i --skip-same-version makes this a no-op when already current.
+set -uo pipefail
+DEB=/tmp/viber-latest.deb
+curl -fsSL -o "$DEB" "https://download.cdn.viber.com/cdn/desktop/Linux/viber.deb" || exit 1
+dpkg -i --skip-same-version "$DEB"
+rm -f "$DEB"
+EOF
+    chmod 755 /usr/local/sbin/viber-update-check.sh
+
+    cat > /etc/systemd/system/viber-update-check.service <<'EOF'
+[Unit]
+Description=Check for and install Viber updates (no apt repo upstream)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/viber-update-check.sh
+EOF
+
+    cat > /etc/systemd/system/viber-update-check.timer <<'EOF'
+[Unit]
+Description=Run Viber update check daily
+
+[Timer]
+OnBootSec=10min
+OnUnitActiveSec=1d
+AccuracySec=1h
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF
+    systemctl daemon-reload >>"$LOG" 2>&1
+    systemctl enable --now viber-update-check.timer >>"$LOG" 2>&1 || { log "enabling viber-update-check.timer failed"; return 1; }
+    log "Viber update timer installed and enabled"
+}
+
 run_step() {
     case "$1" in
     setup-repo)
@@ -97,6 +164,13 @@ run_step() {
     remove)
         shift
         do_remove "$@"
+        ;;
+    install-deb-url)
+        shift
+        do_install_deb_url "$@"
+        ;;
+    setup-viber-updater)
+        do_setup_viber_updater
         ;;
     *)
         log "Unknown action: $1"

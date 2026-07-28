@@ -5,8 +5,8 @@
 # lib/add-vendor-origins-unattended-upgrades.sh for the exact Origin/Codename
 # values (Signal's Release file really does say "Origin: . xenial").
 # Depends on 05-unattended-upgrades-security.sh (installs unattended-upgrades
-# itself) and 03-curated-messenger-catalog.sh (registers Signal/Element's
-# vendor apt repos via lib/cyberbeest-pkg-helper.sh setup-repo).
+# itself) and 03-secure-messengers.sh (registers Signal/Element's vendor apt
+# repos via lib/cyberbeest-pkg-helper.sh setup-repo).
 # Idempotent: safe to re-run.
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
