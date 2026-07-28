@@ -2,6 +2,14 @@
 # Runs every provisioning script in this directory in numeric order.
 # Each NN-*.sh script is expected to be idempotent and self-logging.
 set -euo pipefail
+
+# Each NN-*.sh script expects to run as root -- re-exec under sudo up front
+# (prompting for the password once here) rather than letting the first
+# script fail confusingly partway through its own apt-get/etc calls.
+if [ "$(id -u)" -ne 0 ]; then
+	exec sudo bash "$0" "$@"
+fi
+
 cd "$(dirname "$0")"
 
 for script in [0-9][0-9]-*.sh; do

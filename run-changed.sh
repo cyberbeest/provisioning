@@ -8,6 +8,14 @@
 # Caveat: this compares file mtimes, so a fresh `git clone`/checkout (which
 # resets mtimes on all files) will make everything look "changed" again.
 set -euo pipefail
+
+# Each NN-*.sh script expects to run as root -- re-exec under sudo up front
+# (prompting for the password once here) rather than letting the first
+# script fail confusingly partway through its own apt-get/etc calls.
+if [ "$(id -u)" -ne 0 ]; then
+	exec sudo bash "$0" "$@"
+fi
+
 cd "$(dirname "$0")"
 
 for script in [0-9][0-9]-*.sh; do
