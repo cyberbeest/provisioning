@@ -5,11 +5,16 @@
 # en_US.UTF-8 / us / Europe/Berlin). Runs first (00-) since it's the most
 # fundamental "who is this machine for" choice, before anything else.
 #
-# Just drives Debian's own interactive reconfiguration tools (whiptail/
-# dialog based) rather than reinventing a picker UI:
-#   - dpkg-reconfigure locales             -> /etc/default/locale
-#   - dpkg-reconfigure keyboard-configuration -> /etc/default/keyboard
-#   - dpkg-reconfigure tzdata               -> /etc/timezone, /etc/localtime
+# Language and keyboard are driven by a single "which country?" question
+# instead of Debian's own dpkg-reconfigure locales/keyboard-configuration
+# checklists -- those list every locale/layout in existence, which is a lot
+# of scrolling for a choice that's obvious for the vast majority of installs,
+# and the product only ships English/German UI catalogs anyway (see
+# lib/i18n.py). Country picks sensible defaults for both, but language and
+# keyboard are still separate confirm/override steps -- e.g. someone in
+# Germany might still want an English UI, or be typing on a US keyboard.
+# Timezone still goes through the real `dpkg-reconfigure tzdata` since a
+# short curated list can't cover it as well as the real region/city picker.
 #
 # Needs a real terminal (whiptail can't run headlessly) -- if stdin isn't a
 # TTY (e.g. a scripted/automated run-all.sh pass), this step is skipped with
@@ -49,28 +54,112 @@ if [ ! -t 0 ]; then
 	exit 0
 fi
 
+apt-get -o DPkg::Lock::Timeout=60 install -y whiptail locales keyboard-configuration tzdata console-setup
+
 echo "=== $(date) : configuring locale/keyboard/timezone ===" | tee "$LOG"
 
-apt-get -o DPkg::Lock::Timeout=60 install -y locales keyboard-configuration tzdata console-setup
+# code|Display name|default language (en/de)|en locale|de locale|keyboard layout
+COUNTRIES=(
+	"DE|Germany|de|en_US.UTF-8|de_DE.UTF-8|de"
+	"AT|Austria|de|en_US.UTF-8|de_AT.UTF-8|at"
+	"CH|Switzerland|de|en_US.UTF-8|de_CH.UTF-8|ch"
+	"US|United States|en|en_US.UTF-8|de_DE.UTF-8|us"
+	"GB|United Kingdom|en|en_GB.UTF-8|de_DE.UTF-8|gb"
+	"IE|Ireland|en|en_IE.UTF-8|de_DE.UTF-8|gb"
+	"CA|Canada|en|en_CA.UTF-8|de_DE.UTF-8|us"
+	"AU|Australia|en|en_AU.UTF-8|de_DE.UTF-8|us"
+	"NZ|New Zealand|en|en_NZ.UTF-8|de_DE.UTF-8|us"
+	"XE|Other (default: English UI)|en|en_US.UTF-8|de_DE.UTF-8|us"
+	"XD|Other (default: German UI)|de|en_US.UTF-8|de_DE.UTF-8|de"
+)
 
-echo "--- Language/locale ---"
-echo "Tip: in the checklist, just tick the locale(s) you actually plan to use"
-echo "(e.g. de_DE.UTF-8), plus en_US.UTF-8 as a fallback if you want it for"
-echo "tools/logs that assume it -- no need to generate every locale in the"
-echo "list. The next screen picks which of your ticked locales is the default."
-dpkg-reconfigure locales
+echo "--- Country ---"
+echo "Picks sensible defaults for language and keyboard below -- both are still"
+echo "asked separately and can be changed, e.g. if you're in Germany but want"
+echo "an English UI, or typing on a US keyboard. For anything more unusual than"
+echo "this list (a different regional locale, a less common keyboard layout),"
+echo "run 'dpkg-reconfigure locales' or 'dpkg-reconfigure keyboard-configuration'"
+echo "by hand afterwards -- this picker only covers the common cases."
+
+country_args=()
+for row in "${COUNTRIES[@]}"; do
+	IFS='|' read -r code name _ _ _ _ <<<"$row"
+	status="OFF"
+	[ "$code" = "US" ] && status="ON"
+	country_args+=("$code" "$name" "$status")
+done
+COUNTRY=$(whiptail --title "Country" --radiolist \
+	"Choose the country this machine will be used in:" 22 70 12 \
+	"${country_args[@]}" 3>&1 1>&2 2>&3)
+
+default_lang="" en_locale="" de_locale="" kbd_default=""
+for row in "${COUNTRIES[@]}"; do
+	IFS='|' read -r code _ lang en_loc de_loc kbd <<<"$row"
+	if [ "$code" = "$COUNTRY" ]; then
+		default_lang="$lang"
+		en_locale="$en_loc"
+		de_locale="$de_loc"
+		kbd_default="$kbd"
+	fi
+done
+
+echo "--- Language ---"
+en_status="OFF"; de_status="OFF"
+[ "$default_lang" = "en" ] && en_status="ON" || de_status="ON"
+LANG_CHOICE=$(whiptail --title "Language" --radiolist \
+	"Choose the system/UI language:" 12 60 2 \
+	"en" "English" "$en_status" \
+	"de" "Deutsch (German)" "$de_status" \
+	3>&1 1>&2 2>&3)
+
+if [ "$LANG_CHOICE" = "de" ]; then
+	LOCALE="$de_locale"
+else
+	LOCALE="$en_locale"
+fi
 
 echo "--- Keyboard layout ---"
-# -p high skips the keyboard *model* question (medium priority, always
-# "Generic 105-key PC" in practice -- there's no real choice to make here on
-# a PC/VM) while still asking the actual layout/language question (critical
-# priority, always shown regardless of -p). Preseed the model too, as a
-# belt-and-braces default in case anything reads it before this runs.
+kbd_status_de="OFF" kbd_status_at="OFF" kbd_status_ch="OFF" kbd_status_us="OFF" kbd_status_gb="OFF"
+case "$kbd_default" in
+	de) kbd_status_de="ON" ;;
+	at) kbd_status_at="ON" ;;
+	ch) kbd_status_ch="ON" ;;
+	us) kbd_status_us="ON" ;;
+	gb) kbd_status_gb="ON" ;;
+esac
+KEYBOARD=$(whiptail --title "Keyboard layout" --radiolist \
+	"Choose the physical keyboard layout:" 15 60 5 \
+	"de" "German" "$kbd_status_de" \
+	"at" "Austrian" "$kbd_status_at" \
+	"ch" "Swiss German" "$kbd_status_ch" \
+	"us" "US" "$kbd_status_us" \
+	"gb" "UK" "$kbd_status_gb" \
+	3>&1 1>&2 2>&3)
+
+echo "Country: $COUNTRY | Language: $LANG_CHOICE | Locale: $LOCALE | Keyboard: $KEYBOARD" | tee -a "$LOG"
+
+echo "--- Applying locale ($LOCALE) ---"
+# Always also generate en_US.UTF-8 as a fallback for tools/logs that assume
+# it, unless it's already the chosen locale.
+gen_locales="$LOCALE UTF-8"
+[ "$LOCALE" != "en_US.UTF-8" ] && gen_locales="$gen_locales, en_US.UTF-8 UTF-8"
+debconf-set-selections <<-EOF
+	locales locales/default_environment_locale select $LOCALE
+	locales locales/locales_to_be_generated multiselect $gen_locales
+EOF
+dpkg-reconfigure -f noninteractive locales
+
+echo "--- Applying keyboard layout ($KEYBOARD) ---"
+# Model is always "Generic 105-key PC" in practice -- there's no real choice
+# to make here on a PC/VM -- so it's preseeded rather than asked.
 debconf-set-selections <<-EOF
 	keyboard-configuration keyboard-configuration/modelcode string pc105
 	keyboard-configuration keyboard-configuration/model select Generic 105-key PC
+	keyboard-configuration keyboard-configuration/layoutcode string $KEYBOARD
+	keyboard-configuration keyboard-configuration/variantcode string
+	keyboard-configuration keyboard-configuration/xkb-keymap select $KEYBOARD
 EOF
-dpkg-reconfigure -p high keyboard-configuration
+dpkg-reconfigure -f noninteractive keyboard-configuration
 setupcon || true
 
 echo "--- Timezone ---"
