@@ -269,6 +269,15 @@ def build_menu():
     title = Gtk.MenuItem(label=t("timer.auto_shutdown_while_locked"))
     title.set_sensitive(False)
     menu.append(title)
+
+    if get_idle_delay_minutes() == 0:
+        note_item = Gtk.MenuItem()
+        note_label = Gtk.Label()
+        note_label.set_markup(f"<i><small>{t('timer.no_auto_lock_note')}</small></i>")
+        note_item.add(note_label)
+        note_item.set_sensitive(False)
+        menu.append(note_item)
+
     menu.append(Gtk.SeparatorMenuItem())
 
     link_item = Gtk.CheckMenuItem(label=t("timer.use_same_time"))
