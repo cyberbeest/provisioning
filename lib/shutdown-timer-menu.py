@@ -12,6 +12,7 @@ their own copy.
 
 import os
 import subprocess
+import time
 
 import gi
 
@@ -99,24 +100,43 @@ def fmt(mins):
 
 
 def get_idle_delay_minutes():
+    # xfce4-screensaver 4.18 owns idle-lock timing through its own xfconf
+    # channel (/saver/idle-activation/*), not through the GNOME
+    # org.gnome.desktop.session idle-delay schema this used to read -- that
+    # key doesn't appear anywhere in the xfce4-screensaver binary and has no
+    # effect on it. The delay property has a 1-minute floor and no "Never"
+    # value of its own; "Never" is idle-activation/enabled=false instead.
     try:
-        out = subprocess.run(
-            ["gsettings", "get", "org.gnome.desktop.session", "idle-delay"],
+        enabled = subprocess.run(
+            ["xfconf-query", "-c", "xfce4-screensaver", "-p", "/saver/idle-activation/enabled"],
             capture_output=True, text=True, check=True,
         ).stdout.strip()
-        seconds = int(out.split()[-1])  # e.g. "uint32 300"
     except Exception:
-        seconds = 300
-    if seconds == 0:
-        return 0  # Never -- don't clamp this one up to 1 minute below
-    return max(1, round(seconds / 60))
+        enabled = "true"
+    if enabled != "true":
+        return 0  # Never
+    try:
+        minutes = int(subprocess.run(
+            ["xfconf-query", "-c", "xfce4-screensaver", "-p", "/saver/idle-activation/delay"],
+            capture_output=True, text=True, check=True,
+        ).stdout.strip())
+    except Exception:
+        minutes = 5
+    return max(1, minutes)
 
 
 def set_idle_delay_minutes(mins):
     subprocess.run(
-        ["gsettings", "set", "org.gnome.desktop.session", "idle-delay", str(mins * 60)],
+        ["xfconf-query", "-c", "xfce4-screensaver", "-p", "/saver/idle-activation/enabled",
+         "-n", "-t", "bool", "-s", "true" if mins > 0 else "false"],
         check=False,
     )
+    if mins > 0:
+        subprocess.run(
+            ["xfconf-query", "-c", "xfce4-screensaver", "-p", "/saver/idle-activation/delay",
+             "-n", "-t", "int", "-s", str(mins)],
+            check=False,
+        )
     # Keep the display's DPMS sleep/off timing in step with the lock delay,
     # so the screen doesn't stay lit well past when it's already locked (or
     # blank long before). off is sleep+1 so there's still a brief dimmed
@@ -146,21 +166,24 @@ def set_idle_delay_minutes(mins):
              "-n", "-t", "int", "-s", str(dpms_off)],
             check=False,
         )
-    # Also clear/sync the legacy X11 screensaver timeout (xset s). It's a
-    # separate mechanism from gsettings idle-delay and from xfce4-power-manager's
-    # DPMS keys above, and nothing else in this stack ever touches it -- a
-    # leftover value (e.g. from an old autostart script) would otherwise sit
-    # there forever, silently re-blanking/re-locking on its own schedule even
-    # after idle-delay is set to "Never".
+    restart_screensaver()
+    # xfce4-screensaver applies its own X11 screensaver timeout (xset s) to
+    # match idle-activation/delay*60 on every startup, unconditionally --
+    # even while idle-activation/enabled is false. So "Never" alone doesn't
+    # stop the plain X11 screensaver from blanking the display on its own
+    # schedule; only overriding xset s ourselves afterward does. The
+    # daemon applies its own value within ~0.3s of starting, so wait for
+    # that race to finish before setting the value we actually want,
+    # otherwise it clobbers ours instead of the other way around.
+    time.sleep(1)
     xset_secs = mins * 60
     subprocess.run(["xset", "s", str(xset_secs), str(xset_secs)], check=False)
-    restart_screensaver()
 
 
 def restart_screensaver():
-    # xfce4-screensaver reads idle-delay once at startup and doesn't pick up
-    # live gsettings changes, so a running daemon keeps locking on whatever
-    # value was active when it launched until it's restarted.
+    # xfce4-screensaver reads its idle-activation settings once at startup
+    # and doesn't pick up live xfconf changes -- a running daemon keeps
+    # locking on whatever was active when it launched until it's restarted.
     subprocess.run(["pkill", "-f", "^xfce4-screensaver$"], check=False)
     subprocess.Popen(
         ["xfce4-screensaver"],

@@ -39,16 +39,23 @@ ac_min=$(shutdown_minutes_for AC)
 bat_min=$(shutdown_minutes_for BATTERY)
 linked=$(read_setting LINK_AC_BATTERY "true")
 
-idle_delay_s=$(gsettings get org.gnome.desktop.session idle-delay 2>/dev/null | awk '{print $2}')
-idle_delay_s=${idle_delay_s:-300}
-lock_line="Locks after $(fmt $(( idle_delay_s / 60 ))) idle"
+# xfce4-screensaver owns idle-lock timing through its own xfconf channel --
+# the delay property has a 1-minute floor and no "Never" value of its own,
+# so "Never" is idle-activation/enabled=false instead.
+if [ "$(xfconf-query -c xfce4-screensaver -p /saver/idle-activation/enabled 2>/dev/null)" = "false" ]; then
+    idle_delay_min=0
+else
+    idle_delay_min=$(xfconf-query -c xfce4-screensaver -p /saver/idle-activation/delay 2>/dev/null)
+    idle_delay_min=${idle_delay_min:-5}
+fi
+lock_line="Locks after $(fmt "$idle_delay_min") idle"
 
 # A configured auto-shutdown time is a no-op if the screen never auto-locks --
 # flag that on the icon itself, not just in the tooltip, since it silently
 # defeats a safety feature the device otherwise relies on.
 warn_txt=""
 warn_line=""
-if [ "$idle_delay_s" -eq 0 ] && { [ "$ac_min" -gt 0 ] || [ "$bat_min" -gt 0 ]; }; then
+if [ "$idle_delay_min" -eq 0 ] && { [ "$ac_min" -gt 0 ] || [ "$bat_min" -gt 0 ]; }; then
     warn_txt=" ⚠"
     warn_line="IMPORTANT: Auto-lock is off, so this won't trigger on its own&#10;"
 fi
