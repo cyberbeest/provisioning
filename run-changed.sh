@@ -17,8 +17,16 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 cd "$(dirname "$0")"
+source lib/sticky-header.sh
 
-for script in [0-9][0-9]-*.sh; do
+scripts=( [0-9][0-9]-*.sh )
+sticky_header_start
+trap sticky_header_stop EXIT
+
+for i in "${!scripts[@]}"; do
+	script="${scripts[$i]}"
+	remaining=$(( ${#scripts[@]} - i - 1 ))
+	sticky_header_set "$script" "$remaining"
 	log="${script%.sh}.log"
 	if [ -e "$log" ] && [ "$log" -nt "$script" ]; then
 		echo "=== skipping $script (unchanged since $log) ==="
