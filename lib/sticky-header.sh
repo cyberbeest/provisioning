@@ -17,6 +17,9 @@ sticky_header_start() {
 	_STICKY_ACTIVE=1
 	local lines
 	lines=$(tput lines)
+	tput clear                                # start from a blank screen, not
+	                                           # whatever scrollback/prompt was
+	                                           # already there
 	tput civis 2>/dev/null                   # hide cursor
 	printf '\e[3;%dr' "$lines"                # reserve top 2 lines as header
 	printf '\e[3;1H'                          # park cursor at top of scroll region
