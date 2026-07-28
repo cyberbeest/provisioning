@@ -51,10 +51,20 @@ cd provisioning
 ```
 
 Or, via the `beestify.sh` bootstrap script (installs git, clones this repo,
-and runs `./menu.sh` for you):
+and runs `./menu.sh` for you). This tracks the `stable` branch -- only
+fast-forwarded to a `main` commit once it's been validated end-to-end on a
+fresh install, unlike `main` itself where every fix lands immediately:
 
 ```
 curl -fsSL https://cyberbeest.com/beestify.sh | bash
+```
+
+`beestify-bleeding.sh` is the same thing but tracks `main` directly (cloned
+into `~/provisioning-bleeding` instead, so both can coexist) -- for testing
+the latest fixes before they're promoted to `stable`:
+
+```
+curl -fsSL https://cyberbeest.com/beestify-bleeding.sh | bash
 ```
 
 ## Default-password nag (21-default-password-nag.sh)
