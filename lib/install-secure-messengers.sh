@@ -6,7 +6,8 @@
 # expect it preinstalled.
 #
 # - Signal/Element: proper apt vendor repos, set up via cyberbeest-pkg-helper.sh.
-# - Telegram: ships in Debian main already, no repo needed.
+# - Telegram: ships in Debian, but only via trixie-backports, not trixie main
+#   -- enabled below alongside contrib.
 # - Tor Browser: installed via Debian's own torbrowser-launcher package
 #   (downloads/verifies/self-updates the actual browser from the Tor
 #   Project), which lives in the "contrib" component -- enabled below.
@@ -37,6 +38,15 @@ if grep -qE '^deb http://deb\.debian\.org/debian/ trixie main non-free-firmware$
     echo "Enabled contrib on the trixie main line"
 else
     echo "contrib already enabled (or line format unexpected), skipping edit"
+fi
+
+echo "--- Enabling trixie-backports (needed for telegram-desktop) ---"
+BACKPORTS_LIST=/etc/apt/sources.list.d/cyberbeest-backports.list
+if [ ! -e "$BACKPORTS_LIST" ]; then
+    echo "deb http://deb.debian.org/debian trixie-backports main contrib non-free non-free-firmware" > "$BACKPORTS_LIST"
+    echo "Enabled trixie-backports via $BACKPORTS_LIST"
+else
+    echo "trixie-backports already enabled, skipping"
 fi
 
 echo "--- Setting up Signal and Element apt repos ---"
