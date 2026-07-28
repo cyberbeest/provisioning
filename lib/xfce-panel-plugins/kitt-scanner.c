@@ -119,13 +119,30 @@ on_sample(gpointer user_data)
     return G_SOURCE_CONTINUE;
 }
 
+/* Coarse verbal read of CPU load, shown below the percentage in the
+ * tooltip -- the numbers alone don't read at a glance. */
+static const gchar *
+cpu_status_text(gdouble load)
+{
+    if (load < 0.10)
+        return "= Idle =";
+    if (load < 0.40)
+        return "= Light load =";
+    if (load < 0.70)
+        return "= Thinking hard =";
+    if (load < 0.90)
+        return "= Working hard =";
+    return "= Maxed out =";
+}
+
 static gboolean
 on_query_tooltip(GtkWidget *widget, gint x, gint y, gboolean keyboard_mode,
                   GtkTooltip *tooltip, gpointer user_data)
 {
     KittPlugin *kp = user_data;
-    gchar buf[32];
-    g_snprintf(buf, sizeof(buf), "CPU load: %.0f%%", kp->load * 100.0);
+    gchar buf[64];
+    g_snprintf(buf, sizeof(buf), "CPU load: %.0f%%\n%s",
+               kp->load * 100.0, cpu_status_text(kp->load));
     gtk_tooltip_set_text(tooltip, buf);
     return TRUE;
 }

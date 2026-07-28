@@ -153,6 +153,21 @@ on_sample(gpointer user_data)
     return G_SOURCE_CONTINUE;
 }
 
+/* Coarse verbal read of RAM usage, shown below the percentage in the
+ * tooltip -- mirrors kitt-scanner's cpu_status_text. Only used below
+ * WARNING_LEVEL; at/above that the contention warning takes over instead. */
+static const gchar *
+mem_status_text(gdouble frac)
+{
+    if (frac < 0.10)
+        return "= Idle =";
+    if (frac < 0.40)
+        return "= Light load =";
+    if (frac < 0.70)
+        return "= Steady =";
+    return "= Filling up =";
+}
+
 static gboolean
 on_query_tooltip(GtkWidget *widget, gint x, gint y, gboolean keyboard_mode,
                   GtkTooltip *tooltip, gpointer user_data)
@@ -170,6 +185,8 @@ on_query_tooltip(GtkWidget *widget, gint x, gint y, gboolean keyboard_mode,
     if (mp->target_level >= WARNING_LEVEL)
         g_snprintf(buf + n, sizeof(buf) - n,
                    "\n\xE2\x9A\xA0 Memory contention -- consider closing some programs");
+    else
+        g_snprintf(buf + n, sizeof(buf) - n, "\n%s", mem_status_text(mp->target_level));
 
     gtk_tooltip_set_text(tooltip, buf);
     return TRUE;
