@@ -42,6 +42,7 @@ STRINGS = {
     "timer.shutdown_now": "Shut down now",
     "timer.auto_shutdown_while_locked": "Auto-shutdown while locked",
     "timer.use_same_time": "Use the same time for AC and battery",
+    "timer.important": "IMPORTANT",
     "timer.no_auto_lock_note": "Auto-lock is off, so this won't trigger on its own",
     "timer.shutdown_after_both": "Shutdown after locked for:",
     "timer.on_ac": "On AC power:",

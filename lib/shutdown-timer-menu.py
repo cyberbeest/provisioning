@@ -273,7 +273,7 @@ def build_menu():
     if get_idle_delay_minutes() == 0:
         note_item = Gtk.MenuItem()
         note_label = Gtk.Label()
-        note_label.set_markup(f"<i><small>{t('timer.no_auto_lock_note')}</small></i>")
+        note_label.set_markup(f"<b>{t('timer.important')}:</b> {t('timer.no_auto_lock_note')}")
         note_item.add(note_label)
         note_item.set_sensitive(False)
         menu.append(note_item)

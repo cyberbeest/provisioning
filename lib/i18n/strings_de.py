@@ -46,6 +46,7 @@ STRINGS = {
     "timer.shutdown_now": "Jetzt herunterfahren",
     "timer.auto_shutdown_while_locked": "Automatisches Abschalten bei Sperrung",
     "timer.use_same_time": "Gleiche Zeit für Netz- und Akkubetrieb verwenden",
+    "timer.important": "WICHTIG",
     "timer.no_auto_lock_note": "Automatisches Sperren ist aus, daher greift dies nicht von selbst",
     "timer.shutdown_after_both": "Abschalten nach Sperrdauer von:",
     "timer.on_ac": "Im Netzbetrieb:",
