@@ -32,12 +32,34 @@ from gi.repository import GdkPixbuf, GLib, Gtk
 
 from i18n import t
 
-DEVICE = "/dev/sda3"
 CRYPTSETUP = "/sbin/cryptsetup"
 PASSWD = "/usr/bin/passwd"
 LOGO_PATH = os.path.expanduser("~/Pictures/Cyberbeest-black.png")
 LOGO_SIZE = 96
 WORDLISTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "wordlists")
+
+
+def detect_luks_device():
+    """Find the LUKS partition backing the root filesystem.
+
+    Walks up the block-device stack from / (e.g. LVM root -> dm-crypt ->
+    physical partition) instead of assuming a fixed path like /dev/sda3 --
+    that breaks on NVMe drives, multi-disk machines, or a different
+    partition layout from a USB install.
+    """
+    # -s lists the full dependency chain (root fs -> ... -> physical disk),
+    # so root-on-LVM-on-LUKS, root directly on LUKS, or extra layers like
+    # mdraid all resolve the same way: find the one line typed crypto_LUKS.
+    root_src = subprocess.check_output(["findmnt", "-no", "SOURCE", "/"], text=True).strip()
+    chain = subprocess.check_output(["lsblk", "-lpnso", "NAME,FSTYPE", root_src], text=True)
+    for line in chain.splitlines():
+        name, _, fstype = line.strip().partition(" ")
+        if fstype.strip() == "crypto_LUKS":
+            return name
+    raise RuntimeError("Could not find the LUKS-encrypted device backing the root filesystem")
+
+
+DEVICE = detect_luks_device()
 
 
 def detect_language():
