@@ -6,7 +6,7 @@
 # Idempotent: safe to re-run.
 set -euo pipefail
 LOG="$(dirname "$0")/01-bluetooth-tethering.log"
-exec > "$LOG" 2>&1
+exec > >(tee -a "$LOG") 2>&1
 
 echo "=== $(date) : provisioning bluetooth tethering support ==="
 

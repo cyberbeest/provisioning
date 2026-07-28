@@ -19,7 +19,7 @@
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG="$DIR/20-shutdown-sound.log"
-exec > "$LOG" 2>&1
+exec > >(tee -a "$LOG") 2>&1
 
 echo "=== $(date) : installing shutdown chime ==="
 

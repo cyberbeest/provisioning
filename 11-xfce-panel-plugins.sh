@@ -8,7 +8,7 @@
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG="$DIR/11-xfce-panel-plugins.log"
-exec > "$LOG" 2>&1
+exec > >(tee -a "$LOG") 2>&1
 
 echo "=== $(date) : building custom xfce4-panel plugins ==="
 

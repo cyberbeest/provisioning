@@ -7,7 +7,7 @@
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG="$DIR/02-gnome-software-store.log"
-exec > "$LOG" 2>&1
+exec > >(tee -a "$LOG") 2>&1
 
 echo "=== $(date) : provisioning GNOME Software store ==="
 bash "$DIR/lib/install-gnome-software.sh"

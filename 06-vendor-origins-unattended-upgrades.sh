@@ -11,7 +11,7 @@
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG="$DIR/06-vendor-origins-unattended-upgrades.log"
-exec > "$LOG" 2>&1
+exec > >(tee -a "$LOG") 2>&1
 
 echo "=== $(date) : provisioning vendor-origins unattended-upgrades allowlist ==="
 bash "$DIR/lib/add-vendor-origins-unattended-upgrades.sh"

@@ -9,7 +9,7 @@
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG="$DIR/04-software-launch-warning.log"
-exec > "$LOG" 2>&1
+exec > >(tee -a "$LOG") 2>&1
 
 echo "=== $(date) : provisioning software-launch warning ==="
 bash "$DIR/lib/install-software-warning.sh"

@@ -8,7 +8,7 @@
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG="$DIR/15-grub-plymouth-theme.log"
-exec > "$LOG" 2>&1
+exec > >(tee -a "$LOG") 2>&1
 
 echo "=== $(date) : provisioning GRUB/Plymouth boot styling ==="
 bash "$DIR/lib/setup-grub-plymouth-theme.sh"

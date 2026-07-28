@@ -9,7 +9,7 @@
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG="$DIR/07-security-update-timer.log"
-exec > "$LOG" 2>&1
+exec > >(tee -a "$LOG") 2>&1
 
 echo "=== $(date) : provisioning dedicated security-update-check timer ==="
 bash "$DIR/lib/setup-security-update-timer.sh"

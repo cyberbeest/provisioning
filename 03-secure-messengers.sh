@@ -13,7 +13,7 @@
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG="$DIR/03-secure-messengers.log"
-exec > "$LOG" 2>&1
+exec > >(tee -a "$LOG") 2>&1
 
 echo "=== $(date) : provisioning secure messengers ==="
 bash "$DIR/lib/install-secure-messengers.sh"

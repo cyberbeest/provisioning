@@ -8,7 +8,7 @@
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG="$DIR/17-login-lock-screen.log"
-exec > "$LOG" 2>&1
+exec > >(tee -a "$LOG") 2>&1
 
 echo "=== $(date) : branding login/lock screens ==="
 bash "$DIR/lib/setup-login-lock-screen.sh"

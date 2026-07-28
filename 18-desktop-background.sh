@@ -17,7 +17,7 @@ LOG="$DIR/18-desktop-background.log"
 # running this (whether directly, via menu.sh, or run-all.sh/run-changed.sh)
 # instead of getting silently swallowed into the log file with everything else.
 exec 3>&1
-exec > "$LOG" 2>&1
+exec > >(tee -a "$LOG") 2>&1
 
 echo "=== $(date) : installing desktop background ==="
 

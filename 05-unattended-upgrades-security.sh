@@ -7,7 +7,7 @@
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG="$DIR/05-unattended-upgrades-security.log"
-exec > "$LOG" 2>&1
+exec > >(tee -a "$LOG") 2>&1
 
 echo "=== $(date) : provisioning unattended-upgrades (security-only) ==="
 bash "$DIR/lib/setup_unattended_upgrades.sh"
