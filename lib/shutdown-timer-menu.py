@@ -126,15 +126,26 @@ def set_idle_delay_minutes(mins):
     # idle straight through to lock -- in sync. mins=0 (Never) disables DPMS
     # auto-sleep/off too, rather than leaving "off" dangling at 1 minute
     # below a disabled "sleep".
+    #
+    # There's no separate AC/battery choice in this menu, so both power
+    # sources must be set together -- otherwise xfce4-power-manager quietly
+    # falls back to its own compiled-in battery defaults (5/6 min) for
+    # whichever pair was never explicitly written, and the screen keeps
+    # auto-locking/blanking on battery no matter what's picked here.
     dpms_off = mins + 1 if mins > 0 else 0
-    subprocess.run(
-        ["xfconf-query", "-c", "xfce4-power-manager", "-p", "/xfce4-power-manager/dpms-on-ac-sleep", "-s", str(mins)],
-        check=False,
-    )
-    subprocess.run(
-        ["xfconf-query", "-c", "xfce4-power-manager", "-p", "/xfce4-power-manager/dpms-on-ac-off", "-s", str(dpms_off)],
-        check=False,
-    )
+    for source in ("ac", "battery"):
+        subprocess.run(
+            ["xfconf-query", "-c", "xfce4-power-manager",
+             "-p", f"/xfce4-power-manager/dpms-on-{source}-sleep",
+             "-n", "-t", "int", "-s", str(mins)],
+            check=False,
+        )
+        subprocess.run(
+            ["xfconf-query", "-c", "xfce4-power-manager",
+             "-p", f"/xfce4-power-manager/dpms-on-{source}-off",
+             "-n", "-t", "int", "-s", str(dpms_off)],
+            check=False,
+        )
     # Also clear/sync the legacy X11 screensaver timeout (xset s). It's a
     # separate mechanism from gsettings idle-delay and from xfce4-power-manager's
     # DPMS keys above, and nothing else in this stack ever touches it -- a
