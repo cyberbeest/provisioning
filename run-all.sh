@@ -13,12 +13,22 @@ fi
 cd "$(dirname "$0")"
 source lib/sticky-header.sh
 
+# Graceful-stop request: touched by run-gui.py's "Stop after current script"
+# button (or by hand). Checked between scripts, not during one, so whatever
+# is currently running always finishes rather than being killed mid-way.
+STOP_FILE=".graceful-stop-requested"
+
 scripts=( [0-9][0-9]-*.sh )
 sticky_header_start
 trap sticky_header_stop EXIT
 
 for i in "${!scripts[@]}"; do
 	script="${scripts[$i]}"
+	if [ -e "$STOP_FILE" ]; then
+		rm -f "$STOP_FILE"
+		echo "=== stop requested: skipping $script and $(( ${#scripts[@]} - i - 1 )) more ==="
+		break
+	fi
 	remaining=$(( ${#scripts[@]} - i - 1 ))
 	sticky_header_set "$script" "$remaining"
 	echo "=== running $script ==="

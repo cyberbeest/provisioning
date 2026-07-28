@@ -37,6 +37,12 @@ otherwise.
   edited). Handy while iterating on one or two scripts instead of re-running
   the full set each time; not needed for a normal install. Since it compares
   file mtimes, a fresh `git clone` makes everything look changed again.
+- `./run-gui.py` — graphical front-end for the two above (dev tool, not part
+  of the shipped image): pick "run all" or "run changed only", hit Start,
+  watch the log live. One graphical sudo password prompt (via zenity) covers
+  the whole run, same as `sudo ./run-all.sh` in a terminal. "Stop after
+  current script" doesn't kill anything mid-script -- it lets the running
+  script finish, then skips the rest.
 
 ## Getting this directory onto a fresh install
 
