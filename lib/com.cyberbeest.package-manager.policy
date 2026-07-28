@@ -12,7 +12,14 @@
       <allow_inactive>auth_admin</allow_inactive>
       <allow_active>auth_admin</allow_active>
     </defaults>
-    <annotate key="org.freedesktop.policykit.exec.path">/home/cyberbeest/claude/cyberbeest-pkg-helper.sh</annotate>
+    <!-- Must be a root-owned path, same file cyberbeest-web-install-handler.sh
+         uses. pkexec only checks that argv[0] matches this exact path, not
+         who can write to it -- pointing this at a file under /home would let
+         any code that ever runs as the cyberbeest user rewrite the script,
+         then get root the next time this policy's password prompt is
+         answered. Deployed by install-secure-messengers.sh (provisioning) /
+         install_package_manager_policy.sh (dev machine). -->
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/local/lib/cyberbeest/cyberbeest-pkg-helper.sh</annotate>
     <annotate key="org.freedesktop.policykit.exec.allow_gui">true</annotate>
   </action>
 

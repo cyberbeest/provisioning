@@ -95,6 +95,11 @@ do_remove() {
 }
 
 do_install_deb_url() {
+    # No checksum/signature check here: this exists for vendors (Viber) that
+    # ship an "always latest" .deb with no stable published checksum and no
+    # apt repo to piggyback GPG verification on, so HTTPS-from-the-vendor's-
+    # own-CDN is the actual ceiling, not a corner we cut. If a vendor with a
+    # pinnable checksum or signature is added here later, verify it.
     local url="$1" deb
     deb="$(mktemp /tmp/cyberbeest-deb-XXXXXX.deb)"
     log "Downloading $url"
@@ -115,6 +120,9 @@ do_setup_viber_updater() {
 # Viber has no apt repo, just a stable "always latest" download URL.
 # dpkg -i --skip-same-version makes this a no-op when already current.
 set -uo pipefail
+# Same no-checksum tradeoff as do_install_deb_url above: Viber's URL always
+# serves "latest" with nothing stable to check it against, so HTTPS from
+# Viber's own CDN is what we're trusting.
 DEB=/tmp/viber-latest.deb
 curl -fsSL -o "$DEB" "https://download.cdn.viber.com/cdn/desktop/Linux/viber.deb" || exit 1
 dpkg -i --skip-same-version "$DEB"

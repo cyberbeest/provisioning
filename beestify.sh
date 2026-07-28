@@ -13,6 +13,12 @@ if ! command -v git >/dev/null 2>&1; then
   sudo apt-get -o DPkg::Lock::Timeout=60 install -y git
 fi
 
+# Deliberately tracks main rather than a pinned tag/commit: this is our own
+# repo, not a third-party dependency, so the trust boundary is "do you trust
+# cyberbeest.com/this GitHub account" either way -- pinning would just mean
+# users sit on stale, unpatched provisioning until someone manually bumps the
+# pin. A security review of this repo may flag the unpinned pull; that's the
+# tradeoff we're choosing, not an oversight.
 if [ -d "$CLONE_DIR/.git" ]; then
   echo "Repo already exists at $CLONE_DIR, pulling latest..."
   git -C "$CLONE_DIR" pull

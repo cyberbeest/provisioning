@@ -49,9 +49,14 @@ selected_raw="$(whiptail --title "Cyberbeest provisioning" \
 	exit 0
 }
 
-# whiptail returns tags quoted and space-separated, e.g. "01-foo.sh" "02-bar.sh"
+# whiptail returns tags quoted and space-separated, e.g. "01-foo.sh" "02-bar.sh".
+# Parse with xargs (which understands shell-style quoting) instead of eval,
+# so a stray quote/backtick/$( ) in a script's description line -- which
+# ends up as the tag text whiptail hands back -- can't be interpreted as code.
 selected=()
-eval "selected=($selected_raw)"
+while IFS= read -r -d '' tag; do
+	selected+=("$tag")
+done < <(xargs printf '%s\0' <<<"$selected_raw")
 
 if [ "${#selected[@]}" -eq 0 ]; then
 	echo "Nothing selected, nothing run."
