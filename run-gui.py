@@ -24,6 +24,13 @@ that. Those are instead opened in a standalone xfce4-terminal window (still
 elevated via the same graphical sudo prompt) and we block until it closes,
 rather than streaming their output into the shared log pane.
 
+Every script subprocess gets stdin=DEVNULL and start_new_session=True: without
+those, a script inherits run-gui.py's own stdin/process group -- i.e. the
+terminal it was launched from, if any -- and a subprocess still alive when
+the window is closed can be left holding that terminal's controlling tty,
+making it look frozen even though it's really just an orphaned background
+process waiting to read from a tty nothing will ever type into again.
+
 Dev tool only (not shipped to end users), so unlike lib/*.py it doesn't use
 lib/i18n.py.
 """
@@ -209,10 +216,12 @@ class RunGuiWindow(Gtk.Window):
             ["sudo", "-A", "-p", "", "bash", script],
             cwd=DIR,
             env=self._sudo_env(),
+            stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
             bufsize=1,
+            start_new_session=True,
         )
         self.proc = proc
         for line in proc.stdout:
@@ -231,6 +240,8 @@ class RunGuiWindow(Gtk.Window):
             ["xfce4-terminal", "--disable-server", "-x", "sudo", "-A", "-p", "", "bash", script],
             cwd=DIR,
             env=self._sudo_env(),
+            stdin=subprocess.DEVNULL,
+            start_new_session=True,
         )
         self.proc = proc
         status = proc.wait()
