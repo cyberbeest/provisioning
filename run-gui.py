@@ -36,9 +36,10 @@ file from inside the shell instead of trusting xterm's proc.returncode.
 
 Requires zenity (for the graphical sudo prompt). On a brand new machine that
 hasn't run any NN-*.sh script yet, zenity may not be installed at all (it's
-only pulled in as a side effect of 04-software-launch-warning.sh) -- checked
-for at startup so that shows up as a clear message instead of every sudo
-call silently failing with "no password was provided".
+only otherwise pulled in as a side effect of 04-software-launch-warning.sh)
+-- checked for at startup and installed automatically if missing (plain
+`sudo apt-get install`, prompting on whatever terminal this tool itself was
+launched from, since the graphical askpass obviously can't be used yet).
 
 Every script subprocess gets stdin=DEVNULL and start_new_session=True: without
 those, a script inherits run-gui.py's own stdin/process group -- i.e. the
@@ -180,13 +181,49 @@ class RunGuiWindow(Gtk.Window):
         self.show_all()
 
         if shutil.which("zenity") is None:
+            self._ensure_zenity()
+
+    def _ensure_zenity(self):
+        # On a brand new machine that hasn't run any NN-*.sh script yet,
+        # zenity may not be installed (it's only pulled in as a side effect
+        # of 04-software-launch-warning.sh) -- install it ourselves here
+        # rather than making that a manual prerequisite, since it's tiny
+        # (~35-40MB all in, mostly its GTK4/libadwaita deps that a GTK3-based
+        # XFCE image wouldn't otherwise have). Plain `sudo` (not -A), since
+        # zenity itself -- needed for the graphical askpass -- doesn't exist
+        # yet: this needs a real terminal to prompt on, same assumption the
+        # rest of this dev-only tool already makes about how it's launched.
+        self.append_log("zenity not found -- installing it (enter your sudo password in this terminal if asked)...\n")
+        self.status_label.set_text("Installing zenity...")
+        self._set_controls_busy(True)
+        threading.Thread(target=self._install_zenity_worker, daemon=True).start()
+
+    def _install_zenity_worker(self):
+        proc = subprocess.Popen(
+            ["sudo", "apt-get", "-o", "DPkg::Lock::Timeout=60", "install", "-y", "zenity"],
+            stdin=None,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+            start_new_session=True,
+        )
+        for line in proc.stdout:
+            GLib.idle_add(self.append_log, line)
+        status = proc.wait()
+        GLib.idle_add(self._on_zenity_installed, status)
+
+    def _on_zenity_installed(self, status):
+        self._set_controls_busy(False)
+        if status == 0 and shutil.which("zenity"):
+            self.append_log("=== zenity installed ===\n")
+            self.status_label.set_text("Idle. Double-click a script below to run just that one.")
+        else:
             self.append_log(
-                "zenity is not installed -- the graphical sudo prompt this tool relies on "
-                "can't work without it.\nOn a brand new machine it isn't pulled in until "
-                "04-software-launch-warning.sh runs, so install it manually first:\n"
-                "    sudo apt-get install zenity\nthen restart this tool.\n"
+                f"=== failed to install zenity (exit {status}) -- install it manually "
+                "(sudo apt-get install zenity) and restart this tool ===\n"
             )
-            self.status_label.set_text("zenity missing -- see log below.")
+            self.status_label.set_text("zenity install failed -- see log above.")
             self.run_changed_button.set_sensitive(False)
             self.run_all_button.set_sensitive(False)
             self.listbox.set_sensitive(False)
