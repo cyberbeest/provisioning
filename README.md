@@ -37,12 +37,17 @@ otherwise.
   edited). Handy while iterating on one or two scripts instead of re-running
   the full set each time; not needed for a normal install. Since it compares
   file mtimes, a fresh `git clone` makes everything look changed again.
-- `./run-gui.py` — graphical front-end for the two above (dev tool, not part
-  of the shipped image): pick "run all" or "run changed only", hit Start,
-  watch the log live. One graphical sudo password prompt (via zenity) covers
-  the whole run, same as `sudo ./run-all.sh` in a terminal. "Stop after
-  current script" doesn't kill anything mid-script -- it lets the running
-  script finish, then skips the rest.
+- `./run-gui.py` — graphical alternative to the above (dev tool, not part of
+  the shipped image), running each `NN-*.sh` script directly rather than
+  wrapping `run-all.sh`/`run-changed.sh`: a sidebar lists every script with
+  its pending/running/done/failed status, and a shared log pane on the right
+  streams whichever one is currently running. "Run all" / "Run changed only"
+  walk the whole list; double-clicking a script in the sidebar runs just that
+  one, regardless of its status. Each script is elevated individually via a
+  graphical sudo prompt (zenity), which `sudo` normally only asks for once
+  every few scripts thanks to credential caching. "Stop after current
+  script" doesn't kill anything mid-script -- it lets the running one finish,
+  then skips the rest.
 
 ## Getting this directory onto a fresh install
 
