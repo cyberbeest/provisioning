@@ -20,9 +20,14 @@ the only two scripts that touch panel config, 11-xfce-panel-plugins.sh and
 Scripts in NEEDS_TERMINAL (currently just 00-locale-keyboard-timezone.sh)
 use whiptail, which needs a real controlling terminal to draw its menus --
 piping its stdout/stderr into our log view like every other script breaks
-that. Those are instead opened in a standalone xfce4-terminal window (still
-elevated via the same graphical sudo prompt) and we block until it closes,
-rather than streaming their output into the shared log pane.
+that. Those are instead opened in an xterm window (still elevated via the
+same graphical sudo prompt) and we block until it closes, rather than
+streaming their output into the shared log pane. Deliberately xterm, not
+xfce4-terminal: xfce4-terminal is a D-Bus single-instance app, so a new
+invocation can silently hand its command off to an already-running
+xfce4-terminal (e.g. the one run-gui.py itself was launched from) and exit
+immediately -- no window appears and we stop "blocking" before the command
+even starts. xterm has no such client/server model, so it can't do that.
 
 Every script subprocess gets stdin=DEVNULL and start_new_session=True: without
 those, a script inherits run-gui.py's own stdin/process group -- i.e. the
@@ -237,7 +242,7 @@ class RunGuiWindow(Gtk.Window):
             "complete it there ===\n",
         )
         proc = subprocess.Popen(
-            ["xfce4-terminal", "--disable-server", "-x", "sudo", "-A", "-p", "", "bash", script],
+            ["xterm", "-T", script, "-e", "sudo", "-A", "-p", "", "bash", script],
             cwd=DIR,
             env=self._sudo_env(),
             stdin=subprocess.DEVNULL,
