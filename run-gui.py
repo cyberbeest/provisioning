@@ -41,6 +41,19 @@ only otherwise pulled in as a side effect of 04-software-launch-warning.sh)
 `sudo apt-get install`, prompting on whatever terminal this tool itself was
 launched from, since the graphical askpass obviously can't be used yet).
 
+Only prompts for the sudo password once per run of run-gui.py, not once per
+script: the first sudo call uses zenity-askpass.sh as normal, but run-gui.py
+runs that same helper directly itself first (see _get_sudo_password) to grab
+the typed password into memory, then points every later sudo -A call at
+cached-askpass.sh instead, which just echoes that cached password back
+rather than popping a fresh dialog. (Relying on sudo's own timestamp/ticket
+cache instead wasn't reliable here -- each script subprocess runs in its own
+new session via start_new_session=True below, and tty_tickets-style caching
+keys off exactly that kind of session/tty identity, so it kept re-prompting
+every script instead of reusing the earlier authentication.) If a cached
+password turns out to be stale (e.g. the user changed it mid-run), the
+resulting sudo failure clears it so the next attempt re-prompts.
+
 Every script subprocess gets stdin=DEVNULL and start_new_session=True: without
 those, a script inherits run-gui.py's own stdin/process group -- i.e. the
 terminal it was launched from, if any -- and a subprocess still alive when
@@ -65,6 +78,7 @@ from gi.repository import GLib, Gtk, Pango
 
 DIR = os.path.dirname(os.path.realpath(__file__))
 ASKPASS = os.path.join(DIR, "lib", "zenity-askpass.sh")
+CACHED_ASKPASS = os.path.join(DIR, "lib", "cached-askpass.sh")
 
 NEEDS_TERMINAL = {"00-locale-keyboard-timezone.sh"}
 
@@ -124,6 +138,7 @@ class RunGuiWindow(Gtk.Window):
         self.busy = False
         self.stop_requested = False
         self.rows = {}
+        self.sudo_password = None
 
         root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
         root.set_border_width(12)
@@ -273,9 +288,25 @@ class RunGuiWindow(Gtk.Window):
 
     # -- running a single script --------------------------------------------------
 
+    def _get_sudo_password(self):
+        if self.sudo_password is not None:
+            return self.sudo_password
+        result = subprocess.run([ASKPASS], stdout=subprocess.PIPE, text=True)
+        password = result.stdout.rstrip("\n")
+        if password:
+            self.sudo_password = password
+        return password or None
+
     def _sudo_env(self):
         env = dict(os.environ)
-        env["SUDO_ASKPASS"] = ASKPASS
+        password = self._get_sudo_password()
+        if password:
+            env["SUDO_ASKPASS"] = CACHED_ASKPASS
+            env["CACHED_SUDO_PASSWORD"] = password
+        else:
+            # Nothing cached yet (or the dialog was cancelled) -- fall back to
+            # a normal graphical prompt at the sudo level.
+            env["SUDO_ASKPASS"] = ASKPASS
         return env
 
     def _run_piped(self, script):
@@ -364,6 +395,11 @@ class RunGuiWindow(Gtk.Window):
                 GLib.idle_add(self.set_row_status, script, "done")
             else:
                 failed_script = script
+                # Could be a stale/wrong cached password as easily as the
+                # script's own failure -- either way, cheaper to re-prompt
+                # next run than to keep feeding sudo something that doesn't
+                # work.
+                self.sudo_password = None
                 GLib.idle_add(self.append_log, f"=== {script} FAILED (exit {status}) ===\n")
                 GLib.idle_add(self.set_row_status, script, "failed")
                 if remaining:
