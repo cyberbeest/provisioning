@@ -138,6 +138,15 @@ KEYBOARD=$(whiptail --title "Keyboard layout" --radiolist \
 
 echo "Country: $COUNTRY | Language: $LANG_CHOICE | Locale: $LOCALE | Keyboard: $KEYBOARD" | tee -a "$LOG"
 
+MENU_KEY_REMAP="no"
+if [ "$KEYBOARD" = "de" ]; then
+	if whiptail --title "Menu key remap (canonical Cyberbeest hardware only)" --yesno \
+		"Canonical Cyberbeest laptops ship an ANSI-body (104-key) keyboard with German stickers/keymap applied, so the physical ISO key left of Y -- normally < / > / | on a real German keyboard -- doesn't exist. This can remap the unused Menu key to act as that key instead (plain = <, Shift = >, AltGr = |).\n\nOnly say Yes if this really is canonical Cyberbeest hardware -- on a real German (ISO) keyboard or different hardware this would break the Menu key for no reason." \
+		15 78; then
+		MENU_KEY_REMAP="yes"
+	fi
+fi
+
 echo "--- Applying locale ($LOCALE) ---"
 # Always also generate en_US.UTF-8 as a fallback for tools/logs that assume
 # it, unless it's already the chosen locale.
@@ -161,6 +170,19 @@ debconf-set-selections <<-EOF
 EOF
 dpkg-reconfigure -f noninteractive keyboard-configuration
 setupcon || true
+
+if [ "$MENU_KEY_REMAP" = "yes" ]; then
+	echo "--- Installing Menu key remap (German <>| key) ---"
+	TARGET_USER="${SUDO_USER:-cyberbeest}"
+	TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
+	install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.local/bin"
+	install -o "$TARGET_USER" -g "$TARGET_USER" -m 755 \
+		"$DIR/lib/cyberbeest-menu-key-remap.sh" "$TARGET_HOME/.local/bin/cyberbeest-menu-key-remap.sh"
+	install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.config/autostart"
+	sed "s|/home/cyberbeest/|$TARGET_HOME/|g" "$DIR/lib/cyberbeest-menu-key-remap.desktop" \
+		> "$TARGET_HOME/.config/autostart/cyberbeest-menu-key-remap.desktop"
+	chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.config/autostart/cyberbeest-menu-key-remap.desktop"
+fi
 
 echo "--- Timezone ---"
 dpkg-reconfigure tzdata

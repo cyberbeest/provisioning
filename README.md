@@ -94,6 +94,19 @@ offer "keep it" instead of forcing a change. A self-installer who sets their
 own password during the Debian install never runs this, so nothing gets
 recorded and the nag never appears.
 
+## Menu key remap (part of 00-locale-keyboard-timezone.sh)
+
+When German is picked as the keyboard layout, an extra whiptail confirmation
+offers to remap the (otherwise unused) Menu/context-menu key to act as the
+German ISO "<>|" key -- plain = `<`, Shift = `>`, AltGr = `|`. This is opt-in
+and defaults to "no" because it's only correct on canonical Cyberbeest
+hardware: an ANSI-body (104-key) keyboard with German stickers/keymap
+applied, which physically lacks the ISO key between left Shift and Y that a
+real German keyboard has there. Accepting it on a real ISO/German keyboard,
+or different hardware, would remap Menu for no reason. Installed as
+`~/.local/bin/cyberbeest-menu-key-remap.sh` plus an autostart entry, so it
+reapplies (via `xmodmap`) on every Xfce login.
+
 ## Secure messengers (03-secure-messengers.sh)
 
 Installs the always-on set directly (not just made discoverable in GNOME

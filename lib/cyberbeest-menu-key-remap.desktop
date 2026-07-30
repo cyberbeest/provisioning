@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Cyberbeest Menu key remap (German <>| key)
+Comment=Remaps the Menu key to act as the German ISO "<>|" key, which canonical Cyberbeest hardware's ANSI-body keyboard physically lacks
+Exec=/home/cyberbeest/.local/bin/cyberbeest-menu-key-remap.sh
+NoDisplay=true
+OnlyShowIn=XFCE;
+X-XFCE-Autostart-Phase=Application
