@@ -13,6 +13,19 @@ row in the sidebar runs just that script (handy for debugging one step),
 regardless of whether it's already marked done. Only one run -- whole
 sequence or single script -- can be active at a time.
 
+Each script keeps its own log text (self.logs, keyed by script name, plus a
+"" bucket for messages not tied to any one script, like the zenity-install
+step). Single-clicking a row just selects it and shows its stored log --
+GtkListBox activates rows on a single click by default, which used to mean
+single-clicking accidentally started a run; activate-on-single-click is
+explicitly disabled so double-click is required for that, freeing up
+single-click to be a safe, non-disruptive "view this script's log" action,
+including while a run is active elsewhere. Selecting the row that's
+currently running resumes live-following it (self.follow_live); selecting
+any other row shows a frozen snapshot without interrupting or hiding the
+active run, which keeps updating that script's stored log in the
+background regardless of what's currently displayed.
+
 No batch-level xfce4-panel reload here (unlike run-all.sh/run-changed.sh):
 the only two scripts that touch panel config, 11-xfce-panel-plugins.sh and
 12-xfce-panel-layout.sh, already reload the panel themselves.
@@ -139,6 +152,10 @@ class RunGuiWindow(Gtk.Window):
         self.stop_requested = False
         self.rows = {}
         self.sudo_password = None
+        self.logs = {"": ""}
+        self.displayed_script = ""
+        self.currently_running_script = None
+        self.follow_live = True
 
         root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
         root.set_border_width(12)
@@ -174,7 +191,11 @@ class RunGuiWindow(Gtk.Window):
 
         self.listbox = Gtk.ListBox()
         self.listbox.set_selection_mode(Gtk.SelectionMode.SINGLE)
+        # Explicitly False: GtkListBox defaults to activating (i.e. running)
+        # a row on a single click, which is not what we want here.
+        self.listbox.set_activate_on_single_click(False)
         self.listbox.connect("row-activated", self.on_row_activated)
+        self.listbox.connect("row-selected", self.on_row_selected)
         sidebar_scroller.add(self.listbox)
 
         for script in list_scripts():
@@ -208,7 +229,7 @@ class RunGuiWindow(Gtk.Window):
         # zenity itself -- needed for the graphical askpass -- doesn't exist
         # yet: this needs a real terminal to prompt on, same assumption the
         # rest of this dev-only tool already makes about how it's launched.
-        self.append_log("zenity not found -- installing it (enter your sudo password in this terminal if asked)...\n")
+        self.append_log("", "zenity not found -- installing it (enter your sudo password in this terminal if asked)...\n")
         self.status_label.set_text("Installing zenity...")
         self._set_controls_busy(True)
         threading.Thread(target=self._install_zenity_worker, daemon=True).start()
@@ -224,19 +245,20 @@ class RunGuiWindow(Gtk.Window):
             start_new_session=True,
         )
         for line in proc.stdout:
-            GLib.idle_add(self.append_log, line)
+            GLib.idle_add(self.append_log, "", line)
         status = proc.wait()
         GLib.idle_add(self._on_zenity_installed, status)
 
     def _on_zenity_installed(self, status):
         self._set_controls_busy(False)
         if status == 0 and shutil.which("zenity"):
-            self.append_log("=== zenity installed ===\n")
+            self.append_log("", "=== zenity installed ===\n")
             self.status_label.set_text("Idle. Double-click a script below to run just that one.")
         else:
             self.append_log(
+                "",
                 f"=== failed to install zenity (exit {status}) -- install it manually "
-                "(sudo apt-get install zenity) and restart this tool ===\n"
+                "(sudo apt-get install zenity) and restart this tool ===\n",
             )
             self.status_label.set_text("zenity install failed -- see log above.")
             self.run_changed_button.set_sensitive(False)
@@ -245,11 +267,37 @@ class RunGuiWindow(Gtk.Window):
 
     # -- log helpers --------------------------------------------------
 
-    def append_log(self, text):
-        end = self.log_buffer.get_end_iter()
-        self.log_buffer.insert(end, text)
-        mark = self.log_buffer.create_mark(None, self.log_buffer.get_end_iter(), False)
-        self.log_view.scroll_to_mark(mark, 0.0, False, 0.0, 1.0)
+    def append_log(self, script, text):
+        self.logs[script] = self.logs.get(script, "") + text
+        if self.displayed_script == script:
+            end = self.log_buffer.get_end_iter()
+            self.log_buffer.insert(end, text)
+            mark = self.log_buffer.create_mark(None, self.log_buffer.get_end_iter(), False)
+            self.log_view.scroll_to_mark(mark, 0.0, False, 0.0, 1.0)
+
+    def show_log(self, script):
+        self.displayed_script = script
+        text = self.logs.get(script, "")
+        if not text and script:
+            text = f"{script} hasn't been run yet in this session. Double-click it to run.\n"
+        self.log_buffer.set_text(text)
+
+    def on_row_selected(self, _listbox, row):
+        if row is None:
+            return
+        self.show_log(row.script)
+        self.follow_live = row.script == self.currently_running_script
+
+    def _begin_script_display(self, script):
+        # Fresh log for this run of the script -- doesn't touch any other
+        # script's stored log, and doesn't disturb the view if the user has
+        # manually navigated away to look at something else.
+        self.logs[script] = ""
+        if self.follow_live:
+            self.show_log(script)
+            row = self.rows.get(script)
+            if row is not None:
+                self.listbox.select_row(row)
 
     def set_row_status(self, script, state):
         self.rows[script].set_status(state)
@@ -261,7 +309,10 @@ class RunGuiWindow(Gtk.Window):
         self.run_changed_button.set_sensitive(not busy)
         self.run_all_button.set_sensitive(not busy)
         self.stop_button.set_sensitive(busy)
-        self.listbox.set_sensitive(not busy)
+        # Deliberately NOT self.listbox.set_sensitive(not busy): the sidebar
+        # stays clickable during a run so scripts' logs can be inspected
+        # without interrupting it. on_row_activated's own busy check is what
+        # stops a second run from starting concurrently.
 
     def start_sequence(self, changed_only):
         if self.busy:
@@ -281,7 +332,10 @@ class RunGuiWindow(Gtk.Window):
 
     def _start_run(self, scripts, label):
         self.stop_requested = False
-        self.log_buffer.set_text("")
+        self.follow_live = True
+        self.logs[""] = ""
+        if self.displayed_script == "":
+            self.log_buffer.set_text("")
         self.status_label.set_text(f"{label}: starting (enter sudo password if prompted)...")
         self._set_controls_busy(True)
         threading.Thread(target=self._worker, args=(scripts,), daemon=True).start()
@@ -323,7 +377,7 @@ class RunGuiWindow(Gtk.Window):
         )
         self.proc = proc
         for line in proc.stdout:
-            GLib.idle_add(self.append_log, line)
+            GLib.idle_add(self.append_log, script, line)
         status = proc.wait()
         self.proc = None
         return status
@@ -331,6 +385,7 @@ class RunGuiWindow(Gtk.Window):
     def _run_in_terminal(self, script):
         GLib.idle_add(
             self.append_log,
+            script,
             f"=== opening {script} in a terminal window (needs an interactive TTY) -- "
             "complete it there ===\n",
         )
@@ -377,21 +432,23 @@ class RunGuiWindow(Gtk.Window):
         while remaining:
             if self.stop_requested:
                 stopped = True
-                GLib.idle_add(self.append_log, f"=== stop requested: skipping {len(remaining)} remaining script(s) ===\n")
+                GLib.idle_add(self.append_log, "", f"=== stop requested: skipping {len(remaining)} remaining script(s) ===\n")
                 break
 
             script = remaining.pop(0)
+            self.currently_running_script = script
+            GLib.idle_add(self._begin_script_display, script)
             GLib.idle_add(self.set_row_status, script, "running")
             GLib.idle_add(self.status_label.set_text, f"Running: {script}")
 
             if script in NEEDS_TERMINAL:
                 status = self._run_in_terminal(script)
             else:
-                GLib.idle_add(self.append_log, f"=== running {script} ===\n")
+                GLib.idle_add(self.append_log, script, f"=== running {script} ===\n")
                 status = self._run_piped(script)
 
             if status == 0:
-                GLib.idle_add(self.append_log, f"=== {script} done ===\n")
+                GLib.idle_add(self.append_log, script, f"=== {script} done ===\n")
                 GLib.idle_add(self.set_row_status, script, "done")
             else:
                 failed_script = script
@@ -400,15 +457,17 @@ class RunGuiWindow(Gtk.Window):
                 # next run than to keep feeding sudo something that doesn't
                 # work.
                 self.sudo_password = None
-                GLib.idle_add(self.append_log, f"=== {script} FAILED (exit {status}) ===\n")
+                GLib.idle_add(self.append_log, script, f"=== {script} FAILED (exit {status}) ===\n")
                 GLib.idle_add(self.set_row_status, script, "failed")
                 if remaining:
                     GLib.idle_add(
                         self.append_log,
+                        script,
                         "Stopping here since later scripts may depend on this one.\n",
                     )
                 break
 
+        self.currently_running_script = None
         GLib.idle_add(self._on_finished, stopped, failed_script)
 
     def _on_finished(self, stopped, failed_script):
@@ -429,8 +488,8 @@ class RunGuiWindow(Gtk.Window):
 
     def on_destroy(self, _window):
         if self.proc is not None and self.proc.poll() is None:
-            self.append_log("\n[run-gui.py] window closed while a run was active -- ")
-            self.append_log("leaving the root process running; check a terminal with `ps` if unsure.\n")
+            self.append_log(self.currently_running_script or "", "\n[run-gui.py] window closed while a run was active -- ")
+            self.append_log(self.currently_running_script or "", "leaving the root process running; check a terminal with `ps` if unsure.\n")
         Gtk.main_quit()
 
 
