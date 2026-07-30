@@ -343,11 +343,30 @@ def main():
     # (it needs a GdkWindow to anchor to). Anchor to the root window instead,
     # at the actual pointer position.
     display = Gdk.Display.get_default()
-    pointer = display.get_default_seat().get_pointer()
+    seat = display.get_default_seat()
+    pointer = seat.get_pointer()
     screen, px, py = pointer.get_position()
     rect = Gdk.Rectangle()
     rect.x, rect.y, rect.width, rect.height = px, py, 1, 1
-    menu.popup_at_rect(screen.get_root_window(), rect, Gdk.Gravity.NORTH_WEST, Gdk.Gravity.NORTH_WEST, None)
+
+    # popup_at_rect(..., None) makes GTK log "no trigger event for menu
+    # popup" (gtkmenu.c wants an event to pick the grab device from) --
+    # harmless, but noisy in whatever terminal happens to be focused.
+    # Synthesizing a button-press event for the current pointer/device
+    # gives it something to grab from instead.
+    trigger_event = Gdk.Event.new(Gdk.EventType.BUTTON_PRESS)
+    trigger_event.button.window = screen.get_root_window()
+    trigger_event.button.device = seat.get_pointer()
+    trigger_event.button.x = float(px)
+    trigger_event.button.y = float(py)
+    trigger_event.button.x_root = float(px)
+    trigger_event.button.y_root = float(py)
+    trigger_event.button.time = Gdk.CURRENT_TIME
+    trigger_event.button.button = 1
+
+    menu.popup_at_rect(
+        screen.get_root_window(), rect, Gdk.Gravity.NORTH_WEST, Gdk.Gravity.NORTH_WEST, trigger_event
+    )
 
     Gtk.main()
 

@@ -36,6 +36,12 @@
  * (anchored at plugin start / last status change) up to avg_minutes. */
 #define MIN_WINDOW_SPAN_S 20
 
+/* Don't switch to the long-term average until at least this fraction of
+ * the configured averaging window has elapsed -- with only a few seconds
+ * of data, a single quantization step in energy_now can produce wildly
+ * wrong watt/remaining-time readings (e.g. 50W, 0:30 remaining). */
+#define MIN_WINDOW_FRACTION 0.5
+
 typedef enum {
     BATT_DISCHARGING,
     BATT_CHARGING,
@@ -153,7 +159,9 @@ watt_update_label(WattPlugin *wp)
     const WattSample *start = watt_find_window_start(wp, now_s, status);
     if (start) {
         span_s = now_s - start->time_s;
-        if (span_s >= MIN_WINDOW_SPAN_S) {
+        gint64 min_span_s = MAX(MIN_WINDOW_SPAN_S,
+                                 (gint64) (wp->avg_minutes * 60 * MIN_WINDOW_FRACTION));
+        if (span_s >= min_span_s) {
             gdouble diff_uwh = fabs(start->energy_uwh - energy_uwh);
             /* energy_now on some hardware only updates every 15-60s; if it
              * hasn't ticked over yet within our window, a zero diff would
