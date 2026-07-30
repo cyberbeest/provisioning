@@ -262,6 +262,10 @@ def add_lock_delay_section(menu):
             if not item.get_active():
                 return
             set_idle_delay_minutes(preset)
+            # set_idle_delay_minutes doesn't touch power-settings.conf, so it
+            # can't go through write_settings()'s refresh -- but the warning
+            # icon depends on this value too, so it needs the same nudge.
+            subprocess.Popen(["xfce4-panel", f"--plugin-event={GENMON_WIDGET_NAME}:refresh:bool:true"])
             Gtk.main_quit()
 
         item.connect("toggled", on_toggled)
