@@ -29,6 +29,17 @@ xfce4-terminal (e.g. the one run-gui.py itself was launched from) and exit
 immediately -- no window appears and we stop "blocking" before the command
 even starts. xterm has no such client/server model, so it can't do that.
 
+xterm also doesn't reliably propagate the wrapped command's own exit status
+as its own -- it exits 0 on normal termination regardless of how the command
+inside it fared -- so _run_in_terminal captures the real exit code to a temp
+file from inside the shell instead of trusting xterm's proc.returncode.
+
+Requires zenity (for the graphical sudo prompt). On a brand new machine that
+hasn't run any NN-*.sh script yet, zenity may not be installed at all (it's
+only pulled in as a side effect of 04-software-launch-warning.sh) -- checked
+for at startup so that shows up as a clear message instead of every sudo
+call silently failing with "no password was provided".
+
 Every script subprocess gets stdin=DEVNULL and start_new_session=True: without
 those, a script inherits run-gui.py's own stdin/process group -- i.e. the
 terminal it was launched from, if any -- and a subprocess still alive when
@@ -41,7 +52,9 @@ lib/i18n.py.
 """
 import glob
 import os
+import shutil
 import subprocess
+import tempfile
 import threading
 
 import gi
@@ -166,6 +179,18 @@ class RunGuiWindow(Gtk.Window):
 
         self.show_all()
 
+        if shutil.which("zenity") is None:
+            self.append_log(
+                "zenity is not installed -- the graphical sudo prompt this tool relies on "
+                "can't work without it.\nOn a brand new machine it isn't pulled in until "
+                "04-software-launch-warning.sh runs, so install it manually first:\n"
+                "    sudo apt-get install zenity\nthen restart this tool.\n"
+            )
+            self.status_label.set_text("zenity missing -- see log below.")
+            self.run_changed_button.set_sensitive(False)
+            self.run_all_button.set_sensitive(False)
+            self.listbox.set_sensitive(False)
+
     # -- log helpers --------------------------------------------------
 
     def append_log(self, text):
@@ -241,17 +266,38 @@ class RunGuiWindow(Gtk.Window):
             f"=== opening {script} in a terminal window (needs an interactive TTY) -- "
             "complete it there ===\n",
         )
-        proc = subprocess.Popen(
-            ["xterm", "-T", script, "-e", "sudo", "-A", "-p", "", "bash", script],
-            cwd=DIR,
-            env=self._sudo_env(),
-            stdin=subprocess.DEVNULL,
-            start_new_session=True,
-        )
-        self.proc = proc
-        status = proc.wait()
-        self.proc = None
-        return status
+        # xterm doesn't reliably propagate the wrapped command's exit status as
+        # its own (it exits 0 on normal termination regardless of how the
+        # command inside fared), so its own proc.returncode can't be trusted --
+        # capture the real exit code to a file from inside the shell instead.
+        fd, exit_file = tempfile.mkstemp(prefix="run-gui-exit-")
+        os.close(fd)
+        env = self._sudo_env()
+        env["EXITFILE"] = exit_file
+        try:
+            proc = subprocess.Popen(
+                [
+                    "xterm", "-T", script, "-e", "bash", "-c",
+                    'status=0; "$@" || status=$?; echo "$status" > "$EXITFILE"',
+                    "_", "sudo", "-A", "-p", "", "bash", script,
+                ],
+                cwd=DIR,
+                env=env,
+                stdin=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+            self.proc = proc
+            proc.wait()
+            self.proc = None
+            try:
+                return int(open(exit_file).read().strip())
+            except (OSError, ValueError):
+                return 1
+        finally:
+            try:
+                os.remove(exit_file)
+            except OSError:
+                pass
 
     # -- worker thread --------------------------------------------------
 
