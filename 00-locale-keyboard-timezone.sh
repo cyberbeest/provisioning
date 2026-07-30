@@ -54,7 +54,7 @@ if [ ! -t 0 ]; then
 	exit 0
 fi
 
-apt-get -o DPkg::Lock::Timeout=60 install -y whiptail locales keyboard-configuration tzdata console-setup
+apt-get -o DPkg::Lock::Timeout=60 install -y whiptail locales keyboard-configuration tzdata console-setup x11-xkb-utils
 
 echo "=== $(date) : configuring locale/keyboard/timezone ===" | tee "$LOG"
 
