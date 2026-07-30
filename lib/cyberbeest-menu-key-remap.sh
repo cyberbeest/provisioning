@@ -5,4 +5,4 @@
 # between left Shift and Y (keycode 94, normally < / > / |) doesn't exist.
 # Menu key: plain = <, Shift = >, AltGr = |. Installed by
 # 00-locale-keyboard-timezone.sh, opt-in, only offered for German keyboard.
-xmodmap -e "keycode 135 = less greater less greater bar dead_belowmacron bar" 2>/dev/null
+xmodmap -e "keycode 135 = less greater bar dead_belowmacron" 2>/dev/null
