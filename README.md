@@ -87,6 +87,15 @@ sudo cyberbeest-record-initial-password master '<the value you just set it to>' 
 sudo cyberbeest-record-initial-password short '<the value you just set it to>' weak
 ```
 
+## Cyberbeest Package Manager (22-i2p-package-manager.sh)
+
+Installs the Cyberbeest Package Manager GUI, a Whisker-menu app for
+opt-in installs that are more involved than a plain `apt install`.
+Currently one entry: I2P (i2pd) + qBittorrent, which also sets up a
+dedicated, Alpenglow-themed Firefox profile proxied through i2pd for
+eepsite browsing and enables qBittorrent's I2P/SAM support -- none of
+which is installed or enabled by default, only when checked in the app.
+
 For a shipped unit, generate a real per-device passphrase instead (e.g. via
 the change-password GUI's own "Generate" button), put it on a sticker, and
 record it tagged `secure` rather than `weak` — that's what lets the nag
