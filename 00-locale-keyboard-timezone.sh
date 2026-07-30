@@ -171,6 +171,14 @@ EOF
 dpkg-reconfigure -f noninteractive keyboard-configuration
 setupcon || true
 
+# keyboard-configuration's own package scripts never call update-initramfs
+# themselves (confirmed by grepping its postinst/config for "initramfs" --
+# nothing), so without this the LUKS unlock prompt keeps using whatever
+# keymap was baked in at image-build time regardless of the layout chosen
+# above.
+echo "--- Updating initramfs (keyboard layout for the LUKS unlock prompt) ---"
+update-initramfs -u -k all
+
 if [ "$MENU_KEY_REMAP" = "yes" ]; then
 	echo "--- Installing Menu key remap (German <>| key) ---"
 	TARGET_USER="${SUDO_USER:-cyberbeest}"
