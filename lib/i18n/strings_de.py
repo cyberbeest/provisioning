@@ -82,7 +82,7 @@ STRINGS = {
     "pw.too_short": "Das neue Passwort sollte mindestens {min_length} Zeichen lang sein.",
     "pw.waiting_auth": "Warte auf Authentifizierung…",
     "pw.confirm_written_title": "HAST DU ES WIRKLICH AUFGESCHRIEBEN ODER DIR GEMERKT?",
-    "pw.confirm_written_secondary": "Dein Cyberbeest-{title}-Passwort lautet: {password}",
+    "pw.confirm_written_secondary": "Dein Cyberbeest-{title} lautet: {password}",
     "pw.success": "Das Passwort wurde erfolgreich geändert.",
     "pw.auth_cancelled": "Die Authentifizierung wurde abgebrochen, das Passwort wurde daher nicht geändert.",
     "pw.wrong_current": "Das eingegebene aktuelle Passwort war nicht korrekt.",

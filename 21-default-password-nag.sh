@@ -41,8 +41,10 @@ apt-get -o DPkg::Lock::Timeout=60 update -qq
 # password's /etc/shadow hash; legacycrypt is the upstream-recommended,
 # still crypt(3)-backed replacement (correctly handles yescrypt, Debian
 # 12+'s default). cryptsetup: normally already present on an encrypted
-# install, but installed defensively here too.
-apt-get -o DPkg::Lock::Timeout=60 install -y python3-gi gir1.2-gtk-3.0 python3-legacycrypt cryptsetup
+# install, but installed defensively here too. pkexec: disk_password_gui.py
+# shells out to it to run cryptsetup as root, but Debian trixie split it out
+# of polkitd into its own package, so it's no longer guaranteed present.
+apt-get -o DPkg::Lock::Timeout=60 install -y python3-gi gir1.2-gtk-3.0 python3-legacycrypt cryptsetup pkexec
 
 echo "--- Installing cyberbeest-change-password (disk_password_gui.py) ---"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.local/bin"
