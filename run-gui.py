@@ -17,6 +17,13 @@ No batch-level xfce4-panel reload here (unlike run-all.sh/run-changed.sh):
 the only two scripts that touch panel config, 11-xfce-panel-plugins.sh and
 12-xfce-panel-layout.sh, already reload the panel themselves.
 
+Scripts in NEEDS_TERMINAL (currently just 00-locale-keyboard-timezone.sh)
+use whiptail, which needs a real controlling terminal to draw its menus --
+piping its stdout/stderr into our log view like every other script breaks
+that. Those are instead opened in a standalone xfce4-terminal window (still
+elevated via the same graphical sudo prompt) and we block until it closes,
+rather than streaming their output into the shared log pane.
+
 Dev tool only (not shipped to end users), so unlike lib/*.py it doesn't use
 lib/i18n.py.
 """
@@ -32,6 +39,8 @@ from gi.repository import GLib, Gtk, Pango
 
 DIR = os.path.dirname(os.path.realpath(__file__))
 ASKPASS = os.path.join(DIR, "lib", "zenity-askpass.sh")
+
+NEEDS_TERMINAL = {"00-locale-keyboard-timezone.sh"}
 
 STATUS_STYLE = {
     "pending": ("pending", "#8a8a8a"),
@@ -188,6 +197,46 @@ class RunGuiWindow(Gtk.Window):
         self._set_controls_busy(True)
         threading.Thread(target=self._worker, args=(scripts,), daemon=True).start()
 
+    # -- running a single script --------------------------------------------------
+
+    def _sudo_env(self):
+        env = dict(os.environ)
+        env["SUDO_ASKPASS"] = ASKPASS
+        return env
+
+    def _run_piped(self, script):
+        proc = subprocess.Popen(
+            ["sudo", "-A", "-p", "", "bash", script],
+            cwd=DIR,
+            env=self._sudo_env(),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+        )
+        self.proc = proc
+        for line in proc.stdout:
+            GLib.idle_add(self.append_log, line)
+        status = proc.wait()
+        self.proc = None
+        return status
+
+    def _run_in_terminal(self, script):
+        GLib.idle_add(
+            self.append_log,
+            f"=== opening {script} in a terminal window (needs an interactive TTY) -- "
+            "complete it there ===\n",
+        )
+        proc = subprocess.Popen(
+            ["xfce4-terminal", "--disable-server", "-x", "sudo", "-A", "-p", "", "bash", script],
+            cwd=DIR,
+            env=self._sudo_env(),
+        )
+        self.proc = proc
+        status = proc.wait()
+        self.proc = None
+        return status
+
     # -- worker thread --------------------------------------------------
 
     def _worker(self, scripts):
@@ -204,24 +253,12 @@ class RunGuiWindow(Gtk.Window):
             script = remaining.pop(0)
             GLib.idle_add(self.set_row_status, script, "running")
             GLib.idle_add(self.status_label.set_text, f"Running: {script}")
-            GLib.idle_add(self.append_log, f"=== running {script} ===\n")
 
-            env = dict(os.environ)
-            env["SUDO_ASKPASS"] = ASKPASS
-            proc = subprocess.Popen(
-                ["sudo", "-A", "-p", "", "bash", script],
-                cwd=DIR,
-                env=env,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                bufsize=1,
-            )
-            self.proc = proc
-            for line in proc.stdout:
-                GLib.idle_add(self.append_log, line)
-            status = proc.wait()
-            self.proc = None
+            if script in NEEDS_TERMINAL:
+                status = self._run_in_terminal(script)
+            else:
+                GLib.idle_add(self.append_log, f"=== running {script} ===\n")
+                status = self._run_piped(script)
 
             if status == 0:
                 GLib.idle_add(self.append_log, f"=== {script} done ===\n")
