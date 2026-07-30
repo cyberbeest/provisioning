@@ -184,10 +184,10 @@ class RunGuiWindow(Gtk.Window):
         paned.set_position(300)
         root.pack_start(paned, True, True, 0)
 
-        sidebar_scroller = Gtk.ScrolledWindow()
-        sidebar_scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
-        sidebar_scroller.set_size_request(280, -1)
-        paned.pack1(sidebar_scroller, False, False)
+        self.sidebar_scroller = Gtk.ScrolledWindow()
+        self.sidebar_scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        self.sidebar_scroller.set_size_request(280, -1)
+        paned.pack1(self.sidebar_scroller, False, False)
 
         self.listbox = Gtk.ListBox()
         self.listbox.set_selection_mode(Gtk.SelectionMode.SINGLE)
@@ -196,7 +196,7 @@ class RunGuiWindow(Gtk.Window):
         self.listbox.set_activate_on_single_click(False)
         self.listbox.connect("row-activated", self.on_row_activated)
         self.listbox.connect("row-selected", self.on_row_selected)
-        sidebar_scroller.add(self.listbox)
+        self.sidebar_scroller.add(self.listbox)
 
         for script in list_scripts():
             row = ScriptRow(script)
@@ -270,10 +270,17 @@ class RunGuiWindow(Gtk.Window):
     def append_log(self, script, text):
         self.logs[script] = self.logs.get(script, "") + text
         if self.displayed_script == script:
+            # Full resync rather than inserting just `text` at the end: the
+            # buffer may currently be showing show_log's synthetic "hasn't
+            # been run yet" placeholder rather than a true prefix of
+            # self.logs[script] (e.g. right as a script starts), and blindly
+            # appending onto that would leave the placeholder line stuck at
+            # the top instead of being replaced by real output. These logs
+            # are small enough (single provisioning scripts) that resetting
+            # the whole buffer every line is not a real perf concern.
+            self.log_buffer.set_text(self.logs[script])
             end = self.log_buffer.get_end_iter()
-            self.log_buffer.insert(end, text)
-            mark = self.log_buffer.create_mark(None, self.log_buffer.get_end_iter(), False)
-            self.log_view.scroll_to_mark(mark, 0.0, False, 0.0, 1.0)
+            self.log_view.scroll_to_iter(end, 0.0, False, 0.0, 0.0)
 
     def show_log(self, script):
         self.displayed_script = script
@@ -298,6 +305,22 @@ class RunGuiWindow(Gtk.Window):
             row = self.rows.get(script)
             if row is not None:
                 self.listbox.select_row(row)
+                self._scroll_sidebar_to(row)
+
+    def _scroll_sidebar_to(self, row):
+        # Keeps the running script visible as a batch run works through the
+        # list, positioned about a quarter of the way down the sidebar
+        # rather than flush with the top or bottom -- so a few scripts still
+        # to come are already visible below it instead of only appearing
+        # once they're about to run.
+        alloc = row.get_allocation()
+        if alloc.height <= 0:
+            return
+        adj = self.sidebar_scroller.get_vadjustment()
+        page_size = adj.get_page_size()
+        target = alloc.y - page_size * 0.25
+        target = max(0.0, min(target, max(0.0, adj.get_upper() - page_size)))
+        adj.set_value(target)
 
     def set_row_status(self, script, state):
         self.rows[script].set_status(state)
