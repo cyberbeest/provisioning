@@ -113,19 +113,28 @@ watt_prune_history(WattPlugin *wp, gint64 now_s)
         g_array_remove_range(wp->history, 0, drop);
 }
 
-/* Oldest sample within the averaging window whose status matches
- * `status` (a status change, e.g. unplugging, invalidates older
- * samples for this purpose). NULL if none found. */
+/* Oldest sample within the averaging window belonging to the current,
+ * unbroken run of `status` -- a status change (e.g. plugging into AC,
+ * or unplugging again) resets the average, even if older samples with
+ * a matching status are still sitting further back in the history
+ * buffer (which retains up to 2x the averaging window). Walking from
+ * the newest sample backwards and stopping at the first mismatch is
+ * what enforces that contiguity; a plain "oldest sample anywhere in
+ * the window with this status" scan would wrongly straddle the gap
+ * and blend pre-AC and post-AC energy readings into one average. NULL
+ * if there is no history yet. */
 static const WattSample *
 watt_find_window_start(WattPlugin *wp, gint64 now_s, BattStatus status)
 {
     gint64 cutoff = now_s - (gint64) wp->avg_minutes * 60;
-    for (guint i = 0; i < wp->history->len; i++) {
-        const WattSample *s = &g_array_index(wp->history, WattSample, i);
-        if (s->time_s >= cutoff && s->status == status)
-            return s;
+    const WattSample *start = NULL;
+    for (guint i = wp->history->len; i > 0; i--) {
+        const WattSample *s = &g_array_index(wp->history, WattSample, i - 1);
+        if (s->status != status || s->time_s < cutoff)
+            break;
+        start = s;
     }
-    return NULL;
+    return start;
 }
 
 static void
