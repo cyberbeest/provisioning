@@ -143,7 +143,11 @@ elif [ "$phase" = checking ]; then
     fi
 elif [ "$reboot_pending" = true ]; then
     img="$ICON_REBOOT"
-    tool="A security update was installed and needs a restart to take effect.&#10;Please reboot when you get a chance."
+    reboot_pkgs=""
+    [ -r /var/run/reboot-required.pkgs ] && reboot_pkgs="$(paste -sd, /var/run/reboot-required.pkgs)"
+    tool="A security update was installed and needs a restart to take effect."
+    [ -n "$reboot_pkgs" ] && tool="${tool}&#10;Triggered by: ${reboot_pkgs}"
+    tool="${tool}&#10;Please reboot when you get a chance."
 elif [ "$last_check_result" = network-error ]; then
     img="$ICON_NETWORK_ERROR"
     tool="Last security check failed: no network connection."
