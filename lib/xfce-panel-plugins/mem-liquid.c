@@ -5,7 +5,10 @@
  * a crash, it isn't "memory" in the sense a user cares about at a
  * glance), but swap is surfaced in the tooltip since it's still useful
  * context. If RAM itself is full, the tank reads 100% regardless of how
- * much swap is left.
+ * much swap is left. Root filesystem usage is surfaced in the tooltip
+ * too (the panel is too crowded for a second tank), and the exclamation
+ * mark also fires when disk usage crosses DISK_WARNING_LEVEL, not just
+ * on RAM contention.
  *
  * Built as an "external" plugin (X-XFCE-Internal=FALSE in the .desktop
  * file), same convention as kitt-scanner and wattage-panel, so a crash
@@ -22,6 +25,7 @@
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/statvfs.h>
 
 #define MEM_SAMPLE_MS 2000        /* how often to read /proc/meminfo */
 #define SCREEN_CHECK_INTERVAL_S 2 /* how often to poll for screen lock / display standby */
@@ -47,6 +51,9 @@
 
 #define WARNING_LEVEL 0.80    /* RAM fraction at/above which we flag contention */
 #define WARNING_PULSE_SPEED 4.2 /* rad/s -- a slow, deliberate blink, not a strobe */
+
+#define DISK_PATH "/"
+#define DISK_WARNING_LEVEL 0.80 /* disk fraction at/above which we flag low free space */
 
 static const gdouble BUBBLE_X_FRAC[NUM_BUBBLES]   = { 0.16, 0.34, 0.52, 0.71, 0.86, 0.26 };
 static const gdouble BUBBLE_SPEED[NUM_BUBBLES]     = { 0.055, 0.041, 0.067, 0.048, 0.061, 0.073 };
@@ -81,6 +88,10 @@ typedef struct {
     gdouble swap_frac;     /* most recent swap-used fraction, 0..1 (0 if no swap) */
     gulong mem_total_kib;
     gulong mem_used_kib;
+
+    gdouble disk_frac;     /* most recent disk-used fraction of DISK_PATH, 0..1 */
+    guint64 disk_total_bytes;
+    guint64 disk_used_bytes;
 
     gdouble wave_phase1;
     gdouble wave_phase2;
@@ -144,11 +155,28 @@ sample_memory(MemPlugin *mp)
     return TRUE;
 }
 
+static void
+sample_disk(MemPlugin *mp)
+{
+    struct statvfs st;
+    if (statvfs(DISK_PATH, &st) != 0 || st.f_blocks == 0)
+        return;
+
+    guint64 total = (guint64) st.f_blocks * st.f_frsize;
+    guint64 avail = (guint64) st.f_bavail * st.f_frsize;
+    guint64 used = total > avail ? total - avail : 0;
+
+    mp->disk_frac = CLAMP((gdouble) used / (gdouble) total, 0.0, 1.0);
+    mp->disk_total_bytes = total;
+    mp->disk_used_bytes = used;
+}
+
 static gboolean
 on_sample(gpointer user_data)
 {
     MemPlugin *mp = user_data;
     sample_memory(mp);
+    sample_disk(mp);
     gtk_widget_queue_draw(mp->area); /* keep the level current even while animation is frozen */
     return G_SOURCE_CONTINUE;
 }
@@ -174,17 +202,31 @@ on_query_tooltip(GtkWidget *widget, gint x, gint y, gboolean keyboard_mode,
 {
     (void) widget; (void) x; (void) y; (void) keyboard_mode;
     MemPlugin *mp = user_data;
-    gchar buf[220];
+    gchar buf[320];
     gdouble used_gib = mp->mem_used_kib / 1048576.0;
     gdouble total_gib = mp->mem_total_kib / 1048576.0;
+    gdouble disk_used_gib = mp->disk_used_bytes / 1073741824.0;
+    gdouble disk_total_gib = mp->disk_total_bytes / 1073741824.0;
 
     gint n = g_snprintf(buf, sizeof(buf), "RAM: %.0f%% used (%.1f / %.1f GiB)",
                          mp->target_level * 100.0, used_gib, total_gib);
     if (mp->swap_frac > 0.005)
         n += g_snprintf(buf + n, sizeof(buf) - n, "\nSwap: %.0f%% used", mp->swap_frac * 100.0);
-    if (mp->target_level >= WARNING_LEVEL)
+    if (mp->disk_total_bytes > 0)
+        n += g_snprintf(buf + n, sizeof(buf) - n, "\nDisk: %.0f%% used (%.1f / %.1f GiB)",
+                         mp->disk_frac * 100.0, disk_used_gib, disk_total_gib);
+
+    gboolean mem_warning = mp->target_level >= WARNING_LEVEL;
+    gboolean disk_warning = mp->disk_frac >= DISK_WARNING_LEVEL;
+    if (mem_warning && disk_warning)
+        g_snprintf(buf + n, sizeof(buf) - n,
+                   "\n\xE2\x9A\xA0 Memory contention and disk space are both tight");
+    else if (mem_warning)
         g_snprintf(buf + n, sizeof(buf) - n,
                    "\n\xE2\x9A\xA0 Memory contention -- consider closing some programs");
+    else if (disk_warning)
+        g_snprintf(buf + n, sizeof(buf) - n,
+                   "\n\xE2\x9A\xA0 Disk space low -- consider freeing some up");
     else
         g_snprintf(buf + n, sizeof(buf) - n, "\n%s", mem_status_text(mp->target_level));
 
@@ -359,7 +401,7 @@ on_draw(GtkWidget *widget, cairo_t *cr, gpointer user_data)
     cairo_set_line_width(cr, MAX(1.0, lay.h * 0.02));
     cairo_stroke(cr);
 
-    gboolean warning = mp->level >= WARNING_LEVEL;
+    gboolean warning = mp->level >= WARNING_LEVEL || mp->disk_frac >= DISK_WARNING_LEVEL;
 
     cairo_save(cr);
     rounded_rect(cr, lay.x, lay.y, lay.w, lay.h, lay.r);
@@ -705,6 +747,7 @@ mem_construct(XfcePanelPlugin *plugin)
     xfce_panel_plugin_add_action_widget(plugin, mp->area);
 
     sample_memory(mp);
+    sample_disk(mp);
     mp->level = mp->target_level; /* start full rather than animating up from empty */
     mp->sample_id = g_timeout_add(MEM_SAMPLE_MS, on_sample, mp);
 
