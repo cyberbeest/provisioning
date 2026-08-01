@@ -210,7 +210,7 @@ PASSWORD_TYPES = {
         "description": t("pw.master_desc"),
         "requires_current": True,
         "change": lambda old, new: change_luks_passphrase(DEVICE, 0, old, new),
-        "word_count": 4,
+        "word_count": 3,
         "min_length": 12,
     },
     "short": {
