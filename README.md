@@ -3,6 +3,12 @@
 This directory holds the scripts used to build the end-user image from a stock
 install.
 
+## License
+
+Licensed under the [PolyForm Shield License 1.0.0](LICENSE) — free to read,
+run, and use for self-provisioning your own machine, but not to build a
+competing product or service on top of.
+
 ## Pattern
 
 Each script:
