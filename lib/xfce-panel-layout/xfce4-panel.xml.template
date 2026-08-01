@@ -27,6 +27,7 @@
         <value type="int" value="14"/>
         <value type="int" value="15"/>
         <value type="int" value="16"/>
+        <value type="int" value="17"/>
       </property>
     </property>
   </property>
@@ -73,6 +74,9 @@
     <property name="plugin-14" type="string" value="kitt-scanner"/>
     <property name="plugin-15" type="string" value="mem-liquid"/>
     <property name="plugin-16" type="string" value="genmon"/>
+    <property name="plugin-17" type="string" value="pulseaudio">
+      <property name="enable-keyboard-shortcuts" type="bool" value="true"/>
+    </property>
     <property name="notes" type="empty">
       <property name="global" type="empty">
         <property name="version" type="string" value="1.11.1"/>

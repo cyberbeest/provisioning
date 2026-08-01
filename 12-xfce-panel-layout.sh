@@ -7,9 +7,11 @@
 # shutdown-timer-menu.py -- which also has the Lock/Restart/Shut Down
 # actions from 09-cyberbeest-logout-dialog.sh's cyberbeest-logout, so there's
 # no separate standalone Power launcher pinned to the panel any more), the
-# power manager plugin, and a terminal launcher. The Cyberbeest Power
-# Settings GUI isn't pinned to the panel either -- it shows up in Whisker's
-# Settings category instead.
+# power manager plugin, a terminal launcher, and a pulseaudio volume
+# plugin (its icon overridden with a padded version so it doesn't dominate
+# the panel visually -- see the icons-adwaita-symbolic-status install
+# below). The Cyberbeest Power Settings GUI isn't pinned to the panel
+# either -- it shows up in Whisker's Settings category instead.
 # Depends on: 07-security-update-timer.sh, 08-cyberbeest-power-settings.sh,
 # 09-cyberbeest-logout-dialog.sh, 10-browser-sandbox.sh,
 # 11-xfce-panel-plugins.sh.
@@ -29,10 +31,10 @@ TARGET_USER="${SUDO_USER:-cyberbeest}"
 TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
 LAYOUT="$DIR/lib/xfce-panel-layout"
 
-echo "--- Installing whiskermenu, genmon and power-manager panel plugins ---"
+echo "--- Installing whiskermenu, genmon, power-manager and pulseaudio panel plugins ---"
 apt-get -o DPkg::Lock::Timeout=60 update -qq
 apt-get -o DPkg::Lock::Timeout=60 install -y xfce4-whiskermenu-plugin xfce4-genmon-plugin \
-	xfce4-power-manager xfce4-power-manager-plugins
+	xfce4-power-manager xfce4-power-manager-plugins xfce4-pulseaudio-plugin
 
 echo "--- Installing genmon script + icons ---"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.local/bin"
@@ -58,6 +60,18 @@ install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 \
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/Pictures"
 install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 \
 	"$DIR/lib/assets/Cyberbeest-panel-icon.png" "$TARGET_HOME/Pictures/Cyberbeest-panel-icon.png"
+
+# The pulseaudio plugin's volume icon comes from Adwaita (not hicolor --
+# Tango, the active GTK icon theme, inherits from Adwaita before falling
+# back to hicolor), and at full size it's a solid, bold glyph that draws
+# the eye far more than the rest of the panel. These are the same Adwaita
+# SVGs padded into a larger canvas so the artwork renders smaller with a
+# visible margin, at any requested icon size.
+echo "--- Installing padded volume/mic icon overrides ---"
+install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.local/share/icons/Adwaita/symbolic/status"
+install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 \
+	"$DIR"/lib/assets/icons-adwaita-symbolic-status/*.svg \
+	"$TARGET_HOME/.local/share/icons/Adwaita/symbolic/status/"
 
 echo "--- Writing genmon-11.rc, kitt-scanner-14.rc, mem-liquid-15.rc, genmon-16.rc ---"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.config/xfce4/panel"
