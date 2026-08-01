@@ -102,4 +102,22 @@ STRINGS = {
     "nag.remind_later": "Remind me later",
     "nag.change_now": "Change {title} now",
     "nag.keep": "Keep {title}",
+
+    "panelcolor.window_title": "Cyberbeest Panel Color",
+    "panelcolor.heading": "Panel color",
+    "panelcolor.info": (
+        "Sets the panel background and keeps the KITT scanner LED strip's "
+        "margin color matching it."
+    ),
+    "panelcolor.warning": (
+        "Note: the KITT scanner strip may take up to a minute to catch up, "
+        "for technical reasons."
+    ),
+    "panelcolor.custom": "Custom:",
+    "panelcolor.applied": "Applied.",
+    "panelcolor.preset_theme_default": "Theme default",
+    "panelcolor.preset_slate_blue": "Slate blue",
+    "panelcolor.preset_forest_green": "Forest green",
+    "panelcolor.preset_warm_amber": "Warm amber",
+    "panelcolor.preset_charcoal": "Charcoal",
 }
