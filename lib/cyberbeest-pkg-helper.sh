@@ -19,6 +19,14 @@
 #                                             install-deb-url check, since
 #                                             Viber has no repo to piggyback
 #                                             updates on)
+#   cyberbeest-pkg-helper.sh setup-i2pd-toggle       (scoped NOPASSWD sudoers
+#                                             rule + disables i2pd boot
+#                                             autostart, for the on-demand
+#                                             start/stop toggle -- see
+#                                             lib/setup_i2p_extras.py for the
+#                                             unprivileged half)
+#   cyberbeest-pkg-helper.sh teardown-i2pd-toggle    (removes that sudoers
+#                                             rule, run when I2P is unchecked)
 #   cyberbeest-pkg-helper.sh batch          (reads one step per line on stdin,
 #                                             e.g. "install telegram-desktop";
 #                                             lets a whole queue run under a
@@ -113,6 +121,41 @@ do_install_deb_url() {
     log "Installed from $url"
 }
 
+do_setup_i2pd_toggle() {
+    log "Setting up i2pd on-demand toggle (sudoers rule + disabling boot autostart)"
+    local sudoers_file=/etc/sudoers.d/i2pd-toggle
+    local tmp
+    tmp="$(mktemp)"
+    cat > "$tmp" <<'EOF'
+# Allow cyberbeest to start/stop/query the i2pd service without a password.
+# Scoped to exactly these three invocations -- no wildcard/general systemctl
+# access. Written by cyberbeest-pkg-helper.sh (setup-i2pd-toggle).
+cyberbeest ALL=(root) NOPASSWD: /usr/bin/systemctl start i2pd
+cyberbeest ALL=(root) NOPASSWD: /usr/bin/systemctl stop i2pd
+cyberbeest ALL=(root) NOPASSWD: /usr/bin/systemctl is-active i2pd
+EOF
+    if visudo -c -f "$tmp" >>"$LOG" 2>&1; then
+        install -m 0440 -o root -g root "$tmp" "$sudoers_file"
+        log "Installed $sudoers_file"
+    else
+        log "visudo syntax check FAILED for i2pd-toggle sudoers rule"
+        rm -f "$tmp"
+        return 1
+    fi
+    rm -f "$tmp"
+
+    # i2pd.service is disabled from boot-autostart on purpose -- it's only
+    # started via the Whisker launcher / login-restore script from here on,
+    # so a machine that never opts in never sees it running.
+    systemctl disable i2pd >>"$LOG" 2>&1 || log "systemctl disable i2pd failed (non-fatal, may already be disabled)"
+    log "i2pd toggle set up"
+}
+
+do_teardown_i2pd_toggle() {
+    log "Removing i2pd toggle sudoers rule"
+    rm -f /etc/sudoers.d/i2pd-toggle
+}
+
 do_setup_viber_updater() {
     log "Installing Viber daily update-check timer"
     cat > /usr/local/sbin/viber-update-check.sh <<'EOF'
@@ -168,6 +211,12 @@ run_step() {
     install)
         shift
         do_install "$@"
+        ;;
+    setup-i2pd-toggle)
+        do_setup_i2pd_toggle
+        ;;
+    teardown-i2pd-toggle)
+        do_teardown_i2pd_toggle
         ;;
     remove)
         shift

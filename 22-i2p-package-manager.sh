@@ -1,9 +1,11 @@
 #!/bin/bash
 # Installs the Cyberbeest Package Manager GUI (Whisker app; currently a
 # single opt-in entry: I2P (i2pd) + qBittorrent, with a dedicated
-# Alpenglow-themed Firefox profile for eepsites set up automatically once
-# installed) -- see lib/cyberbeest_package_manager_gui.py and
-# lib/setup_i2p_extras.py.
+# Alpenglow-themed Firefox profile for eepsites, and an on-demand
+# start/stop toggle -- Whisker entry starts i2pd + adds a panel icon,
+# clicking the icon opens a menu to stop i2pd / open the I2P Firefox
+# profile / start qBittorrent -- all set up automatically once installed)
+# -- see lib/cyberbeest_package_manager_gui.py and lib/setup_i2p_extras.py.
 #
 # This only deploys the *tool*; it does not install i2pd/qbittorrent
 # itself -- that stays opt-in, checked by hand in the GUI, same as every

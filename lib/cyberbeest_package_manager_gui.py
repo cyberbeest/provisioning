@@ -59,7 +59,10 @@ APPS = [
         "install_pkg": "i2pd qbittorrent",
         "remove_pkg": "i2pd qbittorrent",
         "repo": None,
+        "extra_install_steps": ["setup-i2pd-toggle"],
+        "extra_remove_steps": ["teardown-i2pd-toggle"],
         "post_install_script": "__POST_INSTALL_SCRIPT__",
+        "post_remove_script": "__POST_INSTALL_SCRIPT__",
     },
 ]
 
@@ -452,7 +455,9 @@ class PackagesPage(Gtk.Box):
                     steps.append(f"setup-repo {repo}")
                     used_repos.add(repo)
                 steps.append(f"install {row.app['install_pkg']}")
+                steps.extend(row.app.get("extra_install_steps", []))
             else:
+                steps.extend(row.app.get("extra_remove_steps", []))
                 steps.append(f"remove {row.app['remove_pkg']}")
 
         self.go_button.set_sensitive(False)
@@ -480,29 +485,36 @@ class PackagesPage(Gtk.Box):
     def _run_batch(self, steps, pending_rows):
         ok, message = run_helper_batch(steps)
         if ok:
-            extras_error = self._run_post_install_scripts(pending_rows)
+            extras_error = self._run_post_action_scripts(pending_rows)
             if extras_error:
                 ok, message = False, extras_error
         GLib.idle_add(self._on_batch_done, ok, message, pending_rows)
 
-    def _run_post_install_scripts(self, pending_rows):
-        """Run any unprivileged post_install_script for rows just installed.
+    def _run_post_action_scripts(self, pending_rows):
+        """Run any unprivileged post_install/post_remove_script for rows
+        just installed/removed.
 
         Runs as the regular user (no pkexec) since these only touch the
         user's own home directory. Returns an error message, or None.
         """
         for row in pending_rows:
-            if row.pending_action() != "install":
+            action = row.pending_action()
+            if action == "install":
+                script = row.app.get("post_install_script")
+                args = ["python3", script] if script else None
+                verb, gerund = "installed", "setup"
+            elif action == "remove":
+                script = row.app.get("post_remove_script")
+                args = ["python3", script, "remove"] if script else None
+                verb, gerund = "removed", "cleanup"
+            else:
                 continue
-            script = row.app.get("post_install_script")
-            if not script:
+            if not args:
                 continue
-            proc = subprocess.run(
-                ["python3", script], capture_output=True, text=True, timeout=120
-            )
+            proc = subprocess.run(args, capture_output=True, text=True, timeout=120)
             if proc.returncode != 0:
                 detail = (proc.stderr or proc.stdout or "").strip()
-                return f"{row.app['name']} installed, but setup failed: {detail}"
+                return f"{row.app['name']} {verb}, but {gerund} failed: {detail}"
         return None
 
     def _on_batch_done(self, ok, message, pending_rows):
