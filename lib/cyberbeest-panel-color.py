@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Cyberbeest Panel Color.
 
-Sets the xfce4-panel background color and keeps the kitt-scanner LED
-plugin's margin color in sync with it -- kitt-scanner.c hardcodes its own
-background to match the *default* theme color (#F6F5F4) rather than
-reading the panel's live background, so a plain panel color change alone
-leaves it looking like a mismatched patch.
+Sets the xfce4-panel background color and keeps every panel plugin that
+hardcodes its own "margin" background color in sync with it. Both
+kitt-scanner.c and mem-liquid.c match the panel theme's *default*
+background (#F6F5F4) rather than reading the panel's live background, so a
+plain panel color change alone leaves them looking like mismatched patches.
 
 Written as a self-contained Gtk.Box page (PanelColorPage) so it can later
 be dropped into a unified Cyberbeest Settings dialog as a tab, rather than
@@ -25,30 +25,51 @@ from gi.repository import Gdk, GLib, Gtk
 
 from i18n import t
 
-# How long to wait after the last color pick before actually restarting
-# kitt-scanner -- clicking through several swatches quickly would otherwise
-# fire one restart per click. Coalescing into one restart after the user
-# settles on a color keeps things responsive without spamming restarts.
-KITT_RESTART_DEBOUNCE_MS = 700
+# How long to wait after the last color pick before actually restarting a
+# synced plugin -- clicking through several swatches quickly would
+# otherwise fire one restart per click. Coalescing into one restart after
+# the user settles on a color keeps things responsive without spamming.
+RESTART_DEBOUNCE_MS = 700
 
 # xfce4-panel permanently drops an external plugin (with a "do you want to
 # restart it?" dialog) if it exits more than once within its own hardcoded
 # 60-second window -- this is a global property of the panel, not something
-# tunable here, so restart_kitt_scanner() below enforces a real minimum gap
-# between restarts on top of the debounce above, persisted to disk so it
-# holds across separate script/GUI invocations (e.g. manual testing) too.
-KITT_MIN_RESTART_INTERVAL_S = 65
-KITT_RESTART_STATE_PATH = os.path.expanduser("~/.cache/cyberbeest/kitt-scanner-last-restart")
+# tunable here, so each plugin's restart is rate-limited to a real minimum
+# gap on top of the debounce above, persisted to disk so it holds across
+# separate script/GUI invocations (e.g. manual testing) too. Kept per
+# plugin (separate state files) since each plugin id has its own counter
+# in the panel.
+MIN_RESTART_INTERVAL_S = 65
 
 PANEL_XFCONF_PROP = "/panels/panel-1"
 
-# Substituted at install time to match the panel-layout template's
-# kitt-scanner plugin instance (12-xfce-panel-layout.sh: kitt-scanner-14.rc).
-KITT_RC_PATH = "__KITT_RC_PATH__"
-
-# Same value as kitt-scanner.c's DEFAULT_BG -- the panel theme's actual
-# background, used when "Theme default" is picked.
+# Same value as kitt-scanner.c's DEFAULT_BG / mem-liquid.c's
+# DEFAULT_MARGIN_RGB -- the panel theme's actual background, used when
+# "Theme default" is picked.
 THEME_DEFAULT_RGB = (0.9647, 0.9608, 0.9569)
+
+
+class SyncedPlugin:
+    """A panel plugin whose MarginColor xfce_rc setting has to be kept in
+    sync with the panel's background color by hand -- rc_path and
+    so_match must match this machine's live plugin instance."""
+
+    def __init__(self, key, so_match, rc_path):
+        self.key = key
+        self.so_match = so_match
+        self.rc_path = os.path.expanduser(rc_path)
+        self.state_path = os.path.expanduser(f"~/.cache/cyberbeest/{key}-last-restart")
+        self.lock = threading.Lock()
+        self.pending_timer = None
+
+
+# rc_path values are substituted at install time to match the panel-layout
+# template's plugin instances (12-xfce-panel-layout.sh: kitt-scanner-14.rc,
+# mem-liquid-15.rc).
+SYNCED_PLUGINS = [
+    SyncedPlugin("kitt-scanner", "libkitt-scanner.so", "__KITT_RC_PATH__"),
+    SyncedPlugin("mem-liquid", "libmem-liquid.so", "__MEM_LIQUID_RC_PATH__"),
+]
 
 
 def _presets():
@@ -84,13 +105,13 @@ def set_panel_color(rgb):
     )
 
 
-def write_kitt_margin_color(rgb):
-    if not os.path.exists(KITT_RC_PATH):
+def write_margin_color(plugin, rgb):
+    if not os.path.exists(plugin.rc_path):
         return
     r, g, b = (round(c * 255) for c in (rgb if rgb is not None else THEME_DEFAULT_RGB))
     new_line = f"MarginColor=rgb({r},{g},{b})\n"
 
-    with open(KITT_RC_PATH, encoding="utf-8") as f:
+    with open(plugin.rc_path, encoding="utf-8") as f:
         lines = f.readlines()
     for i, line in enumerate(lines):
         if line.startswith("MarginColor="):
@@ -98,64 +119,56 @@ def write_kitt_margin_color(rgb):
             break
     else:
         lines.append(new_line)
-    with open(KITT_RC_PATH, "w", encoding="utf-8") as f:
+    with open(plugin.rc_path, "w", encoding="utf-8") as f:
         f.writelines(lines)
 
 
-def _read_last_kitt_restart():
+def _read_last_restart(plugin):
     try:
-        with open(KITT_RESTART_STATE_PATH, encoding="utf-8") as f:
+        with open(plugin.state_path, encoding="utf-8") as f:
             return float(f.read().strip())
     except (OSError, ValueError):
         return 0.0
 
 
-def _write_last_kitt_restart(ts):
-    os.makedirs(os.path.dirname(KITT_RESTART_STATE_PATH), exist_ok=True)
-    with open(KITT_RESTART_STATE_PATH, "w", encoding="utf-8") as f:
+def _write_last_restart(plugin, ts):
+    os.makedirs(os.path.dirname(plugin.state_path), exist_ok=True)
+    with open(plugin.state_path, "w", encoding="utf-8") as f:
         f.write(str(ts))
 
 
-def _do_kitt_restart_now():
-    # kitt-scanner only reads its rc file at startup, so restart its wrapper
-    # process to pick up the new margin color -- xfce4-panel respawns
-    # external plugins automatically when their process exits.
-    subprocess.run(["pkill", "-f", "libkitt-scanner.so"])
-    _write_last_kitt_restart(time.time())
+def _do_restart_now(plugin):
+    # These plugins only read their rc file at startup, so restart the
+    # wrapper process to pick up the new margin color -- xfce4-panel
+    # respawns external plugins automatically when their process exits.
+    subprocess.run(["pkill", "-f", plugin.so_match])
+    _write_last_restart(plugin, time.time())
 
 
-_kitt_restart_lock = threading.Lock()
-_kitt_restart_pending_timer = None
-
-
-def restart_kitt_scanner():
-    """Restart kitt-scanner's wrapper process, respecting the panel's
+def restart_plugin(plugin):
+    """Restart a synced plugin's wrapper process, respecting the panel's
     60s crash-loop guard. If called again before enough time has passed,
     coalesces into a single delayed restart rather than queuing one per
-    call -- the rc file (written separately by write_kitt_margin_color)
+    call -- the rc file (written separately by write_margin_color)
     already holds whatever color should apply once it fires."""
-    global _kitt_restart_pending_timer
-    with _kitt_restart_lock:
-        elapsed = time.time() - _read_last_kitt_restart()
-        if elapsed >= KITT_MIN_RESTART_INTERVAL_S:
-            _do_kitt_restart_now()
+    with plugin.lock:
+        elapsed = time.time() - _read_last_restart(plugin)
+        if elapsed >= MIN_RESTART_INTERVAL_S:
+            _do_restart_now(plugin)
             return
-        if _kitt_restart_pending_timer is not None and _kitt_restart_pending_timer.is_alive():
+        if plugin.pending_timer is not None and plugin.pending_timer.is_alive():
             return
-        delay = KITT_MIN_RESTART_INTERVAL_S - elapsed
-        _kitt_restart_pending_timer = threading.Timer(delay, _do_kitt_restart_now)
-        _kitt_restart_pending_timer.daemon = True
-        _kitt_restart_pending_timer.start()
-
-
-def set_kitt_margin_color(rgb):
-    write_kitt_margin_color(rgb)
-    restart_kitt_scanner()
+        delay = MIN_RESTART_INTERVAL_S - elapsed
+        plugin.pending_timer = threading.Timer(delay, _do_restart_now, args=(plugin,))
+        plugin.pending_timer.daemon = True
+        plugin.pending_timer.start()
 
 
 def apply_color(rgb):
     set_panel_color(rgb)
-    set_kitt_margin_color(rgb)
+    for plugin in SYNCED_PLUGINS:
+        write_margin_color(plugin, rgb)
+        restart_plugin(plugin)
 
 
 class PanelColorPage(Gtk.Box):
@@ -200,7 +213,7 @@ class PanelColorPage(Gtk.Box):
         self.status_label.set_no_show_all(True)
         self.pack_start(self.status_label, False, False, 0)
         self._hide_status_timeout = None
-        self._kitt_restart_timeout = None
+        self._restart_timeout = None
 
     def _make_swatch(self, name, rgb):
         button = Gtk.Button()
@@ -227,17 +240,17 @@ class PanelColorPage(Gtk.Box):
 
     def _apply(self, rgb):
         set_panel_color(rgb)
-        write_kitt_margin_color(rgb)
-        if self._kitt_restart_timeout is not None:
-            GLib.source_remove(self._kitt_restart_timeout)
-        self._kitt_restart_timeout = GLib.timeout_add(
-            KITT_RESTART_DEBOUNCE_MS, self._do_kitt_restart
-        )
+        for plugin in SYNCED_PLUGINS:
+            write_margin_color(plugin, rgb)
+        if self._restart_timeout is not None:
+            GLib.source_remove(self._restart_timeout)
+        self._restart_timeout = GLib.timeout_add(RESTART_DEBOUNCE_MS, self._do_restarts)
         self._saved()
 
-    def _do_kitt_restart(self):
-        restart_kitt_scanner()
-        self._kitt_restart_timeout = None
+    def _do_restarts(self):
+        for plugin in SYNCED_PLUGINS:
+            restart_plugin(plugin)
+        self._restart_timeout = None
         return False
 
     def _saved(self):

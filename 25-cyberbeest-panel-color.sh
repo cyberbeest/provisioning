@@ -2,14 +2,16 @@
 # Installs the Cyberbeest Panel Color GUI as a regular app under Whisker's
 # Settings category (not pinned to the panel) -- see
 # lib/cyberbeest-panel-color.py. Lets the user set the xfce4-panel
-# background color, and keeps it in sync with the kitt-scanner LED plugin's
-# margin color, since kitt-scanner.c hardcodes that margin to match the
-# *default* theme background rather than reading the panel's live color.
-# Depends on: 11-xfce-panel-plugins.sh (builds kitt-scanner),
-# 12-xfce-panel-layout.sh (installs kitt-scanner as plugin id 14, i.e.
-# kitt-scanner-14.rc -- this script's KITT_RC_PATH substitution must match
-# that). Degrades gracefully if kitt-scanner isn't installed (the panel
-# color still applies; the margin-color file write is just skipped).
+# background color, and keeps it in sync with the kitt-scanner and
+# mem-liquid plugins' margin color, since both hardcode that margin to
+# match the *default* theme background rather than reading the panel's
+# live color.
+# Depends on: 11-xfce-panel-plugins.sh (builds kitt-scanner and
+# mem-liquid), 12-xfce-panel-layout.sh (installs them as plugin ids 14 and
+# 15, i.e. kitt-scanner-14.rc and mem-liquid-15.rc -- this script's
+# __KITT_RC_PATH__/__MEM_LIQUID_RC_PATH__ substitutions must match that).
+# Degrades gracefully if either plugin isn't installed (the panel color
+# still applies; that plugin's margin-color file write is just skipped).
 # Idempotent: safe to re-run.
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -27,9 +29,12 @@ apt-get -o DPkg::Lock::Timeout=60 install -y python3-gi gir1.2-gtk-3.0
 
 echo "--- Installing GUI script to $TARGET_HOME/.local/bin/cyberbeest-panel-color ---"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.local/bin"
-# Must match the kitt-scanner plugin instance 12-xfce-panel-layout.sh's
-# panel template assigns (kitt-scanner-14.rc).
-sed "s|__KITT_RC_PATH__|$TARGET_HOME/.config/xfce4/panel/kitt-scanner-14.rc|g" \
+# Must match the kitt-scanner/mem-liquid plugin instances
+# 12-xfce-panel-layout.sh's panel template assigns (kitt-scanner-14.rc,
+# mem-liquid-15.rc).
+sed \
+	-e "s|__KITT_RC_PATH__|$TARGET_HOME/.config/xfce4/panel/kitt-scanner-14.rc|g" \
+	-e "s|__MEM_LIQUID_RC_PATH__|$TARGET_HOME/.config/xfce4/panel/mem-liquid-15.rc|g" \
 	"$DIR/lib/cyberbeest-panel-color.py" > "$TARGET_HOME/.local/bin/cyberbeest-panel-color"
 chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.local/bin/cyberbeest-panel-color"
 chmod 755 "$TARGET_HOME/.local/bin/cyberbeest-panel-color"

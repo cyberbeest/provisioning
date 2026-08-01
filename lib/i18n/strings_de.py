@@ -111,11 +111,12 @@ STRINGS = {
     "panelcolor.heading": "Panelfarbe",
     "panelcolor.info": (
         "Legt die Hintergrundfarbe des Panels fest und passt die "
-        "Rahmenfarbe des KITT-Scanner-LED-Streifens automatisch daran an."
+        "Rahmenfarbe des KITT-Scanners und des Speichertank-Widgets "
+        "automatisch daran an."
     ),
     "panelcolor.warning": (
-        "Hinweis: Der KITT-Scanner-Streifen kann aus technischen Gründen "
-        "bis zu einer Minute brauchen, um nachzuziehen."
+        "Hinweis: Diese Widgets können aus technischen Gründen bis zu "
+        "einer Minute brauchen, um nachzuziehen."
     ),
     "panelcolor.custom": "Eigene Farbe:",
     "panelcolor.applied": "Übernommen.",
