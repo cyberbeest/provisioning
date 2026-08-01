@@ -34,6 +34,7 @@ PROFILE_DIR = os.path.join(HOME, ".mozilla", "firefox", "i2p-profile")
 PROFILES_INI = os.path.join(HOME, ".mozilla", "firefox", "profiles.ini")
 DESKTOP_FILE = os.path.join(HOME, ".local", "share", "applications", "firefox-i2p.desktop")
 QBT_CONF = os.path.join(HOME, ".config", "qBittorrent", "qBittorrent.conf")
+PAC_FILE = os.path.join(PROFILE_DIR, "i2p-proxy.pac")
 
 BIN_DIR = os.path.join(HOME, ".local", "bin")
 APPS_DIR = os.path.join(HOME, ".local", "share", "applications")
@@ -43,26 +44,35 @@ STATE_FILE = os.path.join(STATE_DIR, "i2pd_state")
 START_DESKTOP_FILE = os.path.join(APPS_DIR, "i2pd-start.desktop")
 RESTORE_DESKTOP_FILE = os.path.join(AUTOSTART_DIR, "i2pd-restore-session.desktop")
 
-USER_JS = """// I2P eepsite browsing profile — routes HTTP/HTTPS through i2pd's HTTP proxy
-user_pref("network.proxy.type", 1);
-user_pref("network.proxy.http", "127.0.0.1");
-user_pref("network.proxy.http_port", 4444);
-user_pref("network.proxy.ssl", "127.0.0.1");
-user_pref("network.proxy.ssl_port", 4444);
-user_pref("network.proxy.no_proxies_on", "localhost, 127.0.0.1");
-user_pref("network.proxy.share_proxy_settings", false);
+USER_JS = """// I2P eepsite browsing profile — proxies *.i2p through i2pd's HTTP proxy via
+// a PAC file (i2p-proxy.pac); everything else goes DIRECT, so this profile
+// also works as a normal browser for clearnet sites.
+user_pref("network.proxy.type", 2);
+user_pref("network.proxy.autoconfig_url", "file://%s");
 user_pref("extensions.activeThemeID", "firefox-alpenglow@mozilla.org");
+""" % PAC_FILE
+
+PAC_FILE_CONTENT = """// I2P eepsite browsing profile PAC: .i2p hosts are proxied through i2pd;
+// everything else goes DIRECT, so this profile also works as a normal
+// browser for clearnet sites instead of showing i2pd's confusing proxy
+// error page for them.
+function FindProxyForURL(url, host) {
+    if (dnsDomainIs(host, ".i2p")) {
+        return "PROXY 127.0.0.1:4444";
+    }
+    return "DIRECT";
+}
 """
 
 DESKTOP_ENTRY = """[Desktop Entry]
 Name=Firefox (I2P)
 Comment=Browse I2P eepsites via i2pd's HTTP proxy
-Exec=firefox -no-remote -P i2p http://console.i2p
+Exec=firefox -no-remote -P i2p --class=I2PFirefox http://console.i2p
 Terminal=false
 Type=Application
-Icon=firefox-esr
+Icon=network-vpn
 Categories=Network;WebBrowser;
-StartupWMClass=firefox-esr
+StartupWMClass=I2PFirefox
 StartupNotify=true
 """
 
@@ -367,6 +377,12 @@ def write_user_js():
     log("Wrote user.js proxy config")
 
 
+def write_pac_file():
+    with open(PAC_FILE, "w", encoding="utf-8") as f:
+        f.write(PAC_FILE_CONTENT)
+    log("Wrote i2p-proxy.pac")
+
+
 def ensure_theme_active():
     ext_json = os.path.join(PROFILE_DIR, "extensions.json")
     if not os.path.exists(ext_json):
@@ -530,6 +546,7 @@ def main():
         return
     ensure_profile()
     write_user_js()
+    write_pac_file()
     ensure_theme_active()
     ensure_desktop_entry()
     ensure_qbittorrent_i2p_enabled()
