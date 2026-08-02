@@ -175,6 +175,20 @@ get_plugin_ids() {
     xfconf-query -c xfce4-panel -p /panels/panel-1/plugin-ids | grep -E '^[0-9]+$'
 }
 
+# Finds the plugin id whose type is "clock", by type rather than a
+# hardcoded id -- ids are assigned per-machine by xfce, so a fixed id
+# would only be valid on the machine it was captured from.
+find_clock_id() {
+    local id
+    for id in $(get_plugin_ids); do
+        if [ "$(xfconf-query -c xfce4-panel -p "/plugins/plugin-${id}" 2>/dev/null)" = "clock" ]; then
+            echo "$id"
+            return 0
+        fi
+    done
+    return 1
+}
+
 set_plugin_ids() {
     # $@ = the full ordered list of plugin ids to write.
     local args=(-c xfce4-panel -p /panels/panel-1/plugin-ids -n -a)
@@ -200,15 +214,20 @@ Text=(genmon)
 Font=Sans 10
 EOF
 
+    clock_id="$(find_clock_id || true)"
+
     mapfile -t ids < <(get_plugin_ids)
     new_ids=()
     inserted=0
     for id in "${ids[@]}"; do
-        new_ids+=("$id")
-        if [ "$id" = "26" ]; then
+        # Land right before the clock, in the "running programs" group at
+        # the panel's right end -- works whether or not other dev-only
+        # icons (e.g. the sudo-helper genmon) are present on this machine.
+        if [ -n "$clock_id" ] && [ "$id" = "$clock_id" ]; then
             new_ids+=("$PLUGIN_ID")
             inserted=1
         fi
+        new_ids+=("$id")
     done
     if [ "$inserted" -eq 0 ]; then
         new_ids+=("$PLUGIN_ID")

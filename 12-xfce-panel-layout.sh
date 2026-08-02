@@ -1,17 +1,21 @@
 #!/bin/bash
-# Lays out the xfce4 panel to match the dev machine: Whisker menu, the
-# custom monitoring plugins (built by 11-xfce-panel-plugins.sh), a genmon
-# security-status widget (fed by 07-security-update-timer.sh), a genmon
-# shutdown-timer widget showing the current auto-shutdown-while-locked time
-# (fed by shutdown-timer-genmon.sh; click opens a quick preset menu via
+# Lays out the xfce4 panel to match the dev machine, plugins grouped left
+# to right: Whisker menu, tasklist -- Programs (terminal launcher) --
+# Hardware (systray, pulseaudio volume plugin, its icon overridden with a
+# padded version so it doesn't dominate the panel visually -- see the
+# icons-adwaita-symbolic-status install below) -- Status (the custom
+# monitoring plugins built by 11-xfce-panel-plugins.sh: kitt-scanner,
+# mem-liquid, wattage-panel; plus a genmon security-status widget fed by
+# 07-security-update-timer.sh) -- Power (the power manager plugin, and a
+# genmon shutdown-timer widget showing the current auto-shutdown-while-locked
+# time, fed by shutdown-timer-genmon.sh; click opens a quick preset menu via
 # shutdown-timer-menu.py -- which also has the Lock/Restart/Shut Down
 # actions from 09-cyberbeest-logout-dialog.sh's cyberbeest-logout, so there's
-# no separate standalone Power launcher pinned to the panel any more), the
-# power manager plugin, a terminal launcher, and a pulseaudio volume
-# plugin (its icon overridden with a padded version so it doesn't dominate
-# the panel visually -- see the icons-adwaita-symbolic-status install
-# below). The Cyberbeest Power Settings GUI isn't pinned to the panel
-# either -- it shows up in Whisker's Settings category instead.
+# no separate standalone Power launcher pinned to the panel any more) --
+# clock, last so any dynamically-added icons (e.g. the optional i2pd toggle
+# from 22-i2p-package-manager.sh) can always insert themselves right before
+# it. The Cyberbeest Power Settings GUI isn't pinned to the panel either --
+# it shows up in Whisker's Settings category instead.
 # Depends on: 07-security-update-timer.sh, 08-cyberbeest-power-settings.sh,
 # 09-cyberbeest-logout-dialog.sh, 10-browser-sandbox.sh,
 # 11-xfce-panel-plugins.sh.
