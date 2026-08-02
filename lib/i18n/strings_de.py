@@ -95,6 +95,24 @@ STRINGS = {
         "Das Passwort konnte nicht geändert werden. Das bedeutet meist, dass "
         "das aktuelle Passwort falsch war."
     ),
+    "pw.boot_screen_tab": "Startbildschirm",
+    "pw.boot_name_desc": (
+        "Gib ein Codewort ein, das bei der Passwortabfrage angezeigt wird, "
+        "damit du dein Cyberbeest von den anderen unterscheiden kannst."
+    ),
+    "pw.boot_name_label": "Codewort:",
+    "pw.save": "Speichern",
+    "pw.boot_name_waiting": (
+        "Warte auf Authentifizierung, danach wird das Boot-Image neu "
+        "erstellt (dauert normalerweise etwa {seconds} Sekunden)…"
+    ),
+    "pw.boot_name_set": "Der Startbildschirm zeigt jetzt den Namen dieses Geräts.",
+    "pw.boot_name_cleared": "Der Gerätename auf dem Startbildschirm wurde entfernt.",
+    "pw.boot_name_auth_cancelled": (
+        "Die Authentifizierung wurde abgebrochen, der Gerätename wurde daher "
+        "nicht geändert."
+    ),
+    "pw.boot_name_failed": "Der Gerätename konnte nicht geändert werden.",
 
     "nag.title": "Du verwendest noch das für dich eingerichtete Passwort",
     "nag.still_secure_default": (

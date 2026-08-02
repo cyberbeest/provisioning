@@ -40,12 +40,28 @@ install -m 644 "$THEME_SRC/cyberbeest.plymouth" \
 # cyberbeest.script itself gets the LUKS prompt and shutdown text
 # substituted in for the current locale rather than being copied verbatim --
 # see the i18n.sh comment above and the __LUKS_PROMPT__/__SHUTDOWN_TEXT__
-# placeholders in the .script source.
+# placeholders in the .script source. __MACHINE_NAME_LINE__ starts empty --
+# the owner sets it later via disk_password_gui.py's "Boot Screen" tab,
+# which rewrites it in place through cyberbeest-set-boot-name (installed
+# below) rather than this script running again.
 sed -e "s|__LUKS_PROMPT__|$(t plymouth.luks_prompt)|" \
     -e "s|__SHUTDOWN_TEXT__|$(t plymouth.shutdown_text)|" \
+    -e "s|__MACHINE_NAME_LINE__||" \
     "$THEME_SRC/cyberbeest.script" \
 	> "$THEME_DIR/cyberbeest.script"
 chmod 644 "$THEME_DIR/cyberbeest.script"
+
+echo "--- Recording the base LUKS prompt text for the boot-name tool ---"
+# cyberbeest-set-boot-name rewrites the prompt line at runtime (when the
+# owner sets a display name) without depending on i18n.sh being available
+# on an already-provisioned machine, so the locale-resolved text is saved
+# here once, at install time, instead.
+install -d -m 755 /etc/cyberbeest
+printf '%s' "$(t plymouth.luks_prompt)" > /etc/cyberbeest/plymouth-luks-base-text
+chmod 644 /etc/cyberbeest/plymouth-luks-base-text
+
+echo "--- Installing the boot-name tool used by disk_password_gui.py ---"
+install -m 755 "$THEME_SRC/set-boot-name.sh" /usr/local/sbin/cyberbeest-set-boot-name
 
 echo "--- Activating the theme (rebuilds initramfs) ---"
 plymouth-set-default-theme -R cyberbeest

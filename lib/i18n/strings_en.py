@@ -91,6 +91,23 @@ STRINGS = {
         "The password could not be changed. This usually means the current "
         "password was incorrect."
     ),
+    "pw.boot_screen_tab": "Boot Screen",
+    "pw.boot_name_desc": (
+        "Enter a code word to show at the master password prompt so you can "
+        "tell your Cyberbeest apart from the others."
+    ),
+    "pw.boot_name_label": "Code word:",
+    "pw.save": "Save",
+    "pw.boot_name_waiting": (
+        "Waiting for authentication, then rebuilding the boot image "
+        "(usually takes about {seconds} seconds)..."
+    ),
+    "pw.boot_name_set": "The boot screen now shows this machine's name.",
+    "pw.boot_name_cleared": "The boot screen name was cleared.",
+    "pw.boot_name_auth_cancelled": (
+        "Authentication was cancelled, so the boot screen name was not changed."
+    ),
+    "pw.boot_name_failed": "The boot screen name could not be changed.",
 
     "nag.title": "Still using the password set up for you",
     "nag.still_secure_default": (

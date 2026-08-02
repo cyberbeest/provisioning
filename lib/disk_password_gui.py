@@ -34,6 +34,14 @@ from i18n import t
 
 CRYPTSETUP = "/sbin/cryptsetup"
 PASSWD = "/usr/bin/passwd"
+SET_BOOT_NAME = "/usr/local/sbin/cyberbeest-set-boot-name"
+BOOT_NAME_FILE = "/etc/cyberbeest/machine-name"
+BOOT_NAME_MAX_LENGTH = 40
+# Measured once (measure-boot-name-rebuild-time.sh) rather than timed live --
+# the rebuild is update-initramfs for both installed kernels, which is slow
+# and CPU-bound enough that the machine feels like it's frozen without some
+# explanation of what's actually happening.
+BOOT_NAME_REBUILD_ESTIMATE_SECONDS = 55
 LOGO_PATH = os.path.expanduser("~/Pictures/Cyberbeest-black.png")
 LOGO_SIZE = 96
 WORDLISTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "wordlists")
@@ -226,6 +234,39 @@ PASSWORD_TYPES = {
 PASSWORD_ORDER = ["master", "short"]
 
 
+def read_boot_name():
+    try:
+        with open(BOOT_NAME_FILE, encoding="utf-8") as f:
+            return f.read().strip()
+    except OSError:
+        return ""
+
+
+def set_boot_name(name):
+    """Run cyberbeest-set-boot-name via pkexec to update the machine-name
+    line shown above the LUKS unlock prompt, rebuilding the initramfs.
+
+    Returns (success, message).
+    """
+    try:
+        proc = subprocess.run(
+            ["pkexec", SET_BOOT_NAME, name],
+            capture_output=True,
+            text=True,
+        )
+    except FileNotFoundError as e:
+        return False, f"{t('pw.pkexec_error')} {e}"
+
+    if proc.returncode == 0:
+        return True, t("pw.boot_name_set") if name else t("pw.boot_name_cleared")
+
+    if proc.returncode in (126, 127):
+        return False, t("pw.boot_name_auth_cancelled")
+
+    detail = (proc.stderr or proc.stdout or "").strip()
+    return False, f"{t('pw.boot_name_failed')}\n\n{t('pw.details')}: {detail or t('pw.unknown_error')}"
+
+
 class PasswordWindow(Gtk.Window):
     def __init__(self):
         super().__init__(title=t("pw.window_title"))
@@ -252,8 +293,19 @@ class PasswordWindow(Gtk.Window):
         self.notebook = Gtk.Notebook()
         for key in PASSWORD_ORDER:
             self.notebook.append_page(Gtk.Box(), Gtk.Label(label=PASSWORD_TYPES[key]["title"]))
+        self.notebook.append_page(Gtk.Box(), Gtk.Label(label=t("pw.boot_screen_tab")))
         self.notebook.connect("switch-page", self.on_tab_switched)
         content.pack_start(self.notebook, False, False, 0)
+
+        # The notebook above only supplies tab labels/switching; the actual
+        # controls for each tab live in these sibling sections below it
+        # (password tabs share one dynamically-relabelled section, same as
+        # before this tab was added), toggled by on_tab_switched.
+        self.password_section = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        content.pack_start(self.password_section, False, False, 0)
+
+        self.boot_name_section = self._build_boot_name_section()
+        content.pack_start(self.boot_name_section, False, False, 0)
 
         self.language_selector = Gtk.ComboBoxText()
         for code, name in LANGUAGES:
@@ -264,11 +316,11 @@ class PasswordWindow(Gtk.Window):
         self.wordlist = load_wordlist(self.language_selector.get_active_id())
 
         self.description_label = Gtk.Label(label="", wrap=True, xalign=0)
-        content.pack_start(self.description_label, False, False, 0)
+        self.password_section.pack_start(self.description_label, False, False, 0)
 
         grid = Gtk.Grid(column_spacing=10, row_spacing=10)
         grid.set_hexpand(True)
-        content.pack_start(grid, False, False, 0)
+        self.password_section.pack_start(grid, False, False, 0)
 
         self.current_label, self.current_entry = self._add_row(grid, 0, t("pw.current_password"))
         self._add_row_widgets(grid, 1, t("pw.new_password"))
@@ -283,7 +335,7 @@ class PasswordWindow(Gtk.Window):
 
         self.status_label = Gtk.Label(label="", wrap=True, xalign=0)
         self.status_label.set_no_show_all(True)
-        content.pack_start(self.status_label, False, False, 0)
+        self.password_section.pack_start(self.status_label, False, False, 0)
 
         button_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
         content.pack_start(button_box, False, False, 0)
@@ -291,6 +343,10 @@ class PasswordWindow(Gtk.Window):
         self.change_button = Gtk.Button(label=t("pw.change_password"))
         self.change_button.connect("clicked", self.on_change_clicked)
         button_box.pack_end(self.change_button, False, False, 0)
+
+        self.save_boot_name_button = Gtk.Button(label=t("pw.save"))
+        self.save_boot_name_button.connect("clicked", self.on_save_boot_name_clicked)
+        button_box.pack_end(self.save_boot_name_button, False, False, 0)
 
         cancel_button = Gtk.Button(label=t("pw.cancel"))
         cancel_button.connect("clicked", lambda _b: Gtk.main_quit())
@@ -309,6 +365,62 @@ class PasswordWindow(Gtk.Window):
             )
         except GLib.Error:
             return None
+
+    def _build_boot_name_section(self):
+        section = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+
+        description = Gtk.Label(label=t("pw.boot_name_desc"), wrap=True, xalign=0)
+        section.pack_start(description, False, False, 0)
+
+        grid = Gtk.Grid(column_spacing=10, row_spacing=10)
+        grid.set_hexpand(True)
+        section.pack_start(grid, False, False, 0)
+
+        label = Gtk.Label(label=t("pw.boot_name_label"), xalign=0)
+        self.boot_name_entry = Gtk.Entry(hexpand=True)
+        self.boot_name_entry.set_width_chars(34)
+        self.boot_name_entry.set_max_length(BOOT_NAME_MAX_LENGTH)
+        self.boot_name_entry.set_activates_default(True)
+        grid.attach(label, 0, 0, 1, 1)
+        grid.attach(self.boot_name_entry, 1, 0, 1, 1)
+
+        self.boot_name_status_label = Gtk.Label(label="", wrap=True, xalign=0)
+        self.boot_name_status_label.set_no_show_all(True)
+        section.pack_start(self.boot_name_status_label, False, False, 0)
+
+        return section
+
+    def _apply_boot_name_tab(self):
+        self.boot_name_entry.set_text(read_boot_name())
+        self.boot_name_status_label.set_no_show_all(True)
+        self.boot_name_status_label.hide()
+
+    def set_boot_name_status(self, text, is_error=True):
+        self.boot_name_status_label.set_markup(
+            f'<span foreground="{"red" if is_error else "green"}">{GLib.markup_escape_text(text)}</span>'
+        )
+        self.boot_name_status_label.set_no_show_all(False)
+        self.boot_name_status_label.show()
+
+    def on_save_boot_name_clicked(self, _button):
+        name = self.boot_name_entry.get_text().strip()
+
+        self.save_boot_name_button.set_sensitive(False)
+        self.set_boot_name_status(
+            t("pw.boot_name_waiting").format(seconds=BOOT_NAME_REBUILD_ESTIMATE_SECONDS),
+            is_error=False,
+        )
+
+        threading.Thread(target=self._run_save_boot_name, args=(name,), daemon=True).start()
+
+    def _run_save_boot_name(self, name):
+        success, message = set_boot_name(name)
+        GLib.idle_add(self._on_save_boot_name_done, success, message)
+
+    def _on_save_boot_name_done(self, success, message):
+        self.set_boot_name_status(message, is_error=not success)
+        self.save_boot_name_button.set_sensitive(True)
+        return False
 
     def _add_row(self, grid, row, label_text):
         self._add_row_widgets(grid, row, label_text)
@@ -352,7 +464,18 @@ class PasswordWindow(Gtk.Window):
         self.set_status(t("pw.generated_passphrase"), is_error=False)
 
     def on_tab_switched(self, _notebook, _page, page_num):
-        self._apply_type(PASSWORD_ORDER[page_num])
+        if page_num < len(PASSWORD_ORDER):
+            self.boot_name_section.hide()
+            self.password_section.show()
+            self.save_boot_name_button.hide()
+            self.change_button.show()
+            self._apply_type(PASSWORD_ORDER[page_num])
+        else:
+            self.password_section.hide()
+            self.boot_name_section.show()
+            self.change_button.hide()
+            self.save_boot_name_button.show()
+            self._apply_boot_name_tab()
 
     def _apply_type(self, type_key):
         self.active_type = type_key
@@ -452,9 +575,10 @@ def main():
     win = PasswordWindow()
     if args.tab:
         win.notebook.set_current_page(PASSWORD_ORDER.index(args.tab))
-        win._apply_type(args.tab)
     win.show_all()
-    win._apply_type(win.active_type)
+    # show_all() re-shows everything hidden during __init__ (e.g. the
+    # boot-name section), so tab visibility has to be reapplied afterwards.
+    win.on_tab_switched(win.notebook, None, win.notebook.get_current_page())
     Gtk.main()
 
 

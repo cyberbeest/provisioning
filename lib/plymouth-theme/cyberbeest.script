@@ -99,8 +99,15 @@ fun password_dialog_setup(prompt) {
     # provisioning last ran -- plymouth runs before any filesystem holding
     # /etc/default/locale is even decrypted, so this can't be looked up live
     # at boot the way the desktop-session strings are.
+    #
+    # __MACHINE_NAME_LINE__ is empty at provisioning time and gets rewritten
+    # later (in place, in the installed theme, then the initramfs rebuilt)
+    # by /usr/local/sbin/cyberbeest-set-boot-name when the owner sets a
+    # display name via disk_password_gui.py's "Boot Screen" tab -- a plain
+    # "\n" here becomes a real line break, since the script lexer converts
+    # backslash-n inside string literals to a newline character.
     if (prompt == NULL || prompt == "")
-        prompt = "__LUKS_PROMPT__";
+        prompt = "__MACHINE_NAME_LINE__" + "__LUKS_PROMPT__";
     local.prompt_image = Image.Text(prompt, 1, 1, 1);
     local.prompt_sprite = Sprite(local.prompt_image);
     local.prompt_x = screen.w / 2 - local.prompt_image.GetWidth() / 2;
