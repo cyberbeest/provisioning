@@ -211,11 +211,21 @@ watt_update_label(WattPlugin *wp)
                              : have_longterm    ? "active"
                                                  : "warming up";
 
+    /* The window's oldest kept sample lands a sample interval or so after
+     * the theoretical cutoff, so once the window is effectively full,
+     * span_s asymptotes just under avg_minutes*60 (e.g. perpetually
+     * "4:58 of 5") instead of ever reaching it. Purely cosmetic: once
+     * within one sample interval of full, just display it as full. */
+    gint64 display_span_s = span_s;
+    gint64 full_span_s = (gint64) wp->avg_minutes * 60;
+    if (have_longterm && full_span_s - span_s <= SAMPLE_INTERVAL_MS / 1000)
+        display_span_s = full_span_s;
+
     gchar span_buf[32];
-    if (span_s >= 60)
-        g_snprintf(span_buf, sizeof(span_buf), "%d:%02d", (int) (span_s / 60), (int) (span_s % 60));
+    if (display_span_s >= 60)
+        g_snprintf(span_buf, sizeof(span_buf), "%d:%02d", (int) (display_span_s / 60), (int) (display_span_s % 60));
     else
-        g_snprintf(span_buf, sizeof(span_buf), "%ds", (int) span_s);
+        g_snprintf(span_buf, sizeof(span_buf), "%ds", (int) display_span_s);
 
     gchar tooltip[220];
     g_snprintf(tooltip, sizeof(tooltip),
