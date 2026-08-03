@@ -113,6 +113,18 @@ STRINGS = {
         "nicht geändert."
     ),
     "pw.boot_name_failed": "Der Gerätename konnte nicht geändert werden.",
+    "pw.boot_bright_mode_label": "Heller Bildschirm beim Entsperren",
+    "pw.boot_bright_mode_desc": (
+        "Eine improvisierte Taschenlampe: macht den Entsperrbildschirm hell "
+        "statt schwarz, praktisch zum Tippen im Dunkeln."
+    ),
+    "pw.boot_bright_mode_on": "Der Startbildschirm ist beim Entsperren jetzt hell.",
+    "pw.boot_bright_mode_off": "Der Startbildschirm hat wieder seinen normalen dunklen Hintergrund.",
+    "pw.boot_bright_mode_auth_cancelled": (
+        "Die Authentifizierung wurde abgebrochen, die Bildschirmhelligkeit "
+        "wurde daher nicht geändert."
+    ),
+    "pw.boot_bright_mode_failed": "Die Bildschirmhelligkeit konnte nicht geändert werden.",
 
     "nag.title": "Du verwendest noch das für dich eingerichtete Passwort",
     "nag.still_secure_default": (

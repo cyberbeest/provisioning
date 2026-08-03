@@ -1,8 +1,35 @@
 # cyberbeest.script - minimal boot splash: logo stays visible through
 # boot animation, password/LUKS prompts, and shutdown/reboot.
 
-Window.SetBackgroundTopColor(0, 0, 0);
-Window.SetBackgroundBottomColor(0, 0, 0);
+# Reboot uses --mode=reboot, poweroff/halt/kexec use --mode=shutdown --
+# both are "going down", so both get the shutdown watermark/text and are
+# never affected by bright mode (that's an unlock-prompt-only thing; the
+# shutdown screen always stays dark).
+is_going_down = Plymouth.GetMode() == "shutdown" || Plymouth.GetMode() == "reboot";
+
+# Substituted at install time to "0" and rewritten in place (in the installed
+# theme, then the initramfs rebuilt) by
+# /usr/local/sbin/cyberbeest-set-boot-bright-mode when the owner toggles it
+# via disk_password_gui.py's "Boot Screen" tab -- a bright screen at the
+# unlock prompt doubles as a poor man's flashlight for typing in the dark.
+bright_mode = "__BRIGHT_MODE__";
+bright_active = bright_mode == "1" && !is_going_down;
+
+if (bright_active) {
+    # Matches cyberbeest-for-print.png's own near-white background so the
+    # logo blends in with no visible box around it.
+    Window.SetBackgroundTopColor(0.996, 0.996, 0.996);
+    Window.SetBackgroundBottomColor(0.996, 0.996, 0.996);
+    text_red = 0;
+    text_green = 0;
+    text_blue = 0;
+} else {
+    Window.SetBackgroundTopColor(0, 0, 0);
+    Window.SetBackgroundBottomColor(0, 0, 0);
+    text_red = 1;
+    text_green = 1;
+    text_blue = 1;
+}
 
 screen.w = Window.GetWidth();
 screen.h = Window.GetHeight();
@@ -11,11 +38,10 @@ screen.h = Window.GetHeight();
 # Logo watermark - always on screen, sized relative to the display
 # ---------------------------------------------------------------------
 logo_target_h = screen.h * 0.42;
-# Reboot uses --mode=reboot, poweroff/halt/kexec use --mode=shutdown --
-# both are "going down", so both get the shutdown watermark/text.
-is_going_down = Plymouth.GetMode() == "shutdown" || Plymouth.GetMode() == "reboot";
 if (is_going_down)
     logo.image = Image("watermark-shutdown.png");
+else if (bright_active)
+    logo.image = Image("cyberbeest-for-print.png");
 else
     logo.image = Image("watermark.png");
 logo_scale = logo_target_h / logo.image.GetHeight();
@@ -91,30 +117,53 @@ password_dialog.entry_image = Image("entry.png");
 password_dialog.bullet_image = Image("bullet.png");
 password_dialog.lock_image = Image("lock.png");
 
+# Substituted at install time to "" and rewritten in place (in the installed
+# theme, then the initramfs rebuilt) by /usr/local/sbin/cyberbeest-set-boot-name
+# when the owner sets a display name via disk_password_gui.py's "Boot Screen"
+# tab. Bare name text, with no "= =" wrapping -- it's rendered as its own,
+# larger-font sprite above the LUKS prompt rather than folded into it.
+password_dialog.machine_name = "__MACHINE_NAME__";
+
 fun password_dialog_setup(prompt) {
     local = password_dialog;
+    local.name_sprite = NULL;
 
     # Substituted at install time (setup-grub-plymouth-theme.sh) from
     # lib/i18n's plymouth.luks_prompt key, based on the locale active when
     # provisioning last ran -- plymouth runs before any filesystem holding
     # /etc/default/locale is even decrypted, so this can't be looked up live
     # at boot the way the desktop-session strings are.
-    #
-    # __MACHINE_NAME_LINE__ is empty at provisioning time and gets rewritten
-    # later (in place, in the installed theme, then the initramfs rebuilt)
-    # by /usr/local/sbin/cyberbeest-set-boot-name when the owner sets a
-    # display name via disk_password_gui.py's "Boot Screen" tab -- a plain
-    # "\n" here becomes a real line break, since the script lexer converts
-    # backslash-n inside string literals to a newline character.
-    if (prompt == NULL || prompt == "")
-        prompt = "__MACHINE_NAME_LINE__" + "__LUKS_PROMPT__";
-    local.prompt_image = Image.Text(prompt, 1, 1, 1);
+    if (prompt == NULL || prompt == "") {
+        prompt = "__LUKS_PROMPT__";
+        if (local.machine_name != "") {
+            local.name_image = Image.Text(local.machine_name, text_red, text_green, text_blue, 1, "Sans Bold 26", "center");
+            local.name_sprite = Sprite(local.name_image);
+        }
+    }
+    # align="center" so a shorter line centers over a longer one instead of
+    # both being left-justified.
+    local.prompt_image = Image.Text(prompt, text_red, text_green, text_blue, 1, NULL, "center");
     local.prompt_sprite = Sprite(local.prompt_image);
     local.prompt_x = screen.w / 2 - local.prompt_image.GetWidth() / 2;
-    local.prompt_y = screen.h * 0.82 - local.entry_image.GetHeight();
+    # Anchored to the prompt text's own height (plus a fixed gap) rather
+    # than the entry box's height, so this doesn't creep down into the
+    # entry box.
+    local.prompt_gap = 24;
+    local.prompt_y = screen.h * 0.82 - local.prompt_image.GetHeight() - local.prompt_gap;
     local.prompt_sprite.SetX(local.prompt_x);
     local.prompt_sprite.SetY(local.prompt_y);
     local.prompt_sprite.SetZ(20);
+
+    if (local.name_sprite) {
+        local.name_x = screen.w / 2 - local.name_image.GetWidth() / 2;
+        # A blank line's worth of extra space (using the prompt's own line
+        # height as the unit) between the name and the prompt below it.
+        local.name_sprite_gap = local.prompt_image.GetHeight();
+        local.name_y = local.prompt_y - local.name_image.GetHeight() - local.name_sprite_gap;
+        local.name_sprite.SetX(local.name_x);
+        local.name_sprite.SetY(local.name_y);
+        local.name_sprite.SetZ(20);
+    }
 
     # Center the lock+entry cluster as a single unit (rather than centering
     # the entry box alone and hanging the lock off its left edge), so its
@@ -147,6 +196,8 @@ fun display_password_callback(prompt, bullets) {
     password_dialog.entry_sprite.SetOpacity(1);
     password_dialog.prompt_sprite.SetOpacity(1);
     password_dialog.lock_sprite.SetOpacity(1);
+    if (password_dialog.name_sprite)
+        password_dialog.name_sprite.SetOpacity(1);
 
     bullet_w = password_dialog.bullet_image.GetWidth();
     max_bullets = Math.Int(password_dialog.entry_image.GetWidth() / bullet_w) - 1;
@@ -181,6 +232,8 @@ fun display_normal_callback() {
         password_dialog.entry_sprite.SetOpacity(0);
         password_dialog.prompt_sprite.SetOpacity(0);
         password_dialog.lock_sprite.SetOpacity(0);
+        if (password_dialog.name_sprite)
+            password_dialog.name_sprite.SetOpacity(0);
         for (i = 0; password_dialog.bullet_sprite[i]; i++)
             password_dialog.bullet_sprite[i].SetOpacity(0);
     }

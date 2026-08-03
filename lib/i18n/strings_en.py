@@ -108,6 +108,17 @@ STRINGS = {
         "Authentication was cancelled, so the boot screen name was not changed."
     ),
     "pw.boot_name_failed": "The boot screen name could not be changed.",
+    "pw.boot_bright_mode_label": "Bright screen at unlock",
+    "pw.boot_bright_mode_desc": (
+        "A poor man's flashlight: makes the unlock screen bright instead of "
+        "black, useful for typing in the dark."
+    ),
+    "pw.boot_bright_mode_on": "The boot screen will now be bright at unlock.",
+    "pw.boot_bright_mode_off": "The boot screen is back to its normal dark background.",
+    "pw.boot_bright_mode_auth_cancelled": (
+        "Authentication was cancelled, so the boot screen brightness was not changed."
+    ),
+    "pw.boot_bright_mode_failed": "The boot screen brightness could not be changed.",
 
     "nag.title": "Still using the password set up for you",
     "nag.still_secure_default": (

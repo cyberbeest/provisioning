@@ -15,6 +15,7 @@ themselves, no root needed -- see change_user_password() for why.
 """
 
 import argparse
+import glob
 import os
 import pty
 import secrets
@@ -37,14 +38,28 @@ PASSWD = "/usr/bin/passwd"
 SET_BOOT_NAME = "/usr/local/sbin/cyberbeest-set-boot-name"
 BOOT_NAME_FILE = "/etc/cyberbeest/machine-name"
 BOOT_NAME_MAX_LENGTH = 40
-# Measured once (measure-boot-name-rebuild-time.sh) rather than timed live --
-# the rebuild is update-initramfs for both installed kernels, which is slow
-# and CPU-bound enough that the machine feels like it's frozen without some
-# explanation of what's actually happening.
-BOOT_NAME_REBUILD_ESTIMATE_SECONDS = 55
+SET_BOOT_BRIGHT_MODE = "/usr/local/sbin/cyberbeest-set-boot-bright-mode"
+BOOT_BRIGHT_MODE_FILE = "/etc/cyberbeest/plymouth-bright-mode"
 LOGO_PATH = os.path.expanduser("~/Pictures/Cyberbeest-black.png")
 LOGO_SIZE = 96
 WORDLISTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "wordlists")
+
+# Rebuilding is update-initramfs -k all, which regenerates one initramfs per
+# installed kernel and is slow/CPU-bound enough that the machine feels
+# frozen without some explanation of what's actually happening. Per-kernel
+# cost measured once (measure-boot-name-rebuild-time.sh: ~54.6s for the 2
+# kernels installed on this machine at the time), then scaled by the actual
+# current kernel count so the estimate stays roughly honest as kernels come
+# and go (e.g. right after an upgrade, before the old one is autoremoved).
+BOOT_REBUILD_SECONDS_PER_KERNEL = 27
+
+
+def count_installed_kernels():
+    return len(glob.glob("/boot/vmlinuz-*")) or 1
+
+
+def estimate_boot_rebuild_seconds():
+    return BOOT_REBUILD_SECONDS_PER_KERNEL * count_installed_kernels()
 
 
 def detect_luks_device():
@@ -267,6 +282,39 @@ def set_boot_name(name):
     return False, f"{t('pw.boot_name_failed')}\n\n{t('pw.details')}: {detail or t('pw.unknown_error')}"
 
 
+def read_boot_bright_mode():
+    try:
+        with open(BOOT_BRIGHT_MODE_FILE, encoding="utf-8") as f:
+            return f.read().strip() == "1"
+    except OSError:
+        return False
+
+
+def set_boot_bright_mode(enabled):
+    """Run cyberbeest-set-boot-bright-mode via pkexec to toggle a bright
+    background at the LUKS unlock prompt, rebuilding the initramfs.
+
+    Returns (success, message).
+    """
+    try:
+        proc = subprocess.run(
+            ["pkexec", SET_BOOT_BRIGHT_MODE, "1" if enabled else "0"],
+            capture_output=True,
+            text=True,
+        )
+    except FileNotFoundError as e:
+        return False, f"{t('pw.pkexec_error')} {e}"
+
+    if proc.returncode == 0:
+        return True, t("pw.boot_bright_mode_on") if enabled else t("pw.boot_bright_mode_off")
+
+    if proc.returncode in (126, 127):
+        return False, t("pw.boot_bright_mode_auth_cancelled")
+
+    detail = (proc.stderr or proc.stdout or "").strip()
+    return False, f"{t('pw.boot_bright_mode_failed')}\n\n{t('pw.details')}: {detail or t('pw.unknown_error')}"
+
+
 class PasswordWindow(Gtk.Window):
     def __init__(self):
         super().__init__(title=t("pw.window_title"))
@@ -388,12 +436,35 @@ class PasswordWindow(Gtk.Window):
         self.boot_name_status_label.set_no_show_all(True)
         section.pack_start(self.boot_name_status_label, False, False, 0)
 
+        separator = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
+        section.pack_start(separator, False, False, 4)
+
+        self.bright_mode_check = Gtk.CheckButton(label=t("pw.boot_bright_mode_label"))
+        self.bright_mode_check.connect("toggled", self.on_bright_mode_toggled)
+        section.pack_start(self.bright_mode_check, False, False, 0)
+
+        bright_mode_desc = Gtk.Label(label=t("pw.boot_bright_mode_desc"), wrap=True, xalign=0)
+        section.pack_start(bright_mode_desc, False, False, 0)
+
+        self.bright_mode_status_label = Gtk.Label(label="", wrap=True, xalign=0)
+        self.bright_mode_status_label.set_no_show_all(True)
+        section.pack_start(self.bright_mode_status_label, False, False, 0)
+
         return section
 
     def _apply_boot_name_tab(self):
         self.boot_name_entry.set_text(read_boot_name())
         self.boot_name_status_label.set_no_show_all(True)
         self.boot_name_status_label.hide()
+
+        # Set without triggering on_bright_mode_toggled's save-on-toggle
+        # behavior -- this is just reflecting the on-disk state, not a user
+        # action to act on.
+        self.bright_mode_check.handler_block_by_func(self.on_bright_mode_toggled)
+        self.bright_mode_check.set_active(read_boot_bright_mode())
+        self.bright_mode_check.handler_unblock_by_func(self.on_bright_mode_toggled)
+        self.bright_mode_status_label.set_no_show_all(True)
+        self.bright_mode_status_label.hide()
 
     def set_boot_name_status(self, text, is_error=True):
         self.boot_name_status_label.set_markup(
@@ -407,7 +478,7 @@ class PasswordWindow(Gtk.Window):
 
         self.save_boot_name_button.set_sensitive(False)
         self.set_boot_name_status(
-            t("pw.boot_name_waiting").format(seconds=BOOT_NAME_REBUILD_ESTIMATE_SECONDS),
+            t("pw.boot_name_waiting").format(seconds=estimate_boot_rebuild_seconds()),
             is_error=False,
         )
 
@@ -420,6 +491,35 @@ class PasswordWindow(Gtk.Window):
     def _on_save_boot_name_done(self, success, message):
         self.set_boot_name_status(message, is_error=not success)
         self.save_boot_name_button.set_sensitive(True)
+        return False
+
+    def set_bright_mode_status(self, text, is_error=True):
+        self.bright_mode_status_label.set_markup(
+            f'<span foreground="{"red" if is_error else "green"}">{GLib.markup_escape_text(text)}</span>'
+        )
+        self.bright_mode_status_label.set_no_show_all(False)
+        self.bright_mode_status_label.show()
+
+    def on_bright_mode_toggled(self, _checkbox):
+        enabled = self.bright_mode_check.get_active()
+        self.bright_mode_check.set_sensitive(False)
+        self.set_bright_mode_status(
+            t("pw.boot_name_waiting").format(seconds=estimate_boot_rebuild_seconds()),
+            is_error=False,
+        )
+        threading.Thread(target=self._run_set_bright_mode, args=(enabled,), daemon=True).start()
+
+    def _run_set_bright_mode(self, enabled):
+        success, message = set_boot_bright_mode(enabled)
+        GLib.idle_add(self._on_set_bright_mode_done, success, message, enabled)
+
+    def _on_set_bright_mode_done(self, success, message, enabled):
+        self.set_bright_mode_status(message, is_error=not success)
+        self.bright_mode_check.set_sensitive(True)
+        if not success:
+            self.bright_mode_check.handler_block_by_func(self.on_bright_mode_toggled)
+            self.bright_mode_check.set_active(not enabled)
+            self.bright_mode_check.handler_unblock_by_func(self.on_bright_mode_toggled)
         return False
 
     def _add_row(self, grid, row, label_text):

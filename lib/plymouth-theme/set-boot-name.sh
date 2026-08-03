@@ -8,12 +8,11 @@
 # setup-grub-plymouth-theme.sh and invoked via pkexec from
 # disk_password_gui.py's "Boot Screen" tab, e.g.:
 #   pkexec /usr/local/sbin/cyberbeest-set-boot-name "My Cyberbeest"
-# Pass an empty string to clear the name back to no prefix line.
+# Pass an empty string to clear the name back to no name line.
 set -euo pipefail
 
 SCRIPT_FILE="/usr/share/plymouth/themes/cyberbeest/cyberbeest.script"
 NAME_FILE="/etc/cyberbeest/machine-name"
-BASE_TEXT_FILE="/etc/cyberbeest/plymouth-luks-base-text"
 MAX_NAME_LENGTH=40
 
 name="${1:-}"
@@ -40,32 +39,19 @@ escape_for_script_string() {
 	printf '%s' "$s"
 }
 
-base_text="Enter master password to decrypt hard drive"
-if [ -f "$BASE_TEXT_FILE" ]; then
-	base_text="$(cat "$BASE_TEXT_FILE")"
-fi
+name_escaped="$(escape_for_script_string "$name")"
+new_line="password_dialog.machine_name = \"${name_escaped}\";"
 
-name_line=""
-if [ -n "$name" ]; then
-	# The \n here is two literal characters (backslash, n) written into the
-	# .script source -- plymouth's own lexer turns that into a real newline
-	# when it parses the string literal, same as it would for one typed
-	# directly into the theme file.
-	name_line="= $(escape_for_script_string "$name") =\\n"
-fi
-base_escaped="$(escape_for_script_string "$base_text")"
-new_prompt_line="        prompt = \"${name_line}\" + \"${base_escaped}\";"
-
-line_no="$(grep -n '^        prompt = ' "$SCRIPT_FILE" | head -1 | cut -d: -f1)"
+line_no="$(grep -n '^password_dialog.machine_name = ' "$SCRIPT_FILE" | head -1 | cut -d: -f1)"
 if [ -z "$line_no" ]; then
-	echo "Could not find the prompt line in $SCRIPT_FILE" >&2
+	echo "Could not find the machine_name line in $SCRIPT_FILE" >&2
 	exit 1
 fi
 
 tmp="$(mktemp)"
 {
 	head -n "$((line_no - 1))" "$SCRIPT_FILE"
-	printf '%s\n' "$new_prompt_line"
+	printf '%s\n' "$new_line"
 	tail -n "+$((line_no + 1))" "$SCRIPT_FILE"
 } > "$tmp"
 mv "$tmp" "$SCRIPT_FILE"
