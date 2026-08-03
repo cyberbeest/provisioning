@@ -16,6 +16,9 @@
  */
 
 #include <gtk/gtk.h>
+#include <gdk/gdkx.h>
+#include <X11/Xlib.h>
+#include <X11/extensions/dpms.h>
 #include <libxfce4panel/libxfce4panel.h>
 #include <libxfce4util/libxfce4util.h>
 #include <math.h>
@@ -24,6 +27,14 @@
 
 #define BAT_PATH "/sys/class/power_supply/BAT0"
 #define SAMPLE_INTERVAL_MS 3000
+
+/* Periodic history log for building an hourly consumption graph later.
+ * Kept separate from SAMPLE_INTERVAL_MS (which drives the live label) so
+ * the on-disk history doesn't balloon -- one row every 5 minutes is
+ * plenty for an hour-granularity graph. */
+#define LOG_INTERVAL_S (5 * 60)
+#define LOG_SUBDIR "wattage-panel"
+#define LOG_FILE "history.csv"
 
 #define DEFAULT_USE_LONGTERM TRUE
 #define DEFAULT_AVG_MINUTES 5
@@ -65,6 +76,12 @@ typedef struct {
 
     gboolean have_battery;
     guint sample_id;
+    guint log_id;
+
+    gboolean have_last;
+    BattStatus last_status;
+    gdouble last_watts;
+    gdouble last_capacity;
 } WattPlugin;
 
 static BattStatus
@@ -233,12 +250,90 @@ watt_update_label(WattPlugin *wp)
                "Long-term average window: %s of %d min (%s)",
                capacity, status_buf, watts, watts_instant, span_buf, wp->avg_minutes, avg_state);
     gtk_widget_set_tooltip_text(wp->label, tooltip);
+
+    wp->last_status = status;
+    wp->last_watts = watts;
+    wp->last_capacity = capacity;
+    wp->have_last = TRUE;
+}
+
+/* Same DPMS query kitt-scanner uses to detect a blanked screen. */
+static gboolean
+display_is_off(WattPlugin *wp)
+{
+    Display *dpy = GDK_DISPLAY_XDISPLAY(gtk_widget_get_display(GTK_WIDGET(wp->plugin)));
+
+    int event_base, error_base;
+    if (!DPMSQueryExtension(dpy, &event_base, &error_base))
+        return FALSE;
+
+    BOOL onoff = FALSE;
+    CARD16 power_level = DPMSModeOn;
+    if (!DPMSInfo(dpy, &power_level, &onoff))
+        return FALSE;
+
+    return onoff && power_level != DPMSModeOn;
 }
 
 static gboolean
 on_sample(gpointer user_data)
 {
     watt_update_label((WattPlugin *) user_data);
+    return G_SOURCE_CONTINUE;
+}
+
+static const gchar *
+status_log_name(BattStatus status)
+{
+    switch (status) {
+        case BATT_DISCHARGING:
+            return "battery";
+        case BATT_CHARGING:
+            return "charging";
+        default:
+            return "ac";
+    }
+}
+
+/* Appends one row to the on-disk history (timestamp, AC/battery/charging,
+ * watts) so an hour-granularity graph can be built later without keeping
+ * the plugin running the whole time. Uses whatever watts value is
+ * currently on display (long-term average when available, else instant),
+ * so it stays consistent with what the user was actually looking at. */
+static void
+watt_append_log(WattPlugin *wp)
+{
+    if (!wp->have_last)
+        return;
+
+    gchar *dir = g_build_filename(g_get_user_state_dir(), LOG_SUBDIR, NULL);
+    if (g_mkdir_with_parents(dir, 0755) != 0) {
+        g_free(dir);
+        return;
+    }
+    gchar *path = g_build_filename(dir, LOG_FILE, NULL);
+    g_free(dir);
+
+    gboolean new_file = !g_file_test(path, G_FILE_TEST_EXISTS);
+    FILE *f = fopen(path, "a");
+    g_free(path);
+    if (!f)
+        return;
+
+    if (new_file)
+        fputs("timestamp,status,watts,battery_pct,screen\n", f);
+
+    gint64 now_s = g_get_real_time() / G_USEC_PER_SEC;
+    const gchar *screen = display_is_off(wp) ? "off" : "on";
+    fprintf(f, "%" G_GINT64_FORMAT ",%s,%.2f,%.0f,%s\n", now_s, status_log_name(wp->last_status),
+            wp->last_watts, wp->last_capacity, screen);
+    fclose(f);
+}
+
+static gboolean
+on_log_sample(gpointer user_data)
+{
+    watt_append_log((WattPlugin *) user_data);
     return G_SOURCE_CONTINUE;
 }
 
@@ -337,6 +432,8 @@ watt_free(XfcePanelPlugin *plugin, WattPlugin *wp)
     (void) plugin;
     if (wp->sample_id != 0)
         g_source_remove(wp->sample_id);
+    if (wp->log_id != 0)
+        g_source_remove(wp->log_id);
     g_array_free(wp->history, TRUE);
     g_free(wp);
 }
@@ -358,6 +455,8 @@ watt_construct(XfcePanelPlugin *plugin)
     if (wp->have_battery) {
         watt_update_label(wp);
         wp->sample_id = g_timeout_add(SAMPLE_INTERVAL_MS, on_sample, wp);
+        watt_append_log(wp);
+        wp->log_id = g_timeout_add_seconds(LOG_INTERVAL_S, on_log_sample, wp);
     }
 
     g_signal_connect(plugin, "free-data", G_CALLBACK(watt_free), wp);
