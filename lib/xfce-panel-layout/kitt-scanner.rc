@@ -7,4 +7,4 @@ OffIsBg=true
 Gamma=1.5
 SineSweep=true
 Enabled=true
-ShowPercent=true
+ShowPercent=false

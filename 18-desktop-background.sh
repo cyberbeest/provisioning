@@ -38,6 +38,19 @@ echo "--- Also dropping it into /usr/share/backgrounds/xfce/ ---"
 install -m 644 "$DIR/lib/assets/cyberbeest-desktop-bg.png" \
 	/usr/share/backgrounds/xfce/cyberbeest.png
 
+echo "--- Also dropping it into the desktop-base active theme's wallpaper folder ---"
+# Debian's xfdesktop-settings defaults the "Folder" dropdown in Desktop
+# Settings to "desktop-base" (/usr/share/desktop-base/active-theme/wallpaper/
+# contents/images/, via the desktop-theme update-alternatives symlink) rather
+# than to /usr/share/backgrounds/xfce -- that's the folder the dialog actually
+# opens on for a fresh account, so drop a copy there too so it's visible
+# without switching folders first.
+DESKTOP_BASE_WALLPAPER_DIR="/usr/share/desktop-base/active-theme/wallpaper/contents/images"
+if [ -d "$DESKTOP_BASE_WALLPAPER_DIR" ]; then
+	install -m 644 "$DIR/lib/assets/cyberbeest-desktop-bg.png" \
+		"$DESKTOP_BASE_WALLPAPER_DIR/cyberbeest.png"
+fi
+
 echo "--- Removing the old xfconf-automation autostart entry/script, if present ---"
 rm -f "$TARGET_HOME/.config/autostart/cyberbeest-set-wallpaper.desktop"
 rm -f "$TARGET_HOME/.local/bin/set-desktop-background.sh"
