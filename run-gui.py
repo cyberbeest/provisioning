@@ -242,7 +242,6 @@ class RunGuiWindow(Gtk.Window):
             stderr=subprocess.STDOUT,
             text=True,
             bufsize=1,
-            start_new_session=True,
         )
         for line in proc.stdout:
             GLib.idle_add(self.append_log, "", line)
