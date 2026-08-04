@@ -196,3 +196,7 @@ echo "--- Timezone ---"
 dpkg-reconfigure tzdata
 
 echo "=== $(date) : done. Reboot (or log out/in) for the new locale/keyboard to fully apply to the desktop session. ===" | tee -a "$LOG"
+# run-gui.py's terminal-script path doesn't stream this script's own output
+# live (see NEEDS_TERMINAL in run-gui.py) -- it re-reads the log file for
+# MANUAL_TODO lines afterwards instead, so this needs to land in $LOG too.
+echo "MANUAL_TODO: Reboot (or log out/in) for the new locale/keyboard to fully apply." | tee -a "$LOG"

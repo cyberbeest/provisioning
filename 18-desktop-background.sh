@@ -66,5 +66,7 @@ rm -f "$TARGET_HOME/.local/bin/set-desktop-background.sh"
 
 echo "=== $(date) : done. Set it via Desktop Settings -> pick Cyberbeest (one-time). ==="
 
-echo "--> Desktop background installed but not auto-selected -- open Desktop Settings" >&3
-echo "    (right-click desktop) and pick Cyberbeest yourself." >&3
+# See run-gui.py's MANUAL_TODO convention: it collects these into a "Things
+# to do" pane instead of them getting lost in a scrolling log. Still on fd 3
+# too, so a CLI run (run-all.sh/run-changed.sh/menu.sh) shows it directly.
+echo "MANUAL_TODO: Pick the desktop background: right-click desktop -> Desktop Settings -> select Cyberbeest." >&3

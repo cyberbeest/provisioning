@@ -76,13 +76,37 @@ process waiting to read from a tty nothing will ever type into again.
 
 Dev tool only (not shipped to end users), so unlike lib/*.py it doesn't use
 lib/i18n.py.
+
+Things-to-do pane: a handful of scripts can't fully finish themselves --
+either because a step is genuinely a human choice (18-desktop-background.sh
+deliberately doesn't auto-select a wallpaper, see its own comments for why)
+or because the change only takes effect after a logout/reboot
+(00-locale-keyboard-timezone.sh, and more generally most config scripts per
+their own "log out/in or reboot to pick this up" comments). Rather than
+these getting mentioned once in a scrolling log and then forgotten, any
+script can emit a line matching `MANUAL_TODO: <text>` on stdout and it gets
+pulled into a persistent "Things to do" pane above the log view, keyed by
+script name so a later re-run of the same script replaces rather than
+duplicates its entry. For NEEDS_TERMINAL scripts, whose output isn't
+streamed into the log view live, the log file is re-read for MANUAL_TODO
+lines after the terminal window closes instead.
+
+Separately, finishing a full "Run all" / "Run changed only" batch (not a
+single-script debug run via double-click) adds its own "reboot to fully
+apply everything" entry to the same pane with a one-click Reboot Now button
+-- consolidating the various per-script "needs a reboot" comments into a
+single action at the end of provisioning instead of the user having to
+reboot after every script or hunt through the log for whether one is
+needed.
 """
 import glob
 import os
+import re
 import shutil
 import subprocess
 import tempfile
 import threading
+import time
 
 import gi
 
@@ -94,6 +118,9 @@ ASKPASS = os.path.join(DIR, "lib", "zenity-askpass.sh")
 CACHED_ASKPASS = os.path.join(DIR, "lib", "cached-askpass.sh")
 
 NEEDS_TERMINAL = {"00-locale-keyboard-timezone.sh"}
+
+MANUAL_TODO_RE = re.compile(r"^MANUAL_TODO:\s*(.+?)\s*$", re.MULTILINE)
+REBOOT_TODO_KEY = "__reboot__"
 
 STATUS_STYLE = {
     "pending": ("pending", "#8a8a8a"),
@@ -117,6 +144,14 @@ def script_is_done(script):
     return os.path.exists(log) and os.path.getmtime(log) > os.path.getmtime(script_path)
 
 
+def format_duration(seconds):
+    seconds = round(seconds)
+    if seconds < 60:
+        return f"{seconds}s"
+    minutes, seconds = divmod(seconds, 60)
+    return f"{minutes}m {seconds}s"
+
+
 class ScriptRow(Gtk.ListBoxRow):
     def __init__(self, script):
         super().__init__()
@@ -135,8 +170,10 @@ class ScriptRow(Gtk.ListBoxRow):
 
         self.set_status("done" if script_is_done(script) else "pending")
 
-    def set_status(self, state):
+    def set_status(self, state, duration=None):
         text, color = STATUS_STYLE[state]
+        if duration is not None:
+            text = f"{text} ({format_duration(duration)})"
         self.status_label.set_markup(f'<span foreground="{color}">{GLib.markup_escape_text(text)}</span>')
 
 
@@ -156,6 +193,13 @@ class RunGuiWindow(Gtk.Window):
         self.displayed_script = ""
         self.currently_running_script = None
         self.follow_live = True
+        self.todos = {}
+        self.current_run_is_batch = False
+        # Sum of individual script durations run in this session -- not
+        # wall-clock time since the window opened (which would also count
+        # idle time sitting on this screen doing nothing), and deliberately
+        # not persisted across restarts of run-gui.py itself.
+        self.session_total_seconds = 0.0
 
         root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
         root.set_border_width(12)
@@ -177,8 +221,21 @@ class RunGuiWindow(Gtk.Window):
         self.stop_button.connect("clicked", self.on_stop)
         button_box.pack_start(self.stop_button, False, False, 0)
 
+        self.total_time_label = Gtk.Label(label="Total run time this session: 0s", xalign=1)
+        button_box.pack_end(self.total_time_label, False, False, 0)
+
         self.status_label = Gtk.Label(label="Idle. Double-click a script below to run just that one.", xalign=0)
         root.pack_start(self.status_label, False, False, 0)
+
+        self.todo_frame = Gtk.Frame(label="Things to do")
+        # Hidden whenever self.todos is empty (start of day, or once every
+        # entry has been dismissed) -- set_no_show_all so the later
+        # self.show_all() doesn't force it visible regardless.
+        self.todo_frame.set_no_show_all(True)
+        self.todo_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        self.todo_box.set_border_width(8)
+        self.todo_frame.add(self.todo_box)
+        root.pack_start(self.todo_frame, False, False, 0)
 
         paned = Gtk.Paned(orientation=Gtk.Orientation.HORIZONTAL)
         paned.set_position(300)
@@ -269,17 +326,115 @@ class RunGuiWindow(Gtk.Window):
     def append_log(self, script, text):
         self.logs[script] = self.logs.get(script, "") + text
         if self.displayed_script == script:
-            # Full resync rather than inserting just `text` at the end: the
-            # buffer may currently be showing show_log's synthetic "hasn't
-            # been run yet" placeholder rather than a true prefix of
-            # self.logs[script] (e.g. right as a script starts), and blindly
-            # appending onto that would leave the placeholder line stuck at
-            # the top instead of being replaced by real output. These logs
-            # are small enough (single provisioning scripts) that resetting
-            # the whole buffer every line is not a real perf concern.
-            self.log_buffer.set_text(self.logs[script])
+            current = self.log_buffer.get_text(
+                self.log_buffer.get_start_iter(), self.log_buffer.get_end_iter(), False
+            )
+            if self.logs[script].startswith(current):
+                # Common case: incremental insert at the end. Matters for
+                # more than just efficiency -- GtkTextView treats a full
+                # buffer replacement (set_text) as content changing out from
+                # under it and resets/re-validates scroll position, which
+                # was fighting the scroll-to-end below on any log with
+                # enough lines to actually scroll (it kept snapping back
+                # toward the top on every subsequent line).
+                self.log_buffer.insert(self.log_buffer.get_end_iter(), text)
+            else:
+                # `current` isn't a prefix of the real log -- the buffer is
+                # still showing show_log's synthetic "hasn't been run yet"
+                # placeholder rather than actual output (e.g. right as a
+                # script starts). Blindly inserting would leave that
+                # placeholder line stuck at the top instead of being
+                # replaced by real output, so do one full resync here; every
+                # append after this one for this script takes the cheap
+                # incremental path above instead.
+                self.log_buffer.set_text(self.logs[script])
+            # Deferred to the next idle cycle rather than called right here:
+            # scroll_to_iter against a location from *this* insert/set_text
+            # call measures against the TextView's pre-update layout (it
+            # hasn't re-allocated for the new buffer contents yet), so the
+            # scroll silently lands short of the end -- most visible on a
+            # script with enough output to need scrolling at all.
+            GLib.idle_add(self._scroll_log_to_end, script)
+        for todo_text in MANUAL_TODO_RE.findall(text):
+            self._add_todo(script, todo_text, action=self._todo_action_for(script))
+
+    def _scroll_log_to_end(self, script):
+        # By the time this idle callback runs, the user may have clicked to
+        # a different row -- don't yank the view back to a script they're no
+        # longer looking at.
+        if self.displayed_script == script:
             end = self.log_buffer.get_end_iter()
             self.log_view.scroll_to_iter(end, 0.0, False, 0.0, 0.0)
+        return GLib.SOURCE_REMOVE
+
+    # -- things-to-do pane --------------------------------------------------
+
+    def _add_todo(self, key, text, action=None):
+        # Keyed by script (or REBOOT_TODO_KEY) so re-running a script
+        # replaces its previous entry instead of piling up duplicates.
+        self.todos[key] = (text, action)
+        self._rebuild_todo_pane()
+
+    def _dismiss_todo(self, key):
+        self.todos.pop(key, None)
+        self._rebuild_todo_pane()
+
+    def _rebuild_todo_pane(self):
+        for child in self.todo_box.get_children():
+            self.todo_box.remove(child)
+        for key, (text, action) in self.todos.items():
+            row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+            label = Gtk.Label(label=text, xalign=0)
+            label.set_line_wrap(True)
+            row.pack_start(label, True, True, 0)
+            if action is not None:
+                action_label, callback = action
+                action_button = Gtk.Button(label=action_label)
+                action_button.connect("clicked", callback)
+                row.pack_start(action_button, False, False, 0)
+            dismiss_button = Gtk.Button(label="Dismiss")
+            dismiss_button.connect("clicked", lambda _b, k=key: self._dismiss_todo(k))
+            row.pack_start(dismiss_button, False, False, 0)
+            self.todo_box.pack_start(row, False, False, 0)
+        if self.todos:
+            # set_no_show_all(True) above means show_all() would skip this
+            # frame even when called directly on it -- show() + show_all()
+            # on its (no-show-all-free) child box instead.
+            self.todo_box.show_all()
+            self.todo_frame.show()
+        else:
+            self.todo_frame.hide()
+
+    def _todo_action_for(self, script):
+        # The only MANUAL_TODO source that has an obvious one-click shortcut
+        # to offer alongside it right now.
+        if script == "18-desktop-background.sh":
+            return ("Open Desktop Settings", self._open_desktop_settings)
+        return None
+
+    def _open_desktop_settings(self, _button):
+        subprocess.Popen(["xfdesktop-settings"])
+
+    def _do_reboot(self, _button):
+        dialog = Gtk.MessageDialog(
+            transient_for=self,
+            modal=True,
+            message_type=Gtk.MessageType.QUESTION,
+            buttons=Gtk.ButtonsType.YES_NO,
+            text="Reboot now?",
+        )
+        dialog.format_secondary_text("This will restart the machine immediately.")
+        response = dialog.run()
+        dialog.destroy()
+        if response != Gtk.ResponseType.YES:
+            return
+        self._dismiss_todo(REBOOT_TODO_KEY)
+        subprocess.Popen(
+            ["sudo", "-A", "-p", "", "reboot"],
+            env=self._sudo_env(),
+            stdin=subprocess.DEVNULL,
+            start_new_session=True,
+        )
 
     def show_log(self, script):
         self.displayed_script = script
@@ -321,8 +476,12 @@ class RunGuiWindow(Gtk.Window):
         target = max(0.0, min(target, max(0.0, adj.get_upper() - page_size)))
         adj.set_value(target)
 
-    def set_row_status(self, script, state):
-        self.rows[script].set_status(state)
+    def set_row_status(self, script, state, duration=None):
+        self.rows[script].set_status(state, duration)
+
+    def _add_session_runtime(self, seconds):
+        self.session_total_seconds += seconds
+        self.total_time_label.set_text(f"Total run time this session: {format_duration(self.session_total_seconds)}")
 
     # -- starting runs --------------------------------------------------
 
@@ -345,14 +504,18 @@ class RunGuiWindow(Gtk.Window):
             if not scripts:
                 self.status_label.set_text("Nothing to run -- everything is already up to date.")
                 return
-        self._start_run(scripts, label="Run changed only" if changed_only else "Run all")
+        self._start_run(scripts, label="Run changed only" if changed_only else "Run all", batch=True)
 
     def on_row_activated(self, _listbox, row):
         if self.busy:
             return
-        self._start_run([row.script], label=f"Run {row.script}")
+        # Not a batch run: a single-script debug run via double-click
+        # shouldn't nag for a reboot the way finishing all of provisioning
+        # does.
+        self._start_run([row.script], label=f"Run {row.script}", batch=False)
 
-    def _start_run(self, scripts, label):
+    def _start_run(self, scripts, label, batch):
+        self.current_run_is_batch = batch
         self.stop_requested = False
         self.follow_live = True
         self.logs[""] = ""
@@ -434,6 +597,16 @@ class RunGuiWindow(Gtk.Window):
             self.proc = proc
             proc.wait()
             self.proc = None
+            # Output wasn't streamed into the log pane live (see class
+            # docstring), so MANUAL_TODO lines weren't picked up by
+            # append_log as they went by -- re-read the script's own log
+            # file for them now that it's finished.
+            try:
+                log_text = open(log_path_for(script)).read()
+            except OSError:
+                log_text = ""
+            for todo_text in MANUAL_TODO_RE.findall(log_text):
+                GLib.idle_add(self._add_todo, script, todo_text, self._todo_action_for(script))
             try:
                 return int(open(exit_file).read().strip())
             except (OSError, ValueError):
@@ -463,15 +636,22 @@ class RunGuiWindow(Gtk.Window):
             GLib.idle_add(self.set_row_status, script, "running")
             GLib.idle_add(self.status_label.set_text, f"Running: {script}")
 
+            start_time = time.monotonic()
             if script in NEEDS_TERMINAL:
                 status = self._run_in_terminal(script)
             else:
                 GLib.idle_add(self.append_log, script, f"=== running {script} ===\n")
                 status = self._run_piped(script)
+            # For a NEEDS_TERMINAL script this includes however long the
+            # xterm sat open waiting for someone to work through its
+            # whiptail menus, not just the script's own work -- expected,
+            # since that's genuinely how long this step took this run.
+            duration = time.monotonic() - start_time
+            GLib.idle_add(self._add_session_runtime, duration)
 
             if status == 0:
-                GLib.idle_add(self.append_log, script, f"=== {script} done ===\n")
-                GLib.idle_add(self.set_row_status, script, "done")
+                GLib.idle_add(self.append_log, script, f"=== {script} done ({format_duration(duration)}) ===\n")
+                GLib.idle_add(self.set_row_status, script, "done", duration)
             else:
                 failed_script = script
                 # Could be a stale/wrong cached password as easily as the
@@ -479,8 +659,8 @@ class RunGuiWindow(Gtk.Window):
                 # next run than to keep feeding sudo something that doesn't
                 # work.
                 self.sudo_password = None
-                GLib.idle_add(self.append_log, script, f"=== {script} FAILED (exit {status}) ===\n")
-                GLib.idle_add(self.set_row_status, script, "failed")
+                GLib.idle_add(self.append_log, script, f"=== {script} FAILED ({format_duration(duration)}, exit {status}) ===\n")
+                GLib.idle_add(self.set_row_status, script, "failed", duration)
                 if remaining:
                     GLib.idle_add(
                         self.append_log,
@@ -500,6 +680,12 @@ class RunGuiWindow(Gtk.Window):
             self.status_label.set_text(f"Failed: {failed_script} -- see log above.")
         else:
             self.status_label.set_text("Finished successfully.")
+            if self.current_run_is_batch:
+                self._add_todo(
+                    REBOOT_TODO_KEY,
+                    "Reboot to fully apply everything from this run.",
+                    action=("Reboot Now", self._do_reboot),
+                )
 
     def on_stop(self, _button):
         if not self.busy:
