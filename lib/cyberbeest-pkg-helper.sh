@@ -6,7 +6,7 @@
 # calls it for setup-repo), so no pkexec/fixed-path requirement applies here.
 #
 # Usage:
-#   cyberbeest-pkg-helper.sh setup-repo <signal|element>
+#   cyberbeest-pkg-helper.sh setup-repo <signal|element|mullvad|protonvpn>
 #   cyberbeest-pkg-helper.sh install <pkg>...
 #   cyberbeest-pkg-helper.sh remove <pkg>...
 #   cyberbeest-pkg-helper.sh install-deb-url <url>   (for vendors with no apt
@@ -80,6 +80,32 @@ do_setup_repo() {
             log "Element apt repository set up"
         else
             log "Element apt repository already present, skipping"
+        fi
+        ;;
+    mullvad)
+        if [ ! -f /etc/apt/sources.list.d/mullvad.list ]; then
+            log "Setting up Mullvad apt repository"
+            curl -fsSL -o /usr/share/keyrings/mullvad-keyring.asc https://repository.mullvad.net/deb/mullvad-keyring.asc \
+                || { log "Mullvad keyring fetch failed"; return 1; }
+            echo "deb [signed-by=/usr/share/keyrings/mullvad-keyring.asc arch=$(dpkg --print-architecture)] https://repository.mullvad.net/deb/stable stable main" >/etc/apt/sources.list.d/mullvad.list \
+                || { log "Mullvad sources write failed"; return 1; }
+            apt-get -o DPkg::Lock::Timeout=60 update >>"$LOG" 2>&1 || { log "apt-get update failed after adding Mullvad repo"; return 1; }
+            log "Mullvad apt repository set up"
+        else
+            log "Mullvad apt repository already present, skipping"
+        fi
+        ;;
+    protonvpn)
+        if [ ! -f /etc/apt/sources.list.d/protonvpn.list ]; then
+            log "Setting up Proton VPN apt repository"
+            curl -fsSL -o /usr/share/keyrings/protonvpn-keyring.asc https://repo.protonvpn.com/debian/public_key.asc \
+                || { log "Proton VPN keyring fetch failed"; return 1; }
+            echo "deb [signed-by=/usr/share/keyrings/protonvpn-keyring.asc] https://repo.protonvpn.com/debian stable main" >/etc/apt/sources.list.d/protonvpn.list \
+                || { log "Proton VPN sources write failed"; return 1; }
+            apt-get -o DPkg::Lock::Timeout=60 update >>"$LOG" 2>&1 || { log "apt-get update failed after adding Proton VPN repo"; return 1; }
+            log "Proton VPN apt repository set up"
+        else
+            log "Proton VPN apt repository already present, skipping"
         fi
         ;;
     *)

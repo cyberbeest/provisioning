@@ -1,0 +1,9 @@
+# Allow cyberbeest to manage WireGuard VPN profiles without a password.
+# Scoped to exactly the wg-quick@<profile> systemd unit and the two
+# purpose-built helper scripts (which do their own argument validation) --
+# no general systemctl/root access. Written by the VPN toggle setup.
+cyberbeest ALL=(root) NOPASSWD: /usr/bin/systemctl start wg-quick@*
+cyberbeest ALL=(root) NOPASSWD: /usr/bin/systemctl stop wg-quick@*
+cyberbeest ALL=(root) NOPASSWD: /usr/bin/systemctl is-active wg-quick@*
+cyberbeest ALL=(root) NOPASSWD: /usr/local/lib/cyberbeest/vpn-import-helper.sh *
+cyberbeest ALL=(root) NOPASSWD: /usr/local/lib/cyberbeest/vpn-remove-helper.sh *

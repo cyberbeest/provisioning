@@ -18,6 +18,7 @@ registers the polkit policy for that helper.
 
 import os
 import subprocess
+import sys
 import threading
 from datetime import datetime
 
@@ -63,6 +64,26 @@ APPS = [
         "extra_remove_steps": ["teardown-i2pd-toggle"],
         "post_install_script": "__POST_INSTALL_SCRIPT__",
         "post_remove_script": "__POST_INSTALL_SCRIPT__",
+    },
+    {
+        "id": "mullvad",
+        "name": "Mullvad VPN",
+        "description": "Mullvad's own Linux app -- account-number login (no email), built-in kill switch. Installs and enables a persistent background daemon (mullvad-daemon), which is why this is opt-in rather than default.",
+        "category": "VPN & Networking",
+        "check_pkg": "mullvad-vpn",
+        "install_pkg": "mullvad-vpn",
+        "remove_pkg": "mullvad-vpn",
+        "repo": "mullvad",
+    },
+    {
+        "id": "protonvpn",
+        "name": "Proton VPN",
+        "description": "Proton's own Linux app -- also installs and enables a persistent background daemon, same reason it's opt-in. Officially targets GNOME; works on Xfce but pulls in some GNOME libraries as dependencies.",
+        "category": "VPN & Networking",
+        "check_pkg": "proton-vpn-gnome-desktop",
+        "install_pkg": "proton-vpn-gnome-desktop",
+        "remove_pkg": "proton-vpn-gnome-desktop",
+        "repo": "protonvpn",
     },
 ]
 
@@ -225,7 +246,7 @@ class TaskRow(Gtk.Box):
 
 
 class PackagesPage(Gtk.Box):
-    def __init__(self, parent_window):
+    def __init__(self, parent_window, preselect_id=None):
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=14)
         self.parent_window = parent_window
         self.set_border_width(16)
@@ -244,6 +265,11 @@ class PackagesPage(Gtk.Box):
         paned.pack2(tasks_pane, True, False)
 
         self.rebuild_tasks()
+
+        if preselect_id and preselect_id in self.rows:
+            row = self.rows[preselect_id]
+            if not row.installed:
+                row.check.set_active(True)  # normal toggle path, updates the queue too
 
     def _build_apps_pane(self):
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
@@ -541,17 +567,21 @@ class PackagesPage(Gtk.Box):
 
 
 class PackagesWindow(Gtk.Window):
-    def __init__(self):
+    def __init__(self, preselect_id=None):
         super().__init__(title="Cyberbeest Package Manager")
         self.set_default_size(760, 380)
         self.set_position(Gtk.WindowPosition.CENTER)
         self.connect("destroy", Gtk.main_quit)
-        self.add(PackagesPage(self))
+        self.add(PackagesPage(self, preselect_id=preselect_id))
 
 
 def main():
     _load_terminal_css()
-    win = PackagesWindow()
+    preselect_id = None
+    for arg in sys.argv[1:]:
+        if arg.startswith("--select="):
+            preselect_id = arg.split("=", 1)[1]
+    win = PackagesWindow(preselect_id=preselect_id)
     win.show_all()
     Gtk.main()
 
