@@ -156,6 +156,25 @@ debconf-set-selections <<-EOF
 	locales locales/default_environment_locale select $LOCALE
 	locales locales/locales_to_be_generated multiselect $gen_locales
 EOF
+
+# debconf-set-selections + dpkg-reconfigure alone does NOT actually apply
+# this on a machine that already has a locale configured -- which every one
+# of these does out of the box (see file header). locales.config re-derives
+# both questions below from whatever's *already* in /etc/default/locale and
+# /etc/locale.gen and unconditionally overwrites our preseed with that
+# before dpkg-reconfigure ever applies it, so the old locale silently wins
+# regardless of what was picked here. Write /etc/locale.gen and set LANG
+# directly instead; dpkg-reconfigure below then just reaffirms debconf's
+# own state to match what's now on disk, which keeps a later manual
+# `dpkg-reconfigure locales` from re-prompting.
+{
+	echo "$LOCALE UTF-8"
+	[ "$LOCALE" != "en_US.UTF-8" ] && echo "en_US.UTF-8 UTF-8"
+} >/etc/locale.gen
+locale-gen
+update-locale --no-checks LANG
+update-locale "LANG=$LOCALE"
+
 dpkg-reconfigure -f noninteractive locales
 
 echo "--- Applying keyboard layout ($KEYBOARD) ---"

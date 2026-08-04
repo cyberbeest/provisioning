@@ -40,14 +40,16 @@ install -m 644 "$THEME_SRC/cyberbeest.plymouth" \
 	"$THEME_DIR/"
 # cyberbeest.script itself gets the LUKS prompt and shutdown text
 # substituted in for the current locale rather than being copied verbatim --
-# see the i18n.sh comment above and the __LUKS_PROMPT__/__SHUTDOWN_TEXT__
-# placeholders in the .script source. __MACHINE_NAME__ starts empty; the
-# owner sets it later via disk_password_gui.py's "Boot Screen" tab.
+# see the i18n.sh comment above and the __LUKS_PROMPT__/__LUKS_SUCCESS__/
+# __SHUTDOWN_TEXT__ placeholders in the .script source. __MACHINE_NAME__
+# starts empty; the owner sets it later via disk_password_gui.py's "Boot
+# Screen" tab.
 # __BRIGHT_MODE__ ships on by default (see the state-file note below) but is
 # also toggleable there, both rewriting the theme in place through
 # cyberbeest-set-boot-name / cyberbeest-set-boot-bright-mode (installed
 # below) rather than this script running again.
 sed -e "s|__LUKS_PROMPT__|$(t plymouth.luks_prompt)|" \
+    -e "s|__LUKS_SUCCESS__|$(t plymouth.luks_success)|" \
     -e "s|__SHUTDOWN_TEXT__|$(t plymouth.shutdown_text)|" \
     -e "s|__MACHINE_NAME__||" \
     -e "s|__BRIGHT_MODE__|1|" \

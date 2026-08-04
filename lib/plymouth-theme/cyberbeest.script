@@ -254,8 +254,37 @@ message.sprite = Sprite();
 message.sprite.SetZ(30);
 message.hide_countdown = 0;
 
+# Substituted at install time (setup-grub-plymouth-theme.sh) from lib/i18n's
+# plymouth.luks_success key. cryptsetup's own initramfs script sends
+# "$CRYPTTAB_NAME: set up successfully" through this same message channel on
+# a correct unlock -- rather than patching that upstream script (fragile
+# across cryptsetup-initramfs package upgrades, and edits a file this repo
+# doesn't own), just recognize its fixed suffix here and swap in our own
+# text. CRYPTTAB_NAME varies per machine, so only the suffix is matched.
+luks_success_text = "__LUKS_SUCCESS__";
+luks_success_suffix = ": set up successfully";
+
+fun ends_with(text, suffix) {
+    text_len = text.Length();
+    suffix_len = suffix.Length();
+    if (text_len < suffix_len)
+        return false;
+    return text.SubString(text_len - suffix_len, text_len) == suffix;
+}
+
 fun message_callback(text) {
-    message.image = Image.Text(text, 1, 0.35, 0.35, 1);
+    # Reddish tint fits cryptsetup's error text (e.g. "bad password, try
+    # again"), which is what this handler was originally built for -- but
+    # is wrong for our own success text, so that gets the theme's normal
+    # foreground color instead.
+    is_success = ends_with(text, luks_success_suffix);
+    if (is_success) {
+        text = luks_success_text;
+        msg_red = text_red; msg_green = text_green; msg_blue = text_blue;
+    } else {
+        msg_red = 1; msg_green = 0.35; msg_blue = 0.35;
+    }
+    message.image = Image.Text(text, msg_red, msg_green, msg_blue, 1);
     message.sprite.SetImage(message.image);
     message.x = screen.w / 2 - message.image.GetWidth() / 2;
     message.y = screen.h * 0.9;
