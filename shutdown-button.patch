@@ -1,0 +1,186 @@
+--- a/src/gs-lock-plug.c	2026-08-05 01:26:12.794322394 +0200
++++ b/src/gs-lock-plug.c	2026-08-05 01:26:12.906328062 +0200
+@@ -88,6 +88,9 @@
+     GtkWidget   *auth_switch_button;
+     GtkWidget   *auth_cancel_button;
+     GtkWidget   *auth_logout_button;
++    GtkWidget   *auth_shutdown_button;
++    gboolean     shutdown_armed;
++    guint        shutdown_disarm_timeout_id;
+ 
+     GtkWidget   *auth_prompt_kbd_layout_indicator;
+     GtkWidget   *keyboard_toggle;
+@@ -1448,6 +1451,63 @@
+     gs_lock_plug_response (plug, GS_LOCK_PLUG_RESPONSE_CANCEL);
+ }
+ 
++#define SHUTDOWN_CONFIRM_TIMEOUT_SECONDS 4
++
++static gboolean
++shutdown_disarm_timeout (gpointer data) {
++    GSLockPlug *plug = GS_LOCK_PLUG (data);
++
++    if (plug->priv->auth_shutdown_button != NULL) {
++        gtk_button_set_label (GTK_BUTTON (plug->priv->auth_shutdown_button), "Shut _Down");
++        gtk_style_context_remove_class (
++            gtk_widget_get_style_context (plug->priv->auth_shutdown_button),
++            "destructive-action");
++    }
++
++    plug->priv->shutdown_armed = FALSE;
++    plug->priv->shutdown_disarm_timeout_id = 0;
++
++    return G_SOURCE_REMOVE;
++}
++
++static void
++shutdown_button_clicked (GtkButton  *button,
++                         GSLockPlug *plug) {
++    if (!plug->priv->shutdown_armed) {
++        plug->priv->shutdown_armed = TRUE;
++        gtk_button_set_label (GTK_BUTTON (button), "Really Shut Down?");
++        gtk_style_context_add_class (gtk_widget_get_style_context (GTK_WIDGET (button)),
++                                     "destructive-action");
++
++        if (plug->priv->shutdown_disarm_timeout_id > 0) {
++            g_source_remove (plug->priv->shutdown_disarm_timeout_id);
++        }
++        plug->priv->shutdown_disarm_timeout_id =
++            g_timeout_add_seconds (SHUTDOWN_CONFIRM_TIMEOUT_SECONDS,
++                                   shutdown_disarm_timeout, plug);
++        return;
++    }
++
++    if (plug->priv->shutdown_disarm_timeout_id > 0) {
++        g_source_remove (plug->priv->shutdown_disarm_timeout_id);
++        plug->priv->shutdown_disarm_timeout_id = 0;
++    }
++    plug->priv->shutdown_armed = FALSE;
++
++    gtk_button_set_label (GTK_BUTTON (button), "Shutting Down…");
++    gtk_widget_set_sensitive (GTK_WIDGET (button), FALSE);
++
++    {
++        GError *error = NULL;
++
++        g_spawn_command_line_async ("systemctl poweroff", &error);
++        if (error) {
++            g_warning ("Could not run shutdown command: %s", error->message);
++            g_error_free (error);
++        }
++    }
++}
++
+ static void
+ switch_user_button_clicked (GtkButton  *button,
+                             GSLockPlug *plug) {
+@@ -1579,6 +1639,7 @@
+     plug->priv->auth_cancel_button = GTK_WIDGET (gtk_builder_get_object(builder, "auth-cancel-button"));
+     plug->priv->auth_logout_button = GTK_WIDGET (gtk_builder_get_object(builder, "auth-logout-button"));
+     plug->priv->auth_switch_button = GTK_WIDGET (gtk_builder_get_object(builder, "auth-switch-button"));
++    plug->priv->auth_shutdown_button = GTK_WIDGET (gtk_builder_get_object(builder, "auth-shutdown-button"));
+     plug->priv->background_image = GTK_WIDGET (gtk_builder_get_object(builder, "lock-image"));
+ 
+     plug->priv->auth_prompt_infobar = GTK_WIDGET (gtk_builder_get_object(builder, "greeter_infobar"));
+@@ -1719,6 +1780,11 @@
+                           G_CALLBACK (logout_button_clicked), plug);
+     }
+ 
++    if (plug->priv->auth_shutdown_button != NULL) {
++        g_signal_connect (plug->priv->auth_shutdown_button, "clicked",
++                          G_CALLBACK (shutdown_button_clicked), plug);
++    }
++
+     g_signal_connect (plug, "delete_event", G_CALLBACK (delete_handler), NULL);
+ 
+     gs_profile_end (NULL);
+@@ -1753,6 +1819,11 @@
+     remove_cancel_timeout (plug);
+     remove_datetime_timeout (plug);
+ 
++    if (plug->priv->shutdown_disarm_timeout_id > 0) {
++        g_source_remove (plug->priv->shutdown_disarm_timeout_id);
++        plug->priv->shutdown_disarm_timeout_id = 0;
++    }
++
+     G_OBJECT_CLASS (gs_lock_plug_parent_class)->finalize (object);
+ }
+ 
+--- a/src/xfce4-screensaver-dialog.ui	2026-08-05 01:26:12.790322192 +0200
++++ b/src/xfce4-screensaver-dialog.ui	2026-08-05 01:26:12.906328062 +0200
+@@ -267,6 +267,22 @@
+                 <property name="spacing">6</property>
+                 <property name="homogeneous">True</property>
+                 <child>
++                  <object class="GtkButton" id="auth-shutdown-button">
++                    <property name="label" translatable="yes">Shut _Down</property>
++                    <property name="visible">True</property>
++                    <property name="can_focus">True</property>
++                    <property name="focus_on_click">False</property>
++                    <property name="can_default">True</property>
++                    <property name="receives_default">False</property>
++                    <property name="use_underline">True</property>
++                  </object>
++                  <packing>
++                    <property name="expand">False</property>
++                    <property name="fill">False</property>
++                    <property name="position">0</property>
++                  </packing>
++                </child>
++                <child>
+                   <object class="GtkButton" id="auth-switch-button">
+                     <property name="label" translatable="yes">_Switch User</property>
+                     <property name="visible">True</property>
+--- a/debian/changelog	2026-08-05 01:26:12.806323002 +0200
++++ b/debian/changelog	2026-08-05 01:26:12.858325633 +0200
+@@ -1,3 +1,50 @@
++xfce4-screensaver (4.18.4-1cyberbeest5) unstable; urgency=medium
++
++  * Relabel the button to "Shutting Down..." and disable it once the
++    poweroff command is actually issued, so it's clear something is
++    happening during the few seconds before the screen goes dark.
++
++ -- cyberbeest <cyberbeest@localhost>  Wed, 05 Aug 2026 01:20:00 -0000
++
++xfce4-screensaver (4.18.4-1cyberbeest4) unstable; urgency=medium
++
++  * Fix: the .ui file wasn't actually being recompiled into the binary
++    (MAINTAINER_MODE was off, so a stale pre-generated header was used
++    every build) - regenerated it by hand, Shut Down button now really
++    ships.
++  * Replace the nested gtk_dialog_run() confirmation (which conflicted
++    with the lock screen's X11 grab and left input in a stuck state)
++    with an in-place "click again to confirm" pattern on the same
++    button, auto-reverting after 4 seconds.
++
++ -- cyberbeest <cyberbeest@localhost>  Wed, 05 Aug 2026 01:15:00 -0000
++
++xfce4-screensaver (4.18.4-1cyberbeest3) unstable; urgency=medium
++
++  * Drop the top-right overlay button entirely (rendered as an
++    unstyled black box - unresolved). Instead add "Shut Down" as a
++    real button in the existing auth dialog button row, leftmost of
++    Switch User / Log Out / Cancel / Unlock, with a confirmation
++    dialog. Uses the same GtkBuilder/theming path as the other
++    buttons, which already render correctly.
++
++ -- cyberbeest <cyberbeest@localhost>  Wed, 05 Aug 2026 01:00:00 -0000
++
++xfce4-screensaver (4.18.4-1cyberbeest2) unstable; urgency=medium
++
++  * Replace the icon-based power menu with a plain text "Shut Down"
++    button, top-right, to sidestep icon-theme rendering issues.
++
++ -- cyberbeest <cyberbeest@localhost>  Wed, 05 Aug 2026 00:45:00 -0000
++
++xfce4-screensaver (4.18.4-1cyberbeest1) unstable; urgency=medium
++
++  * Add a top-right power menu (Restart / Shut Down, with confirmation)
++    to the fullscreen lock/unlock screen, since the unlock dialog never
++    had a shutdown option upstream.
++
++ -- cyberbeest <cyberbeest@localhost>  Wed, 05 Aug 2026 00:35:00 -0000
++
+ xfce4-screensaver (4.18.4-1) unstable; urgency=medium
+ 
+   * Team upload.
