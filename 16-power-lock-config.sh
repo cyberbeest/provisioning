@@ -4,6 +4,10 @@
 # locks after 5 minutes idle, and there's no separate system auto-suspend
 # (that's handled by lock-shutdown-watcher.sh instead) -- see
 # lib/xfce-perchannel-xml/xfce4-power-manager.xml and xfce4-screensaver.xml.
+# Also disables light-locker's autostart: it's pulled in as an xfce4-session
+# recommend, and having it running alongside xfce4-screensaver makes both
+# fight over the lock/unlock X grab -- intermittently leaving the unlock
+# dialog's password field unable to take keyboard focus.
 # Idempotent: safe to re-run (backs up any pre-existing config the first
 # time, as *.pre-cyberbeest). A live session needs to log out/in (or
 # reboot) to pick this up -- unlike the panel, these aren't reloaded live.
@@ -32,5 +36,18 @@ for channel in xfce4-power-manager xfce4-screensaver; do
 	install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 \
 		"$DIR/lib/xfce-perchannel-xml/$channel.xml" "$dest"
 done
+
+echo "--- Disabling light-locker autostart (xfce4-screensaver is the locker) ---"
+install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.config/autostart"
+cat > "$TARGET_HOME/.config/autostart/light-locker.desktop" <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=Screen Locker
+Exec=light-locker
+NoDisplay=true
+Hidden=true
+EOF
+chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.config/autostart/light-locker.desktop"
+pkill -u "$TARGET_USER" -x light-locker || true
 
 echo "=== $(date) : done ==="

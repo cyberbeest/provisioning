@@ -1,6 +1,7 @@
 #!/bin/bash
 # Lays out the xfce4 panel to match the dev machine, plugins grouped left
-# to right: Whisker menu, tasklist -- Programs (terminal launcher) --
+# to right: Whisker menu, tasklist -- Programs (terminal launcher, file
+# manager launcher) --
 # Hardware (systray, pulseaudio volume plugin, its icon overridden with a
 # padded version so it doesn't dominate the panel visually -- see the
 # icons-adwaita-symbolic-status install below) -- Status (the custom
@@ -88,6 +89,11 @@ echo "--- Writing launcher-9 (terminal) ---"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.config/xfce4/panel/launcher-9"
 install -m 644 "$LAYOUT/terminal-emulator.desktop" \
 	"$TARGET_HOME/.config/xfce4/panel/launcher-9/terminal-emulator.desktop"
+
+echo "--- Writing launcher-18 (file manager) ---"
+install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.config/xfce4/panel/launcher-18"
+install -m 644 "$LAYOUT/file-manager.desktop" \
+	"$TARGET_HOME/.config/xfce4/panel/launcher-18/file-manager.desktop"
 
 echo "--- Writing xfce4-panel.xml ---"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.config/xfce4/xfconf/xfce-perchannel-xml"
