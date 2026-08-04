@@ -40,12 +40,21 @@ install -m 644 "$DIR/lib/assets/cyberbeest-desktop-bg.png" \
 
 echo "--- Also dropping it into the desktop-base active theme's wallpaper folder ---"
 # Debian's xfdesktop-settings defaults the "Folder" dropdown in Desktop
-# Settings to "desktop-base" (/usr/share/desktop-base/active-theme/wallpaper/
-# contents/images/, via the desktop-theme update-alternatives symlink) rather
-# than to /usr/share/backgrounds/xfce -- that's the folder the dialog actually
-# opens on for a fresh account, so drop a copy there too so it's visible
-# without switching folders first.
-DESKTOP_BASE_WALLPAPER_DIR="/usr/share/desktop-base/active-theme/wallpaper/contents/images"
+# Settings to "desktop-base" -- that's the folder the dialog actually opens
+# on for a fresh account, so drop a copy there too so it's visible without
+# switching folders first.
+#
+# NB: this is NOT /usr/share/desktop-base/active-theme/wallpaper/contents/images/
+# despite that being the obvious guess from the theme's own directory layout.
+# Confirmed via ~/.cache/thumbnails/large/*.png Thumb::URI tags after browsing
+# the "desktop-base" folder in the picker: the 4 images it actually shows
+# (default, desktop-background, desktop-grub.png, login-background.svg) all
+# live directly in /usr/share/images/desktop-base/, a flat symlink farm
+# maintained by update-alternatives -- the picker doesn't recurse into the
+# theme package's own wallpaper/contents/images/ at all. A previous version
+# of this script installed into that wrong (but plausible-looking) directory;
+# the file was on disk with correct permissions but never appeared in the UI.
+DESKTOP_BASE_WALLPAPER_DIR="/usr/share/images/desktop-base"
 if [ -d "$DESKTOP_BASE_WALLPAPER_DIR" ]; then
 	install -m 644 "$DIR/lib/assets/cyberbeest-desktop-bg.png" \
 		"$DESKTOP_BASE_WALLPAPER_DIR/cyberbeest.png"
