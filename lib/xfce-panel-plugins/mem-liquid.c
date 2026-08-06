@@ -60,6 +60,7 @@
 
 #define TOP_PROC_COUNT 3            /* how many processes to list in the tooltip */
 #define TOP_PROC_MIN_KIB 1024       /* hide processes using less RSS than this */
+#define TOP_PROC_MIN_DISPLAY_GB 0.1 /* never show less than this, to avoid a misleading "0.0 GB" */
 #define TOOLTIP_REFRESH_INTERVAL_S 3 /* how often the tooltip's numbers update while hovered */
 
 static const gdouble BUBBLE_X_FRAC[NUM_BUBBLES]   = { 0.16, 0.34, 0.52, 0.71, 0.86, 0.26 };
@@ -252,11 +253,16 @@ top_proc_cmp(gconstpointer a, gconstpointer b)
  * point-in-time reading -- so this is a single /proc scan. Still only ever
  * called from on_query_tooltip: scanning every process's status file is
  * needless overhead for a number nobody is looking at, so it stays gated
- * behind the tooltip actually being shown. */
+ * behind the tooltip actually being shown.
+ *
+ * Grouped by process name (summed RSS) rather than listed per-pid: a
+ * multi-process app like a browser or this very assistant otherwise fills
+ * the whole top-3 with N near-identical rows of its own helper processes,
+ * crowding out everything else using RAM. */
 static gint
 get_top_processes(TopProc *out, gint max_out)
 {
-    GArray *procs = g_array_new(FALSE, FALSE, sizeof(TopProc));
+    GHashTable *totals = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
 
     DIR *d = opendir("/proc");
     if (d) {
@@ -267,10 +273,29 @@ get_top_processes(TopProc *out, gint max_out)
             TopProc tp;
             if (!read_proc_rss(ent->d_name, &tp) || tp.rss_kib < TOP_PROC_MIN_KIB)
                 continue;
-            g_array_append_val(procs, tp);
+            gulong *sum = g_hash_table_lookup(totals, tp.comm);
+            if (sum) {
+                *sum += tp.rss_kib;
+            } else {
+                sum = g_new(gulong, 1);
+                *sum = tp.rss_kib;
+                g_hash_table_insert(totals, g_strdup(tp.comm), sum);
+            }
         }
         closedir(d);
     }
+
+    GArray *procs = g_array_new(FALSE, FALSE, sizeof(TopProc));
+    GHashTableIter iter;
+    gpointer key, value;
+    g_hash_table_iter_init(&iter, totals);
+    while (g_hash_table_iter_next(&iter, &key, &value)) {
+        TopProc tp;
+        g_strlcpy(tp.comm, key, sizeof(tp.comm));
+        tp.rss_kib = *(gulong *) value;
+        g_array_append_val(procs, tp);
+    }
+    g_hash_table_destroy(totals);
 
     g_array_sort(procs, top_proc_cmp);
     gint n = MIN((gint) procs->len, max_out);
@@ -319,9 +344,13 @@ on_query_tooltip(GtkWidget *widget, gint x, gint y, gboolean keyboard_mode,
     gint top_n = get_top_processes(top, TOP_PROC_COUNT);
     if (top_n > 0) {
         n += g_snprintf(buf + n, sizeof(buf) - n, "\n\nTop RAM:");
-        for (gint i = 0; i < top_n && n < (gint) sizeof(buf); i++)
-            n += g_snprintf(buf + n, sizeof(buf) - n, "\n%s  %.0f MiB",
-                             top[i].comm, top[i].rss_kib / 1024.0);
+        for (gint i = 0; i < top_n && n < (gint) sizeof(buf); i++) {
+            gdouble gb = MAX(top[i].rss_kib / 1048576.0, TOP_PROC_MIN_DISPLAY_GB);
+            gdouble pct_of_ram = mp->mem_total_kib > 0
+                ? (gdouble) top[i].rss_kib / mp->mem_total_kib * 100.0 : 0.0;
+            n += g_snprintf(buf + n, sizeof(buf) - n, "\n%s  %.1f GB (%.0f%%)",
+                             top[i].comm, gb, pct_of_ram);
+        }
     }
 
     gtk_tooltip_set_text(tooltip, buf);

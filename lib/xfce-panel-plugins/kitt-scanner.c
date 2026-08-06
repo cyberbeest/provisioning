@@ -243,7 +243,12 @@ top_proc_cmp(gconstpointer a, gconstpointer b)
  * rather than sampling continuously in the background: per-process CPU
  * accounting is otherwise pure overhead for a value nobody is looking at.
  * This only runs from on_query_tooltip, i.e. only while the tooltip is
- * actually being shown, so the cost is paid solely on hover. */
+ * actually being shown, so the cost is paid solely on hover.
+ *
+ * Grouped by process name (summed %) rather than listed per-pid: a
+ * multi-process app -- a browser, this very assistant -- otherwise fills
+ * the whole top-3 with several near-identical rows of its own helper
+ * processes, crowding out everything else using CPU. */
 static gint
 get_top_processes(TopProc *out, gint max_out)
 {
@@ -254,9 +259,12 @@ get_top_processes(TopProc *out, gint max_out)
     scan_proc_ticks(after);
 
     long clk_tck = sysconf(_SC_CLK_TCK);
+    long ncpus = sysconf(_SC_NPROCESSORS_ONLN);
+    if (ncpus < 1)
+        ncpus = 1;
     gdouble interval_s = TOP_PROC_SAMPLE_INTERVAL_MS / 1000.0;
 
-    GArray *deltas = g_array_new(FALSE, FALSE, sizeof(TopProc));
+    GHashTable *totals = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
     GHashTableIter iter;
     gpointer key, value;
     g_hash_table_iter_init(&iter, after);
@@ -266,15 +274,34 @@ get_top_processes(TopProc *out, gint max_out)
         if (!prev || now->ticks <= prev->ticks)
             continue; /* new since first scan, or no measurable CPU use */
 
-        gdouble percent = ((now->ticks - prev->ticks) / (gdouble) clk_tck) / interval_s * 100.0;
+        /* Normalized by core count so this reads as "share of the machine",
+         * matching what a non-technical user expects "%" to mean -- not
+         * "share of one core", which can run past 100% for a single
+         * multi-threaded process and confuses more than it informs. */
+        gdouble percent = ((now->ticks - prev->ticks) / (gdouble) clk_tck) / interval_s * 100.0 / ncpus;
+        gdouble *sum = g_hash_table_lookup(totals, now->comm);
+        if (sum) {
+            *sum += percent;
+        } else {
+            sum = g_new(gdouble, 1);
+            *sum = percent;
+            g_hash_table_insert(totals, g_strdup(now->comm), sum);
+        }
+    }
+
+    GArray *deltas = g_array_new(FALSE, FALSE, sizeof(TopProc));
+    g_hash_table_iter_init(&iter, totals);
+    while (g_hash_table_iter_next(&iter, &key, &value)) {
+        gdouble percent = *(gdouble *) value;
         if (percent < TOP_PROC_MIN_PERCENT)
             continue;
 
         TopProc tp;
-        g_strlcpy(tp.comm, now->comm, sizeof(tp.comm));
+        g_strlcpy(tp.comm, key, sizeof(tp.comm));
         tp.percent = percent;
         g_array_append_val(deltas, tp);
     }
+    g_hash_table_destroy(totals);
 
     g_array_sort(deltas, top_proc_cmp);
     gint n = MIN((gint) deltas->len, max_out);
