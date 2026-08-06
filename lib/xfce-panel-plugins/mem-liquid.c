@@ -22,8 +22,11 @@
 #include <X11/extensions/dpms.h>
 #include <libxfce4panel/libxfce4panel.h>
 #include <libxfce4util/libxfce4util.h>
+#include <ctype.h>
+#include <dirent.h>
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/statvfs.h>
 
@@ -54,6 +57,10 @@
 
 #define DISK_PATH "/"
 #define DISK_WARNING_LEVEL 0.80 /* disk fraction at/above which we flag low free space */
+
+#define TOP_PROC_COUNT 3            /* how many processes to list in the tooltip */
+#define TOP_PROC_MIN_KIB 1024       /* hide processes using less RSS than this */
+#define TOOLTIP_REFRESH_INTERVAL_S 3 /* how often the tooltip's numbers update while hovered */
 
 static const gdouble BUBBLE_X_FRAC[NUM_BUBBLES]   = { 0.16, 0.34, 0.52, 0.71, 0.86, 0.26 };
 static const gdouble BUBBLE_SPEED[NUM_BUBBLES]     = { 0.055, 0.041, 0.067, 0.048, 0.061, 0.073 };
@@ -107,6 +114,7 @@ typedef struct {
     guint sample_id;
     guint tick_id;
     guint screen_check_id;
+    guint tooltip_refresh_id; /* re-queries the tooltip periodically while hovered; 0 when not hovering */
     GDBusConnection *dbus_conn; /* session bus, for screensaver-state queries; may be NULL */
 } MemPlugin;
 
@@ -196,6 +204,83 @@ mem_status_text(gdouble frac)
     return "= Filling up =";
 }
 
+typedef struct {
+    gchar comm[256];
+    gulong rss_kib;
+} TopProc;
+
+/* Parses /proc/<pid>/status rather than statm: VmRSS is already in KiB and
+ * spares us a page-size multiplication, and status's line-per-field layout
+ * is far less brittle to parse than statm's positional columns. comm comes
+ * from the Name: line, which -- unlike /proc/<pid>/stat's "(comm)" field --
+ * is never wrapped in parens that could themselves appear in the name. */
+static gboolean
+read_proc_rss(const gchar *pid_str, TopProc *out)
+{
+    gchar path[64];
+    g_snprintf(path, sizeof(path), "/proc/%s/status", pid_str);
+    FILE *f = fopen(path, "r");
+    if (!f)
+        return FALSE;
+
+    gboolean have_name = FALSE, have_rss = FALSE;
+    gchar line[256];
+    while (fgets(line, sizeof(line), f)) {
+        gulong val;
+        if (sscanf(line, "Name: %255s", out->comm) == 1) {
+            have_name = TRUE;
+        } else if (sscanf(line, "VmRSS: %lu kB", &val) == 1) {
+            out->rss_kib = val;
+            have_rss = TRUE;
+            break; /* VmRSS comes after Name in every kernel's status layout */
+        }
+    }
+    fclose(f);
+    return have_name && have_rss;
+}
+
+static gint
+top_proc_cmp(gconstpointer a, gconstpointer b)
+{
+    const TopProc *ta = a, *tb = b;
+    if (ta->rss_kib < tb->rss_kib) return 1;
+    if (ta->rss_kib > tb->rss_kib) return -1;
+    return 0;
+}
+
+/* Unlike CPU share, RSS needs no before/after delta -- it's already a
+ * point-in-time reading -- so this is a single /proc scan. Still only ever
+ * called from on_query_tooltip: scanning every process's status file is
+ * needless overhead for a number nobody is looking at, so it stays gated
+ * behind the tooltip actually being shown. */
+static gint
+get_top_processes(TopProc *out, gint max_out)
+{
+    GArray *procs = g_array_new(FALSE, FALSE, sizeof(TopProc));
+
+    DIR *d = opendir("/proc");
+    if (d) {
+        struct dirent *ent;
+        while ((ent = readdir(d))) {
+            if (!isdigit((unsigned char) ent->d_name[0]))
+                continue;
+            TopProc tp;
+            if (!read_proc_rss(ent->d_name, &tp) || tp.rss_kib < TOP_PROC_MIN_KIB)
+                continue;
+            g_array_append_val(procs, tp);
+        }
+        closedir(d);
+    }
+
+    g_array_sort(procs, top_proc_cmp);
+    gint n = MIN((gint) procs->len, max_out);
+    for (gint i = 0; i < n; i++)
+        out[i] = g_array_index(procs, TopProc, i);
+
+    g_array_free(procs, TRUE);
+    return n;
+}
+
 static gboolean
 on_query_tooltip(GtkWidget *widget, gint x, gint y, gboolean keyboard_mode,
                   GtkTooltip *tooltip, gpointer user_data)
@@ -219,19 +304,60 @@ on_query_tooltip(GtkWidget *widget, gint x, gint y, gboolean keyboard_mode,
     gboolean mem_warning = mp->target_level >= WARNING_LEVEL;
     gboolean disk_warning = mp->disk_frac >= DISK_WARNING_LEVEL;
     if (mem_warning && disk_warning)
-        g_snprintf(buf + n, sizeof(buf) - n,
+        n += g_snprintf(buf + n, sizeof(buf) - n,
                    "\n\xE2\x9A\xA0 Memory contention and disk space are both tight");
     else if (mem_warning)
-        g_snprintf(buf + n, sizeof(buf) - n,
+        n += g_snprintf(buf + n, sizeof(buf) - n,
                    "\n\xE2\x9A\xA0 Memory contention -- consider closing some programs");
     else if (disk_warning)
-        g_snprintf(buf + n, sizeof(buf) - n,
+        n += g_snprintf(buf + n, sizeof(buf) - n,
                    "\n\xE2\x9A\xA0 Disk space low -- consider freeing some up");
     else
-        g_snprintf(buf + n, sizeof(buf) - n, "\n%s", mem_status_text(mp->target_level));
+        n += g_snprintf(buf + n, sizeof(buf) - n, "\n%s", mem_status_text(mp->target_level));
+
+    TopProc top[TOP_PROC_COUNT];
+    gint top_n = get_top_processes(top, TOP_PROC_COUNT);
+    if (top_n > 0) {
+        n += g_snprintf(buf + n, sizeof(buf) - n, "\n\nTop RAM:");
+        for (gint i = 0; i < top_n && n < (gint) sizeof(buf); i++)
+            n += g_snprintf(buf + n, sizeof(buf) - n, "\n%s  %.0f MiB",
+                             top[i].comm, top[i].rss_kib / 1024.0);
+    }
 
     gtk_tooltip_set_text(tooltip, buf);
     return TRUE;
+}
+
+static gboolean
+on_tooltip_refresh_tick(gpointer user_data)
+{
+    MemPlugin *mp = user_data;
+    gtk_widget_trigger_tooltip_query(mp->area);
+    return G_SOURCE_CONTINUE;
+}
+
+/* Mirrors kitt-scanner's hover-refresh timer: forces the tooltip to
+ * re-query itself every couple of seconds, but only while the pointer is
+ * actually over the widget, so the periodic /proc scan it triggers never
+ * runs when nobody could be looking at the result. */
+static gboolean
+on_area_enter(GtkWidget *widget, GdkEventCrossing *event, gpointer user_data)
+{
+    MemPlugin *mp = user_data;
+    if (mp->tooltip_refresh_id == 0)
+        mp->tooltip_refresh_id = g_timeout_add_seconds(TOOLTIP_REFRESH_INTERVAL_S, on_tooltip_refresh_tick, mp);
+    return FALSE;
+}
+
+static gboolean
+on_area_leave(GtkWidget *widget, GdkEventCrossing *event, gpointer user_data)
+{
+    MemPlugin *mp = user_data;
+    if (mp->tooltip_refresh_id != 0) {
+        g_source_remove(mp->tooltip_refresh_id);
+        mp->tooltip_refresh_id = 0;
+    }
+    return FALSE;
 }
 
 static void
@@ -722,6 +848,8 @@ mem_free(XfcePanelPlugin *plugin, MemPlugin *mp)
         g_source_remove(mp->tick_id);
     if (mp->screen_check_id != 0)
         g_source_remove(mp->screen_check_id);
+    if (mp->tooltip_refresh_id != 0)
+        g_source_remove(mp->tooltip_refresh_id);
     if (mp->dbus_conn)
         g_object_unref(mp->dbus_conn);
     g_free(mp);
@@ -737,10 +865,13 @@ mem_construct(XfcePanelPlugin *plugin)
     mp->dbus_conn = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, NULL);
 
     mp->area = gtk_drawing_area_new();
-    gtk_widget_add_events(mp->area, GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK);
+    gtk_widget_add_events(mp->area, GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK
+                           | GDK_ENTER_NOTIFY_MASK | GDK_LEAVE_NOTIFY_MASK);
     g_signal_connect(mp->area, "draw", G_CALLBACK(on_draw), mp);
     gtk_widget_set_has_tooltip(mp->area, TRUE);
     g_signal_connect(mp->area, "query-tooltip", G_CALLBACK(on_query_tooltip), mp);
+    g_signal_connect(mp->area, "enter-notify-event", G_CALLBACK(on_area_enter), mp);
+    g_signal_connect(mp->area, "leave-notify-event", G_CALLBACK(on_area_leave), mp);
 
     gtk_container_add(GTK_CONTAINER(plugin), mp->area);
     gtk_widget_show_all(GTK_WIDGET(plugin));

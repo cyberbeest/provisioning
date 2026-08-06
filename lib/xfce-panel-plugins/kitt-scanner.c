@@ -14,9 +14,13 @@
 #include <X11/extensions/dpms.h>
 #include <libxfce4panel/libxfce4panel.h>
 #include <libxfce4util/libxfce4util.h>
+#include <ctype.h>
+#include <dirent.h>
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #define ASPECT_RATIO 4 /* width = panel size * ASPECT_RATIO */
 #define NUM_LEDS 24
@@ -36,6 +40,11 @@
 #define CENTER_PHASE 0.5          /* phase whose eye_pos is dead center, for the off switch */
 #define SCREEN_CHECK_INTERVAL_S 2 /* how often to poll for screen lock / display standby */
 #define DBUS_CALL_TIMEOUT_MS 300  /* per-call timeout for screensaver-state D-Bus queries */
+
+#define TOP_PROC_COUNT 3            /* how many processes to list in the tooltip */
+#define TOP_PROC_SAMPLE_INTERVAL_MS 150 /* gap between the two /proc scans used to derive a rate */
+#define TOP_PROC_MIN_PERCENT 0.5    /* hide processes below this share of one core */
+#define TOOLTIP_REFRESH_INTERVAL_S 3 /* how often the tooltip's numbers update while hovered */
 
 /* Matches this theme's actual panel background (same value mem-liquid
  * uses, sampled directly off the live panel window: #F6F5F4) so the
@@ -75,6 +84,7 @@ typedef struct {
     guint sample_id;
     guint tick_id;
     guint screen_check_id;
+    guint tooltip_refresh_id; /* re-queries the tooltip periodically while hovered; 0 when not hovering */
     GDBusConnection *dbus_conn; /* session bus, for screensaver-state queries; may be NULL */
 } KittPlugin;
 
@@ -135,16 +145,201 @@ cpu_status_text(gdouble load)
     return "= Maxed out =";
 }
 
+typedef struct {
+    guint64 ticks; /* utime + stime, in clock ticks */
+    gchar comm[256];
+} ProcSample;
+
+typedef struct {
+    gchar comm[256];
+    gdouble percent;
+} TopProc;
+
+/* Parses /proc/<pid>/stat by hand rather than scanf'ing it whole: the comm
+ * field is wrapped in parens but can itself contain spaces or parens, so
+ * the only safe split is on the *last* ')' -- everything after that is
+ * fixed-format whitespace-separated fields, with utime/stime at 1-indexed
+ * positions 14/15 counting from pid (i.e. indices 11/12 after the comm). */
+static gboolean
+read_proc_stat_ticks(const gchar *pid_str, ProcSample *out)
+{
+    gchar path[64];
+    g_snprintf(path, sizeof(path), "/proc/%s/stat", pid_str);
+    FILE *f = fopen(path, "r");
+    if (!f)
+        return FALSE;
+
+    gchar line[1024];
+    gboolean ok = FALSE;
+    if (fgets(line, sizeof(line), f)) {
+        gchar *open_paren = strchr(line, '(');
+        gchar *close_paren = strrchr(line, ')');
+        if (open_paren && close_paren && close_paren > open_paren) {
+            gsize len = close_paren - open_paren - 1;
+            if (len >= sizeof(out->comm))
+                len = sizeof(out->comm) - 1;
+            memcpy(out->comm, open_paren + 1, len);
+            out->comm[len] = '\0';
+
+            gchar *rest = close_paren + 1;
+            gchar *saveptr = NULL;
+            gchar *tok = strtok_r(rest, " \t\n", &saveptr);
+            gint idx = 0;
+            guint64 utime = 0, stime = 0;
+            gboolean got_utime = FALSE, got_stime = FALSE;
+            while (tok) {
+                if (idx == 11) {
+                    utime = g_ascii_strtoull(tok, NULL, 10);
+                    got_utime = TRUE;
+                } else if (idx == 12) {
+                    stime = g_ascii_strtoull(tok, NULL, 10);
+                    got_stime = TRUE;
+                    break;
+                }
+                tok = strtok_r(NULL, " \t\n", &saveptr);
+                idx++;
+            }
+            if (got_utime && got_stime) {
+                out->ticks = utime + stime;
+                ok = TRUE;
+            }
+        }
+    }
+    fclose(f);
+    return ok;
+}
+
+static void
+scan_proc_ticks(GHashTable *out)
+{
+    DIR *d = opendir("/proc");
+    if (!d)
+        return;
+
+    struct dirent *ent;
+    while ((ent = readdir(d))) {
+        if (!isdigit((unsigned char) ent->d_name[0]))
+            continue;
+        ProcSample *ps = g_new0(ProcSample, 1);
+        if (!read_proc_stat_ticks(ent->d_name, ps)) {
+            g_free(ps);
+            continue;
+        }
+        g_hash_table_insert(out, GINT_TO_POINTER(atoi(ent->d_name)), ps);
+    }
+    closedir(d);
+}
+
+static gint
+top_proc_cmp(gconstpointer a, gconstpointer b)
+{
+    const TopProc *ta = a, *tb = b;
+    if (ta->percent < tb->percent) return 1;
+    if (ta->percent > tb->percent) return -1;
+    return 0;
+}
+
+/* Deliberately does two full /proc scans with a short sleep in between,
+ * rather than sampling continuously in the background: per-process CPU
+ * accounting is otherwise pure overhead for a value nobody is looking at.
+ * This only runs from on_query_tooltip, i.e. only while the tooltip is
+ * actually being shown, so the cost is paid solely on hover. */
+static gint
+get_top_processes(TopProc *out, gint max_out)
+{
+    GHashTable *before = g_hash_table_new_full(NULL, NULL, NULL, g_free);
+    scan_proc_ticks(before);
+    g_usleep(TOP_PROC_SAMPLE_INTERVAL_MS * 1000);
+    GHashTable *after = g_hash_table_new_full(NULL, NULL, NULL, g_free);
+    scan_proc_ticks(after);
+
+    long clk_tck = sysconf(_SC_CLK_TCK);
+    gdouble interval_s = TOP_PROC_SAMPLE_INTERVAL_MS / 1000.0;
+
+    GArray *deltas = g_array_new(FALSE, FALSE, sizeof(TopProc));
+    GHashTableIter iter;
+    gpointer key, value;
+    g_hash_table_iter_init(&iter, after);
+    while (g_hash_table_iter_next(&iter, &key, &value)) {
+        ProcSample *now = value;
+        ProcSample *prev = g_hash_table_lookup(before, key);
+        if (!prev || now->ticks <= prev->ticks)
+            continue; /* new since first scan, or no measurable CPU use */
+
+        gdouble percent = ((now->ticks - prev->ticks) / (gdouble) clk_tck) / interval_s * 100.0;
+        if (percent < TOP_PROC_MIN_PERCENT)
+            continue;
+
+        TopProc tp;
+        g_strlcpy(tp.comm, now->comm, sizeof(tp.comm));
+        tp.percent = percent;
+        g_array_append_val(deltas, tp);
+    }
+
+    g_array_sort(deltas, top_proc_cmp);
+    gint n = MIN((gint) deltas->len, max_out);
+    for (gint i = 0; i < n; i++)
+        out[i] = g_array_index(deltas, TopProc, i);
+
+    g_array_free(deltas, TRUE);
+    g_hash_table_destroy(before);
+    g_hash_table_destroy(after);
+    return n;
+}
+
 static gboolean
 on_query_tooltip(GtkWidget *widget, gint x, gint y, gboolean keyboard_mode,
                   GtkTooltip *tooltip, gpointer user_data)
 {
     KittPlugin *kp = user_data;
-    gchar buf[64];
-    g_snprintf(buf, sizeof(buf), "CPU load: %.0f%%\n%s",
-               kp->load * 100.0, cpu_status_text(kp->load));
-    gtk_tooltip_set_text(tooltip, buf);
+    GString *text = g_string_new(NULL);
+    g_string_append_printf(text, "CPU load: %.0f%%\n%s",
+                            kp->load * 100.0, cpu_status_text(kp->load));
+
+    TopProc top[TOP_PROC_COUNT];
+    gint n = get_top_processes(top, TOP_PROC_COUNT);
+    if (n > 0) {
+        g_string_append(text, "\n\nTop CPU:");
+        for (gint i = 0; i < n; i++)
+            g_string_append_printf(text, "\n%s  %.0f%%", top[i].comm, top[i].percent);
+    }
+
+    gtk_tooltip_set_text(tooltip, text->str);
+    g_string_free(text, TRUE);
     return TRUE;
+}
+
+static gboolean
+on_tooltip_refresh_tick(gpointer user_data)
+{
+    KittPlugin *kp = user_data;
+    gtk_widget_trigger_tooltip_query(kp->area);
+    return G_SOURCE_CONTINUE;
+}
+
+/* GTK's own tooltip re-query cadence while hovering isn't something we
+ * control or want to rely on, so drive the refresh explicitly: a slow
+ * timer, running only while the pointer is actually over the widget, forces
+ * GTK to re-show (and thus us to recompute) the tooltip every few seconds
+ * -- fast enough to stay current, slow enough to actually read. */
+static gboolean
+on_area_enter(GtkWidget *widget, GdkEventCrossing *event, gpointer user_data)
+{
+    KittPlugin *kp = user_data;
+    if (kp->tooltip_refresh_id == 0)
+        kp->tooltip_refresh_id = g_timeout_add_seconds(TOOLTIP_REFRESH_INTERVAL_S, on_tooltip_refresh_tick, kp);
+    return FALSE;
+}
+
+static gboolean
+on_area_leave(GtkWidget *widget, GdkEventCrossing *event, gpointer user_data)
+{
+    KittPlugin *kp = user_data;
+    if (kp->tooltip_refresh_id != 0) {
+        g_source_remove(kp->tooltip_refresh_id);
+        kp->tooltip_refresh_id = 0;
+    }
+    return FALSE;
 }
 
 typedef struct {
@@ -685,6 +880,8 @@ kitt_free(XfcePanelPlugin *plugin, KittPlugin *kp)
         g_source_remove(kp->tick_id);
     if (kp->screen_check_id != 0)
         g_source_remove(kp->screen_check_id);
+    if (kp->tooltip_refresh_id != 0)
+        g_source_remove(kp->tooltip_refresh_id);
     if (kp->dbus_conn)
         g_object_unref(kp->dbus_conn);
     g_free(kp);
@@ -701,10 +898,13 @@ kitt_construct(XfcePanelPlugin *plugin)
     kp->dbus_conn = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, NULL);
 
     kp->area = gtk_drawing_area_new();
-    gtk_widget_add_events(kp->area, GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK);
+    gtk_widget_add_events(kp->area, GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK
+                           | GDK_ENTER_NOTIFY_MASK | GDK_LEAVE_NOTIFY_MASK);
     g_signal_connect(kp->area, "draw", G_CALLBACK(on_draw), kp);
     gtk_widget_set_has_tooltip(kp->area, TRUE);
     g_signal_connect(kp->area, "query-tooltip", G_CALLBACK(on_query_tooltip), kp);
+    g_signal_connect(kp->area, "enter-notify-event", G_CALLBACK(on_area_enter), kp);
+    g_signal_connect(kp->area, "leave-notify-event", G_CALLBACK(on_area_leave), kp);
 
     gtk_container_add(GTK_CONTAINER(plugin), kp->area);
     gtk_widget_show_all(GTK_WIDGET(plugin));
