@@ -252,17 +252,28 @@ top_proc_cmp(gconstpointer a, gconstpointer b)
 static gint
 get_top_processes(TopProc *out, gint max_out)
 {
+    /* Measure the actual wall-clock gap rather than assuming it's exactly
+     * TOP_PROC_SAMPLE_INTERVAL_MS: scanning every process in /proc twice
+     * isn't instantaneous, and that scan time is worst exactly when the
+     * machine is busiest -- i.e. exactly when these numbers matter most. A
+     * fixed assumed interval that's shorter than the real one inflates
+     * every percentage, which is how three processes' shares could add up
+     * to visibly more than 100%. */
+    gint64 t0 = g_get_monotonic_time();
     GHashTable *before = g_hash_table_new_full(NULL, NULL, NULL, g_free);
     scan_proc_ticks(before);
     g_usleep(TOP_PROC_SAMPLE_INTERVAL_MS * 1000);
     GHashTable *after = g_hash_table_new_full(NULL, NULL, NULL, g_free);
     scan_proc_ticks(after);
+    gint64 t1 = g_get_monotonic_time();
 
     long clk_tck = sysconf(_SC_CLK_TCK);
     long ncpus = sysconf(_SC_NPROCESSORS_ONLN);
     if (ncpus < 1)
         ncpus = 1;
-    gdouble interval_s = TOP_PROC_SAMPLE_INTERVAL_MS / 1000.0;
+    gdouble interval_s = (t1 - t0) / 1e6;
+    if (interval_s <= 0.0)
+        interval_s = TOP_PROC_SAMPLE_INTERVAL_MS / 1000.0;
 
     GHashTable *totals = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
     GHashTableIter iter;
