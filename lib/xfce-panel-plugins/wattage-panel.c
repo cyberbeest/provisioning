@@ -182,7 +182,11 @@ watt_update_label(WattPlugin *wp)
     gboolean have_longterm = FALSE;
     gint64 span_s = 0; /* actual length of the averaging window in use */
 
-    const WattSample *start = watt_find_window_start(wp, now_s, status);
+    /* Charging power is dictated by the charger/negotiated rate, not
+     * battery drain, so there's no benefit to smoothing it -- just show
+     * the instant reading. */
+    const WattSample *start =
+        (status == BATT_CHARGING) ? NULL : watt_find_window_start(wp, now_s, status);
     if (start) {
         span_s = now_s - start->time_s;
         gint64 min_span_s = MAX(MIN_WINDOW_SPAN_S,
@@ -245,10 +249,15 @@ watt_update_label(WattPlugin *wp)
         g_snprintf(span_buf, sizeof(span_buf), "%ds", (int) display_span_s);
 
     gchar tooltip[220];
-    g_snprintf(tooltip, sizeof(tooltip),
-               "Battery: %.0f%% (%s)\nPower: %.1f W (instant: %.1f W)\n"
-               "Long-term average window: %s of %d min (%s)",
-               capacity, status_buf, watts, watts_instant, span_buf, wp->avg_minutes, avg_state);
+    if (status == BATT_CHARGING) {
+        g_snprintf(tooltip, sizeof(tooltip), "Battery: %.0f%% (%s)\nPower: %.1f W",
+                   capacity, status_buf, watts);
+    } else {
+        g_snprintf(tooltip, sizeof(tooltip),
+                   "Battery: %.0f%% (%s)\nPower: %.1f W (instant: %.1f W)\n"
+                   "Long-term average window: %s of %d min (%s)",
+                   capacity, status_buf, watts, watts_instant, span_buf, wp->avg_minutes, avg_state);
+    }
     gtk_widget_set_tooltip_text(wp->label, tooltip);
 
     wp->last_status = status;
