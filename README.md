@@ -158,6 +158,13 @@ one-time install would otherwise silently go stale with no security
 updates. All of this is deployed to `/usr/local/lib/cyberbeest/` so it's
 independent of wherever this repo happens to be checked out.
 
+## Calculator (32-calculator.sh)
+
+Installs `gnome-calculator`, since whisker menu has no calculator app by
+default. Picked over the lighter `galculator` because it shows up in the
+menu simply as "Calculator" — less confusing for normal users than a
+branded app name.
+
 ## What's NOT provisioned here
 
 Per-user setup that only makes sense on the end-user's own device — e.g.
