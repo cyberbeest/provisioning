@@ -92,7 +92,9 @@ typedef struct {
     GtkWidget *area;
 
     gdouble level;         /* displayed fill 0..1, smoothed towards target_level */
-    gdouble target_level;  /* most recent RAM-used fraction, 0..1 */
+    gdouble target_level;  /* most recent RAM-used fraction, 0..1 (per the CountMapped setting) */
+    gdouble warn_level;    /* smoothed towards warn_target; always MemAvailable-based, ignores CountMapped */
+    gdouble warn_target;
     gdouble swap_frac;     /* most recent swap-used fraction, 0..1 (0 if no swap) */
     gulong mem_total_kib;
     gulong mem_used_kib;
@@ -109,6 +111,7 @@ typedef struct {
     gint fps;
     gboolean show_percent;
     gboolean enabled;      /* FALSE: freeze wave/bubble motion, level still updates */
+    gboolean count_mapped; /* TRUE: count resident mmap'd pages as used, not just non-reclaimable memory */
     gboolean paused;       /* TRUE: screen locked or display in standby -- ticking suspended */
     gdouble margin_rgb[3]; /* widget background outside the tank, user-selectable */
 
@@ -119,48 +122,102 @@ typedef struct {
     GDBusConnection *dbus_conn; /* session bus, for screensaver-state queries; may be NULL */
 } MemPlugin;
 
+typedef struct {
+    gulong total_kib;
+    gulong avail_kib;
+    gulong free_kib;
+    gulong buffers_kib;
+    gulong cached_kib;
+    gulong mapped_kib;
+    gulong swap_total_kib;
+    gulong swap_free_kib;
+} MemInfo;
+
 static gboolean
-read_meminfo(gulong *total_kib, gulong *avail_kib, gulong *swap_total_kib, gulong *swap_free_kib)
+read_meminfo(MemInfo *mi)
 {
     FILE *f = fopen("/proc/meminfo", "r");
     if (!f)
         return FALSE;
 
-    *total_kib = *avail_kib = *swap_total_kib = *swap_free_kib = 0;
+    memset(mi, 0, sizeof(*mi));
     gboolean have_total = FALSE, have_avail = FALSE;
 
     char line[256];
     while (fgets(line, sizeof(line), f)) {
         gulong val;
         if (sscanf(line, "MemTotal: %lu kB", &val) == 1) {
-            *total_kib = val;
+            mi->total_kib = val;
             have_total = TRUE;
         } else if (sscanf(line, "MemAvailable: %lu kB", &val) == 1) {
-            *avail_kib = val;
+            mi->avail_kib = val;
             have_avail = TRUE;
+        } else if (sscanf(line, "MemFree: %lu kB", &val) == 1) {
+            mi->free_kib = val;
+        } else if (sscanf(line, "Buffers: %lu kB", &val) == 1) {
+            mi->buffers_kib = val;
+        } else if (sscanf(line, "Cached: %lu kB", &val) == 1) {
+            mi->cached_kib = val;
+        } else if (sscanf(line, "Mapped: %lu kB", &val) == 1) {
+            mi->mapped_kib = val;
         } else if (sscanf(line, "SwapTotal: %lu kB", &val) == 1) {
-            *swap_total_kib = val;
+            mi->swap_total_kib = val;
         } else if (sscanf(line, "SwapFree: %lu kB", &val) == 1) {
-            *swap_free_kib = val;
+            mi->swap_free_kib = val;
         }
     }
     fclose(f);
-    return have_total && have_avail && *total_kib > 0;
+    return have_total && have_avail && mi->total_kib > 0;
+}
+
+/* Default: MemTotal - MemAvailable. MemAvailable already treats clean,
+ * file-backed pages (including mmap'd ones) as free, since the kernel can
+ * drop them at zero cost -- no writeback needed, just re-fault from disk.
+ * That's the right notion of "used" for page cache built from ordinary
+ * file reads.
+ *
+ * It's the wrong notion for something like llama.cpp mmap'ing a multi-GB
+ * model file and then reading the whole thing on every inference pass:
+ * those pages are just as evictable, but evicting them means refaulting
+ * multiple GB from disk mid-inference, which is a real, user-visible
+ * performance hit even though no OOM or swasp occurs. "Count mapped
+ * pages" mode accounts for that by treating every resident (i.e.
+ * actually loaded, not just reserved-but-unfaulted) mmap'd page as used,
+ * while still letting ordinary passive file cache (Cached - Mapped) count
+ * as free headroom. */
+static gulong
+compute_used_kib(const MemInfo *mi, gboolean count_mapped)
+{
+    if (!count_mapped)
+        return mi->total_kib > mi->avail_kib ? mi->total_kib - mi->avail_kib : 0;
+
+    gulong passive_cache = mi->cached_kib > mi->mapped_kib ? mi->cached_kib - mi->mapped_kib : 0;
+    gulong free_ish = mi->free_kib + mi->buffers_kib + passive_cache;
+    return mi->total_kib > free_ish ? mi->total_kib - free_ish : 0;
 }
 
 static gboolean
 sample_memory(MemPlugin *mp)
 {
-    gulong total, avail, swap_total, swap_free;
-    if (!read_meminfo(&total, &avail, &swap_total, &swap_free))
+    MemInfo mi;
+    if (!read_meminfo(&mi))
         return FALSE;
 
-    gulong used = total > avail ? total - avail : 0;
-    gdouble frac = (gdouble) used / (gdouble) total;
+    gulong used = compute_used_kib(&mi, mp->count_mapped);
+    gdouble frac = (gdouble) used / (gdouble) mi.total_kib;
     mp->target_level = CLAMP(frac, 0.0, 1.0);
-    mp->mem_total_kib = total;
+    mp->mem_total_kib = mi.total_kib;
     mp->mem_used_kib = used;
-    mp->swap_frac = swap_total > 0 ? CLAMP(1.0 - (gdouble) swap_free / (gdouble) swap_total, 0.0, 1.0) : 0.0;
+
+    /* The warning threshold always tracks the MemAvailable-based fraction,
+     * regardless of the CountMapped display setting: an actively-mapped
+     * model is real headroom pressure worth *showing* (fuller tank, higher
+     * color), but it isn't OOM-adjacent the way genuinely low MemAvailable
+     * is, so it shouldn't trip the "close some programs" alarm on its own. */
+    gulong warn_used = compute_used_kib(&mi, FALSE);
+    mp->warn_target = CLAMP((gdouble) warn_used / (gdouble) mi.total_kib, 0.0, 1.0);
+    mp->swap_frac = mi.swap_total_kib > 0
+        ? CLAMP(1.0 - (gdouble) mi.swap_free_kib / (gdouble) mi.swap_total_kib, 0.0, 1.0) : 0.0;
     return TRUE;
 }
 
@@ -326,7 +383,7 @@ on_query_tooltip(GtkWidget *widget, gint x, gint y, gboolean keyboard_mode,
         n += g_snprintf(buf + n, sizeof(buf) - n, "\nDisk: %.0f%% used (%.1f / %.1f GiB)",
                          mp->disk_frac * 100.0, disk_used_gib, disk_total_gib);
 
-    gboolean mem_warning = mp->target_level >= WARNING_LEVEL;
+    gboolean mem_warning = mp->warn_target >= WARNING_LEVEL;
     gboolean disk_warning = mp->disk_frac >= DISK_WARNING_LEVEL;
     if (mem_warning && disk_warning)
         n += g_snprintf(buf + n, sizeof(buf) - n,
@@ -456,6 +513,7 @@ on_tick(gpointer user_data)
 
     gdouble alpha = 1.0 - exp(-dt / LEVEL_TIME_CONSTANT_S);
     mp->level += (mp->target_level - mp->level) * alpha;
+    mp->warn_level += (mp->warn_target - mp->warn_level) * alpha;
 
     mp->wave_phase1 = fmod(mp->wave_phase1 + dt * WAVE1_SPEED, 2 * M_PI);
     mp->wave_phase2 = fmod(mp->wave_phase2 + dt * WAVE2_SPEED, 2 * M_PI);
@@ -556,7 +614,7 @@ on_draw(GtkWidget *widget, cairo_t *cr, gpointer user_data)
     cairo_set_line_width(cr, MAX(1.0, lay.h * 0.02));
     cairo_stroke(cr);
 
-    gboolean warning = mp->level >= WARNING_LEVEL || mp->disk_frac >= DISK_WARNING_LEVEL;
+    gboolean warning = mp->warn_level >= WARNING_LEVEL || mp->disk_frac >= DISK_WARNING_LEVEL;
 
     cairo_save(cr);
     rounded_rect(cr, lay.x, lay.y, lay.w, lay.h, lay.r);
@@ -630,6 +688,7 @@ mem_load_settings(MemPlugin *mp)
     mp->fps = DEFAULT_FPS;
     mp->show_percent = TRUE;
     mp->enabled = TRUE;
+    mp->count_mapped = TRUE;
     memcpy(mp->margin_rgb, DEFAULT_MARGIN_RGB, sizeof(mp->margin_rgb));
 
     gchar *file = xfce_panel_plugin_save_location(mp->plugin, FALSE);
@@ -646,6 +705,7 @@ mem_load_settings(MemPlugin *mp)
     mp->fps = CLAMP(mp->fps, MIN_FPS, MAX_FPS);
     mp->show_percent = xfce_rc_read_bool_entry(rc, "ShowPercent", TRUE);
     mp->enabled = xfce_rc_read_bool_entry(rc, "Enabled", TRUE);
+    mp->count_mapped = xfce_rc_read_bool_entry(rc, "CountMapped", TRUE);
 
     const gchar *color_str = xfce_rc_read_entry(rc, "MarginColor", NULL);
     if (color_str) {
@@ -678,6 +738,7 @@ mem_save_settings(MemPlugin *mp)
     xfce_rc_write_int_entry(rc, "FPS", mp->fps);
     xfce_rc_write_bool_entry(rc, "ShowPercent", mp->show_percent);
     xfce_rc_write_bool_entry(rc, "Enabled", mp->enabled);
+    xfce_rc_write_bool_entry(rc, "CountMapped", mp->count_mapped);
     xfce_rc_write_entry(rc, "MarginColor", color_str);
     g_free(color_str);
     xfce_rc_close(rc);
@@ -803,6 +864,15 @@ on_show_percent_toggled(GtkToggleButton *toggle, MemPlugin *mp)
 }
 
 static void
+on_count_mapped_toggled(GtkToggleButton *toggle, MemPlugin *mp)
+{
+    mp->count_mapped = gtk_toggle_button_get_active(toggle);
+    sample_memory(mp); /* re-sample immediately so the tank doesn't wait out MEM_SAMPLE_MS */
+    gtk_widget_queue_draw(mp->area);
+    mem_save_settings(mp);
+}
+
+static void
 on_margin_color_set(GtkColorButton *button, MemPlugin *mp)
 {
     GdkRGBA rgba;
@@ -845,14 +915,30 @@ on_configure_plugin(XfcePanelPlugin *plugin, MemPlugin *mp)
     g_signal_connect(percent_check, "toggled", G_CALLBACK(on_show_percent_toggled), mp);
     gtk_grid_attach(GTK_GRID(grid), percent_check, 0, 2, 2, 1);
 
+    GtkWidget *count_mapped_check = gtk_check_button_new_with_label(
+        "Count loaded mmap'd file pages as used (e.g. LLM weights)");
+    gtk_widget_set_tooltip_text(count_mapped_check,
+        "On (default): counts resident/loaded mmap'd pages as used, even "
+        "though clean, because evicting an actively-read mapping (like a "
+        "model file mmap'd by llama.cpp) causes real refault stalls, not "
+        "just a free drop. Pages a program has merely reserved via mmap but "
+        "never touched still don't count -- only what's actually resident.\n"
+        "Off: matches MemAvailable -- clean mmap'd pages (plain file cache) "
+        "count as free since the kernel can drop them for nothing.\n"
+        "Either way, the \xE2\x9A\xA0 warning always tracks the "
+        "MemAvailable-based reading, not this setting.");
+    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(count_mapped_check), mp->count_mapped);
+    g_signal_connect(count_mapped_check, "toggled", G_CALLBACK(on_count_mapped_toggled), mp);
+    gtk_grid_attach(GTK_GRID(grid), count_mapped_check, 0, 3, 2, 1);
+
     GtkWidget *margin_label = gtk_label_new("Margin color:");
     gtk_widget_set_halign(margin_label, GTK_ALIGN_START);
     GdkRGBA margin_rgba = { mp->margin_rgb[0], mp->margin_rgb[1], mp->margin_rgb[2], 1.0 };
     GtkWidget *margin_button = gtk_color_button_new_with_rgba(&margin_rgba);
     gtk_color_chooser_set_use_alpha(GTK_COLOR_CHOOSER(margin_button), FALSE);
     g_signal_connect(margin_button, "color-set", G_CALLBACK(on_margin_color_set), mp);
-    gtk_grid_attach(GTK_GRID(grid), margin_label, 0, 3, 1, 1);
-    gtk_grid_attach(GTK_GRID(grid), margin_button, 1, 3, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), margin_label, 0, 4, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), margin_button, 1, 4, 1, 1);
 
     gtk_container_add(GTK_CONTAINER(gtk_dialog_get_content_area(GTK_DIALOG(dialog))), grid);
     gtk_widget_show_all(dialog);
@@ -909,6 +995,7 @@ mem_construct(XfcePanelPlugin *plugin)
     sample_memory(mp);
     sample_disk(mp);
     mp->level = mp->target_level; /* start full rather than animating up from empty */
+    mp->warn_level = mp->warn_target;
     mp->sample_id = g_timeout_add(MEM_SAMPLE_MS, on_sample, mp);
 
     mp->paused = display_is_off(mp) || screensaver_is_active(mp);
