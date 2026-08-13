@@ -18,12 +18,32 @@
 #
 #  - Everything else Thunar-branded that *is* translatable (About dialog,
 #    Preferences window title, tooltips, Bulk Rename dialog, etc.) is renamed
-#    via a generated gettext catalog: this derives en_US and de overrides
-#    from whatever en_GB/de thunar.mo ships with the installed Thunar
-#    version (rather than shipping a prebuilt .mo that could drift out of
-#    sync with msgids across Thunar versions), replacing whole-word "Thunar"
-#    with "Files"/"Dateien" in the translated strings only (msgids, i.e. the
-#    lookup keys, are left untouched).
+#    via a generated gettext catalog, built at install time from whatever
+#    thunar.mo ships with the installed Thunar version (rather than shipping
+#    a prebuilt .mo that could drift out of sync with msgids across Thunar
+#    versions):
+#     - en_US has no thunar.mo of its own (English is the untranslated
+#       fallback), so it can't be derived by patching an existing one --
+#       building it from en_GB's catalog (as a first cut of this script did)
+#       silently inherits *all* of en_GB's regionalisms, not just Thunar's
+#       name. One of those turned out to be a keeper: en_GB renames "Trash"
+#       -> "Wastebasket" everywhere, consistently (sidebar, dialogs, desktop
+#       icon) -- which reads as a deliberate, charming choice once you
+#       notice it, so this keeps that rename on purpose. Everything *else*
+#       en_GB differs on is unrelated noise, so: build a true identity-
+#       English catalog (every msgstr set equal to its msgid) from en_GB's
+#       msgid list, except entries whose msgid mentions "trash"/"Trash" --
+#       those keep en_GB's actual (Wastebasket) translation verbatim. Then
+#       rename the Thunar brand on top of that.
+#       xfdesktop (draws the desktop icons, separate translation domain from
+#       Thunar) gets the same identity+keep-Wastebasket treatment, with no
+#       brand rename step, so the desktop's own Trash icon matches Thunar's
+#       sidebar instead of the two disagreeing.
+#     - de's thunar.mo is a real, direct German translation (not a regional
+#       variant of another translation), so it's patched in place: only the
+#       whole-word "Thunar" -> "Dateien" swap, msgids untouched. (German
+#       doesn't have a Wastebasket-style pun to preserve -- "Papierkorb" is
+#       already what it is.)
 #
 # Idempotent: safe to re-run (backs up anything it overwrites the first
 # time, with a .pre-cyberbeest / .bak-cyberbeest suffix, and skips the
@@ -72,7 +92,7 @@ Name=Computer
 Exec=thunar computer:///
 
 [Desktop Action open-trash]
-Name=Trash
+Name=Wastebasket
 Name[de]=Papierkorb
 Exec=thunar trash:///
 EOF
@@ -118,13 +138,91 @@ chown "$TARGET_USER:$TARGET_USER" \
 command -v update-desktop-database >/dev/null 2>&1 && \
 	su - "$TARGET_USER" -c "update-desktop-database '$TARGET_HOME/.local/share/applications' 2>/dev/null" || true
 
+# Rewrites the .po at $1 in place so every msgstr equals its own msgid (true
+# identity English), instead of whatever translation the source .mo actually
+# held -- used so the en_US catalog doesn't inherit en_GB's regionalisms
+# wholesale. Entries whose msgid matches the extended regex $2 are left
+# completely untouched (kept exactly as en_GB translated them) -- this is
+# how the deliberate "Trash" -> "Wastebasket" rename survives while
+# everything else reverts to plain English. Preserves msgctxt (disambiguates
+# otherwise-identical msgids like two "_Cancel" entries), msgid_plural/
+# msgstr[n] pairs, and leaves the header entry (msgid "") alone since its
+# msgstr carries charset/plural-forms metadata, not translatable text.
+identitize_po() {
+	python3 - "$1" "$2" <<'PYEOF'
+import re, sys
+path, keep_regex = sys.argv[1], sys.argv[2]
+keep_re = re.compile(keep_regex) if keep_regex else None
+with open(path, encoding="utf-8") as f:
+    content = f.read()
+entries = re.split(r'\n\n+', content.strip('\n'))
+out_entries = []
+for idx, entry in enumerate(entries):
+    lines = entry.split('\n')
+    comment_lines = [l for l in lines if l.lstrip().startswith('#')]
+    msgctxt_lines, msgid_lines, msgid_plural_lines = [], [], []
+    mode = None
+    for l in lines:
+        s = l.lstrip()
+        if s.startswith('#'):
+            continue
+        if s.startswith('msgctxt'):
+            mode = 'ctxt'; msgctxt_lines.append(l)
+        elif s.startswith('msgid_plural'):
+            mode = 'plural'; msgid_plural_lines.append(l)
+        elif s.startswith('msgid'):
+            mode = 'id'; msgid_lines.append(l)
+        elif s.startswith('msgstr'):
+            mode = 'str'
+        elif s.startswith('"'):
+            if mode == 'ctxt':
+                msgctxt_lines.append(l)
+            elif mode == 'id':
+                msgid_lines.append(l)
+            elif mode == 'plural':
+                msgid_plural_lines.append(l)
+    if not msgid_lines:
+        out_entries.append(entry)
+        continue
+    is_header = (idx == 0) and msgid_lines[0].strip() == 'msgid ""'
+    if is_header:
+        out_entries.append(entry)
+        continue
+    msgid_text = ' '.join(msgid_lines + msgid_plural_lines)
+    if keep_re and keep_re.search(msgid_text):
+        out_entries.append(entry)
+        continue
+    rebuilt = list(comment_lines) + msgctxt_lines + msgid_lines
+    if msgid_plural_lines:
+        rebuilt += msgid_plural_lines
+        m = re.match(r'\s*msgid\s+(".*")\s*$', msgid_lines[0])
+        rebuilt.append('msgstr[0] ' + (m.group(1) if m else '""'))
+        m2 = re.match(r'\s*msgid_plural\s+(".*")\s*$', msgid_plural_lines[0])
+        rebuilt.append('msgstr[1] ' + (m2.group(1) if m2 else '""'))
+    else:
+        for l in msgid_lines:
+            m = re.match(r'(\s*)msgid(\s+)(".*")\s*$', l)
+            rebuilt.append(f'{m.group(1)}msgstr{m.group(2)}{m.group(3)}' if m else l)
+    out_entries.append('\n'.join(rebuilt))
+with open(path, "w", encoding="utf-8") as f:
+    f.write('\n\n'.join(out_entries) + '\n')
+PYEOF
+}
+
 # Renames whole-word "Thunar" -> $2 in the msgstr (translated) lines only of
 # the .mo at $1, writing the result to $3. Leaves msgids (lookup keys)
-# untouched so existing translated strings still resolve correctly.
+# untouched so existing translated strings still resolve correctly. If $4
+# ("identity") is "1", the catalog is first rewritten to identity English
+# (see identitize_po above), keeping en_GB's own translation verbatim for
+# any entry whose msgid matches $5, before the brand rename is applied on
+# top of that.
 rename_catalog() {
-	local src_mo="$1" brand="$2" out_mo="$3" tmp
+	local src_mo="$1" brand="$2" out_mo="$3" identity="${4:-0}" keep_regex="${5:-}" tmp
 	tmp="$(mktemp -d)"
 	msgunfmt "$src_mo" -o "$tmp/catalog.po"
+	if [ "$identity" = "1" ]; then
+		identitize_po "$tmp/catalog.po" "$keep_regex"
+	fi
 	python3 - "$tmp/catalog.po" "$brand" <<'PYEOF'
 import re, sys
 path, brand = sys.argv[1], sys.argv[2]
@@ -167,7 +265,7 @@ PYEOF
 }
 
 install_catalog() {
-	local base_mo="$1" brand="$2" dest="$3"
+	local base_mo="$1" brand="$2" dest="$3" identity="${4:-0}" keep_regex="${5:-}"
 	[ -f "$base_mo" ] || { echo "skipping $dest: $base_mo not found"; return 0; }
 	mkdir -p "$(dirname "$dest")"
 	if [ -f "$dest" ] && [ ! -f "$dest.pre-cyberbeest" ]; then
@@ -176,17 +274,21 @@ install_catalog() {
 	fi
 	local tmp_out
 	tmp_out="$(mktemp)"
-	rename_catalog "$base_mo" "$brand" "$tmp_out"
+	rename_catalog "$base_mo" "$brand" "$tmp_out" "$identity" "$keep_regex"
 	install -m 644 "$tmp_out" "$dest"
 	rm -f "$tmp_out"
-	echo "installed $brand-branded catalog to $dest"
+	echo "installed catalog to $dest"
 }
 
 echo "--- Installing renamed translation catalogs ---"
-# en_US has no thunar.mo of its own (English is the untranslated fallback),
-# so derive it from en_GB, which ships as a near-identity English catalog.
+# en_US has no thunar.mo/xfdesktop.mo of its own (English is the
+# untranslated fallback), so derive both from en_GB as identity-English,
+# keeping en_GB's "Trash" -> "Wastebasket" rename on purpose (see header
+# comment) and renaming the Thunar brand on top for thunar.mo.
 install_catalog /usr/share/locale/en_GB/LC_MESSAGES/thunar.mo Files \
-	/usr/share/locale/en_US/LC_MESSAGES/thunar.mo
+	/usr/share/locale/en_US/LC_MESSAGES/thunar.mo 1 '[Tt]rash'
+install_catalog /usr/share/locale/en_GB/LC_MESSAGES/xfdesktop.mo "" \
+	/usr/share/locale/en_US/LC_MESSAGES/xfdesktop.mo 1 '[Tt]rash'
 install_catalog /usr/share/locale/de/LC_MESSAGES/thunar.mo Dateien \
 	/usr/share/locale/de/LC_MESSAGES/thunar.mo
 
@@ -219,6 +321,13 @@ if [ -n "$PANEL_PID" ]; then
 	pkill -u "$TARGET_USER" -x Thunar || true
 	sleep 1
 	su - "$TARGET_USER" -c "DISPLAY='${DISPLAY:-:0}' nohup thunar >/dev/null 2>&1 & disown" || true
+
+	# xfdesktop draws the desktop icons (including the Trash/Wastebasket
+	# one) -- restart it so the new catalog picks up immediately instead of
+	# waiting for next login.
+	pkill -u "$TARGET_USER" -x xfdesktop || true
+	sleep 1
+	su - "$TARGET_USER" -c "DISPLAY='${DISPLAY:-:0}' nohup xfdesktop >/dev/null 2>&1 & disown" || true
 
 	su - "$TARGET_USER" -c "DISPLAY='${DISPLAY:-:0}' DBUS_SESSION_BUS_ADDRESS='$DBUS_ADDR' xfce4-panel -r" || true
 fi
