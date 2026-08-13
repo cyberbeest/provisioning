@@ -29,6 +29,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/statvfs.h>
+#include "process-alias.h"
 
 #define MEM_SAMPLE_MS 2000        /* how often to read /proc/meminfo */
 #define SCREEN_CHECK_INTERVAL_S 2 /* how often to poll for screen lock / display standby */
@@ -112,6 +113,7 @@ typedef struct {
     gboolean show_percent;
     gboolean enabled;      /* FALSE: freeze wave/bubble motion, level still updates */
     gboolean count_mapped; /* TRUE: count resident mmap'd pages as used, not just non-reclaimable memory */
+    gboolean friendly_names; /* alias raw /proc comm strings in the tooltip's Top RAM list */
     gboolean paused;       /* TRUE: screen locked or display in standby -- ticking suspended */
     gdouble margin_rgb[3]; /* widget background outside the tank, user-selectable */
 
@@ -405,8 +407,9 @@ on_query_tooltip(GtkWidget *widget, gint x, gint y, gboolean keyboard_mode,
             gdouble gb = MAX(top[i].rss_kib / 1048576.0, TOP_PROC_MIN_DISPLAY_GB);
             gdouble pct_of_ram = mp->mem_total_kib > 0
                 ? (gdouble) top[i].rss_kib / mp->mem_total_kib * 100.0 : 0.0;
+            const gchar *name = mp->friendly_names ? process_alias(top[i].comm) : top[i].comm;
             n += g_snprintf(buf + n, sizeof(buf) - n, "\n%s  %.1f GB (%.0f%%)",
-                             top[i].comm, gb, pct_of_ram);
+                             name, gb, pct_of_ram);
         }
     }
 
@@ -689,6 +692,7 @@ mem_load_settings(MemPlugin *mp)
     mp->show_percent = TRUE;
     mp->enabled = TRUE;
     mp->count_mapped = TRUE;
+    mp->friendly_names = TRUE;
     memcpy(mp->margin_rgb, DEFAULT_MARGIN_RGB, sizeof(mp->margin_rgb));
 
     gchar *file = xfce_panel_plugin_save_location(mp->plugin, FALSE);
@@ -706,6 +710,7 @@ mem_load_settings(MemPlugin *mp)
     mp->show_percent = xfce_rc_read_bool_entry(rc, "ShowPercent", TRUE);
     mp->enabled = xfce_rc_read_bool_entry(rc, "Enabled", TRUE);
     mp->count_mapped = xfce_rc_read_bool_entry(rc, "CountMapped", TRUE);
+    mp->friendly_names = xfce_rc_read_bool_entry(rc, "FriendlyNames", TRUE);
 
     const gchar *color_str = xfce_rc_read_entry(rc, "MarginColor", NULL);
     if (color_str) {
@@ -739,6 +744,7 @@ mem_save_settings(MemPlugin *mp)
     xfce_rc_write_bool_entry(rc, "ShowPercent", mp->show_percent);
     xfce_rc_write_bool_entry(rc, "Enabled", mp->enabled);
     xfce_rc_write_bool_entry(rc, "CountMapped", mp->count_mapped);
+    xfce_rc_write_bool_entry(rc, "FriendlyNames", mp->friendly_names);
     xfce_rc_write_entry(rc, "MarginColor", color_str);
     g_free(color_str);
     xfce_rc_close(rc);
@@ -873,6 +879,13 @@ on_count_mapped_toggled(GtkToggleButton *toggle, MemPlugin *mp)
 }
 
 static void
+on_friendly_names_toggled(GtkToggleButton *toggle, MemPlugin *mp)
+{
+    mp->friendly_names = gtk_toggle_button_get_active(toggle);
+    mem_save_settings(mp);
+}
+
+static void
 on_margin_color_set(GtkColorButton *button, MemPlugin *mp)
 {
     GdkRGBA rgba;
@@ -931,14 +944,20 @@ on_configure_plugin(XfcePanelPlugin *plugin, MemPlugin *mp)
     g_signal_connect(count_mapped_check, "toggled", G_CALLBACK(on_count_mapped_toggled), mp);
     gtk_grid_attach(GTK_GRID(grid), count_mapped_check, 0, 3, 2, 1);
 
+    GtkWidget *friendly_check = gtk_check_button_new_with_label(
+        "Use plain-English names in the Top RAM tooltip list (e.g. \"window drawing\" for Xorg)");
+    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(friendly_check), mp->friendly_names);
+    g_signal_connect(friendly_check, "toggled", G_CALLBACK(on_friendly_names_toggled), mp);
+    gtk_grid_attach(GTK_GRID(grid), friendly_check, 0, 4, 2, 1);
+
     GtkWidget *margin_label = gtk_label_new("Margin color:");
     gtk_widget_set_halign(margin_label, GTK_ALIGN_START);
     GdkRGBA margin_rgba = { mp->margin_rgb[0], mp->margin_rgb[1], mp->margin_rgb[2], 1.0 };
     GtkWidget *margin_button = gtk_color_button_new_with_rgba(&margin_rgba);
     gtk_color_chooser_set_use_alpha(GTK_COLOR_CHOOSER(margin_button), FALSE);
     g_signal_connect(margin_button, "color-set", G_CALLBACK(on_margin_color_set), mp);
-    gtk_grid_attach(GTK_GRID(grid), margin_label, 0, 4, 1, 1);
-    gtk_grid_attach(GTK_GRID(grid), margin_button, 1, 4, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), margin_label, 0, 5, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), margin_button, 1, 5, 1, 1);
 
     gtk_container_add(GTK_CONTAINER(gtk_dialog_get_content_area(GTK_DIALOG(dialog))), grid);
     gtk_widget_show_all(dialog);

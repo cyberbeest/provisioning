@@ -18,6 +18,7 @@
 #include <dirent.h>
 #include <math.h>
 #include <stdio.h>
+#include "process-alias.h"
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -75,6 +76,7 @@ typedef struct {
     gboolean enabled;  /* FALSE: freeze at dead center, no ticking */
     gboolean paused;   /* TRUE: screen locked or display in standby -- ticking suspended */
     gboolean show_percent; /* draw the CPU load number over the LEDs */
+    gboolean friendly_names; /* alias raw /proc comm strings in the tooltip's Top CPU list */
     gint shown_percent;    /* rounded % as of the last repaint, -1 = none yet */
     gdouble bg[3];
 
@@ -338,8 +340,10 @@ on_query_tooltip(GtkWidget *widget, gint x, gint y, gboolean keyboard_mode,
     gint n = get_top_processes(top, TOP_PROC_COUNT);
     if (n > 0) {
         g_string_append(text, "\n\nTop CPU:");
-        for (gint i = 0; i < n; i++)
-            g_string_append_printf(text, "\n%s  %.0f%%", top[i].comm, top[i].percent);
+        for (gint i = 0; i < n; i++) {
+            const gchar *name = kp->friendly_names ? process_alias(top[i].comm) : top[i].comm;
+            g_string_append_printf(text, "\n%s  %.0f%%", name, top[i].percent);
+        }
     }
 
     gtk_tooltip_set_text(tooltip, text->str);
@@ -568,6 +572,7 @@ kitt_load_settings(KittPlugin *kp)
     kp->sine_sweep = TRUE;
     kp->enabled = TRUE;
     kp->show_percent = FALSE;
+    kp->friendly_names = TRUE;
     memcpy(kp->bg, DEFAULT_BG, sizeof(kp->bg));
 
     gchar *file = xfce_panel_plugin_save_location(kp->plugin, FALSE);
@@ -589,6 +594,7 @@ kitt_load_settings(KittPlugin *kp)
     kp->sine_sweep = xfce_rc_read_bool_entry(rc, "SineSweep", TRUE);
     kp->enabled = xfce_rc_read_bool_entry(rc, "Enabled", TRUE);
     kp->show_percent = xfce_rc_read_bool_entry(rc, "ShowPercent", FALSE);
+    kp->friendly_names = xfce_rc_read_bool_entry(rc, "FriendlyNames", TRUE);
 
     const gchar *color_str = xfce_rc_read_entry(rc, "MarginColor", NULL);
     if (color_str) {
@@ -627,6 +633,7 @@ kitt_save_settings(KittPlugin *kp)
     xfce_rc_write_bool_entry(rc, "SineSweep", kp->sine_sweep);
     xfce_rc_write_bool_entry(rc, "Enabled", kp->enabled);
     xfce_rc_write_bool_entry(rc, "ShowPercent", kp->show_percent);
+    xfce_rc_write_bool_entry(rc, "FriendlyNames", kp->friendly_names);
     xfce_rc_write_entry(rc, "MarginColor", color_str);
     g_free(color_str);
     xfce_rc_close(rc);
@@ -801,6 +808,13 @@ on_show_percent_toggled(GtkToggleButton *toggle, KittPlugin *kp)
 }
 
 static void
+on_friendly_names_toggled(GtkToggleButton *toggle, KittPlugin *kp)
+{
+    kp->friendly_names = gtk_toggle_button_get_active(toggle);
+    kitt_save_settings(kp);
+}
+
+static void
 on_sweep_pattern_changed(GtkToggleButton *toggle, KittPlugin *kp)
 {
     if (!gtk_toggle_button_get_active(toggle))
@@ -894,6 +908,12 @@ on_configure_plugin(XfcePanelPlugin *plugin, KittPlugin *kp)
     gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(percent_check), kp->show_percent);
     g_signal_connect(percent_check, "toggled", G_CALLBACK(on_show_percent_toggled), kp);
     gtk_grid_attach(GTK_GRID(grid), percent_check, 0, 10, 2, 1);
+
+    GtkWidget *friendly_check = gtk_check_button_new_with_label(
+        "Use plain-English names in the Top CPU tooltip list (e.g. \"window drawing\" for Xorg)");
+    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(friendly_check), kp->friendly_names);
+    g_signal_connect(friendly_check, "toggled", G_CALLBACK(on_friendly_names_toggled), kp);
+    gtk_grid_attach(GTK_GRID(grid), friendly_check, 0, 11, 2, 1);
 
     gtk_container_add(GTK_CONTAINER(gtk_dialog_get_content_area(GTK_DIALOG(dialog))), grid);
     gtk_widget_show_all(dialog);
