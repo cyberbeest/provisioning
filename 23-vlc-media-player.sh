@@ -40,4 +40,13 @@ else
     echo 'metadata-network-access=0' >> "$VLCRC"
 fi
 
+echo "--- Enabling 'continue playback' (resume position, no prompt) ---"
+if grep -q '^qt-continue=' "$VLCRC"; then
+    sed -i 's/^qt-continue=.*/qt-continue=2/' "$VLCRC"
+elif grep -q '^#qt-continue=' "$VLCRC"; then
+    sed -i 's/^#qt-continue=.*/qt-continue=2/' "$VLCRC"
+else
+    echo 'qt-continue=2' >> "$VLCRC"
+fi
+
 echo "=== done ==="
