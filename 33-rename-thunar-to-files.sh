@@ -311,6 +311,34 @@ else
 fi
 chown -R "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.config/xfce4"
 
+# Kills process $2 (exact name) for user $1, waits up to 5s for it to
+# actually exit (not just for pkill to return -- the old process can hang
+# onto X resources like desktop/root-window management for a moment after
+# being signalled), then runs $3 to relaunch it and waits up to 5s for the
+# new instance to show up in the process table. Without the exit-wait, a
+# relaunch can race the old instance's X cleanup and start "successfully"
+# (visible in `pgrep`) without actually taking over -- e.g. xfdesktop
+# leaving the desktop blank (no icons) until manually kicked again, which
+# is what happened restarting it live while developing this script.
+restart_and_confirm() {
+	local user="$1" proc="$2" relaunch_cmd="$3" i
+	pkill -u "$user" -x "$proc" || true
+	for i in $(seq 1 10); do
+		pgrep -u "$user" -x "$proc" >/dev/null 2>&1 || break
+		sleep 0.5
+	done
+	su - "$user" -c "$relaunch_cmd" || true
+	for i in $(seq 1 10); do
+		pgrep -u "$user" -x "$proc" >/dev/null 2>&1 && break
+		sleep 0.5
+	done
+	if pgrep -u "$user" -x "$proc" >/dev/null 2>&1; then
+		echo "$proc restarted"
+	else
+		echo "WARNING: $proc did not come back up after restart"
+	fi
+}
+
 echo "--- Refreshing a live session, if one is running ---"
 PANEL_PID="$(pgrep -u "$TARGET_USER" -x xfce4-panel | head -1)"
 if [ -n "$PANEL_PID" ]; then
@@ -318,16 +346,14 @@ if [ -n "$PANEL_PID" ]; then
 	DBUS_ADDR="${DBUS_ADDR:-unix:path=/run/user/$(id -u "$TARGET_USER")/bus}"
 
 	# Thunar's daemon process name is capitalized ("Thunar"), not "thunar".
-	pkill -u "$TARGET_USER" -x Thunar || true
-	sleep 1
-	su - "$TARGET_USER" -c "DISPLAY='${DISPLAY:-:0}' nohup thunar >/dev/null 2>&1 & disown" || true
+	restart_and_confirm "$TARGET_USER" Thunar \
+		"DISPLAY='${DISPLAY:-:0}' nohup thunar >/dev/null 2>&1 & disown"
 
 	# xfdesktop draws the desktop icons (including the Trash/Wastebasket
 	# one) -- restart it so the new catalog picks up immediately instead of
 	# waiting for next login.
-	pkill -u "$TARGET_USER" -x xfdesktop || true
-	sleep 1
-	su - "$TARGET_USER" -c "DISPLAY='${DISPLAY:-:0}' nohup xfdesktop >/dev/null 2>&1 & disown" || true
+	restart_and_confirm "$TARGET_USER" xfdesktop \
+		"DISPLAY='${DISPLAY:-:0}' nohup xfdesktop >/dev/null 2>&1 & disown"
 
 	su - "$TARGET_USER" -c "DISPLAY='${DISPLAY:-:0}' DBUS_SESSION_BUS_ADDRESS='$DBUS_ADDR' xfce4-panel -r" || true
 fi
