@@ -44,7 +44,9 @@ apt-get -o DPkg::Lock::Timeout=60 update -qq
 # install, but installed defensively here too. pkexec: disk_password_gui.py
 # shells out to it to run cryptsetup as root, but Debian trixie split it out
 # of polkitd into its own package, so it's no longer guaranteed present.
-apt-get -o DPkg::Lock::Timeout=60 install -y python3-gi gir1.2-gtk-3.0 python3-legacycrypt cryptsetup pkexec
+# ffmpeg: converts user-picked wav/mp3/ogg files into the plain PCM wav that
+# aplay/paplay expect, for the Sound tab's custom startup/shutdown chimes.
+apt-get -o DPkg::Lock::Timeout=60 install -y python3-gi gir1.2-gtk-3.0 python3-legacycrypt cryptsetup pkexec ffmpeg
 
 echo "--- Installing cyberbeest-change-password (disk_password_gui.py) ---"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.local/bin"
@@ -74,10 +76,10 @@ install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.local/share/applic
 cat > "$TARGET_HOME/.local/share/applications/cyberbeest-change-password.desktop" <<EOF
 [Desktop Entry]
 Type=Application
-Name=Cyberbeest Change Password
-Name[de]=Cyberbeest-Passwort ändern
-Comment=Change the master (disk) or short (login) password
-Comment[de]=Master-Passwort (Festplatte) oder kurzes Passwort (Anmeldung) ändern
+Name=Cyberbeest Passwords & Boot
+Name[de]=Cyberbeest-Passwörter & Start
+Comment=Passwords, boot screen, and startup/shutdown sounds
+Comment[de]=Passwörter, Startbildschirm und Start-/Herunterfahrton
 Exec=$TARGET_HOME/.local/bin/cyberbeest-change-password
 Icon=$TARGET_HOME/Pictures/Cyberbeest-black.png
 Terminal=false

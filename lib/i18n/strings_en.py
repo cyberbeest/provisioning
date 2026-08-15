@@ -48,7 +48,7 @@ STRINGS = {
     "timer.on_ac": "On AC power:",
     "timer.on_battery": "On battery:",
 
-    "pw.window_title": "Cyberbeest Change Password",
+    "pw.window_title": "Cyberbeest Passwords & Boot",
     "pw.master_title": "Master password",
     "pw.master_desc": "The password used to decrypt your hard drive at startup.",
     "pw.short_title": "Short password",
@@ -118,6 +118,27 @@ STRINGS = {
         "Authentication was cancelled, so the boot screen brightness was not changed."
     ),
     "pw.boot_bright_mode_failed": "The boot screen brightness could not be changed.",
+
+    "pw.sound_tab": "Sound",
+    "pw.sound_startup_title": "Startup chime",
+    "pw.sound_startup_desc": "Plays right after the audio hardware wakes up, before the unlock screen.",
+    "pw.sound_shutdown_title": "Shutdown chime",
+    "pw.sound_shutdown_desc": "Plays when the machine actually powers off (not on restart).",
+    "pw.sound_enabled": "Play this chime",
+    "pw.sound_standard": "Cyberbeest standard chime",
+    "pw.sound_choose_file": "Choose Sound File…",
+    "pw.sound_play": "Play",
+    "pw.sound_file_filter": "Sound files (wav, mp3, ogg)",
+    "pw.sound_converting": "Converting and installing sound…",
+    "pw.sound_install_failed": "The sound could not be installed.",
+    "pw.sound_installed": "Sound installed.",
+    "pw.sound_select_failed": "The sound could not be changed.",
+    "pw.sound_selected": "Sound changed.",
+    "pw.sound_enabled_on": "This chime will now play.",
+    "pw.sound_enabled_off": "This chime is now muted.",
+    "pw.sound_toggle_failed": "Could not change whether this chime plays.",
+    "pw.sound_play_failed": "Could not play the sound.",
+    "pw.sound_ffmpeg_missing": "ffmpeg is not installed, so the sound file could not be converted.",
 
     "nag.title": "Still using the password set up for you",
     "nag.still_secure_default": (

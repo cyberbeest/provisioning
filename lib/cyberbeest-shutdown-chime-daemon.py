@@ -33,6 +33,15 @@ gi.require_version("Gio", "2.0")
 from gi.repository import Gio, GLib
 
 CHIME = os.path.expanduser("~/.local/share/sounds/cyberbeest-shutdown-chime.wav")
+STATE_FILE = os.path.expanduser("~/.config/cyberbeest/shutdown-chime-enabled")
+
+
+def is_enabled():
+    try:
+        with open(STATE_FILE, encoding="utf-8") as f:
+            return f.read().strip() != "0"
+    except OSError:
+        return True
 
 
 def is_rebooting():
@@ -74,7 +83,7 @@ def main():
         (starting,) = params.unpack()
         if not starting:
             return
-        if not is_rebooting():
+        if not is_rebooting() and is_enabled():
             subprocess.run(["paplay", CHIME], check=False)
         os.close(fd)
         loop.quit()

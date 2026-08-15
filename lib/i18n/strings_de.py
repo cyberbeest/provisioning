@@ -52,7 +52,7 @@ STRINGS = {
     "timer.on_ac": "Im Netzbetrieb:",
     "timer.on_battery": "Im Akkubetrieb:",
 
-    "pw.window_title": "Cyberbeest-Passwort ändern",
+    "pw.window_title": "Cyberbeest-Passwörter & Start",
     "pw.master_title": "Master-Passwort",
     "pw.master_desc": "Das Passwort, mit dem deine Festplatte beim Start entschlüsselt wird.",
     "pw.short_title": "Kurzes Passwort",
@@ -124,6 +124,27 @@ STRINGS = {
         "wurde daher nicht geändert."
     ),
     "pw.boot_bright_mode_failed": "Die Bildschirmhelligkeit konnte nicht geändert werden.",
+
+    "pw.sound_tab": "Ton",
+    "pw.sound_startup_title": "Startton",
+    "pw.sound_startup_desc": "Spielt, sobald die Audio-Hardware aufwacht, noch vor dem Entsperrbildschirm.",
+    "pw.sound_shutdown_title": "Herunterfahrton",
+    "pw.sound_shutdown_desc": "Spielt, wenn das Gerät tatsächlich ausgeschaltet wird (nicht beim Neustart).",
+    "pw.sound_enabled": "Diesen Ton abspielen",
+    "pw.sound_standard": "Cyberbeest-Standardton",
+    "pw.sound_choose_file": "Sounddatei wählen…",
+    "pw.sound_play": "Abspielen",
+    "pw.sound_file_filter": "Sounddateien (wav, mp3, ogg)",
+    "pw.sound_converting": "Sound wird konvertiert und installiert…",
+    "pw.sound_install_failed": "Der Sound konnte nicht installiert werden.",
+    "pw.sound_installed": "Sound installiert.",
+    "pw.sound_select_failed": "Der Sound konnte nicht geändert werden.",
+    "pw.sound_selected": "Sound geändert.",
+    "pw.sound_enabled_on": "Dieser Ton wird jetzt abgespielt.",
+    "pw.sound_enabled_off": "Dieser Ton ist jetzt stummgeschaltet.",
+    "pw.sound_toggle_failed": "Konnte nicht ändern, ob dieser Ton abgespielt wird.",
+    "pw.sound_play_failed": "Der Sound konnte nicht abgespielt werden.",
+    "pw.sound_ffmpeg_missing": "ffmpeg ist nicht installiert, die Sounddatei konnte daher nicht konvertiert werden.",
 
     "nag.title": "Du verwendest noch das für dich eingerichtete Passwort",
     "nag.still_secure_default": (

@@ -32,6 +32,16 @@ install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.local/share/sounds
 install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 \
 	"$DIR/lib/assets/cyberbeest-shutdown-chime.wav" \
 	"$TARGET_HOME/.local/share/sounds/cyberbeest-shutdown-chime.wav"
+# Untouched reference copy so the "Cyberbeest standard chime" entry in the
+# GUI's sound dropdown can always be restored, even after custom imports.
+install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 \
+	"$DIR/lib/assets/cyberbeest-shutdown-chime.wav" \
+	"$TARGET_HOME/.local/share/sounds/cyberbeest-shutdown-chime-default.wav"
+install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.local/share/sounds/cyberbeest-shutdown-chime-history"
+install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.config/cyberbeest"
+if [ ! -f "$TARGET_HOME/.config/cyberbeest/shutdown-chime-enabled" ]; then
+	sudo -u "$TARGET_USER" sh -c "printf '1' > '$TARGET_HOME/.config/cyberbeest/shutdown-chime-enabled'"
+fi
 
 echo "--- Installing daemon script ---"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.local/bin"

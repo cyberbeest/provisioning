@@ -1,0 +1,7 @@
+[Unit]
+Description=Play a chime as soon as the audio codec (controlC0) appears at boot
+After=sound.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/cyberbeest-boot-chime.sh

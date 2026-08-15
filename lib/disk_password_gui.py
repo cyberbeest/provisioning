@@ -20,7 +20,9 @@ import os
 import pty
 import secrets
 import select
+import shutil
 import subprocess
+import tempfile
 import termios
 import threading
 import time
@@ -43,6 +45,27 @@ BOOT_BRIGHT_MODE_FILE = "/etc/cyberbeest/plymouth-bright-mode"
 LOGO_PATH = os.path.expanduser("~/Pictures/Cyberbeest-black.png")
 LOGO_SIZE = 96
 WORDLISTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "wordlists")
+
+SET_BOOT_CHIME = "/usr/local/sbin/cyberbeest-set-boot-chime"
+SOUNDS_DIR = "/usr/local/share/sounds"
+BOOT_CHIME_ACTIVE = f"{SOUNDS_DIR}/cyberbeest-boot-chime.wav"
+BOOT_CHIME_DEFAULT = f"{SOUNDS_DIR}/cyberbeest-boot-chime-default.wav"
+BOOT_CHIME_HISTORY_DIR = f"{SOUNDS_DIR}/cyberbeest-boot-chime-history"
+BOOT_CHIME_STATE_FILE = "/etc/cyberbeest/boot-chime-enabled"
+BOOT_CHIME_SELECTED_FILE = "/etc/cyberbeest/boot-chime-selected"
+
+SHUTDOWN_SOUNDS_DIR = os.path.expanduser("~/.local/share/sounds")
+SHUTDOWN_CHIME_ACTIVE = f"{SHUTDOWN_SOUNDS_DIR}/cyberbeest-shutdown-chime.wav"
+SHUTDOWN_CHIME_DEFAULT = f"{SHUTDOWN_SOUNDS_DIR}/cyberbeest-shutdown-chime-default.wav"
+SHUTDOWN_CHIME_HISTORY_DIR = f"{SHUTDOWN_SOUNDS_DIR}/cyberbeest-shutdown-chime-history"
+SHUTDOWN_CHIME_STATE_FILE = os.path.expanduser("~/.config/cyberbeest/shutdown-chime-enabled")
+SHUTDOWN_CHIME_SELECTED_FILE = os.path.expanduser("~/.config/cyberbeest/shutdown-chime-selected")
+
+# Matches cyberbeest-set-boot-chime.sh's MAX_HISTORY -- kept as separate
+# constants (root vs. user-space history pruning happen in different
+# places) rather than one shared value, but the number itself should stay
+# in sync so both chimes behave the same.
+MAX_CHIME_HISTORY = 10
 
 # Rebuilding is update-initramfs -k all, which regenerates one initramfs per
 # installed kernel and is slow/CPU-bound enough that the machine feels
@@ -315,6 +338,339 @@ def set_boot_bright_mode(enabled):
     return False, f"{t('pw.boot_bright_mode_failed')}\n\n{t('pw.details')}: {detail or t('pw.unknown_error')}"
 
 
+def convert_to_wav(src_path):
+    """Convert an arbitrary wav/mp3/ogg file to a plain 16-bit PCM wav via
+    ffmpeg, since that's the one format aplay (boot, no PulseAudio/PipeWire
+    session yet) and paplay (shutdown) both play without surprises --
+    running every import through ffmpeg regardless of source format also
+    normalizes odd wav variants (e.g. float samples) that aplay chokes on.
+
+    Returns (tmp_wav_path, None) on success, or (None, error_message).
+    Caller owns the returned temp file and must remove it when done.
+    """
+    if shutil.which("ffmpeg") is None:
+        return None, t("pw.sound_ffmpeg_missing")
+
+    fd, tmp_path = tempfile.mkstemp(suffix=".wav")
+    os.close(fd)
+    try:
+        proc = subprocess.run(
+            ["ffmpeg", "-y", "-i", src_path, "-ar", "44100", "-ac", "2", "-sample_fmt", "s16", tmp_path],
+            capture_output=True,
+            text=True,
+        )
+    except FileNotFoundError:
+        return None, t("pw.sound_ffmpeg_missing")
+
+    if proc.returncode != 0 or not os.path.getsize(tmp_path):
+        try:
+            os.remove(tmp_path)
+        except OSError:
+            pass
+        return None, t("pw.sound_install_failed")
+
+    return tmp_path, None
+
+
+class BootChimeBackend:
+    """Startup chime storage lives under /usr/local/share (root-owned), so
+    every write goes through the cyberbeest-set-boot-chime pkexec helper.
+    Reads are plain file access -- the sounds dir and its history/state
+    files are all world-readable.
+    """
+
+    active_path = BOOT_CHIME_ACTIVE
+
+    def read_enabled(self):
+        try:
+            with open(BOOT_CHIME_STATE_FILE, encoding="utf-8") as f:
+                return f.read().strip() != "0"
+        except OSError:
+            return True
+
+    def read_selected(self):
+        try:
+            with open(BOOT_CHIME_SELECTED_FILE, encoding="utf-8") as f:
+                return f.read().strip() or "default"
+        except OSError:
+            return "default"
+
+    def list_history(self):
+        try:
+            names = os.listdir(BOOT_CHIME_HISTORY_DIR)
+        except OSError:
+            return []
+        names.sort(key=lambda n: os.path.getmtime(os.path.join(BOOT_CHIME_HISTORY_DIR, n)), reverse=True)
+        return names
+
+    def _run_pkexec(self, args, success_message, failure_message):
+        try:
+            proc = subprocess.run(["pkexec", SET_BOOT_CHIME] + args, capture_output=True, text=True)
+        except FileNotFoundError as e:
+            return False, f"{t('pw.pkexec_error')} {e}"
+        if proc.returncode == 0:
+            return True, success_message
+        if proc.returncode in (126, 127):
+            return False, t("pw.auth_cancelled")
+        return False, failure_message
+
+    def set_enabled(self, enabled):
+        message = t("pw.sound_enabled_on") if enabled else t("pw.sound_enabled_off")
+        return self._run_pkexec(
+            ["enable" if enabled else "disable"], message, t("pw.sound_toggle_failed")
+        )
+
+    def select_sound(self, name):
+        return self._run_pkexec(["select", name], t("pw.sound_selected"), t("pw.sound_select_failed"))
+
+    def import_sound(self, tmp_wav_path, basename):
+        return self._run_pkexec(
+            ["import", tmp_wav_path, basename], t("pw.sound_installed"), t("pw.sound_install_failed")
+        )
+
+
+class ShutdownChimeBackend:
+    """Shutdown chime storage lives entirely under the user's home
+    directory, so every operation is a plain (no-root) file op.
+    """
+
+    active_path = SHUTDOWN_CHIME_ACTIVE
+
+    def read_enabled(self):
+        try:
+            with open(SHUTDOWN_CHIME_STATE_FILE, encoding="utf-8") as f:
+                return f.read().strip() != "0"
+        except OSError:
+            return True
+
+    def read_selected(self):
+        try:
+            with open(SHUTDOWN_CHIME_SELECTED_FILE, encoding="utf-8") as f:
+                return f.read().strip() or "default"
+        except OSError:
+            return "default"
+
+    def list_history(self):
+        try:
+            names = os.listdir(SHUTDOWN_CHIME_HISTORY_DIR)
+        except OSError:
+            return []
+        names.sort(
+            key=lambda n: os.path.getmtime(os.path.join(SHUTDOWN_CHIME_HISTORY_DIR, n)), reverse=True
+        )
+        return names
+
+    def set_enabled(self, enabled):
+        try:
+            os.makedirs(os.path.dirname(SHUTDOWN_CHIME_STATE_FILE), exist_ok=True)
+            with open(SHUTDOWN_CHIME_STATE_FILE, "w", encoding="utf-8") as f:
+                f.write("1" if enabled else "0")
+        except OSError:
+            return False, t("pw.sound_toggle_failed")
+        return True, t("pw.sound_enabled_on") if enabled else t("pw.sound_enabled_off")
+
+    def select_sound(self, name):
+        src = SHUTDOWN_CHIME_DEFAULT if name == "default" else os.path.join(SHUTDOWN_CHIME_HISTORY_DIR, name)
+        if not os.path.isfile(src):
+            return False, t("pw.sound_select_failed")
+        try:
+            shutil.copyfile(src, SHUTDOWN_CHIME_ACTIVE)
+            self._write_selected(name)
+        except OSError:
+            return False, t("pw.sound_select_failed")
+        return True, t("pw.sound_selected")
+
+    def import_sound(self, tmp_wav_path, basename):
+        try:
+            os.makedirs(SHUTDOWN_CHIME_HISTORY_DIR, exist_ok=True)
+            safe = "".join(c for c in basename if c.isalnum() or c in "._-") or "sound.wav"
+            entry = f"{time.strftime('%Y%m%d-%H%M%S')}-{safe}"
+            dest = os.path.join(SHUTDOWN_CHIME_HISTORY_DIR, entry)
+            shutil.copyfile(tmp_wav_path, dest)
+            shutil.copyfile(tmp_wav_path, SHUTDOWN_CHIME_ACTIVE)
+            self._write_selected(entry)
+            self._prune_history()
+        except OSError:
+            return False, t("pw.sound_install_failed")
+        return True, t("pw.sound_installed")
+
+    def _write_selected(self, name):
+        os.makedirs(os.path.dirname(SHUTDOWN_CHIME_SELECTED_FILE), exist_ok=True)
+        with open(SHUTDOWN_CHIME_SELECTED_FILE, "w", encoding="utf-8") as f:
+            f.write(name)
+
+    def _prune_history(self):
+        names = self.list_history()
+        for old in names[MAX_CHIME_HISTORY:]:
+            try:
+                os.remove(os.path.join(SHUTDOWN_CHIME_HISTORY_DIR, old))
+            except OSError:
+                pass
+
+
+class ChimeSection:
+    """One startup/shutdown chime control block: enable checkbox, a sound
+    picker dropdown (standard chime + recent imports), and choose-file /
+    play buttons. Two of these live in the Sound tab, each wired to a
+    backend (BootChimeBackend or ShutdownChimeBackend) that actually
+    applies changes -- this class only knows about widgets and threading,
+    not where the files live or whether pkexec is involved.
+    """
+
+    def __init__(self, backend, title, description, parent_window):
+        self.backend = backend
+        self.parent_window = parent_window
+
+        self.widget = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+
+        heading = Gtk.Label(label=f"<b>{GLib.markup_escape_text(title)}</b>", use_markup=True, xalign=0)
+        self.widget.pack_start(heading, False, False, 0)
+
+        desc = Gtk.Label(label=description, wrap=True, xalign=0)
+        self.widget.pack_start(desc, False, False, 0)
+
+        self.enabled_check = Gtk.CheckButton(label=t("pw.sound_enabled"))
+        self.enabled_check.connect("toggled", self.on_enabled_toggled)
+        self.widget.pack_start(self.enabled_check, False, False, 0)
+
+        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        self.widget.pack_start(row, False, False, 0)
+
+        self.combo = Gtk.ComboBoxText()
+        self.combo.set_hexpand(True)
+        self.combo.connect("changed", self.on_combo_changed)
+        row.pack_start(self.combo, True, True, 0)
+
+        play_button = Gtk.Button(label=t("pw.sound_play"))
+        play_button.connect("clicked", self.on_play_clicked)
+        row.pack_start(play_button, False, False, 0)
+
+        choose_button = Gtk.Button(label=t("pw.sound_choose_file"))
+        choose_button.connect("clicked", self.on_choose_file_clicked)
+        self.widget.pack_start(choose_button, False, False, 0)
+
+        self.status_label = Gtk.Label(label="", wrap=True, xalign=0)
+        self.status_label.set_no_show_all(True)
+        self.widget.pack_start(self.status_label, False, False, 0)
+
+        self.refresh()
+
+    def set_status(self, text, is_error=True):
+        self.status_label.set_markup(
+            f'<span foreground="{"red" if is_error else "green"}">{GLib.markup_escape_text(text)}</span>'
+        )
+        self.status_label.set_no_show_all(False)
+        self.status_label.show()
+
+    def refresh(self):
+        self.enabled_check.handler_block_by_func(self.on_enabled_toggled)
+        self.enabled_check.set_active(self.backend.read_enabled())
+        self.enabled_check.handler_unblock_by_func(self.on_enabled_toggled)
+
+        self.combo.handler_block_by_func(self.on_combo_changed)
+        self.combo.remove_all()
+        self.combo.append("default", t("pw.sound_standard"))
+        for name in self.backend.list_history():
+            self.combo.append(name, name)
+        selected = self.backend.read_selected()
+        self.combo.set_active_id(selected)
+        if self.combo.get_active_id() != selected:
+            # The previously-selected history entry no longer exists (e.g.
+            # it got pruned) -- just reflect the standard chime as shown,
+            # without touching what's actually installed as active.
+            self.combo.set_active_id("default")
+        self.combo.handler_unblock_by_func(self.on_combo_changed)
+
+    def on_enabled_toggled(self, _checkbox):
+        enabled = self.enabled_check.get_active()
+        self.enabled_check.set_sensitive(False)
+        threading.Thread(target=self._run_set_enabled, args=(enabled,), daemon=True).start()
+
+    def _run_set_enabled(self, enabled):
+        success, message = self.backend.set_enabled(enabled)
+        GLib.idle_add(self._on_set_enabled_done, success, message, enabled)
+
+    def _on_set_enabled_done(self, success, message, enabled):
+        self.set_status(message, is_error=not success)
+        self.enabled_check.set_sensitive(True)
+        if not success:
+            self.enabled_check.handler_block_by_func(self.on_enabled_toggled)
+            self.enabled_check.set_active(not enabled)
+            self.enabled_check.handler_unblock_by_func(self.on_enabled_toggled)
+        return False
+
+    def on_combo_changed(self, _combo):
+        name = self.combo.get_active_id()
+        if not name:
+            return
+        self.combo.set_sensitive(False)
+        threading.Thread(target=self._run_select, args=(name,), daemon=True).start()
+
+    def _run_select(self, name):
+        success, message = self.backend.select_sound(name)
+        GLib.idle_add(self._on_select_done, success, message)
+
+    def _on_select_done(self, success, message):
+        self.set_status(message, is_error=not success)
+        self.combo.set_sensitive(True)
+        if not success:
+            self.refresh()
+        return False
+
+    def on_play_clicked(self, _button):
+        # Always previews through the desktop audio stack (paplay), even
+        # for the startup chime which actually plays via raw ALSA at boot
+        # -- that's fine, this button is just "does this sound file sound
+        # right", not a faithful boot-time simulation.
+        subprocess.Popen(["paplay", self.backend.active_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    def on_choose_file_clicked(self, _button):
+        dialog = Gtk.FileChooserDialog(
+            title=t("pw.sound_choose_file"),
+            transient_for=self.parent_window,
+            action=Gtk.FileChooserAction.OPEN,
+        )
+        dialog.add_buttons(
+            t("pw.cancel"), Gtk.ResponseType.CANCEL,
+            t("pw.sound_choose_file"), Gtk.ResponseType.OK,
+        )
+        file_filter = Gtk.FileFilter()
+        file_filter.set_name(t("pw.sound_file_filter"))
+        for pattern in ("*.wav", "*.mp3", "*.ogg"):
+            file_filter.add_pattern(pattern)
+        dialog.add_filter(file_filter)
+
+        response = dialog.run()
+        path = dialog.get_filename() if response == Gtk.ResponseType.OK else None
+        dialog.destroy()
+
+        if not path:
+            return
+
+        self.set_status(t("pw.sound_converting"), is_error=False)
+        threading.Thread(target=self._run_import, args=(path,), daemon=True).start()
+
+    def _run_import(self, src_path):
+        tmp_wav, error = convert_to_wav(src_path)
+        if tmp_wav is None:
+            GLib.idle_add(self._on_import_done, False, error)
+            return
+        try:
+            success, message = self.backend.import_sound(tmp_wav, os.path.basename(src_path))
+        finally:
+            try:
+                os.remove(tmp_wav)
+            except OSError:
+                pass
+        GLib.idle_add(self._on_import_done, success, message)
+
+    def _on_import_done(self, success, message):
+        self.set_status(message, is_error=not success)
+        if success:
+            self.refresh()
+        return False
+
+
 class PasswordWindow(Gtk.Window):
     def __init__(self):
         super().__init__(title=t("pw.window_title"))
@@ -342,6 +698,7 @@ class PasswordWindow(Gtk.Window):
         for key in PASSWORD_ORDER:
             self.notebook.append_page(Gtk.Box(), Gtk.Label(label=PASSWORD_TYPES[key]["title"]))
         self.notebook.append_page(Gtk.Box(), Gtk.Label(label=t("pw.boot_screen_tab")))
+        self.notebook.append_page(Gtk.Box(), Gtk.Label(label=t("pw.sound_tab")))
         self.notebook.connect("switch-page", self.on_tab_switched)
         content.pack_start(self.notebook, False, False, 0)
 
@@ -354,6 +711,9 @@ class PasswordWindow(Gtk.Window):
 
         self.boot_name_section = self._build_boot_name_section()
         content.pack_start(self.boot_name_section, False, False, 0)
+
+        self.sound_section = self._build_sound_section()
+        content.pack_start(self.sound_section, False, False, 0)
 
         self.language_selector = Gtk.ComboBoxText()
         for code, name in LANGUAGES:
@@ -395,10 +755,6 @@ class PasswordWindow(Gtk.Window):
         self.save_boot_name_button = Gtk.Button(label=t("pw.save"))
         self.save_boot_name_button.connect("clicked", self.on_save_boot_name_clicked)
         button_box.pack_end(self.save_boot_name_button, False, False, 0)
-
-        cancel_button = Gtk.Button(label=t("pw.cancel"))
-        cancel_button.connect("clicked", lambda _b: Gtk.main_quit())
-        button_box.pack_end(cancel_button, False, False, 0)
 
         self.connect("destroy", Gtk.main_quit)
 
@@ -449,6 +805,23 @@ class PasswordWindow(Gtk.Window):
         self.bright_mode_status_label = Gtk.Label(label="", wrap=True, xalign=0)
         self.bright_mode_status_label.set_no_show_all(True)
         section.pack_start(self.bright_mode_status_label, False, False, 0)
+
+        return section
+
+    def _build_sound_section(self):
+        section = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+
+        self.startup_chime = ChimeSection(
+            BootChimeBackend(), t("pw.sound_startup_title"), t("pw.sound_startup_desc"), self
+        )
+        section.pack_start(self.startup_chime.widget, False, False, 0)
+
+        section.pack_start(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL), False, False, 4)
+
+        self.shutdown_chime = ChimeSection(
+            ShutdownChimeBackend(), t("pw.sound_shutdown_title"), t("pw.sound_shutdown_desc"), self
+        )
+        section.pack_start(self.shutdown_chime.widget, False, False, 0)
 
         return section
 
@@ -564,18 +937,26 @@ class PasswordWindow(Gtk.Window):
         self.set_status(t("pw.generated_passphrase"), is_error=False)
 
     def on_tab_switched(self, _notebook, _page, page_num):
-        if page_num < len(PASSWORD_ORDER):
-            self.boot_name_section.hide()
+        boot_screen_index = len(PASSWORD_ORDER)
+
+        self.password_section.hide()
+        self.boot_name_section.hide()
+        self.sound_section.hide()
+        self.change_button.hide()
+        self.save_boot_name_button.hide()
+
+        if page_num < boot_screen_index:
             self.password_section.show()
-            self.save_boot_name_button.hide()
             self.change_button.show()
             self._apply_type(PASSWORD_ORDER[page_num])
-        else:
-            self.password_section.hide()
+        elif page_num == boot_screen_index:
             self.boot_name_section.show()
-            self.change_button.hide()
             self.save_boot_name_button.show()
             self._apply_boot_name_tab()
+        else:
+            self.sound_section.show()
+            self.startup_chime.refresh()
+            self.shutdown_chime.refresh()
 
     def _apply_type(self, type_key):
         self.active_type = type_key
