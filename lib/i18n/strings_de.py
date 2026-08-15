@@ -51,7 +51,6 @@ STRINGS = {
     "timer.shutdown_after_both": "Abschalten nach Sperrdauer von:",
     "timer.on_ac": "Im Netzbetrieb:",
     "timer.on_battery": "Im Akkubetrieb:",
-    "timer.more_settings": "Weitere Einstellungen…",
 
     "pw.window_title": "Cyberbeest-Passwort ändern",
     "pw.master_title": "Master-Passwort",

@@ -15,11 +15,9 @@
 # no separate standalone Power launcher pinned to the panel any more) --
 # clock, last so any dynamically-added icons (e.g. the optional i2pd toggle
 # from 22-i2p-package-manager.sh) can always insert themselves right before
-# it. The Cyberbeest Power Settings GUI isn't pinned to the panel either --
-# it shows up in Whisker's Settings category instead.
-# Depends on: 07-security-update-timer.sh, 08-cyberbeest-power-settings.sh,
-# 09-cyberbeest-logout-dialog.sh, 10-browser-sandbox.sh,
-# 11-xfce-panel-plugins.sh.
+# it.
+# Depends on: 07-security-update-timer.sh, 09-cyberbeest-logout-dialog.sh,
+# 10-browser-sandbox.sh, 11-xfce-panel-plugins.sh.
 # Idempotent: safe to re-run (overwrites its own config files; backs up any
 # pre-existing xfce4-panel.xml the first time). Also removes any other panel
 # (e.g. Debian's stock second panel) so only this one is left, since a live

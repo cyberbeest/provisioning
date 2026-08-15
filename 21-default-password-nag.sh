@@ -64,7 +64,7 @@ install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 "$DIR/lib/i18n.py" "$TARGET_H
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.local/bin/i18n"
 install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 "$DIR"/lib/i18n/strings_*.py "$TARGET_HOME/.local/bin/i18n/"
 
-echo "--- Installing icon (in case 08-cyberbeest-power-settings.sh hasn't run) ---"
+echo "--- Installing icon ---"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/Pictures"
 install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 \
 	"$DIR/lib/assets/Cyberbeest-black.png" "$TARGET_HOME/Pictures/Cyberbeest-black.png"

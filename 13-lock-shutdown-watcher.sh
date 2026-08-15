@@ -1,11 +1,10 @@
 #!/bin/bash
 # Installs the lock-shutdown-watcher user service: shuts the machine down
 # after the screen has stayed continuously locked for SHUTDOWN_MINUTES
-# (default 60), reading that and the battery suspend-cycling knobs from
-# ~/.config/cyberbeest/power-settings.conf -- the file
-# 08-cyberbeest-power-settings.sh's GUI edits. Without this step that GUI
-# has no effect. See lib/lock-shutdown-watcher.sh.
-# Depends on: 08-cyberbeest-power-settings.sh.
+# (default 60), reading that from ~/.config/cyberbeest/power-settings.conf --
+# the file the shutdown-timer panel icon's menu edits (see
+# 12-xfce-panel-layout.sh, lib/shutdown-timer-menu.py). See
+# lib/lock-shutdown-watcher.sh.
 # Idempotent: safe to re-run.
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"

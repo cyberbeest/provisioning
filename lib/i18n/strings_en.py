@@ -47,7 +47,6 @@ STRINGS = {
     "timer.shutdown_after_both": "Shutdown after locked for:",
     "timer.on_ac": "On AC power:",
     "timer.on_battery": "On battery:",
-    "timer.more_settings": "More settings…",
 
     "pw.window_title": "Cyberbeest Change Password",
     "pw.master_title": "Master password",

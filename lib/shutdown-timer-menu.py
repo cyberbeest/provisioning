@@ -2,12 +2,9 @@
 """Quick popup menu for the shutdown-timer panel icon (shutdown-timer-genmon.sh).
 
 Lets you pick a preset auto-shutdown-while-locked time for AC/battery
-(linked or independent) without opening the full Cyberbeest Power Settings
-dialog, which is still one click away via "More settings...". Reads/writes
-the same config file as cyberbeest_power_settings_gui.py and duplicates its
-small read/write helpers rather than importing it, matching how the
-lock-shutdown-watcher shell script and the genmon script also each keep
-their own copy.
+(linked or independent). Reads/writes the same config file as
+lock-shutdown-watcher.sh and duplicates its small read/write helpers rather
+than importing it, matching how the genmon script also keeps its own copy.
 """
 
 import os
@@ -24,18 +21,14 @@ from i18n import t
 
 CONFIG_DIR = os.path.expanduser("~/.config/cyberbeest")
 CONFIG_PATH = os.path.join(CONFIG_DIR, "power-settings.conf")
-SETTINGS_GUI = os.path.expanduser("~/claude/cyberbeest_power_settings_gui.py")
 
 # Must match this machine's live panel plugin id (~/.config/xfce4/panel/genmon-25.rc).
 GENMON_WIDGET_NAME = "__GENMON_WIDGET__"
 
 DEFAULTS = {
-    "NOTIFICATIONS_WHEN_LOCKED": "false",
     "AC_SHUTDOWN_MINUTES": "60",
     "BATTERY_SHUTDOWN_MINUTES": "60",
     "LINK_AC_BATTERY": "true",
-    "AWAKE_MINUTES": "1",
-    "ASLEEP_MINUTES": "9",
 }
 LEGACY_SHUTDOWN_KEY = "SHUTDOWN_MINUTES"
 
@@ -193,10 +186,6 @@ def restart_screensaver():
     )
 
 
-def open_settings(_item):
-    subprocess.Popen([SETTINGS_GUI])
-
-
 def run_logout_action(_item, cmd):
     Gtk.main_quit()
     subprocess.Popen(cmd)
@@ -328,11 +317,6 @@ def build_menu():
         add_preset_section(menu, t("timer.on_ac"), "AC_SHUTDOWN_MINUTES", ac_min, linked)
         menu.append(Gtk.SeparatorMenuItem())
         add_preset_section(menu, t("timer.on_battery"), "BATTERY_SHUTDOWN_MINUTES", bat_min, linked)
-
-    menu.append(Gtk.SeparatorMenuItem())
-    more_item = Gtk.MenuItem(label=t("timer.more_settings"))
-    more_item.connect("activate", open_settings)
-    menu.append(more_item)
 
     menu.show_all()
     return menu

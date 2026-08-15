@@ -1,8 +1,8 @@
 #!/bin/bash
 # Panel item: shows the currently configured auto-shutdown-while-locked
 # time(s) for xfce4-genmon-plugin. Reads the same config file as
-# lock-shutdown-watcher.sh and cyberbeest_power_settings_gui.py. Click opens
-# a quick menu to change it (see shutdown-timer-menu.py).
+# lock-shutdown-watcher.sh. Click opens a quick menu to change it (see
+# shutdown-timer-menu.py).
 
 POWER_SETTINGS="$HOME/.config/cyberbeest/power-settings.conf"
 DEFAULT_MIN=60
