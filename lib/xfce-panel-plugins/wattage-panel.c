@@ -2,14 +2,22 @@
  * wattage-panel: xfce4-panel plugin showing battery power draw and
  * estimated remaining time.
  *
- * The kernel's power_now (BAT0/power_now) is a very short-term
- * instantaneous reading that has been observed to never report below
- * ~3.8W even when real draw is lower. This plugin can instead compute
- * its own wattage by averaging energy_now deltas over a configurable
- * trailing window (kept in memory -- no history file needed, unlike the
- * genmon script this replaces), which is both more stable and more
- * accurate for the remaining-time estimate. Both modes are available,
- * toggled from the plugin's own Properties dialog.
+ * The panel label shows the machine's own instant power_now reading and
+ * the remaining time derived from it -- "what the machine reports".
+ *
+ * BAT0/energy_now turned out to update far more coarsely than expected on
+ * this hardware (real ticks roughly every 4-5 minutes, in ~0.29Wh steps --
+ * see power-logs, files named wattage-granularity) and occasionally bounces up by
+ * a full step and back down within a few seconds (an EC readback glitch,
+ * not real energy). A fixed-size trailing-average window is a bad fit for
+ * an input that coarse: depending on exactly where in the window the one
+ * available tick falls, the same tick can compute wildly different watt
+ * values. So instead of that, every validated (monotonically decreasing)
+ * energy_now tick since we last started running on battery is kept in
+ * `ticks`, and the tooltip shows several escalating windows (10 min, 30
+ * min, 1h, 2h, all) computed from however many real ticks actually fall in
+ * each -- informational for now, while we decide what (if anything) should
+ * drive the displayed reading instead of power_now.
  *
  * Built as an "external" plugin (X-XFCE-Internal=FALSE), same as
  * kitt-scanner, so a crash here takes down only this plugin's process.
@@ -24,6 +32,7 @@
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 
 #define BAT_PATH "/sys/class/power_supply/BAT0"
 #define SAMPLE_INTERVAL_MS 3000
@@ -36,22 +45,10 @@
 #define LOG_SUBDIR "wattage-panel"
 #define LOG_FILE "history.csv"
 
-#define DEFAULT_USE_LONGTERM TRUE
-#define DEFAULT_AVG_MINUTES 5
-#define MIN_AVG_MINUTES 1
-#define MAX_AVG_MINUTES 60
-
-/* Below this, fall back to the instant reading: energy_now has limited
- * granularity, so a too-short dt makes the diff/dt division noisy. Once
- * this much data exists, the average window grows with elapsed time
- * (anchored at plugin start / last status change) up to avg_minutes. */
-#define MIN_WINDOW_SPAN_S 20
-
-/* Don't switch to the long-term average until at least this fraction of
- * the configured averaging window has elapsed -- with only a few seconds
- * of data, a single quantization step in energy_now can produce wildly
- * wrong watt/remaining-time readings (e.g. 50W, 0:30 remaining). */
-#define MIN_WINDOW_FRACTION 0.5
+/* Ring buffer of the last N raw energy_now readings, shown in the tooltip
+ * when the debug checkbox is on -- independent of battery status, unlike
+ * `ticks` below. */
+#define DEBUG_RING_SIZE 10
 
 typedef enum {
     BATT_DISCHARGING,
@@ -62,17 +59,39 @@ typedef enum {
 typedef struct {
     gint64 time_s;
     gdouble energy_uwh;
-    BattStatus status;
-} WattSample;
+} EnergyPoint;
+
+typedef struct {
+    const gchar *label;
+    gint64 seconds;
+} AvgWindow;
+
+static const AvgWindow AVG_WINDOWS[] = {
+    { "10 min", 10 * 60 },
+    { "30 min", 30 * 60 },
+    { "1 h", 60 * 60 },
+    { "2 h", 2 * 60 * 60 },
+};
+#define AVG_WINDOWS_COUNT (G_N_ELEMENTS(AVG_WINDOWS))
 
 typedef struct {
     XfcePanelPlugin *plugin;
     GtkWidget *label;
 
-    GArray *history; /* of WattSample, oldest first */
+    GArray *ticks; /* of EnergyPoint, oldest first: validated (monotonically
+                       decreasing) energy_now readings since we last started
+                       running on battery. ticks[0] is the energy reading at
+                       the moment we started discharging (a seed, not a real
+                       tick), so windows longer than the current run just
+                       fall back to it. */
+    gint64 battery_start_s;
+    gdouble last_valid_energy;
+    gboolean have_last_valid;
 
-    gboolean use_longterm;
-    gint avg_minutes;
+    EnergyPoint debug_ring[DEBUG_RING_SIZE];
+    guint debug_ring_count;
+    guint debug_ring_next;
+    gboolean debug_raw;
 
     gboolean have_battery;
     guint sample_id;
@@ -82,6 +101,7 @@ typedef struct {
     BattStatus last_status;
     gdouble last_watts;
     gdouble last_capacity;
+    gdouble last_energy_uwh;
 } WattPlugin;
 
 static BattStatus
@@ -118,40 +138,57 @@ read_file_string(const gchar *path, gchar *buf, gsize buflen)
     return ok;
 }
 
+/* Called the moment we start a fresh run on battery (plugin startup while
+ * discharging, or a Charging/AC -> Discharging transition). Throws away
+ * ticks from any previous run -- they belong to a different discharge
+ * session and averaging across the gap would be meaningless -- and seeds
+ * the array with the current reading as the run's starting point. */
 static void
-watt_prune_history(WattPlugin *wp, gint64 now_s)
+watt_reset_battery_ticks(WattPlugin *wp, gint64 now_s, gdouble energy_uwh)
 {
-    gint64 cutoff = now_s - (gint64) wp->avg_minutes * 60 * 2;
-    guint drop = 0;
-    while (drop < wp->history->len &&
-           g_array_index(wp->history, WattSample, drop).time_s < cutoff)
-        drop++;
-    if (drop > 0)
-        g_array_remove_range(wp->history, 0, drop);
+    g_array_set_size(wp->ticks, 0);
+    EnergyPoint seed = { .time_s = now_s, .energy_uwh = energy_uwh };
+    g_array_append_val(wp->ticks, seed);
+    wp->battery_start_s = now_s;
+    wp->last_valid_energy = energy_uwh;
+    wp->have_last_valid = TRUE;
 }
 
-/* Oldest sample within the averaging window belonging to the current,
- * unbroken run of `status` -- a status change (e.g. plugging into AC,
- * or unplugging again) resets the average, even if older samples with
- * a matching status are still sitting further back in the history
- * buffer (which retains up to 2x the averaging window). Walking from
- * the newest sample backwards and stopping at the first mismatch is
- * what enforces that contiguity; a plain "oldest sample anywhere in
- * the window with this status" scan would wrongly straddle the gap
- * and blend pre-AC and post-AC energy readings into one average. NULL
- * if there is no history yet. */
-static const WattSample *
-watt_find_window_start(WattPlugin *wp, gint64 now_s, BattStatus status)
+/* Average power (W) over the trailing `window_s` seconds of validated
+ * battery ticks. Uses `now_s` rather than the newest tick's timestamp as
+ * the end of the span, so a long gap since the last real tick grows the
+ * divisor instead of freezing the reading at whatever the last tick
+ * implied. Returns FALSE if there isn't at least one real tick inside the
+ * window yet (e.g. right after starting a run, or a window shorter than
+ * the ~4-5 min gap between real energy_now updates on this hardware). */
+static gboolean
+watt_window_average(WattPlugin *wp, gint64 now_s, gint64 window_s,
+                     gdouble *out_watts, guint *out_ticks)
 {
-    gint64 cutoff = now_s - (gint64) wp->avg_minutes * 60;
-    const WattSample *start = NULL;
-    for (guint i = wp->history->len; i > 0; i--) {
-        const WattSample *s = &g_array_index(wp->history, WattSample, i - 1);
-        if (s->status != status || s->time_s < cutoff)
+    if (wp->ticks->len < 2)
+        return FALSE;
+
+    gint64 cutoff = now_s - window_s;
+    guint start_idx = 0;
+    for (guint i = 0; i < wp->ticks->len; i++) {
+        start_idx = i;
+        if (g_array_index(wp->ticks, EnergyPoint, i).time_s >= cutoff)
             break;
-        start = s;
     }
-    return start;
+
+    guint end_idx = wp->ticks->len - 1;
+    if (start_idx >= end_idx)
+        return FALSE;
+
+    const EnergyPoint *start = &g_array_index(wp->ticks, EnergyPoint, start_idx);
+    gint64 span_s = now_s - start->time_s;
+    gdouble diff_uwh = start->energy_uwh - wp->last_valid_energy;
+    if (span_s <= 0 || diff_uwh <= 0.0)
+        return FALSE;
+
+    *out_watts = (diff_uwh / 1000000.0) / (span_s / 3600.0);
+    *out_ticks = end_idx - start_idx;
+    return TRUE;
 }
 
 static void
@@ -173,39 +210,32 @@ watt_update_label(WattPlugin *wp)
     BattStatus status = parse_status(status_buf);
     gint64 now_s = g_get_real_time() / G_USEC_PER_SEC;
 
-    WattSample sample = { .time_s = now_s, .energy_uwh = energy_uwh, .status = status };
-    g_array_append_val(wp->history, sample);
-    watt_prune_history(wp, now_s);
+    wp->debug_ring[wp->debug_ring_next] = (EnergyPoint) { .time_s = now_s, .energy_uwh = energy_uwh };
+    wp->debug_ring_next = (wp->debug_ring_next + 1) % DEBUG_RING_SIZE;
+    if (wp->debug_ring_count < DEBUG_RING_SIZE)
+        wp->debug_ring_count++;
 
-    gdouble watts_instant = power_uw / 1000000.0;
-    gdouble watts = watts_instant;
-    gboolean have_longterm = FALSE;
-    gint64 span_s = 0; /* actual length of the averaging window in use */
-
-    /* Charging power is dictated by the charger/negotiated rate, not
-     * battery drain, so there's no benefit to smoothing it -- just show
-     * the instant reading. */
-    const WattSample *start =
-        (status == BATT_CHARGING) ? NULL : watt_find_window_start(wp, now_s, status);
-    if (start) {
-        span_s = now_s - start->time_s;
-        gint64 min_span_s = MAX(MIN_WINDOW_SPAN_S,
-                                 (gint64) (wp->avg_minutes * 60 * MIN_WINDOW_FRACTION));
-        if (span_s >= min_span_s) {
-            gdouble diff_uwh = fabs(start->energy_uwh - energy_uwh);
-            /* energy_now on some hardware only updates every 15-60s; if it
-             * hasn't ticked over yet within our window, a zero diff would
-             * read as a bogus 0.0W rather than "not enough data yet". */
-            if (diff_uwh > 0.0) {
-                gdouble hours = span_s / 3600.0;
-                watts = (diff_uwh / 1000000.0) / hours;
-                have_longterm = TRUE;
-            }
+    if (status == BATT_DISCHARGING) {
+        if (!wp->have_last_valid || wp->last_status != BATT_DISCHARGING) {
+            watt_reset_battery_ticks(wp, now_s, energy_uwh);
+        } else if (energy_uwh < wp->last_valid_energy) {
+            EnergyPoint tick = { .time_s = now_s, .energy_uwh = energy_uwh };
+            g_array_append_val(wp->ticks, tick);
+            wp->last_valid_energy = energy_uwh;
         }
+        /* energy_uwh == last_valid_energy: no new tick yet, nothing to do.
+         * energy_uwh > last_valid_energy: EC readback glitch (observed
+         * bouncing up a full ~0.29Wh step and back down within 2-4s on
+         * this hardware) -- drop it instead of recording bogus "energy
+         * gained back" as a tick. */
+    } else {
+        wp->have_last_valid = FALSE; /* reseed next time we go on battery */
     }
 
-    if (!(wp->use_longterm && have_longterm))
-        watts = watts_instant;
+    /* The panel label always shows the machine's own instant reading for
+     * now; the multi-window averages below (tooltip only) are purely
+     * informational while we figure out what should drive this instead. */
+    gdouble watts = power_uw / 1000000.0;
 
     gchar text[64];
     switch (status) {
@@ -228,41 +258,64 @@ watt_update_label(WattPlugin *wp)
     }
     gtk_label_set_text(GTK_LABEL(wp->label), text);
 
-    const gchar *avg_state = !wp->use_longterm ? "off, using instant power_now"
-                             : have_longterm    ? "active"
-                                                 : "warming up";
+    GString *tooltip = g_string_new(NULL);
+    g_string_append_printf(tooltip, "Battery: %.0f%% (%s)\nPower: %.1f W (instant, as reported)",
+                            capacity, status_buf, watts);
 
-    /* The window's oldest kept sample lands a sample interval or so after
-     * the theoretical cutoff, so once the window is effectively full,
-     * span_s asymptotes just under avg_minutes*60 (e.g. perpetually
-     * "4:58 of 5") instead of ever reaching it. Purely cosmetic: once
-     * within one sample interval of full, just display it as full. */
-    gint64 display_span_s = span_s;
-    gint64 full_span_s = (gint64) wp->avg_minutes * 60;
-    if (have_longterm && full_span_s - span_s <= SAMPLE_INTERVAL_MS / 1000)
-        display_span_s = full_span_s;
+    if (status == BATT_DISCHARGING) {
+        gint64 elapsed_s = now_s - wp->battery_start_s;
+        gchar elapsed_buf[32];
+        g_snprintf(elapsed_buf, sizeof(elapsed_buf), "%d:%02d",
+                   (int) (elapsed_s / 60), (int) (elapsed_s % 60));
+        g_string_append_printf(tooltip, "\n\nAverages since on battery (%s):", elapsed_buf);
 
-    gchar span_buf[32];
-    if (display_span_s >= 60)
-        g_snprintf(span_buf, sizeof(span_buf), "%d:%02d", (int) (display_span_s / 60), (int) (display_span_s % 60));
-    else
-        g_snprintf(span_buf, sizeof(span_buf), "%ds", (int) display_span_s);
+        for (guint i = 0; i < AVG_WINDOWS_COUNT; i++) {
+            gdouble w;
+            guint ticks;
+            /* Don't show a window until we've actually been on battery for
+             * its full length -- otherwise the seed sample at
+             * battery_start_s (recorded as ticks[0] regardless of window
+             * size) lets e.g. the 2h bucket report a number after 4
+             * minutes, identical to the 10min one. */
+            if (elapsed_s >= AVG_WINDOWS[i].seconds &&
+                watt_window_average(wp, now_s, AVG_WINDOWS[i].seconds, &w, &ticks))
+                g_string_append_printf(tooltip, "\n  %-6s: %.1f W  (%u tick%s)",
+                                        AVG_WINDOWS[i].label, w, ticks, ticks == 1 ? "" : "s");
+            else
+                g_string_append_printf(tooltip, "\n  %-6s: not enough data yet", AVG_WINDOWS[i].label);
+        }
 
-    gchar tooltip[220];
-    if (status == BATT_CHARGING) {
-        g_snprintf(tooltip, sizeof(tooltip), "Battery: %.0f%% (%s)\nPower: %.1f W",
-                   capacity, status_buf, watts);
-    } else {
-        g_snprintf(tooltip, sizeof(tooltip),
-                   "Battery: %.0f%% (%s)\nPower: %.1f W (instant: %.1f W)\n"
-                   "Long-term average window: %s of %d min (%s)",
-                   capacity, status_buf, watts, watts_instant, span_buf, wp->avg_minutes, avg_state);
+        gdouble session_w;
+        guint session_ticks;
+        if (watt_window_average(wp, now_s, elapsed_s + 1, &session_w, &session_ticks))
+            g_string_append_printf(tooltip, "\n  %-6s: %.1f W  (%u tick%s)",
+                                    "all", session_w, session_ticks, session_ticks == 1 ? "" : "s");
+        else
+            g_string_append_printf(tooltip, "\n  %-6s: not enough data yet", "all");
     }
-    gtk_widget_set_tooltip_text(wp->label, tooltip);
+
+    if (wp->debug_raw) {
+        g_string_append(tooltip, "\n\nLast raw energy_now readings:");
+        guint n = wp->debug_ring_count;
+        guint ring_start = (wp->debug_ring_next + DEBUG_RING_SIZE - n) % DEBUG_RING_SIZE;
+        for (guint k = 0; k < n; k++) {
+            const EnergyPoint *s = &wp->debug_ring[(ring_start + k) % DEBUG_RING_SIZE];
+            time_t t = (time_t) s->time_s;
+            struct tm tm_buf;
+            gchar time_str[16] = "??:??:??";
+            if (localtime_r(&t, &tm_buf))
+                strftime(time_str, sizeof(time_str), "%H:%M:%S", &tm_buf);
+            g_string_append_printf(tooltip, "\n%s  %.0f uWh", time_str, s->energy_uwh);
+        }
+    }
+
+    gtk_widget_set_tooltip_text(wp->label, tooltip->str);
+    g_string_free(tooltip, TRUE);
 
     wp->last_status = status;
     wp->last_watts = watts;
     wp->last_capacity = capacity;
+    wp->last_energy_uwh = energy_uwh;
     wp->have_last = TRUE;
 }
 
@@ -305,10 +358,11 @@ status_log_name(BattStatus status)
 }
 
 /* Appends one row to the on-disk history (timestamp, AC/battery/charging,
- * watts) so an hour-granularity graph can be built later without keeping
- * the plugin running the whole time. Uses whatever watts value is
- * currently on display (long-term average when available, else instant),
- * so it stays consistent with what the user was actually looking at. */
+ * watts, battery %, screen on/off, raw energy_now) so an hour-granularity
+ * graph can be built later without keeping the plugin running the whole
+ * time, and so past sessions can be re-analyzed (e.g. actual %/hour
+ * decline, or tick spacing) without having had a dedicated logger running
+ * at the time. */
 static void
 watt_append_log(WattPlugin *wp)
 {
@@ -330,12 +384,15 @@ watt_append_log(WattPlugin *wp)
         return;
 
     if (new_file)
-        fputs("timestamp,status,watts,battery_pct,screen\n", f);
+        fputs("timestamp,status,watts,battery_pct,screen,energy_now_uwh\n", f);
 
     gint64 now_s = g_get_real_time() / G_USEC_PER_SEC;
     const gchar *screen = display_is_off(wp) ? "off" : "on";
-    fprintf(f, "%" G_GINT64_FORMAT ",%s,%.2f,%.0f,%s\n", now_s, status_log_name(wp->last_status),
-            wp->last_watts, wp->last_capacity, screen);
+    /* energy_now_uwh is appended as the last column so old rows (written
+     * before this field existed, with a 5-column header) still parse fine
+     * by name -- readers just won't find this column on those rows. */
+    fprintf(f, "%" G_GINT64_FORMAT ",%s,%.2f,%.0f,%s,%.0f\n", now_s, status_log_name(wp->last_status),
+            wp->last_watts, wp->last_capacity, screen, wp->last_energy_uwh);
     fclose(f);
 }
 
@@ -349,8 +406,7 @@ on_log_sample(gpointer user_data)
 static void
 watt_load_settings(WattPlugin *wp)
 {
-    wp->use_longterm = DEFAULT_USE_LONGTERM;
-    wp->avg_minutes = DEFAULT_AVG_MINUTES;
+    wp->debug_raw = FALSE;
 
     gchar *file = xfce_panel_plugin_save_location(wp->plugin, FALSE);
     if (!file)
@@ -362,9 +418,7 @@ watt_load_settings(WattPlugin *wp)
         return;
 
     xfce_rc_set_group(rc, "General");
-    wp->use_longterm = xfce_rc_read_bool_entry(rc, "UseLongtermWatts", DEFAULT_USE_LONGTERM);
-    wp->avg_minutes = xfce_rc_read_int_entry(rc, "AvgMinutes", DEFAULT_AVG_MINUTES);
-    wp->avg_minutes = CLAMP(wp->avg_minutes, MIN_AVG_MINUTES, MAX_AVG_MINUTES);
+    wp->debug_raw = xfce_rc_read_bool_entry(rc, "DebugRaw", FALSE);
     xfce_rc_close(rc);
 }
 
@@ -381,23 +435,14 @@ watt_save_settings(WattPlugin *wp)
         return;
 
     xfce_rc_set_group(rc, "General");
-    xfce_rc_write_bool_entry(rc, "UseLongtermWatts", wp->use_longterm);
-    xfce_rc_write_int_entry(rc, "AvgMinutes", wp->avg_minutes);
+    xfce_rc_write_bool_entry(rc, "DebugRaw", wp->debug_raw);
     xfce_rc_close(rc);
 }
 
 static void
-on_use_longterm_toggled(GtkToggleButton *toggle, WattPlugin *wp)
+on_debug_raw_toggled(GtkToggleButton *toggle, WattPlugin *wp)
 {
-    wp->use_longterm = gtk_toggle_button_get_active(toggle);
-    watt_update_label(wp);
-    watt_save_settings(wp);
-}
-
-static void
-on_avg_minutes_changed(GtkSpinButton *spin, WattPlugin *wp)
-{
-    wp->avg_minutes = gtk_spin_button_get_value_as_int(spin);
+    wp->debug_raw = gtk_toggle_button_get_active(toggle);
     watt_update_label(wp);
     watt_save_settings(wp);
 }
@@ -415,19 +460,11 @@ on_configure_plugin(XfcePanelPlugin *plugin, WattPlugin *wp)
     gtk_grid_set_column_spacing(GTK_GRID(grid), 12);
     gtk_container_set_border_width(GTK_CONTAINER(grid), 12);
 
-    GtkWidget *longterm_check = gtk_check_button_new_with_label(
-        "Use long-term average watts (avoids power_now's ~3.8W floor)");
-    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(longterm_check), wp->use_longterm);
-    g_signal_connect(longterm_check, "toggled", G_CALLBACK(on_use_longterm_toggled), wp);
-    gtk_grid_attach(GTK_GRID(grid), longterm_check, 0, 0, 2, 1);
-
-    GtkWidget *avg_label = gtk_label_new("Average window, minutes:");
-    gtk_widget_set_halign(avg_label, GTK_ALIGN_START);
-    GtkWidget *avg_spin = gtk_spin_button_new_with_range(MIN_AVG_MINUTES, MAX_AVG_MINUTES, 1);
-    gtk_spin_button_set_value(GTK_SPIN_BUTTON(avg_spin), wp->avg_minutes);
-    g_signal_connect(avg_spin, "value-changed", G_CALLBACK(on_avg_minutes_changed), wp);
-    gtk_grid_attach(GTK_GRID(grid), avg_label, 0, 1, 1, 1);
-    gtk_grid_attach(GTK_GRID(grid), avg_spin, 1, 1, 1, 1);
+    GtkWidget *debug_check = gtk_check_button_new_with_label(
+        "Show last 10 raw energy_now readings in tooltip (debug)");
+    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(debug_check), wp->debug_raw);
+    g_signal_connect(debug_check, "toggled", G_CALLBACK(on_debug_raw_toggled), wp);
+    gtk_grid_attach(GTK_GRID(grid), debug_check, 0, 0, 2, 1);
 
     gtk_container_add(GTK_CONTAINER(gtk_dialog_get_content_area(GTK_DIALOG(dialog))), grid);
     gtk_widget_show_all(dialog);
@@ -443,7 +480,7 @@ watt_free(XfcePanelPlugin *plugin, WattPlugin *wp)
         g_source_remove(wp->sample_id);
     if (wp->log_id != 0)
         g_source_remove(wp->log_id);
-    g_array_free(wp->history, TRUE);
+    g_array_free(wp->ticks, TRUE);
     g_free(wp);
 }
 
@@ -452,7 +489,7 @@ watt_construct(XfcePanelPlugin *plugin)
 {
     WattPlugin *wp = g_new0(WattPlugin, 1);
     wp->plugin = plugin;
-    wp->history = g_array_new(FALSE, FALSE, sizeof(WattSample));
+    wp->ticks = g_array_new(FALSE, FALSE, sizeof(EnergyPoint));
     wp->have_battery = g_file_test(BAT_PATH, G_FILE_TEST_IS_DIR);
     watt_load_settings(wp);
 
