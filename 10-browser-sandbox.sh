@@ -21,6 +21,12 @@ apt-get -o DPkg::Lock::Timeout=60 install -y firejail firejail-profiles firefox-
 echo "--- Allowing pulseaudio/dbus through the sandbox (firefox-esr.local override) ---"
 install -m 644 "$DIR/lib/firefox-esr.local" /etc/firejail/firefox-esr.local
 
+echo "--- Installing firefox-drm.profile (DRM/Widevine seccomp override) to $TARGET_HOME/.config/firejail/ ---"
+install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.config/firejail"
+install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 \
+	"$DIR/lib/firefox-drm.profile" \
+	"$TARGET_HOME/.config/firejail/firefox-drm.profile"
+
 echo "--- Installing wrapper to $TARGET_HOME/bin/browser-sandbox.sh ---"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/bin"
 install -o "$TARGET_USER" -g "$TARGET_USER" -m 755 \
