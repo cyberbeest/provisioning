@@ -139,6 +139,27 @@ Mail has no native Linux app at all (Snap-only, itself just wrapping their
 web app), so it's installed as a plain browser-bookmark launcher instead of
 a package.
 
+Tor Browser also defaults to the "Safest" security level (JS disabled
+site-wide, etc.) instead of upstream's "Standard". Applied in two layers:
+
+1. Provisioning downloads Tor Browser itself, right then — running
+   `torbrowser-launcher` headlessly under Xvfb (its download-verify-
+   extract-run chain is unattended once its window appears, so it just
+   needs a display), waiting for the profile to appear, patching it via
+   `lib/cyberbeest-tor-safest.sh`, then killing the headless session. So
+   the user's actual first click already finds an installed, correctly
+   configured browser — no race for the normal case.
+2. Fallback for if that predownload failed (no network at provisioning
+   time, timeout, etc.) or the user later uses Tor Browser's own "start
+   over"/redownload: a user-level `torbrowser.desktop` override (XDG
+   prefers `~/.local/share/applications/` over the package's own
+   `/usr/share/applications/torbrowser.desktop`) points the launcher/icon
+   at `lib/cyberbeest-tor-safest-launch.sh`, which races a polling loop
+   against torbrowser-launcher's own download+extract+launch sequence and
+   reliably wins even live. Either way, once `user.js` is patched once it
+   persists, so every launch after the first is deterministic regardless
+   of which layer caught it.
+
 Everything else is opt-in, installed on demand by clicking an "Install" link
 on a cyberbeest.com info page (or any trusted local page) rather than
 shipped by default. That's implemented as a `cyberbeest-install:<app-id>`
