@@ -43,6 +43,11 @@ echo "--- Installing genmon script + icons ---"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.local/bin"
 install -o "$TARGET_USER" -g "$TARGET_USER" -m 755 \
 	"$DIR/lib/update-genmon.sh" "$TARGET_HOME/.local/bin/update-genmon.sh"
+# update-genmon.sh sources i18n.sh relative to its own location, so that (and
+# its strings.*.sh catalogs) need to live next to it too -- see lib/i18n.sh.
+install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 "$DIR/lib/i18n.sh" "$TARGET_HOME/.local/bin/i18n.sh"
+install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.local/bin/i18n"
+install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 "$DIR"/lib/i18n/strings.*.sh "$TARGET_HOME/.local/bin/i18n/"
 install -o "$TARGET_USER" -g "$TARGET_USER" -m 755 \
 	"$DIR/lib/shutdown-timer-genmon.sh" "$TARGET_HOME/.local/bin/shutdown-timer-genmon.sh"
 # GENMON_WIDGET_NAME must match this template's plugin-16 (see

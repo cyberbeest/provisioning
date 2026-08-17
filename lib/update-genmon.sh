@@ -1,6 +1,11 @@
 #!/bin/bash
 # Panel item: security-update status for xfce4-genmon-plugin.
 
+# i18n.sh (and its i18n/ catalog dir) is installed next to this script -- see
+# lib/i18n.sh's own comment about resolving relative to BASH_SOURCE.
+# shellcheck disable=SC1091
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/i18n.sh"
+
 HISTORY_LOG=/var/log/apt/history.log
 STATUS_FILE=/var/lib/security-update-status
 PHASE_FILE=/run/security-update-check.phase
@@ -12,16 +17,18 @@ minutes_label() {
     if [ "$diff" -ge 0 ]; then
         mins=$(( diff / 60 ))
         if [ "$mins" -eq 0 ]; then
-            echo "right now"
+            t update_genmon.right_now
         else
-            echo "${mins} min ago"
+            local label; label="$(t update_genmon.min_ago)"
+            echo "${label//N/$mins}"
         fi
     else
         mins=$(( (-diff) / 60 ))
         if [ "$mins" -eq 0 ]; then
-            echo "right now"
+            t update_genmon.right_now
         else
-            echo "in ${mins} min"
+            local label; label="$(t update_genmon.in_min)"
+            echo "${label//N/$mins}"
         fi
     fi
 }
@@ -78,8 +85,8 @@ elif [ -n "$last_check_epoch" ]; then
     next_check_epoch=$(( last_check_epoch + CHECK_INTERVAL_SECONDS ))
 fi
 
-last_check_rel="unknown"
-next_check_rel="unknown"
+last_check_rel="$(t update_genmon.unknown)"
+next_check_rel="$(t update_genmon.unknown)"
 [ -n "$last_check_epoch" ] && last_check_rel="$(minutes_label "$last_check_epoch" "$now_epoch")"
 [ -n "$next_check_epoch" ] && next_check_rel="$(minutes_label "$next_check_epoch" "$now_epoch")"
 
@@ -141,43 +148,53 @@ ICON_OK="$HOME/.local/share/update-genmon-icons/ok-check.png"
 
 if [ "$phase" = installing ]; then
     img="$ICON_INSTALLING"
-    tool="Installing security updates now..."
+    tool="$(t update_genmon.installing)"
 elif [ "$phase" = checking ]; then
     img="$ICON_CHECKING"
     if [ "$awaiting_first_check" = true ]; then
-        tool="Waiting for the first security check since boot..."
+        tool="$(t update_genmon.waiting_first_check)"
     else
-        tool="Checking for security updates now..."
+        tool="$(t update_genmon.checking)"
     fi
 elif [ "$reboot_pending" = true ]; then
     img="$ICON_REBOOT"
     reboot_pkgs=""
     [ -r /var/run/reboot-required.pkgs ] && reboot_pkgs="$(paste -sd, /var/run/reboot-required.pkgs)"
-    tool="A security update was installed and needs a restart to take effect."
-    [ -n "$reboot_pkgs" ] && tool="${tool}&#10;Triggered by: ${reboot_pkgs}"
-    tool="${tool}&#10;Please reboot when you get a chance."
+    tool="$(t update_genmon.reboot_needed)"
+    if [ -n "$reboot_pkgs" ]; then
+        triggered_by="$(t update_genmon.reboot_triggered_by)"
+        tool="${tool}&#10;${triggered_by//PKGS/$reboot_pkgs}"
+    fi
+    tool="${tool}&#10;$(t update_genmon.reboot_please)"
 elif [ "$last_check_result" = network-error ]; then
     img="$ICON_NETWORK_ERROR"
-    tool="Last security check failed: no network connection."
+    tool="$(t update_genmon.network_error)"
     [ -n "$last_check_reason" ] && tool="${tool}&#10;${last_check_reason}"
 elif [ "$last_check_result" = upgrade-error ]; then
     img="$ICON_UPGRADE_ERROR"
-    tool="Last security update failed to install."
+    tool="$(t update_genmon.upgrade_error)"
     [ -n "$last_check_reason" ] && tool="${tool}&#10;${last_check_reason}"
 elif [ "$overdue" = true ]; then
     img="$ICON_OVERDUE"
-    tool="Security check is overdue -- it should have run by now."
+    tool="$(t update_genmon.overdue)"
 else
     img="$ICON_OK"
-    tool="All security updates are installed, your system is safe."
+    tool="$(t update_genmon.all_good)"
 fi
 
 if [ -n "$last_run_duration" ]; then
-    tool="${tool}&#10;Last check: ${last_check_rel} (${last_run_count} updates, took ${last_run_duration})"
+    last_check_line="$(t update_genmon.last_check_with_duration)"
+    last_check_line="${last_check_line//REL/$last_check_rel}"
+    last_check_line="${last_check_line//COUNT/$last_run_count}"
+    last_check_line="${last_check_line//DURATION/$last_run_duration}"
 else
-    tool="${tool}&#10;Last check: ${last_check_rel} (${last_run_count} updates)"
+    last_check_line="$(t update_genmon.last_check_no_duration)"
+    last_check_line="${last_check_line//REL/$last_check_rel}"
+    last_check_line="${last_check_line//COUNT/$last_run_count}"
 fi
-tool="${tool}&#10;Next check: ${next_check_rel}"
+tool="${tool}&#10;${last_check_line}"
+next_check_line="$(t update_genmon.next_check)"
+tool="${tool}&#10;${next_check_line//REL/$next_check_rel}"
 
 echo "<img>${img}</img>"
 echo "<tool>${tool}</tool>"
