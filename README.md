@@ -179,12 +179,14 @@ one-time install would otherwise silently go stale with no security
 updates. All of this is deployed to `/usr/local/lib/cyberbeest/` so it's
 independent of wherever this repo happens to be checked out.
 
-## Calculator (32-calculator.sh)
+## Minor apt packages (32-minor-apt-packages.sh)
 
-Installs `gnome-calculator`, since whisker menu has no calculator app by
-default. Picked over the lighter `galculator` because it shows up in the
-menu simply as "Calculator" — less confusing for normal users than a
-branded app name.
+Grab-bag install for small, single-purpose packages that don't need their
+own script: `gnome-calculator` (whisker menu has no calculator app by
+default; picked over the lighter `galculator` because it shows up in the
+menu simply as "Calculator"), `xclip` (Claude Code's clipboard-image paste
+needs it), `kleopatra` (GUI PGP key manager), `ncdu` (terminal disk usage
+analyzer).
 
 ## What's NOT provisioned here
 
