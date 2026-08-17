@@ -5,16 +5,24 @@ HISTORY_LOG=/var/log/apt/history.log
 STATUS_FILE=/var/lib/security-update-status
 PHASE_FILE=/run/security-update-check.phase
 
-# Renders as "N min past" / "N min ahead" of now, in whole minutes.
+# Renders as "N min ago" / "in N min" of now, in whole minutes.
 minutes_label() {
     local target_epoch="$1" now_epoch="$2" diff mins
     diff=$(( now_epoch - target_epoch ))
     if [ "$diff" -ge 0 ]; then
         mins=$(( diff / 60 ))
-        echo "${mins} min past"
+        if [ "$mins" -eq 0 ]; then
+            echo "right now"
+        else
+            echo "${mins} min ago"
+        fi
     else
         mins=$(( (-diff) / 60 ))
-        echo "${mins} min ahead"
+        if [ "$mins" -eq 0 ]; then
+            echo "right now"
+        else
+            echo "in ${mins} min"
+        fi
     fi
 }
 
