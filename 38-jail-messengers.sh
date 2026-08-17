@@ -1,13 +1,21 @@
 #!/bin/bash
-# Wraps Signal, Telegram, Element, and Tor Browser in firejail, using their
-# stock community profiles (firejail-profiles package) so each app can only
-# see its own data plus ~/Downloads -- same policy as the browser sandbox
+# Wraps Signal, Telegram, and Element in firejail, using their stock
+# community profiles (firejail-profiles package) so each app can only see
+# its own data plus ~/Downloads -- same policy as the browser sandbox
 # (see 10-browser-sandbox.sh and the manual's "Security decisions" chapter).
 #
-# Telegram and Tor Browser's stock profiles already whitelist ~/Downloads and
-# are seccomp/apparmor hardened as shipped -- used as-is. Signal and Element
+# Telegram's stock profile already whitelists ~/Downloads and is
+# seccomp/apparmor hardened as shipped -- used as-is. Signal and Element
 # only whitelist their own config dir by default, so a ".local" override adds
 # ~/Downloads for those two (see lib/signal-desktop.local, lib/element-desktop.local).
+#
+# Tor Browser is deliberately NOT jailed here: the stock torbrowser-launcher
+# profile makes Tor itself fail with "Tor exited during startup", and it
+# persists even with seccomp, seccomp.block-secondary, protocol, and
+# netfilter all relaxed (2026-08-18 debugging session) -- something else in
+# the profile (caps.drop, restrict-namespaces, or a private-bin gap) is the
+# real cause. lib/torbrowser-sandbox.sh is kept around for when this gets
+# picked back up, but nothing installs or wires it in yet.
 #
 # Viber, Sparrow, and Feather have no stock firejail profile and are NOT
 # covered here -- they'd need hand-built profiles from scratch, more like
@@ -33,7 +41,7 @@ install -m 644 "$DIR/lib/element-desktop.local" /etc/firejail/element-desktop.lo
 
 echo "--- Installing sandbox wrapper scripts to $TARGET_HOME/bin/ ---"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/bin"
-for f in signal-sandbox.sh telegram-sandbox.sh element-sandbox.sh torbrowser-sandbox.sh; do
+for f in signal-sandbox.sh telegram-sandbox.sh element-sandbox.sh; do
 	install -o "$TARGET_USER" -g "$TARGET_USER" -m 755 "$DIR/lib/$f" "$TARGET_HOME/bin/$f"
 done
 
@@ -99,21 +107,6 @@ Name=Quit Telegram
 Icon=application-exit
 EOF
 
-cat > "$TARGET_HOME/.local/share/applications/torbrowser.desktop" <<EOF
-[Desktop Entry]
-Name=Tor Browser
-Comment=Launch Tor Browser (sandboxed)
-Comment[de]=Tor Browser starten (isoliert/Firejail)
-Exec=$TARGET_HOME/bin/torbrowser-sandbox.sh %u
-Terminal=false
-Type=Application
-Icon=torbrowser
-Categories=Network;WebBrowser;
-StartupWMClass=Tor Browser
-Path=
-StartupNotify=false
-EOF
-
 echo "--- Updating Telegram's autostart entry to launch sandboxed too ---"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.config/autostart"
 cat > "$TARGET_HOME/.config/autostart/org.telegram.desktop.desktop" <<EOF
@@ -134,7 +127,7 @@ X-GNOME-UsesNotifications=true
 X-GNOME-SingleWindow=true
 EOF
 
-for f in signal-desktop.desktop element-desktop.desktop org.telegram.desktop.desktop torbrowser.desktop; do
+for f in signal-desktop.desktop element-desktop.desktop org.telegram.desktop.desktop; do
 	chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.local/share/applications/$f"
 done
 chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.config/autostart/org.telegram.desktop.desktop"
