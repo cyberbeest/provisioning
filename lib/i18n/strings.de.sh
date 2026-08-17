@@ -47,6 +47,7 @@ Fahre nur fort, wenn du einen Installations-Link auf einer vertrauenswürdigen S
 	[update_genmon.next_check]="Nächste Prüfung: REL"
 	[update_genmon.skipped_metered]="Letzte Prüfung übersprungen: getaktete Verbindung (z. B. mobiles Datentethering)."
 	[update_genmon.skipped_metered_retry]="Läuft automatisch, sobald wieder eine ungetaktete Verbindung besteht."
-	[update_genmon.log_title]="Sicherheitsupdate-Protokoll"
-	[update_genmon.log_missing]="Noch kein Update-Protokoll vorhanden -- die Prüfung wurde noch nicht ausgeführt."
+	[update_genmon.apps_up_to_date]="Messenger-Apps: aktuell (geprüft REL)"
+	[update_genmon.apps_deferred_metered]="Messenger-Apps: Update aufgeschoben (getaktete Verbindung)"
+	[update_genmon.apps_error]="Messenger-Apps: letzte Prüfung fehlgeschlagen"
 )

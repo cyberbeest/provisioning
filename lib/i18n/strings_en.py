@@ -168,4 +168,7 @@ STRINGS = {
     "panelcolor.preset_forest_green": "Forest green",
     "panelcolor.preset_warm_amber": "Warm amber",
     "panelcolor.preset_charcoal": "Charcoal",
+    "update_genmon.log_title": "Security Update Log",
+    "update_genmon.log_missing": "No update log found yet -- the check hasn't run.",
+    "update_genmon.close": "Close",
 }

@@ -10,6 +10,7 @@ SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 HISTORY_LOG=/var/log/apt/history.log
 STATUS_FILE=/var/lib/security-update-status
+APPS_STATUS_FILE=/var/lib/security-update-apps-status
 PHASE_FILE=/run/security-update-check.phase
 
 # Renders as "N min ago" / "in N min" of now, in whole minutes.
@@ -54,6 +55,20 @@ if [ -r "$STATUS_FILE" ]; then
     last_check_reason="${last_check_reason//</&lt;}"
     last_check_reason="${last_check_reason//>/&gt;}"
 fi
+
+# Messenger apps (Signal/Element) are updated by their own separate
+# unattended-upgrades pass -- see lib/setup-security-update-timer.sh -- so
+# they get their own status line rather than being folded into the Debian
+# security state that drives the icon above.
+apps_check_epoch=""
+apps_check_result=""
+if [ -r "$APPS_STATUS_FILE" ]; then
+    # shellcheck disable=SC1090
+    . "$APPS_STATUS_FILE"
+    apps_check_epoch="${LAST_CHECK_EPOCH:-}"
+    apps_check_result="${LAST_CHECK_RESULT:-}"
+fi
+
 CHECK_INTERVAL_SECONDS=$(( 120 * 60 ))
 BOOT_SEC=$(( 5 * 60 ))  # matches OnBootSec=5min in security-update-check.timer
 BOOT_GRACE_SECONDS=$(( 6 * 60 ))
@@ -202,6 +217,23 @@ tool="${tool}&#10;${last_check_line}"
 next_check_line="$(t update_genmon.next_check)"
 tool="${tool}&#10;${next_check_line//REL/$next_check_rel}"
 
+if [ -n "$apps_check_epoch" ]; then
+    apps_check_rel="$(minutes_label "$apps_check_epoch" "$now_epoch")"
+    case "$apps_check_result" in
+        ok)
+            apps_line="$(t update_genmon.apps_up_to_date)"
+            apps_line="${apps_line//REL/$apps_check_rel}"
+            ;;
+        skipped-metered)
+            apps_line="$(t update_genmon.apps_deferred_metered)"
+            ;;
+        *)
+            apps_line="$(t update_genmon.apps_error)"
+            ;;
+    esac
+    tool="${tool}&#10;${apps_line}"
+fi
+
 echo "<img>${img}</img>"
 echo "<tool>${tool}</tool>"
-echo "<click>${SELF_DIR}/update-genmon-view-log.sh</click>"
+echo "<click>${SELF_DIR}/update-genmon-view-log.py</click>"

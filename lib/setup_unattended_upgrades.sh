@@ -29,6 +29,13 @@ Unattended-Upgrade::Origins-Pattern {
 Unattended-Upgrade::Remove-Unused-Dependencies "true";
 Unattended-Upgrade::Automatic-Reboot "false";
 Unattended-Upgrade::SyslogEnable "true";
+// Security patches are small (tens of KB to a few MB, the odd kernel bump
+// aside) and matter for safety -- unlike the vendor messenger-app pass (see
+// 52unattended-upgrades-vendor-messengers), don't defer them just because
+// the active connection is metered. See lib/setup-security-update-timer.sh,
+// which runs this origin as its own pass specifically so this override
+// can't also let big app updates slip through on mobile data.
+Unattended-Upgrade::Skip-Updates-On-Metered-Connections "false";
 EOF
 
 echo "--- Enabling daily periodic checks ---"

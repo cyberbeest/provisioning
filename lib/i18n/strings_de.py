@@ -175,4 +175,7 @@ STRINGS = {
     "panelcolor.preset_forest_green": "Waldgrün",
     "panelcolor.preset_warm_amber": "Warmes Bernstein",
     "panelcolor.preset_charcoal": "Anthrazit",
+    "update_genmon.log_title": "Sicherheitsupdate-Protokoll",
+    "update_genmon.log_missing": "Noch kein Update-Protokoll vorhanden -- die Prüfung wurde noch nicht ausgeführt.",
+    "update_genmon.close": "Schließen",
 }
