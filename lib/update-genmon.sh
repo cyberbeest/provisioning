@@ -1,10 +1,12 @@
 #!/bin/bash
 # Panel item: security-update status for xfce4-genmon-plugin.
 
+SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # i18n.sh (and its i18n/ catalog dir) is installed next to this script -- see
 # lib/i18n.sh's own comment about resolving relative to BASH_SOURCE.
 # shellcheck disable=SC1091
-. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/i18n.sh"
+. "$SELF_DIR/i18n.sh"
 
 HISTORY_LOG=/var/log/apt/history.log
 STATUS_FILE=/var/lib/security-update-status
@@ -144,6 +146,7 @@ ICON_REBOOT=/usr/share/icons/hicolor/24x24/actions/xfsm-reboot.png
 ICON_OVERDUE=/usr/share/icons/Tango/24x24/status/dialog-warning.png
 ICON_NETWORK_ERROR=/usr/share/icons/Tango/24x24/status/network-error.png
 ICON_UPGRADE_ERROR=/usr/share/icons/Tango/24x24/status/dialog-error.png
+ICON_METERED=/usr/share/icons/Tango/24x24/status/network-idle.png
 ICON_OK="$HOME/.local/share/update-genmon-icons/ok-check.png"
 
 if [ "$phase" = installing ]; then
@@ -174,6 +177,9 @@ elif [ "$last_check_result" = upgrade-error ]; then
     img="$ICON_UPGRADE_ERROR"
     tool="$(t update_genmon.upgrade_error)"
     [ -n "$last_check_reason" ] && tool="${tool}&#10;${last_check_reason}"
+elif [ "$last_check_result" = skipped-metered ]; then
+    img="$ICON_METERED"
+    tool="$(t update_genmon.skipped_metered)&#10;$(t update_genmon.skipped_metered_retry)"
 elif [ "$overdue" = true ]; then
     img="$ICON_OVERDUE"
     tool="$(t update_genmon.overdue)"
@@ -198,3 +204,4 @@ tool="${tool}&#10;${next_check_line//REL/$next_check_rel}"
 
 echo "<img>${img}</img>"
 echo "<tool>${tool}</tool>"
+echo "<click>${SELF_DIR}/update-genmon-view-log.sh</click>"

@@ -47,6 +47,7 @@ update_status=$?
 
 result=ok
 reason=""
+combined_uu_output=""
 
 if [ "$update_status" -ne 0 ]; then
     result=network-error
@@ -58,8 +59,26 @@ else
     uu_out="$(unattended-upgrades 2>&1)"
     uu_status=$?
     if [ "$uu_status" -ne 0 ]; then
-        result=upgrade-error
-        reason="$(echo "$uu_out" | sed '/^$/d' | tail -1)"
+        # unattended-upgrades logs via syslog rather than to its own
+        # stdout/stderr, so uu_out is typically empty here -- pull its
+        # actual log lines from the journal instead. Filtered by syslog
+        # identifier (not -u security-update-check.service) so this also
+        # works when the script is run manually/outside the systemd unit.
+        uu_journal="$(journalctl -t unattended-upgrade --since "@$start_epoch" --no-pager -o cat 2>/dev/null)"
+        combined_uu_output="$uu_out"
+        [ -n "$uu_journal" ] && combined_uu_output="${combined_uu_output}
+${uu_journal}"
+        if echo "$combined_uu_output" | grep -qi "metered connection"; then
+            # Not a real failure -- unattended-upgrades deliberately skips
+            # when NetworkManager reports the active connection as metered
+            # (e.g. a phone tethered over mobile data), so don't alarm the
+            # user with an "error" icon for working-as-intended behavior.
+            result=skipped-metered
+            reason="Skipped: on a metered connection."
+        else
+            result=upgrade-error
+            reason="$(echo "$combined_uu_output" | sed '/^$/d' | tail -1)"
+        fi
     fi
 fi
 
@@ -72,6 +91,21 @@ duration=$(( end_epoch - start_epoch ))
 # script so it must stay shell-safe.
 reason="${reason//\"/\'}"
 
+# Full run log for the panel icon's "view log" action -- overwritten each
+# run, world-readable so it can be opened without sudo.
+LOG_FILE=/var/log/security-update-check-last.log
+{
+    echo "=== security-update-check.sh run: $(date -d "@$start_epoch") ==="
+    echo "--- apt-get update ---"
+    echo "$update_out"
+    if [ -n "$combined_uu_output" ]; then
+        echo
+        echo "--- unattended-upgrades ---"
+        echo "$combined_uu_output"
+    fi
+} > "$LOG_FILE"
+chmod 644 "$LOG_FILE"
+
 cat > "$STATUS_TMP" <<STATUS
 LAST_CHECK_EPOCH=$start_epoch
 LAST_CHECK_DURATION_SECONDS=$duration
@@ -81,7 +115,7 @@ STATUS
 mv "$STATUS_TMP" "$STATUS_FILE"
 chmod 644 "$STATUS_FILE"
 
-[ "$result" = ok ]
+[ "$result" = ok ] || [ "$result" = skipped-metered ]
 EOF
 chmod 755 /usr/local/sbin/security-update-check.sh
 

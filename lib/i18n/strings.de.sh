@@ -45,4 +45,8 @@ Fahre nur fort, wenn du einen Installations-Link auf einer vertrauenswürdigen S
 	[update_genmon.last_check_with_duration]="Letzte Prüfung: REL (COUNT Updates, dauerte DURATION)"
 	[update_genmon.last_check_no_duration]="Letzte Prüfung: REL (COUNT Updates)"
 	[update_genmon.next_check]="Nächste Prüfung: REL"
+	[update_genmon.skipped_metered]="Letzte Prüfung übersprungen: getaktete Verbindung (z. B. mobiles Datentethering)."
+	[update_genmon.skipped_metered_retry]="Läuft automatisch, sobald wieder eine ungetaktete Verbindung besteht."
+	[update_genmon.log_title]="Sicherheitsupdate-Protokoll"
+	[update_genmon.log_missing]="Noch kein Update-Protokoll vorhanden -- die Prüfung wurde noch nicht ausgeführt."
 )

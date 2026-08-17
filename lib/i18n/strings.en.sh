@@ -43,4 +43,8 @@ Only continue if you clicked an install link on a page you trust."
 	[update_genmon.last_check_with_duration]="Last check: REL (COUNT updates, took DURATION)"
 	[update_genmon.last_check_no_duration]="Last check: REL (COUNT updates)"
 	[update_genmon.next_check]="Next check: REL"
+	[update_genmon.skipped_metered]="Last check was skipped: on a metered connection (e.g. tethered mobile data)."
+	[update_genmon.skipped_metered_retry]="It'll run automatically once you're back on an unmetered network."
+	[update_genmon.log_title]="Security Update Log"
+	[update_genmon.log_missing]="No update log found yet -- the check hasn't run."
 )

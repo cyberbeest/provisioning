@@ -37,12 +37,15 @@ LAYOUT="$DIR/lib/xfce-panel-layout"
 echo "--- Installing whiskermenu, genmon, power-manager and pulseaudio panel plugins ---"
 apt-get -o DPkg::Lock::Timeout=60 update -qq
 apt-get -o DPkg::Lock::Timeout=60 install -y xfce4-whiskermenu-plugin xfce4-genmon-plugin \
-	xfce4-power-manager xfce4-power-manager-plugins xfce4-pulseaudio-plugin
+	xfce4-power-manager xfce4-power-manager-plugins xfce4-pulseaudio-plugin zenity
 
 echo "--- Installing genmon script + icons ---"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.local/bin"
 install -o "$TARGET_USER" -g "$TARGET_USER" -m 755 \
 	"$DIR/lib/update-genmon.sh" "$TARGET_HOME/.local/bin/update-genmon.sh"
+# The genmon icon's click action opens the last run's log via zenity.
+install -o "$TARGET_USER" -g "$TARGET_USER" -m 755 \
+	"$DIR/lib/update-genmon-view-log.sh" "$TARGET_HOME/.local/bin/update-genmon-view-log.sh"
 # update-genmon.sh sources i18n.sh relative to its own location, so that (and
 # its strings.*.sh catalogs) need to live next to it too -- see lib/i18n.sh.
 install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 "$DIR/lib/i18n.sh" "$TARGET_HOME/.local/bin/i18n.sh"
