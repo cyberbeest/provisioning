@@ -1,7 +1,8 @@
 #!/bin/bash
 # Lays out the xfce4 panel to match the dev machine, plugins grouped left
-# to right: Whisker menu, tasklist -- Programs (terminal launcher, file
-# manager launcher) --
+# to right: Whisker menu, tasklist -- Programs (file manager launcher; no
+# terminal launcher -- the typical user isn't expected to use one, and it's
+# still reachable from the Whisker menu for anyone who does) --
 # Hardware (systray, pulseaudio volume plugin, its icon overridden with a
 # padded version so it doesn't dominate the panel visually -- see the
 # icons-adwaita-symbolic-status install below) -- Status (the custom
@@ -93,10 +94,10 @@ install -m 644 "$LAYOUT/kitt-scanner.rc" "$TARGET_HOME/.config/xfce4/panel/kitt-
 install -m 644 "$LAYOUT/mem-liquid.rc" "$TARGET_HOME/.config/xfce4/panel/mem-liquid-15.rc"
 sed "s|__HOME__|$TARGET_HOME|g" "$LAYOUT/shutdown-timer-genmon.rc.template" > "$TARGET_HOME/.config/xfce4/panel/genmon-16.rc"
 
-echo "--- Writing launcher-9 (terminal) ---"
-install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.config/xfce4/panel/launcher-9"
-install -m 644 "$LAYOUT/terminal-emulator.desktop" \
-	"$TARGET_HOME/.config/xfce4/panel/launcher-9/terminal-emulator.desktop"
+# Cleanup for machines provisioned before the terminal launcher was dropped
+# from the panel -- overwriting xfce4-panel.xml below removes plugin-9 from
+# the layout, but doesn't touch this now-orphaned launcher config dir.
+rm -rf "$TARGET_HOME/.config/xfce4/panel/launcher-9"
 
 echo "--- Writing launcher-18 (file manager) ---"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.config/xfce4/panel/launcher-18"
