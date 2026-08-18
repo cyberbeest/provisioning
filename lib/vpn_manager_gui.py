@@ -75,7 +75,7 @@ PROVIDERS = [
     {
         "name": "IVPN",
         "kind": "config_only",
-        "note": "No graphical Linux app. Sign up, download a WireGuard config, "
+        "note": "Sign up, download a WireGuard config, "
                 "then Import it below.",
         "signup_url": "https://www.ivpn.net/pricing/",
         "no_log_badge": "No-log, audited",
@@ -87,7 +87,7 @@ PROVIDERS = [
     {
         "name": "AirVPN",
         "kind": "config_only",
-        "note": "No graphical Linux app. Sign up, generate a WireGuard config, "
+        "note": "Sign up, generate a WireGuard config, "
                 "then Import it below.",
         "signup_url": "https://airvpn.org/plans/",
         "no_log_badge": "No-log, unaudited",
