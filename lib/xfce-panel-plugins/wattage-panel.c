@@ -45,6 +45,19 @@
 #define LOG_SUBDIR "wattage-panel"
 #define LOG_FILE "history.csv"
 
+/* Persisted copy of the current session's `ticks` (time_s,energy_uwh per
+ * line, oldest first), so a panel/plugin restart mid-session doesn't throw
+ * away everything and start the averages over. Rewritten from scratch on
+ * every genuine new discharge session, appended to on every real tick. */
+#define TICKS_FILE "ticks.csv"
+
+/* A persisted tick file is only trusted to resume the in-memory `ticks`
+ * array if its last entry is within this long of "now" -- long enough to
+ * survive a panel crash/restart (this hardware's real ticks land every
+ * ~4-5 min, so even a couple of missed polls should stay well under this),
+ * short enough to not accidentally splice in a session from hours ago. */
+#define TICKS_RESUME_MAX_GAP_S (30 * 60)
+
 /* Ring buffer of the last N raw energy_now readings, shown in the tooltip
  * when the debug checkbox is on -- independent of battery status, unlike
  * `ticks` below. */
@@ -138,6 +151,44 @@ read_file_string(const gchar *path, gchar *buf, gsize buflen)
     return ok;
 }
 
+/* Path to a file in our state dir (created if needed). Caller g_free()s. */
+static gchar *
+watt_state_path(const gchar *filename)
+{
+    gchar *dir = g_build_filename(g_get_user_state_dir(), LOG_SUBDIR, NULL);
+    g_mkdir_with_parents(dir, 0755);
+    gchar *path = g_build_filename(dir, filename, NULL);
+    g_free(dir);
+    return path;
+}
+
+/* Rewrites ticks.csv from scratch with just the seed point. Called
+ * whenever a genuinely new discharge session starts, so a stale file left
+ * over from a previous session never lingers to confuse a later resume. */
+static void
+watt_ticks_file_reset(gint64 time_s, gdouble energy_uwh)
+{
+    gchar *path = watt_state_path(TICKS_FILE);
+    FILE *f = fopen(path, "w");
+    g_free(path);
+    if (!f)
+        return;
+    fprintf(f, "%" G_GINT64_FORMAT ",%.0f\n", time_s, energy_uwh);
+    fclose(f);
+}
+
+static void
+watt_ticks_file_append(gint64 time_s, gdouble energy_uwh)
+{
+    gchar *path = watt_state_path(TICKS_FILE);
+    FILE *f = fopen(path, "a");
+    g_free(path);
+    if (!f)
+        return;
+    fprintf(f, "%" G_GINT64_FORMAT ",%.0f\n", time_s, energy_uwh);
+    fclose(f);
+}
+
 /* Called the moment we start a fresh run on battery (plugin startup while
  * discharging, or a Charging/AC -> Discharging transition). Throws away
  * ticks from any previous run -- they belong to a different discharge
@@ -152,42 +203,139 @@ watt_reset_battery_ticks(WattPlugin *wp, gint64 now_s, gdouble energy_uwh)
     wp->battery_start_s = now_s;
     wp->last_valid_energy = energy_uwh;
     wp->have_last_valid = TRUE;
+    watt_ticks_file_reset(now_s, energy_uwh);
+}
+
+/* True if history.csv shows an AC/charging row timestamped after `since_s`
+ * -- i.e. the machine was plugged in at some point after the last
+ * persisted tick, so a persisted tick file spanning that gap belongs to a
+ * session that has already ended, not the one still running now. */
+static gboolean
+watt_history_shows_ac_since(gint64 since_s)
+{
+    gchar *path = watt_state_path(LOG_FILE);
+    FILE *f = fopen(path, "r");
+    g_free(path);
+    if (!f)
+        return FALSE;
+
+    gboolean found = FALSE;
+    gchar line[256];
+    fgets(line, sizeof(line), f); /* header */
+    while (fgets(line, sizeof(line), f)) {
+        gint64 ts;
+        gchar status[16];
+        if (sscanf(line, "%" G_GINT64_FORMAT ",%15[^,]", &ts, status) == 2 &&
+            ts > since_s && g_strcmp0(status, "battery") != 0) {
+            found = TRUE;
+            break;
+        }
+    }
+    fclose(f);
+    return found;
+}
+
+/* Tries to resume a previous session's tick history after a plugin restart
+ * (panel crash/restart, a plugin reinstall, etc.) instead of throwing it
+ * away. Only trusts the persisted file as a genuine continuation of the
+ * still-running discharge session -- not a stale leftover from an earlier
+ * one -- when: the last persisted tick is recent, the battery hasn't
+ * gained charge since then, and history.csv shows no AC/charging activity
+ * in between. Leaves wp->ticks untouched and returns FALSE otherwise, so
+ * the caller falls back to a plain reset. */
+static gboolean
+watt_try_resume_ticks(WattPlugin *wp, gint64 now_s, gdouble energy_uwh)
+{
+    gchar *path = watt_state_path(TICKS_FILE);
+    FILE *f = fopen(path, "r");
+    g_free(path);
+    if (!f)
+        return FALSE;
+
+    GArray *loaded = g_array_new(FALSE, FALSE, sizeof(EnergyPoint));
+    gchar line[64];
+    while (fgets(line, sizeof(line), f)) {
+        EnergyPoint p;
+        if (sscanf(line, "%" G_GINT64_FORMAT ",%lf", &p.time_s, &p.energy_uwh) == 2)
+            g_array_append_val(loaded, p);
+    }
+    fclose(f);
+
+    if (loaded->len < 1) {
+        g_array_free(loaded, TRUE);
+        return FALSE;
+    }
+
+    const EnergyPoint *last = &g_array_index(loaded, EnergyPoint, loaded->len - 1);
+    gboolean ok = (now_s - last->time_s) <= TICKS_RESUME_MAX_GAP_S &&
+                  energy_uwh <= last->energy_uwh &&
+                  !watt_history_shows_ac_since(last->time_s);
+
+    if (!ok) {
+        g_array_free(loaded, TRUE);
+        return FALSE;
+    }
+
+    g_array_set_size(wp->ticks, 0);
+    for (guint i = 0; i < loaded->len; i++)
+        g_array_append_val(wp->ticks, g_array_index(loaded, EnergyPoint, i));
+    gdouble last_energy = last->energy_uwh; /* last points into loaded, about to be freed */
+    g_array_free(loaded, TRUE);
+
+    wp->battery_start_s = g_array_index(wp->ticks, EnergyPoint, 0).time_s;
+    wp->last_valid_energy = last_energy;
+    wp->have_last_valid = TRUE;
+
+    if (energy_uwh < last_energy) {
+        /* The battery kept draining while we weren't running -- capture
+         * that as one more real tick, same as a normal live update. */
+        EnergyPoint p = { .time_s = now_s, .energy_uwh = energy_uwh };
+        g_array_append_val(wp->ticks, p);
+        wp->last_valid_energy = energy_uwh;
+        watt_ticks_file_append(now_s, energy_uwh);
+    }
+
+    return TRUE;
 }
 
 /* Average power (W) over the trailing `window_s` seconds of validated
- * battery ticks. Uses `now_s` rather than the newest tick's timestamp as
- * the end of the span, so a long gap since the last real tick grows the
- * divisor instead of freezing the reading at whatever the last tick
- * implied. Returns FALSE if there isn't at least one real tick inside the
- * window yet (e.g. right after starting a run, or a window shorter than
- * the ~4-5 min gap between real energy_now updates on this hardware). */
+ * battery ticks, computed strictly from the first and last real tick that
+ * fall inside the window -- never from `now_s`. ticks[0] is just the
+ * energy_now value seen at the moment we started watching, not an observed
+ * EC update, so it's excluded here: pairing it with one real tick would
+ * fabricate a measured interval out of an arbitrary poll boundary. That
+ * means a window with fewer than 2 *real* ticks in it (including a long
+ * gap since the last real tick) reports "no data" rather than
+ * freezing/drifting toward a stale number. */
 static gboolean
 watt_window_average(WattPlugin *wp, gint64 now_s, gint64 window_s,
                      gdouble *out_watts, guint *out_ticks)
 {
-    if (wp->ticks->len < 2)
+    if (wp->ticks->len < 3) /* seed + at least 2 real ticks */
         return FALSE;
 
     gint64 cutoff = now_s - window_s;
-    guint start_idx = 0;
-    for (guint i = 0; i < wp->ticks->len; i++) {
-        start_idx = i;
-        if (g_array_index(wp->ticks, EnergyPoint, i).time_s >= cutoff)
-            break;
-    }
-
     guint end_idx = wp->ticks->len - 1;
+    if (g_array_index(wp->ticks, EnergyPoint, end_idx).time_s < cutoff)
+        return FALSE; /* no tick at all inside the window */
+
+    guint start_idx = end_idx;
+    while (start_idx > 1 &&
+           g_array_index(wp->ticks, EnergyPoint, start_idx - 1).time_s >= cutoff)
+        start_idx--;
+
     if (start_idx >= end_idx)
-        return FALSE;
+        return FALSE; /* only 1 real tick inside the window */
 
     const EnergyPoint *start = &g_array_index(wp->ticks, EnergyPoint, start_idx);
-    gint64 span_s = now_s - start->time_s;
-    gdouble diff_uwh = start->energy_uwh - wp->last_valid_energy;
+    const EnergyPoint *end = &g_array_index(wp->ticks, EnergyPoint, end_idx);
+    gint64 span_s = end->time_s - start->time_s;
+    gdouble diff_uwh = start->energy_uwh - end->energy_uwh;
     if (span_s <= 0 || diff_uwh <= 0.0)
         return FALSE;
 
     *out_watts = (diff_uwh / 1000000.0) / (span_s / 3600.0);
-    *out_ticks = end_idx - start_idx;
+    *out_ticks = end_idx - start_idx + 1;
     return TRUE;
 }
 
@@ -217,11 +365,19 @@ watt_update_label(WattPlugin *wp)
 
     if (status == BATT_DISCHARGING) {
         if (!wp->have_last_valid || wp->last_status != BATT_DISCHARGING) {
-            watt_reset_battery_ticks(wp, now_s, energy_uwh);
+            /* Only try to resume a persisted session on a true process
+             * startup (wp->have_last still FALSE) -- a live AC/charging ->
+             * Discharging transition seen during this process's own
+             * lifetime is unambiguously a fresh session, so go straight to
+             * a plain reset for that case. */
+            gboolean resumed = !wp->have_last && watt_try_resume_ticks(wp, now_s, energy_uwh);
+            if (!resumed)
+                watt_reset_battery_ticks(wp, now_s, energy_uwh);
         } else if (energy_uwh < wp->last_valid_energy) {
             EnergyPoint tick = { .time_s = now_s, .energy_uwh = energy_uwh };
             g_array_append_val(wp->ticks, tick);
             wp->last_valid_energy = energy_uwh;
+            watt_ticks_file_append(now_s, energy_uwh);
         }
         /* energy_uwh == last_valid_energy: no new tick yet, nothing to do.
          * energy_uwh > last_valid_energy: EC readback glitch (observed
@@ -272,13 +428,12 @@ watt_update_label(WattPlugin *wp)
         for (guint i = 0; i < AVG_WINDOWS_COUNT; i++) {
             gdouble w;
             guint ticks;
-            /* Don't show a window until we've actually been on battery for
-             * its full length -- otherwise the seed sample at
-             * battery_start_s (recorded as ticks[0] regardless of window
-             * size) lets e.g. the 2h bucket report a number after 4
-             * minutes, identical to the 10min one. */
-            if (elapsed_s >= AVG_WINDOWS[i].seconds &&
-                watt_window_average(wp, now_s, AVG_WINDOWS[i].seconds, &w, &ticks))
+            /* No elapsed-time gate needed here: watt_window_average already
+             * requires 2 real ticks inside the window (the seed alone can't
+             * satisfy that), so a window shows up as soon as it has genuine
+             * data, even if we haven't been on battery for its full nominal
+             * length yet. */
+            if (watt_window_average(wp, now_s, AVG_WINDOWS[i].seconds, &w, &ticks))
                 g_string_append_printf(tooltip, "\n  %-6s: %.1f W  (%u tick%s)",
                                         AVG_WINDOWS[i].label, w, ticks, ticks == 1 ? "" : "s");
             else
