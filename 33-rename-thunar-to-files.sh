@@ -345,15 +345,21 @@ if [ -n "$PANEL_PID" ]; then
 	DBUS_ADDR="$(cat "/proc/$PANEL_PID/environ" 2>/dev/null | tr '\0' '\n' | sed -n 's/^DBUS_SESSION_BUS_ADDRESS=//p')" || true
 	DBUS_ADDR="${DBUS_ADDR:-unix:path=/run/user/$(id -u "$TARGET_USER")/bus}"
 
+	# Both relaunches need DBUS_SESSION_BUS_ADDRESS, not just DISPLAY --
+	# without it each lands on the wrong (or no) session bus, and xfdesktop
+	# in particular then can't see later xfconf changes at all (e.g. picking
+	# a wallpaper in Desktop Settings silently does nothing until next
+	# login/reboot spawns a properly session-launched xfdesktop instead).
+
 	# Thunar's daemon process name is capitalized ("Thunar"), not "thunar".
 	restart_and_confirm "$TARGET_USER" Thunar \
-		"DISPLAY='${DISPLAY:-:0}' nohup thunar >/dev/null 2>&1 & disown"
+		"DISPLAY='${DISPLAY:-:0}' DBUS_SESSION_BUS_ADDRESS='$DBUS_ADDR' nohup thunar >/dev/null 2>&1 & disown"
 
 	# xfdesktop draws the desktop icons (including the Trash/Wastebasket
 	# one) -- restart it so the new catalog picks up immediately instead of
 	# waiting for next login.
 	restart_and_confirm "$TARGET_USER" xfdesktop \
-		"DISPLAY='${DISPLAY:-:0}' nohup xfdesktop >/dev/null 2>&1 & disown"
+		"DISPLAY='${DISPLAY:-:0}' DBUS_SESSION_BUS_ADDRESS='$DBUS_ADDR' nohup xfdesktop >/dev/null 2>&1 & disown"
 
 	su - "$TARGET_USER" -c "DISPLAY='${DISPLAY:-:0}' DBUS_SESSION_BUS_ADDRESS='$DBUS_ADDR' xfce4-panel -r" || true
 fi
