@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """GUI front-end for the NN-*.sh provisioning scripts.
 
-Unlike the old version of this tool, it does NOT shell out to run-all.sh /
-run-changed.sh. It lists every NN-*.sh script in a sidebar (with a status:
+It lists every NN-*.sh script in a sidebar (with a status:
 pending/done/running/failed, "done" meaning its .log is newer than the
-script -- same test run-changed.sh uses), and runs each one directly as its
+script itself), and runs each one directly as its
 own `sudo -A bash NN-*.sh` subprocess, streaming its output into the shared
 log view on the right and updating that script's sidebar status as it goes.
 
@@ -26,7 +25,7 @@ any other row shows a frozen snapshot without interrupting or hiding the
 active run, which keeps updating that script's stored log in the
 background regardless of what's currently displayed.
 
-No batch-level xfce4-panel reload here (unlike run-all.sh/run-changed.sh):
+No batch-level xfce4-panel reload here:
 the only two scripts that touch panel config, 11-xfce-panel-plugins.sh and
 12-xfce-panel-layout.sh, already reload the panel themselves.
 
@@ -187,6 +186,8 @@ class RunGuiWindow(Gtk.Window):
         self.proc = None
         self.busy = False
         self.stop_requested = False
+        self.tick_source_id = None
+        self.current_script_start = None
         self.rows = {}
         self.sudo_password = None
         self.logs = {"": ""}
@@ -494,6 +495,24 @@ class RunGuiWindow(Gtk.Window):
         # stays clickable during a run so scripts' logs can be inspected
         # without interrupting it. on_row_activated's own busy check is what
         # stops a second run from starting concurrently.
+        if busy:
+            if self.tick_source_id is None:
+                self.tick_source_id = GLib.timeout_add(1000, self._tick)
+        elif self.tick_source_id is not None:
+            GLib.source_remove(self.tick_source_id)
+            self.tick_source_id = None
+
+    def _tick(self):
+        # Runs once a second while a run is active, so the current script's
+        # elapsed time and the session total both visibly count up live
+        # instead of only jumping when a script finishes.
+        elapsed_current = time.monotonic() - self.current_script_start if self.current_script_start else 0.0
+        self.total_time_label.set_text(
+            f"Total run time this session: {format_duration(self.session_total_seconds + elapsed_current)}"
+        )
+        if self.currently_running_script:
+            self.status_label.set_text(f"Running: {self.currently_running_script} ({format_duration(elapsed_current)})")
+        return GLib.SOURCE_CONTINUE
 
     def start_sequence(self, changed_only):
         if self.busy:
@@ -637,6 +656,7 @@ class RunGuiWindow(Gtk.Window):
             GLib.idle_add(self.status_label.set_text, f"Running: {script}")
 
             start_time = time.monotonic()
+            self.current_script_start = start_time
             if script in NEEDS_TERMINAL:
                 status = self._run_in_terminal(script)
             else:
@@ -647,6 +667,7 @@ class RunGuiWindow(Gtk.Window):
             # whiptail menus, not just the script's own work -- expected,
             # since that's genuinely how long this step took this run.
             duration = time.monotonic() - start_time
+            self.current_script_start = None
             GLib.idle_add(self._add_session_runtime, duration)
 
             if status == 0:

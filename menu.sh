@@ -1,5 +1,5 @@
 #!/bin/bash
-# Interactive front-end for run-all.sh: lets the installer deselect NN-*.sh
+# Interactive whiptail front-end: lets the installer deselect NN-*.sh
 # scripts that don't apply to this machine (e.g. skip bluetooth tethering on
 # a VM with no Bluetooth), then runs the selected ones in numeric order.
 #

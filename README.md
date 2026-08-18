@@ -34,22 +34,15 @@ otherwise.
   deselect ones that don't apply to this machine (e.g. Bluetooth tethering on
   a VM), then runs the selected ones in order via `sudo`, stopping if one
   fails since later scripts may depend on it.
-- `./run-all.sh` — non-interactive, runs every `NN-*.sh` script unconditionally
-  in order. Useful for scripted/repeat test runs where you always want the
-  full set (each script still needs to be run as root, so invoke this with
-  `sudo ./run-all.sh` or add `sudo` per-script if you edit it to do so).
-- `./run-changed.sh` — like `run-all.sh`, but skips any script whose `.log` is
-  newer than the script itself (i.e. it already ran since it was last
-  edited). Handy while iterating on one or two scripts instead of re-running
-  the full set each time; not needed for a normal install. Since it compares
-  file mtimes, a fresh `git clone` makes everything look changed again.
-- `./run-gui.py` — graphical alternative to the above (dev tool, not part of
-  the shipped image), running each `NN-*.sh` script directly rather than
-  wrapping `run-all.sh`/`run-changed.sh`: a sidebar lists every script with
-  its pending/running/done/failed status, and a shared log pane on the right
-  streams whichever one is currently running. "Run all" / "Run changed only"
-  walk the whole list; double-clicking a script in the sidebar runs just that
-  one, regardless of its status. Each script is elevated individually via a
+- `./run-gui.py` — graphical alternative to `menu.sh` (dev tool, not part of
+  the shipped image): a sidebar lists every `NN-*.sh` script with its
+  pending/running/done/failed status, and a shared log pane on the right
+  streams whichever one is currently running. "Run all" runs every script
+  unconditionally; "Run changed only" skips any script whose `.log` is newer
+  than the script itself (i.e. it already ran since it was last edited) —
+  handy while iterating on one or two scripts instead of re-running the full
+  set each time. Double-clicking a script in the sidebar runs just that one,
+  regardless of its status. Each script is elevated individually via a
   graphical sudo prompt (zenity), which `sudo` normally only asks for once
   every few scripts thanks to credential caching. "Stop after current
   script" doesn't kill anything mid-script -- it lets the running one finish,
