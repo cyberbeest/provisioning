@@ -1,0 +1,67 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: kitt-scanner\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: de\n"
+
+msgid "= Idle ="
+msgstr "= Leerlauf ="
+
+msgid "= Light load ="
+msgstr "= Geringe Last ="
+
+msgid "= Thinking hard ="
+msgstr "= Denkt angestrengt nach ="
+
+msgid "= Working hard ="
+msgstr "= Arbeitet hart ="
+
+msgid "= Maxed out ="
+msgstr "= Am Limit ="
+
+msgid "CPU load: %.0f%%\n%s"
+msgstr "CPU-Last: %.0f%%\n%s"
+
+msgid "\n\nTop CPU:"
+msgstr "\n\nTop-CPU:"
+
+msgid "_Close"
+msgstr "_Schließen"
+
+msgid "Enabled (off freezes the scanner, centered)"
+msgstr "Aktiviert (aus friert den Scanner zentriert ein)"
+
+msgid "Min speed (0% CPU load), sweeps/sec:"
+msgstr "Minimale Geschwindigkeit (0% CPU-Last), Durchläufe/Sek.:"
+
+msgid "Max speed (100% CPU load), sweeps/sec:"
+msgstr "Maximale Geschwindigkeit (100% CPU-Last), Durchläufe/Sek.:"
+
+msgid "Gamma (>1 slows low load further, <1 speeds it up):"
+msgstr "Gamma (>1 verlangsamt geringe Last weiter, <1 beschleunigt sie):"
+
+msgid "Frame rate, fps:"
+msgstr "Bildrate, fps:"
+
+msgid "Margin color:"
+msgstr "Randfarbe:"
+
+msgid "\"Off\" LEDs are fully invisible (vs. dim housing color)"
+msgstr "„Aus“-LEDs sind vollständig unsichtbar (statt gedämpfter Gehäusefarbe)"
+
+msgid "Sweep pattern:"
+msgstr "Bewegungsmuster:"
+
+msgid "Sine wave (eases at each end)"
+msgstr "Sinuswelle (sanft an beiden Enden)"
+
+msgid "Linear (constant speed)"
+msgstr "Linear (konstante Geschwindigkeit)"
+
+msgid "Show CPU load percentage over the LEDs"
+msgstr "CPU-Lastprozentsatz über den LEDs anzeigen"
+
+msgid "Use plain-English names in the Top CPU tooltip list (e.g. \"window drawing\" for Xorg)"
+msgstr "Verständliche Namen in der Top-CPU-Liste im Tooltip verwenden (z. B. „Fensterdarstellung“ für Xorg)"

@@ -1,0 +1,43 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: wattage-panel\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: de\n"
+
+msgid "no battery"
+msgstr "kein Akku"
+
+msgid "%.1fW chg"
+msgstr "%.1fW lädt"
+
+msgid "AC"
+msgstr "Netz"
+
+msgid "Battery: %.0f%% (%s)\nPower: %.1f W (instant, as reported)"
+msgstr "Akku: %.0f%% (%s)\nLeistung: %.1f W (Momentanwert, laut Gerät)"
+
+msgid "\n\nAverages since on battery (%s):"
+msgstr "\n\nDurchschnitt seit Akkubetrieb (%s):"
+
+msgid "tick"
+msgstr "Messung"
+
+msgid "ticks"
+msgstr "Messungen"
+
+msgid "not enough data yet"
+msgstr "noch nicht genug Daten"
+
+msgid "all"
+msgstr "gesamt"
+
+msgid "\n\nLast raw energy_now readings:"
+msgstr "\n\nLetzte rohe energy_now-Messwerte:"
+
+msgid "_Close"
+msgstr "_Schließen"
+
+msgid "Show last 10 raw energy_now readings in tooltip (debug)"
+msgstr "Letzte 10 rohe energy_now-Messwerte im Tooltip anzeigen (Debug)"

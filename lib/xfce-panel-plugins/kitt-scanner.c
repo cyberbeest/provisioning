@@ -5,6 +5,20 @@
  * Built as an "external" plugin (X-XFCE-Internal=FALSE in the .desktop
  * file), so a crash in here takes down only this plugin's process, not
  * the panel.
+ *
+ * User-visible strings are translated via gettext, domain "kitt-scanner"
+ * (see the German catalog at po/kitt-scanner.de.po). Not setlocale()'d
+ * here -- the panel process that dlopen()s this .so has already done that
+ * via gtk_init(); this plugin's own responsibility is just bindtextdomain,
+ * done once in kitt_construct. LOCALE_DIR is injected by the Makefile
+ * (-DLOCALE_DIR=...) rather than assuming a fixed prefix. _() below calls
+ * dgettext() directly with this domain rather than gettext() + textdomain()
+ * -- xfce4-panel loads several of these plugins as .so's into one shared
+ * process, and textdomain() sets a single *global* default domain, so
+ * whichever plugin called it last would silently steal translations from
+ * every other plugin still using bare gettext(). The scanner's own
+ * widget/dialog *name* ("KITT Scanner") stays untranslated, same as
+ * "Cyberbeest" elsewhere -- it reads as a product name, not a description.
  */
 
 #include <gtk/gtk.h>
@@ -16,12 +30,18 @@
 #include <libxfce4util/libxfce4util.h>
 #include <ctype.h>
 #include <dirent.h>
+#include <libintl.h>
 #include <math.h>
 #include <stdio.h>
 #include "process-alias.h"
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+
+/* libxfce4util's xfce-i18n.h (pulled in above) already #defines _() as
+ * bare gettext() -- redefine it to our per-plugin dgettext() instead. */
+#undef _
+#define _(String) dgettext("kitt-scanner", String)
 
 #define ASPECT_RATIO 4 /* width = panel size * ASPECT_RATIO */
 #define NUM_LEDS 24
@@ -137,14 +157,14 @@ static const gchar *
 cpu_status_text(gdouble load)
 {
     if (load < 0.10)
-        return "= Idle =";
+        return _("= Idle =");
     if (load < 0.40)
-        return "= Light load =";
+        return _("= Light load =");
     if (load < 0.70)
-        return "= Thinking hard =";
+        return _("= Thinking hard =");
     if (load < 0.90)
-        return "= Working hard =";
-    return "= Maxed out =";
+        return _("= Working hard =");
+    return _("= Maxed out =");
 }
 
 typedef struct {
@@ -333,13 +353,13 @@ on_query_tooltip(GtkWidget *widget, gint x, gint y, gboolean keyboard_mode,
 {
     KittPlugin *kp = user_data;
     GString *text = g_string_new(NULL);
-    g_string_append_printf(text, "CPU load: %.0f%%\n%s",
+    g_string_append_printf(text, _("CPU load: %.0f%%\n%s"),
                             kp->load * 100.0, cpu_status_text(kp->load));
 
     TopProc top[TOP_PROC_COUNT];
     gint n = get_top_processes(top, TOP_PROC_COUNT);
     if (n > 0) {
-        g_string_append(text, "\n\nTop CPU:");
+        g_string_append(text, _("\n\nTop CPU:"));
         for (gint i = 0; i < n; i++) {
             const gchar *name = kp->friendly_names ? process_alias(top[i].comm) : top[i].comm;
             g_string_append_printf(text, "\n%s  %.0f%%", name, top[i].percent);
@@ -829,7 +849,7 @@ on_configure_plugin(XfcePanelPlugin *plugin, KittPlugin *kp)
 {
     GtkWidget *dialog = gtk_dialog_new_with_buttons(
         "KITT Scanner", GTK_WINDOW(gtk_widget_get_toplevel(GTK_WIDGET(plugin))),
-        GTK_DIALOG_DESTROY_WITH_PARENT, "_Close", GTK_RESPONSE_CLOSE, NULL);
+        GTK_DIALOG_DESTROY_WITH_PARENT, _("_Close"), GTK_RESPONSE_CLOSE, NULL);
     gtk_window_set_icon_name(GTK_WINDOW(dialog), "utilities-system-monitor");
 
     GtkWidget *grid = gtk_grid_new();
@@ -837,30 +857,30 @@ on_configure_plugin(XfcePanelPlugin *plugin, KittPlugin *kp)
     gtk_grid_set_column_spacing(GTK_GRID(grid), 12);
     gtk_container_set_border_width(GTK_CONTAINER(grid), 12);
 
-    GtkWidget *enabled_check = gtk_check_button_new_with_label("Enabled (off freezes the scanner, centered)");
+    GtkWidget *enabled_check = gtk_check_button_new_with_label(_("Enabled (off freezes the scanner, centered)"));
     gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(enabled_check), kp->enabled);
     g_signal_connect(enabled_check, "toggled", G_CALLBACK(on_enabled_toggled), kp);
     gtk_grid_attach(GTK_GRID(grid), enabled_check, 0, 9, 2, 1);
 
-    GtkWidget *min_label = gtk_label_new("Min speed (0% CPU load), sweeps/sec:");
+    GtkWidget *min_label = gtk_label_new(_("Min speed (0% CPU load), sweeps/sec:"));
     gtk_widget_set_halign(min_label, GTK_ALIGN_START);
     GtkWidget *min_spin = gtk_spin_button_new_with_range(0.0, 10.0, 0.05);
     gtk_spin_button_set_value(GTK_SPIN_BUTTON(min_spin), kp->min_rate);
     g_signal_connect(min_spin, "value-changed", G_CALLBACK(on_min_rate_changed), kp);
 
-    GtkWidget *max_label = gtk_label_new("Max speed (100% CPU load), sweeps/sec:");
+    GtkWidget *max_label = gtk_label_new(_("Max speed (100% CPU load), sweeps/sec:"));
     gtk_widget_set_halign(max_label, GTK_ALIGN_START);
     GtkWidget *max_spin = gtk_spin_button_new_with_range(0.0, 10.0, 0.05);
     gtk_spin_button_set_value(GTK_SPIN_BUTTON(max_spin), kp->max_rate);
     g_signal_connect(max_spin, "value-changed", G_CALLBACK(on_max_rate_changed), kp);
 
-    GtkWidget *gamma_label = gtk_label_new("Gamma (>1 slows low load further, <1 speeds it up):");
+    GtkWidget *gamma_label = gtk_label_new(_("Gamma (>1 slows low load further, <1 speeds it up):"));
     gtk_widget_set_halign(gamma_label, GTK_ALIGN_START);
     GtkWidget *gamma_spin = gtk_spin_button_new_with_range(0.1, 10.0, 0.1);
     gtk_spin_button_set_value(GTK_SPIN_BUTTON(gamma_spin), kp->gamma);
     g_signal_connect(gamma_spin, "value-changed", G_CALLBACK(on_gamma_changed), kp);
 
-    GtkWidget *fps_label = gtk_label_new("Frame rate, fps:");
+    GtkWidget *fps_label = gtk_label_new(_("Frame rate, fps:"));
     gtk_widget_set_halign(fps_label, GTK_ALIGN_START);
     GtkWidget *fps_spin = gtk_spin_button_new_with_range(MIN_FPS, MAX_FPS, 1);
     gtk_spin_button_set_value(GTK_SPIN_BUTTON(fps_spin), kp->fps);
@@ -875,7 +895,7 @@ on_configure_plugin(XfcePanelPlugin *plugin, KittPlugin *kp)
     gtk_grid_attach(GTK_GRID(grid), fps_label, 0, 3, 1, 1);
     gtk_grid_attach(GTK_GRID(grid), fps_spin, 1, 3, 1, 1);
 
-    GtkWidget *margin_label = gtk_label_new("Margin color:");
+    GtkWidget *margin_label = gtk_label_new(_("Margin color:"));
     gtk_widget_set_halign(margin_label, GTK_ALIGN_START);
     GdkRGBA margin_rgba = { kp->bg[0], kp->bg[1], kp->bg[2], 1.0 };
     GtkWidget *margin_button = gtk_color_button_new_with_rgba(&margin_rgba);
@@ -884,19 +904,19 @@ on_configure_plugin(XfcePanelPlugin *plugin, KittPlugin *kp)
     gtk_grid_attach(GTK_GRID(grid), margin_label, 0, 4, 1, 1);
     gtk_grid_attach(GTK_GRID(grid), margin_button, 1, 4, 1, 1);
 
-    GtkWidget *off_check = gtk_check_button_new_with_label("\"Off\" LEDs are fully invisible (vs. dim housing color)");
+    GtkWidget *off_check = gtk_check_button_new_with_label(_("\"Off\" LEDs are fully invisible (vs. dim housing color)"));
     gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(off_check), kp->off_is_bg);
     g_signal_connect(off_check, "toggled", G_CALLBACK(on_off_is_bg_toggled), kp);
     gtk_grid_attach(GTK_GRID(grid), off_check, 0, 5, 2, 1);
 
-    GtkWidget *sweep_label = gtk_label_new("Sweep pattern:");
+    GtkWidget *sweep_label = gtk_label_new(_("Sweep pattern:"));
     gtk_widget_set_halign(sweep_label, GTK_ALIGN_START);
     gtk_grid_attach(GTK_GRID(grid), sweep_label, 0, 6, 2, 1);
 
-    GtkWidget *sine_radio = gtk_radio_button_new_with_label(NULL, "Sine wave (eases at each end)");
+    GtkWidget *sine_radio = gtk_radio_button_new_with_label(NULL, _("Sine wave (eases at each end)"));
     g_object_set_data(G_OBJECT(sine_radio), "sine-sweep", GINT_TO_POINTER(TRUE));
     GtkWidget *linear_radio = gtk_radio_button_new_with_label_from_widget(
-        GTK_RADIO_BUTTON(sine_radio), "Linear (constant speed)");
+        GTK_RADIO_BUTTON(sine_radio), _("Linear (constant speed)"));
     g_object_set_data(G_OBJECT(linear_radio), "sine-sweep", GINT_TO_POINTER(FALSE));
     gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(kp->sine_sweep ? sine_radio : linear_radio), TRUE);
     g_signal_connect(sine_radio, "toggled", G_CALLBACK(on_sweep_pattern_changed), kp);
@@ -904,13 +924,13 @@ on_configure_plugin(XfcePanelPlugin *plugin, KittPlugin *kp)
     gtk_grid_attach(GTK_GRID(grid), sine_radio, 0, 7, 2, 1);
     gtk_grid_attach(GTK_GRID(grid), linear_radio, 0, 8, 2, 1);
 
-    GtkWidget *percent_check = gtk_check_button_new_with_label("Show CPU load percentage over the LEDs");
+    GtkWidget *percent_check = gtk_check_button_new_with_label(_("Show CPU load percentage over the LEDs"));
     gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(percent_check), kp->show_percent);
     g_signal_connect(percent_check, "toggled", G_CALLBACK(on_show_percent_toggled), kp);
     gtk_grid_attach(GTK_GRID(grid), percent_check, 0, 10, 2, 1);
 
     GtkWidget *friendly_check = gtk_check_button_new_with_label(
-        "Use plain-English names in the Top CPU tooltip list (e.g. \"window drawing\" for Xorg)");
+        _("Use plain-English names in the Top CPU tooltip list (e.g. \"window drawing\" for Xorg)"));
     gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(friendly_check), kp->friendly_names);
     g_signal_connect(friendly_check, "toggled", G_CALLBACK(on_friendly_names_toggled), kp);
     gtk_grid_attach(GTK_GRID(grid), friendly_check, 0, 11, 2, 1);
@@ -948,6 +968,9 @@ kitt_free(XfcePanelPlugin *plugin, KittPlugin *kp)
 static void
 kitt_construct(XfcePanelPlugin *plugin)
 {
+    bindtextdomain("kitt-scanner", LOCALE_DIR);
+    bind_textdomain_codeset("kitt-scanner", "UTF-8");
+
     KittPlugin *kp = g_new0(KittPlugin, 1);
     kp->plugin = plugin;
     kp->last_tick_us = g_get_monotonic_time();

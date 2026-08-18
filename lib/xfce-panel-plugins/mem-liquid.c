@@ -13,6 +13,11 @@
  * Built as an "external" plugin (X-XFCE-Internal=FALSE in the .desktop
  * file), same convention as kitt-scanner and wattage-panel, so a crash
  * in here takes down only this plugin's process, not the panel.
+ *
+ * User-visible strings are translated via gettext, domain "mem-liquid"
+ * (see the German catalog at po/mem-liquid.de.po) -- see kitt-scanner.c's
+ * own i18n comment for why _() calls dgettext() directly instead of
+ * gettext() + textdomain().
  */
 
 #include <gtk/gtk.h>
@@ -24,12 +29,18 @@
 #include <libxfce4util/libxfce4util.h>
 #include <ctype.h>
 #include <dirent.h>
+#include <libintl.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/statvfs.h>
 #include "process-alias.h"
+
+/* libxfce4util's xfce-i18n.h (pulled in above) already #defines _() as
+ * bare gettext() -- redefine it to our per-plugin dgettext() instead. */
+#undef _
+#define _(String) dgettext("mem-liquid", String)
 
 #define MEM_SAMPLE_MS 2000        /* how often to read /proc/meminfo */
 #define SCREEN_CHECK_INTERVAL_S 2 /* how often to poll for screen lock / display standby */
@@ -256,12 +267,12 @@ static const gchar *
 mem_status_text(gdouble frac)
 {
     if (frac < 0.10)
-        return "= Idle =";
+        return _("= Idle =");
     if (frac < 0.40)
-        return "= Light load =";
+        return _("= Light load =");
     if (frac < 0.70)
-        return "= Steady =";
-    return "= Filling up =";
+        return _("= Steady =");
+    return _("= Filling up =");
 }
 
 typedef struct {
@@ -371,38 +382,40 @@ on_query_tooltip(GtkWidget *widget, gint x, gint y, gboolean keyboard_mode,
 {
     (void) widget; (void) x; (void) y; (void) keyboard_mode;
     MemPlugin *mp = user_data;
-    gchar buf[320];
+    /* Sized well above what the English strings need, since translated
+     * text (German especially) runs longer than the source. */
+    gchar buf[640];
     gdouble used_gib = mp->mem_used_kib / 1048576.0;
     gdouble total_gib = mp->mem_total_kib / 1048576.0;
     gdouble disk_used_gib = mp->disk_used_bytes / 1073741824.0;
     gdouble disk_total_gib = mp->disk_total_bytes / 1073741824.0;
 
-    gint n = g_snprintf(buf, sizeof(buf), "RAM: %.0f%% used (%.1f / %.1f GiB)",
+    gint n = g_snprintf(buf, sizeof(buf), _("RAM: %.0f%% used (%.1f / %.1f GiB)"),
                          mp->target_level * 100.0, used_gib, total_gib);
     if (mp->swap_frac > 0.005)
-        n += g_snprintf(buf + n, sizeof(buf) - n, "\nSwap: %.0f%% used", mp->swap_frac * 100.0);
+        n += g_snprintf(buf + n, sizeof(buf) - n, _("\nSwap: %.0f%% used"), mp->swap_frac * 100.0);
     if (mp->disk_total_bytes > 0)
-        n += g_snprintf(buf + n, sizeof(buf) - n, "\nDisk: %.0f%% used (%.1f / %.1f GiB)",
+        n += g_snprintf(buf + n, sizeof(buf) - n, _("\nDisk: %.0f%% used (%.1f / %.1f GiB)"),
                          mp->disk_frac * 100.0, disk_used_gib, disk_total_gib);
 
     gboolean mem_warning = mp->warn_target >= WARNING_LEVEL;
     gboolean disk_warning = mp->disk_frac >= DISK_WARNING_LEVEL;
     if (mem_warning && disk_warning)
         n += g_snprintf(buf + n, sizeof(buf) - n,
-                   "\n\xE2\x9A\xA0 Memory contention and disk space are both tight");
+                   _("\n\xE2\x9A\xA0 Memory contention and disk space are both tight"));
     else if (mem_warning)
         n += g_snprintf(buf + n, sizeof(buf) - n,
-                   "\n\xE2\x9A\xA0 Memory contention -- consider closing some programs");
+                   _("\n\xE2\x9A\xA0 Memory contention -- consider closing some programs"));
     else if (disk_warning)
         n += g_snprintf(buf + n, sizeof(buf) - n,
-                   "\n\xE2\x9A\xA0 Disk space low -- consider freeing some up");
+                   _("\n\xE2\x9A\xA0 Disk space low -- consider freeing some up"));
     else
         n += g_snprintf(buf + n, sizeof(buf) - n, "\n%s", mem_status_text(mp->target_level));
 
     TopProc top[TOP_PROC_COUNT];
     gint top_n = get_top_processes(top, TOP_PROC_COUNT);
     if (top_n > 0) {
-        n += g_snprintf(buf + n, sizeof(buf) - n, "\n\nTop RAM:");
+        n += g_snprintf(buf + n, sizeof(buf) - n, _("\n\nTop RAM:"));
         for (gint i = 0; i < top_n && n < (gint) sizeof(buf); i++) {
             gdouble gb = MAX(top[i].rss_kib / 1048576.0, TOP_PROC_MIN_DISPLAY_GB);
             gdouble pct_of_ram = mp->mem_total_kib > 0
@@ -902,7 +915,7 @@ on_configure_plugin(XfcePanelPlugin *plugin, MemPlugin *mp)
 {
     GtkWidget *dialog = gtk_dialog_new_with_buttons(
         "Memory Liquid", GTK_WINDOW(gtk_widget_get_toplevel(GTK_WIDGET(plugin))),
-        GTK_DIALOG_DESTROY_WITH_PARENT, "_Close", GTK_RESPONSE_CLOSE, NULL);
+        GTK_DIALOG_DESTROY_WITH_PARENT, _("_Close"), GTK_RESPONSE_CLOSE, NULL);
     gtk_window_set_icon_name(GTK_WINDOW(dialog), "utilities-system-monitor");
 
     GtkWidget *grid = gtk_grid_new();
@@ -910,12 +923,12 @@ on_configure_plugin(XfcePanelPlugin *plugin, MemPlugin *mp)
     gtk_grid_set_column_spacing(GTK_GRID(grid), 12);
     gtk_container_set_border_width(GTK_CONTAINER(grid), 12);
 
-    GtkWidget *enabled_check = gtk_check_button_new_with_label("Enabled (off freezes the liquid motion)");
+    GtkWidget *enabled_check = gtk_check_button_new_with_label(_("Enabled (off freezes the liquid motion)"));
     gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(enabled_check), mp->enabled);
     g_signal_connect(enabled_check, "toggled", G_CALLBACK(on_enabled_toggled), mp);
     gtk_grid_attach(GTK_GRID(grid), enabled_check, 0, 0, 2, 1);
 
-    GtkWidget *fps_label = gtk_label_new("Frame rate, fps:");
+    GtkWidget *fps_label = gtk_label_new(_("Frame rate, fps:"));
     gtk_widget_set_halign(fps_label, GTK_ALIGN_START);
     GtkWidget *fps_spin = gtk_spin_button_new_with_range(MIN_FPS, MAX_FPS, 1);
     gtk_spin_button_set_value(GTK_SPIN_BUTTON(fps_spin), mp->fps);
@@ -923,15 +936,15 @@ on_configure_plugin(XfcePanelPlugin *plugin, MemPlugin *mp)
     gtk_grid_attach(GTK_GRID(grid), fps_label, 0, 1, 1, 1);
     gtk_grid_attach(GTK_GRID(grid), fps_spin, 1, 1, 1, 1);
 
-    GtkWidget *percent_check = gtk_check_button_new_with_label("Show percentage inside the tank");
+    GtkWidget *percent_check = gtk_check_button_new_with_label(_("Show percentage inside the tank"));
     gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(percent_check), mp->show_percent);
     g_signal_connect(percent_check, "toggled", G_CALLBACK(on_show_percent_toggled), mp);
     gtk_grid_attach(GTK_GRID(grid), percent_check, 0, 2, 2, 1);
 
     GtkWidget *count_mapped_check = gtk_check_button_new_with_label(
-        "Count loaded mmap'd file pages as used (e.g. LLM weights)");
+        _("Count loaded mmap'd file pages as used (e.g. LLM weights)"));
     gtk_widget_set_tooltip_text(count_mapped_check,
-        "On (default): counts resident/loaded mmap'd pages as used, even "
+        _("On (default): counts resident/loaded mmap'd pages as used, even "
         "though clean, because evicting an actively-read mapping (like a "
         "model file mmap'd by llama.cpp) causes real refault stalls, not "
         "just a free drop. Pages a program has merely reserved via mmap but "
@@ -939,18 +952,18 @@ on_configure_plugin(XfcePanelPlugin *plugin, MemPlugin *mp)
         "Off: matches MemAvailable -- clean mmap'd pages (plain file cache) "
         "count as free since the kernel can drop them for nothing.\n"
         "Either way, the \xE2\x9A\xA0 warning always tracks the "
-        "MemAvailable-based reading, not this setting.");
+        "MemAvailable-based reading, not this setting."));
     gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(count_mapped_check), mp->count_mapped);
     g_signal_connect(count_mapped_check, "toggled", G_CALLBACK(on_count_mapped_toggled), mp);
     gtk_grid_attach(GTK_GRID(grid), count_mapped_check, 0, 3, 2, 1);
 
     GtkWidget *friendly_check = gtk_check_button_new_with_label(
-        "Use plain-English names in the Top RAM tooltip list (e.g. \"window drawing\" for Xorg)");
+        _("Use plain-English names in the Top RAM tooltip list (e.g. \"window drawing\" for Xorg)"));
     gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(friendly_check), mp->friendly_names);
     g_signal_connect(friendly_check, "toggled", G_CALLBACK(on_friendly_names_toggled), mp);
     gtk_grid_attach(GTK_GRID(grid), friendly_check, 0, 4, 2, 1);
 
-    GtkWidget *margin_label = gtk_label_new("Margin color:");
+    GtkWidget *margin_label = gtk_label_new(_("Margin color:"));
     gtk_widget_set_halign(margin_label, GTK_ALIGN_START);
     GdkRGBA margin_rgba = { mp->margin_rgb[0], mp->margin_rgb[1], mp->margin_rgb[2], 1.0 };
     GtkWidget *margin_button = gtk_color_button_new_with_rgba(&margin_rgba);
@@ -992,6 +1005,9 @@ mem_free(XfcePanelPlugin *plugin, MemPlugin *mp)
 static void
 mem_construct(XfcePanelPlugin *plugin)
 {
+    bindtextdomain("mem-liquid", LOCALE_DIR);
+    bind_textdomain_codeset("mem-liquid", "UTF-8");
+
     MemPlugin *mp = g_new0(MemPlugin, 1);
     mp->plugin = plugin;
     mp->last_tick_us = g_get_monotonic_time();

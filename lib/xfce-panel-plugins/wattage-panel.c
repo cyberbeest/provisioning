@@ -21,18 +21,29 @@
  *
  * Built as an "external" plugin (X-XFCE-Internal=FALSE), same as
  * kitt-scanner, so a crash here takes down only this plugin's process.
+ *
+ * User-visible strings are translated via gettext, domain "wattage-panel"
+ * (see the German catalog at po/wattage-panel.de.po) -- see kitt-scanner.c's
+ * own i18n comment for why _() calls dgettext() directly instead of
+ * gettext() + textdomain().
  */
 
 #include <gtk/gtk.h>
 #include <gdk/gdkx.h>
 #include <X11/Xlib.h>
 #include <X11/extensions/dpms.h>
+#include <libintl.h>
 #include <libxfce4panel/libxfce4panel.h>
 #include <libxfce4util/libxfce4util.h>
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
+
+/* libxfce4util's xfce-i18n.h (pulled in above) already #defines _() as
+ * bare gettext() -- redefine it to our per-plugin dgettext() instead. */
+#undef _
+#define _(String) dgettext("wattage-panel", String)
 
 #define BAT_PATH "/sys/class/power_supply/BAT0"
 #define SAMPLE_INTERVAL_MS 3000
@@ -346,7 +357,7 @@ watt_update_label(WattPlugin *wp)
     gdouble power_uw = 0, energy_uwh = 0, capacity = 0;
 
     if (!wp->have_battery) {
-        gtk_label_set_text(GTK_LABEL(wp->label), "no battery");
+        gtk_label_set_text(GTK_LABEL(wp->label), _("no battery"));
         return;
     }
 
@@ -406,16 +417,18 @@ watt_update_label(WattPlugin *wp)
             }
             break;
         case BATT_CHARGING:
-            g_snprintf(text, sizeof(text), "%.1fW chg", watts);
+            /* Short on purpose: this is the whole panel label, not a
+             * sentence -- "lädt" (not a translated "chg") stays terse. */
+            g_snprintf(text, sizeof(text), _("%.1fW chg"), watts);
             break;
         default:
-            g_snprintf(text, sizeof(text), "AC");
+            g_snprintf(text, sizeof(text), _("AC"));
             break;
     }
     gtk_label_set_text(GTK_LABEL(wp->label), text);
 
     GString *tooltip = g_string_new(NULL);
-    g_string_append_printf(tooltip, "Battery: %.0f%% (%s)\nPower: %.1f W (instant, as reported)",
+    g_string_append_printf(tooltip, _("Battery: %.0f%% (%s)\nPower: %.1f W (instant, as reported)"),
                             capacity, status_buf, watts);
 
     if (status == BATT_DISCHARGING) {
@@ -423,7 +436,7 @@ watt_update_label(WattPlugin *wp)
         gchar elapsed_buf[32];
         g_snprintf(elapsed_buf, sizeof(elapsed_buf), "%d:%02d",
                    (int) (elapsed_s / 60), (int) (elapsed_s % 60));
-        g_string_append_printf(tooltip, "\n\nAverages since on battery (%s):", elapsed_buf);
+        g_string_append_printf(tooltip, _("\n\nAverages since on battery (%s):"), elapsed_buf);
 
         for (guint i = 0; i < AVG_WINDOWS_COUNT; i++) {
             gdouble w;
@@ -434,23 +447,23 @@ watt_update_label(WattPlugin *wp)
              * data, even if we haven't been on battery for its full nominal
              * length yet. */
             if (watt_window_average(wp, now_s, AVG_WINDOWS[i].seconds, &w, &ticks))
-                g_string_append_printf(tooltip, "\n  %-6s: %.1f W  (%u tick%s)",
-                                        AVG_WINDOWS[i].label, w, ticks, ticks == 1 ? "" : "s");
+                g_string_append_printf(tooltip, "\n  %-6s: %.1f W  (%u %s)",
+                                        AVG_WINDOWS[i].label, w, ticks, ticks == 1 ? _("tick") : _("ticks"));
             else
-                g_string_append_printf(tooltip, "\n  %-6s: not enough data yet", AVG_WINDOWS[i].label);
+                g_string_append_printf(tooltip, "\n  %-6s: %s", AVG_WINDOWS[i].label, _("not enough data yet"));
         }
 
         gdouble session_w;
         guint session_ticks;
         if (watt_window_average(wp, now_s, elapsed_s + 1, &session_w, &session_ticks))
-            g_string_append_printf(tooltip, "\n  %-6s: %.1f W  (%u tick%s)",
-                                    "all", session_w, session_ticks, session_ticks == 1 ? "" : "s");
+            g_string_append_printf(tooltip, "\n  %-6s: %.1f W  (%u %s)",
+                                    _("all"), session_w, session_ticks, session_ticks == 1 ? _("tick") : _("ticks"));
         else
-            g_string_append_printf(tooltip, "\n  %-6s: not enough data yet", "all");
+            g_string_append_printf(tooltip, "\n  %-6s: %s", _("all"), _("not enough data yet"));
     }
 
     if (wp->debug_raw) {
-        g_string_append(tooltip, "\n\nLast raw energy_now readings:");
+        g_string_append(tooltip, _("\n\nLast raw energy_now readings:"));
         guint n = wp->debug_ring_count;
         guint ring_start = (wp->debug_ring_next + DEBUG_RING_SIZE - n) % DEBUG_RING_SIZE;
         for (guint k = 0; k < n; k++) {
@@ -607,7 +620,7 @@ on_configure_plugin(XfcePanelPlugin *plugin, WattPlugin *wp)
 {
     GtkWidget *dialog = gtk_dialog_new_with_buttons(
         "Battery Wattage", GTK_WINDOW(gtk_widget_get_toplevel(GTK_WIDGET(plugin))),
-        GTK_DIALOG_DESTROY_WITH_PARENT, "_Close", GTK_RESPONSE_CLOSE, NULL);
+        GTK_DIALOG_DESTROY_WITH_PARENT, _("_Close"), GTK_RESPONSE_CLOSE, NULL);
     gtk_window_set_icon_name(GTK_WINDOW(dialog), "battery");
 
     GtkWidget *grid = gtk_grid_new();
@@ -616,7 +629,7 @@ on_configure_plugin(XfcePanelPlugin *plugin, WattPlugin *wp)
     gtk_container_set_border_width(GTK_CONTAINER(grid), 12);
 
     GtkWidget *debug_check = gtk_check_button_new_with_label(
-        "Show last 10 raw energy_now readings in tooltip (debug)");
+        _("Show last 10 raw energy_now readings in tooltip (debug)"));
     gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(debug_check), wp->debug_raw);
     g_signal_connect(debug_check, "toggled", G_CALLBACK(on_debug_raw_toggled), wp);
     gtk_grid_attach(GTK_GRID(grid), debug_check, 0, 0, 2, 1);
@@ -642,13 +655,16 @@ watt_free(XfcePanelPlugin *plugin, WattPlugin *wp)
 static void
 watt_construct(XfcePanelPlugin *plugin)
 {
+    bindtextdomain("wattage-panel", LOCALE_DIR);
+    bind_textdomain_codeset("wattage-panel", "UTF-8");
+
     WattPlugin *wp = g_new0(WattPlugin, 1);
     wp->plugin = plugin;
     wp->ticks = g_array_new(FALSE, FALSE, sizeof(EnergyPoint));
     wp->have_battery = g_file_test(BAT_PATH, G_FILE_TEST_IS_DIR);
     watt_load_settings(wp);
 
-    wp->label = gtk_label_new(wp->have_battery ? "..." : "no battery");
+    wp->label = gtk_label_new(wp->have_battery ? "..." : _("no battery"));
     gtk_container_add(GTK_CONTAINER(plugin), wp->label);
     gtk_widget_show_all(GTK_WIDGET(plugin));
     xfce_panel_plugin_add_action_widget(plugin, wp->label);

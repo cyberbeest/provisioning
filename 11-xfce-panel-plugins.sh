@@ -14,7 +14,7 @@ echo "=== $(date) : building custom xfce4-panel plugins ==="
 
 echo "--- Installing build dependencies ---"
 apt-get -o DPkg::Lock::Timeout=60 update -qq
-apt-get -o DPkg::Lock::Timeout=60 install -y build-essential pkg-config \
+apt-get -o DPkg::Lock::Timeout=60 install -y build-essential pkg-config gettext \
 	libxfce4panel-2.0-dev libxfce4util-dev libxfce4ui-2-dev \
 	libgtk-3-dev libx11-dev libxext-dev
 

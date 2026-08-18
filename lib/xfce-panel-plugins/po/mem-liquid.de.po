@@ -1,0 +1,64 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: mem-liquid\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: de\n"
+
+msgid "= Idle ="
+msgstr "= Leerlauf ="
+
+msgid "= Light load ="
+msgstr "= Geringe Last ="
+
+msgid "= Steady ="
+msgstr "= Stabil ="
+
+msgid "= Filling up ="
+msgstr "= Füllt sich ="
+
+msgid "RAM: %.0f%% used (%.1f / %.1f GiB)"
+msgstr "RAM: %.0f%% belegt (%.1f / %.1f GiB)"
+
+msgid "\nSwap: %.0f%% used"
+msgstr "\nSwap: %.0f%% belegt"
+
+msgid "\nDisk: %.0f%% used (%.1f / %.1f GiB)"
+msgstr "\nFestplatte: %.0f%% belegt (%.1f / %.1f GiB)"
+
+msgid "\n⚠ Memory contention and disk space are both tight"
+msgstr "\n⚠ Arbeitsspeicher und Festplattenspeicher sind beide knapp"
+
+msgid "\n⚠ Memory contention -- consider closing some programs"
+msgstr "\n⚠ Arbeitsspeicher wird knapp -- einige Programme schließen?"
+
+msgid "\n⚠ Disk space low -- consider freeing some up"
+msgstr "\n⚠ Festplattenspeicher wird knapp -- etwas Platz freigeben?"
+
+msgid "\n\nTop RAM:"
+msgstr "\n\nTop-RAM:"
+
+msgid "_Close"
+msgstr "_Schließen"
+
+msgid "Enabled (off freezes the liquid motion)"
+msgstr "Aktiviert (aus friert die Flüssigkeitsbewegung ein)"
+
+msgid "Frame rate, fps:"
+msgstr "Bildrate, fps:"
+
+msgid "Show percentage inside the tank"
+msgstr "Prozentsatz im Tank anzeigen"
+
+msgid "Count loaded mmap'd file pages as used (e.g. LLM weights)"
+msgstr "Geladene mmap-Dateiseiten als belegt zählen (z. B. LLM-Gewichte)"
+
+msgid "On (default): counts resident/loaded mmap'd pages as used, even though clean, because evicting an actively-read mapping (like a model file mmap'd by llama.cpp) causes real refault stalls, not just a free drop. Pages a program has merely reserved via mmap but never touched still don't count -- only what's actually resident.\nOff: matches MemAvailable -- clean mmap'd pages (plain file cache) count as free since the kernel can drop them for nothing.\nEither way, the ⚠ warning always tracks the MemAvailable-based reading, not this setting."
+msgstr "Ein (Standard): zählt aktuell geladene mmap-Seiten als belegt, obwohl sauber -- denn das Verdrängen eines aktiv gelesenen Mappings (z. B. eine von llama.cpp mmap'te Modelldatei) verursacht echte Nachlade-Verzögerungen, nicht nur eine kostenlose Freigabe. Seiten, die ein Programm per mmap nur reserviert, aber nie angefasst hat, zählen weiterhin nicht mit -- nur tatsächlich geladene Seiten.\nAus: entspricht MemAvailable -- saubere mmap-Seiten (reiner Dateicache) zählen als frei, da der Kernel sie kostenlos verwerfen kann.\nIn beiden Fällen richtet sich die ⚠-Warnung immer nach dem MemAvailable-Wert, unabhängig von dieser Einstellung."
+
+msgid "Use plain-English names in the Top RAM tooltip list (e.g. \"window drawing\" for Xorg)"
+msgstr "Verständliche Namen in der Top-RAM-Liste im Tooltip verwenden (z. B. „Fensterdarstellung“ für Xorg)"
+
+msgid "Margin color:"
+msgstr "Randfarbe:"
