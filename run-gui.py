@@ -702,6 +702,10 @@ class RunGuiWindow(Gtk.Window):
         else:
             self.status_label.set_text("Finished successfully.")
             if self.current_run_is_batch:
+                # Supersedes the weaker "reboot or log out/in" locale/keyboard
+                # todo, if present -- no point showing both once a full
+                # reboot is already on offer.
+                self.todos.pop("00-locale-keyboard-timezone.sh", None)
                 self._add_todo(
                     REBOOT_TODO_KEY,
                     "Reboot to fully apply everything from this run.",
