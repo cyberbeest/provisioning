@@ -81,4 +81,56 @@ fi
 echo "--- enabling for persistence across reboots ---"
 systemctl enable dnscrypt-proxy.socket dnscrypt-proxy.service dnscrypt-proxy-resolvconf.service 2>&1
 
+# "fritz.box" is a public domain AVM (the FritzBox maker) actually owns, and
+# encrypted-DNS resolvers like Cloudflare answer it with AVM's real public
+# server rather than the local router. Plain DNS to the router itself doesn't
+# have this problem: FritzBox routers specially intercept "fritz.box" queries
+# and answer with themselves. Forward that domain in plaintext directly to
+# the router's factory-default LAN IP so local admin access keeps working.
+RULES=/etc/dnscrypt-proxy/forwarding-rules.txt
+echo "--- adding fritz.box forwarding rule (local router access) ---"
+cat > "$RULES" <<'EOF'
+fritz.box 192.168.178.1
+*.fritz.box 192.168.178.1
+EOF
+CONF=/etc/dnscrypt-proxy/dnscrypt-proxy.toml
+# Must sit at the top level (alongside listen_addresses/server_names), not
+# appended at EOF -- appending lands inside the trailing [sources.*] table
+# and dnscrypt-proxy refuses to start ("Unsupported key in configuration
+# file"), breaking all DNS. Insert right after server_names instead.
+sed -i "/^forwarding_rules/d" "$CONF"
+sed -i "/^server_names/a forwarding_rules = '$RULES'" "$CONF"
+systemctl restart dnscrypt-proxy.service
+sleep 1
+getent hosts anthropic.com || echo "WARNING: general DNS resolution broken after adding forwarding rule"
+
+# "Disable Encrypted DNS" troubleshooting toggle (Whisker entry + panel
+# icon): forwarding_rules can't cover every router vendor's own version of
+# the fritz.box collision above, so this is the escape hatch. Deliberately
+# does NOT disable the systemd units -- see lib/setup_dot_toggle.py -- so a
+# reboot always brings encrypted DNS back even if left off.
+echo "--- installing dot-toggle sudoers rule ---"
+DOT_SUDOERS=/etc/sudoers.d/dot-toggle
+TMP_FILE="$(mktemp)"
+cat > "$TMP_FILE" <<'EOF'
+cyberbeest ALL=(root) NOPASSWD: /usr/bin/systemctl stop dnscrypt-proxy-resolvconf.service dnscrypt-proxy.socket dnscrypt-proxy.service
+cyberbeest ALL=(root) NOPASSWD: /usr/bin/systemctl start dnscrypt-proxy.socket
+EOF
+if visudo -c -f "$TMP_FILE"; then
+    install -m 0440 -o root -g root "$TMP_FILE" "$DOT_SUDOERS"
+else
+    echo "FAIL: visudo syntax check failed for dot-toggle sudoers rule"
+fi
+rm -f "$TMP_FILE"
+
+TARGET_USER="${SUDO_USER:-cyberbeest}"
+TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
+DIR="$(cd "$(dirname "$BASH_SOURCE")" && pwd)"
+
+echo "--- installing DoT toggle scripts for $TARGET_USER ---"
+install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.local/bin"
+install -o "$TARGET_USER" -g "$TARGET_USER" -m 755 \
+    "$DIR/lib/setup_dot_toggle.py" "$TARGET_HOME/.local/bin/setup_dot_toggle.py"
+runuser -u "$TARGET_USER" -- python3 "$TARGET_HOME/.local/bin/setup_dot_toggle.py"
+
 echo "=== $(date) SUCCESS: dnscrypt-proxy is live, DNS resolution confirmed working through it ==="
