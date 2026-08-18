@@ -53,7 +53,13 @@ fi
 
 echo "--- Enabling trixie-backports (needed for telegram-desktop) ---"
 BACKPORTS_LIST=/etc/apt/sources.list.d/cyberbeest-backports.list
-if [ ! -e "$BACKPORTS_LIST" ]; then
+# Check all apt source files, not just our own -- registering the same
+# Release target twice (e.g. it's already in sources.list from the Debian
+# installer) makes apt log "configured multiple times" warnings and floods
+# the security-update-check log with repeated "delayed item" retries.
+if grep -rqs "^deb .*trixie-backports" /etc/apt/sources.list /etc/apt/sources.list.d/*.list 2>/dev/null; then
+    echo "trixie-backports already enabled, skipping"
+elif [ ! -e "$BACKPORTS_LIST" ]; then
     echo "deb http://deb.debian.org/debian trixie-backports main contrib non-free non-free-firmware" > "$BACKPORTS_LIST"
     echo "Enabled trixie-backports via $BACKPORTS_LIST"
 else
