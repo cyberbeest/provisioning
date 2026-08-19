@@ -70,8 +70,24 @@ echo "--- Running xdg-user-dirs-update as $TARGET_USER, under their configured l
 LOCALE_VALUE="$(. /etc/default/locale 2>/dev/null; echo "${LANG:-en_US.UTF-8}")"
 su - "$TARGET_USER" -c "LANG='$LOCALE_VALUE' LC_ALL='$LOCALE_VALUE' xdg-user-dirs-update"
 
+# gettext silently falls back to the untranslated string -- exit 0, no
+# warning of its own -- if $LOCALE_VALUE isn't actually a generated glibc
+# locale (confirmed: `LC_MESSAGES=de_DE.UTF-8 gettext -d xdg-user-dirs
+# Pictures` prints plain "Pictures" when de_DE.UTF-8 is missing from
+# `locale -a`, same exit code as a real, deliberate non-translation). The
+# loop below can't tell "this locale genuinely doesn't translate this
+# folder" apart from "gettext couldn't load the locale at all", so check
+# that precondition directly here instead of trusting its output blind.
+# Compare case/hyphen-insensitively since /etc/default/locale spells it
+# "de_DE.UTF-8" but `locale -a` lists "de_DE.utf8".
+LOCALE_NORM="$(echo "$LOCALE_VALUE" | tr 'A-Z' 'a-z' | tr -d '-')"
+if ! locale -a | tr 'A-Z' 'a-z' | tr -d '-' | grep -qx "$LOCALE_NORM"; then
+	echo "MANUAL_TODO: locale $LOCALE_VALUE is not actually generated on this machine (check 'locale -a'), so folder names could NOT be translated to match it even though that's what was configured. Run 'sudo dpkg-reconfigure locales' (or re-run 00-locale-keyboard-timezone.sh) to fix the locale, then re-run 08-xdg-user-dirs.sh." >&3
+fi
+
 USER_DIRS_FILE="$TARGET_HOME/.config/user-dirs.dirs"
 DEFAULTS_FILE="/etc/xdg/user-dirs.defaults"
+ANY_TRANSLATED=0
 
 echo "--- Reconciling fixed English names against what this locale actually translates them to ---"
 while IFS='=' read -r key default_name; do
@@ -81,6 +97,7 @@ while IFS='=' read -r key default_name; do
 	if [ "$translated_name" = "$default_name" ]; then
 		continue # genuinely untranslated in this locale (e.g. Downloads, Videos under German) -- nothing to do
 	fi
+	ANY_TRANSLATED=1
 
 	eng_path="$TARGET_HOME/$default_name"
 	real_path="$TARGET_HOME/$translated_name"
@@ -111,5 +128,18 @@ while IFS='=' read -r key default_name; do
 		echo "Created $translated_name"
 	fi
 done < <(grep -v '^#' "$DEFAULTS_FILE" | grep '=')
+
+# Belt-and-suspenders on top of the locale-generated check above: Desktop
+# and Pictures both translate under every locale this project ships
+# (de/de_AT/de_CH -- see 00-locale-keyboard-timezone.sh's COUNTRIES table),
+# so a non-English LOCALE_VALUE that translated nothing at all is still
+# suspicious even if `locale -a` looked fine, e.g. the .mo catalog itself
+# being missing/corrupt. Restrict to "de" specifically since that's the
+# only non-English UI this project supports; a locale outside that (picked
+# via dpkg-reconfigure by hand) may legitimately have no xdg-user-dirs
+# translation at all.
+if [ "$ANY_TRANSLATED" -eq 0 ] && [ "${LOCALE_VALUE%%_*}" = "de" ]; then
+	echo "MANUAL_TODO: locale is $LOCALE_VALUE but no folder name (Desktop, Pictures, ...) actually translated -- expected at least those two under German. Check 'locale -a' and /usr/share/locale/de/LC_MESSAGES/xdg-user-dirs.mo, then re-run 08-xdg-user-dirs.sh." >&3
+fi
 
 echo "=== $(date) : done ==="
