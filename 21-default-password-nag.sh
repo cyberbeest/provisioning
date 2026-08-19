@@ -33,6 +33,7 @@ echo "=== $(date) : installing default-password nag ==="
 
 TARGET_USER="${SUDO_USER:-cyberbeest}"
 TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
+. "$DIR/lib/xdg-dirs.sh"
 
 echo "--- Installing dependencies ---"
 apt-get -o DPkg::Lock::Timeout=60 update -qq
@@ -67,9 +68,10 @@ install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.local/bin/i18n"
 install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 "$DIR"/lib/i18n/strings_*.py "$TARGET_HOME/.local/bin/i18n/"
 
 echo "--- Installing icon ---"
-install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/Pictures"
+PICTURES_DIR="$(xdg_dir PICTURES)"
+install -d -o "$TARGET_USER" -g "$TARGET_USER" "$PICTURES_DIR"
 install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 \
-	"$DIR/lib/assets/Cyberbeest-black.png" "$TARGET_HOME/Pictures/Cyberbeest-black.png"
+	"$DIR/lib/assets/Cyberbeest-black.png" "$PICTURES_DIR/Cyberbeest-black.png"
 
 echo "--- Installing app menu entry (Whisker menu, Settings category) ---"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.local/share/applications"
@@ -81,7 +83,7 @@ Name[de]=Cyberbeest-Passwörter & Start
 Comment=Passwords, boot screen, and startup/shutdown sounds
 Comment[de]=Passwörter, Startbildschirm und Start-/Herunterfahrton
 Exec=$TARGET_HOME/.local/bin/cyberbeest-change-password
-Icon=$TARGET_HOME/Pictures/Cyberbeest-black.png
+Icon=$PICTURES_DIR/Cyberbeest-black.png
 Terminal=false
 Categories=Cyberbeest;Settings;
 StartupNotify=true

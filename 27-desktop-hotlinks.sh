@@ -32,6 +32,10 @@ echo "=== $(date) : installing desktop hotlinks ==="
 TARGET_USER="${SUDO_USER:-cyberbeest}"
 TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
 TARGET_UID="$(id -u "$TARGET_USER")"
+. "$DIR/lib/xdg-dirs.sh"
+DESKTOP_DIR="$(xdg_dir DESKTOP)"
+PICTURES_DIR="$(xdg_dir PICTURES)"
+DOWNLOADS_DIR="$(xdg_dir DOWNLOAD)"
 HAVE_SESSION=0
 if [ -d "/run/user/$TARGET_UID" ]; then
 	HAVE_SESSION=1
@@ -39,10 +43,18 @@ if [ -d "/run/user/$TARGET_UID" ]; then
 fi
 
 echo "--- Adding Pictures and Downloads link launchers to the desktop ---"
-install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/Desktop"
+install -d -o "$TARGET_USER" -g "$TARGET_USER" "$DESKTOP_DIR"
 
 write_desktop_link() {
-	local name="$1" icon="$2" target="$3" dest="$TARGET_HOME/Desktop/$1.desktop" sum
+	local name="$1" icon="$2" target="$3" legacy_name="$4" dest="$DESKTOP_DIR/$1.desktop" sum
+	# Drop a launcher left over from before this folder's real name was
+	# resolved via xdg_dir (e.g. Pictures.desktop, orphaned once German
+	# renamed the actual folder to Bilder) -- same link, stale name, and
+	# otherwise left sitting there pointing at a folder that no longer
+	# exists.
+	if [ "$legacy_name" != "$name" ]; then
+		rm -f "$DESKTOP_DIR/$legacy_name.desktop"
+	fi
 	sudo -u "$TARGET_USER" tee "$dest" >/dev/null <<-EOF
 	[Desktop Entry]
 	Type=Link
@@ -62,19 +74,32 @@ write_desktop_link() {
 	fi
 }
 
-write_desktop_link "Pictures" "folder-pictures" "$TARGET_HOME/Pictures"
-write_desktop_link "Downloads" "folder-download" "$TARGET_HOME/Downloads"
+PICTURES_NAME="$(basename "$PICTURES_DIR")"
+DOWNLOADS_NAME="$(basename "$DOWNLOADS_DIR")"
+write_desktop_link "$PICTURES_NAME" "folder-pictures" "$PICTURES_DIR" "Pictures"
+write_desktop_link "$DOWNLOADS_NAME" "folder-download" "$DOWNLOADS_DIR" "Downloads"
 
 echo "--- Adding Pictures and Downloads to the file manager's Places sidebar ---"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.config/gtk-3.0"
 BOOKMARKS="$TARGET_HOME/.config/gtk-3.0/bookmarks"
 sudo -u "$TARGET_USER" touch "$BOOKMARKS"
-for entry in "Pictures" "Downloads"; do
-	line="file://$TARGET_HOME/$entry $entry"
+
+sync_bookmark() {
+	local dir="$1" legacy_name="$2" entry line
+	entry="$(basename "$dir")"
+	# Same stale-name cleanup as the desktop launchers above, for the
+	# Places sidebar's bookmarks file.
+	if [ "$legacy_name" != "$entry" ]; then
+		sudo -u "$TARGET_USER" sed -i "\#^file://$TARGET_HOME/$legacy_name #d" "$BOOKMARKS"
+	fi
+	line="file://$dir $entry"
 	if ! grep -qxF "$line" "$BOOKMARKS"; then
 		sudo -u "$TARGET_USER" bash -c "echo '$line' >> '$BOOKMARKS'"
 	fi
-done
+}
+
+sync_bookmark "$PICTURES_DIR" "Pictures"
+sync_bookmark "$DOWNLOADS_DIR" "Downloads"
 
 echo "--- Hiding the 'File System' special icon (leaves Home/Trash alone) ---"
 if [ "$HAVE_SESSION" -eq 1 ]; then
@@ -84,6 +109,24 @@ if [ "$HAVE_SESSION" -eq 1 ]; then
 else
 	echo "no active session for $TARGET_USER -- xfconf needs a running session, skipping;" \
 		"re-run this script (or set it by hand) once logged in"
+fi
+
+echo "--- Restarting xfdesktop for the logged-in user, if one is running ---"
+# --reload only refreshes xfconf-backed settings (backdrop, icon
+# positions); it does NOT make a long-running process re-derive
+# XDG_DESKTOP_DIR -- glib caches special-dirs like the desktop folder once
+# per process at startup. After the folder itself gets renamed (e.g.
+# Desktop -> Schreibtisch), a live xfdesktop keeps watching the now-gone
+# old path and silently shows no icons at all -- confirmed 2026-08-19:
+# --reload left the desktop empty, a full kill+relaunch fixed it
+# immediately. Same class of stale-in-memory-state issue
+# 12-xfce-panel-layout.sh already works around for xfconfd/the panel.
+if [ "$HAVE_SESSION" -eq 1 ] && pgrep -u "$TARGET_USER" -x xfdesktop >/dev/null; then
+	pkill -u "$TARGET_USER" -x xfdesktop || true
+	sleep 1
+	sudo -u "$TARGET_USER" DISPLAY="${DISPLAY:-:0}" DBUS_SESSION_BUS_ADDRESS="$DBUS_ADDR" \
+		nohup xfdesktop >/dev/null 2>&1 &
+	disown
 fi
 
 echo "=== $(date) : done ==="

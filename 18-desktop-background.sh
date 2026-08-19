@@ -23,13 +23,15 @@ echo "=== $(date) : installing desktop background ==="
 
 TARGET_USER="${SUDO_USER:-cyberbeest}"
 TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
+. "$DIR/lib/xdg-dirs.sh"
 
 echo "--- Installing wallpaper images ---"
-install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/Pictures"
+PICTURES_DIR="$(xdg_dir PICTURES)"
+install -d -o "$TARGET_USER" -g "$TARGET_USER" "$PICTURES_DIR"
 install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 \
-	"$DIR/lib/assets/cyberbeest-desktop-bg.png" "$TARGET_HOME/Pictures/Cyberbeest.png"
+	"$DIR/lib/assets/cyberbeest-desktop-bg.png" "$PICTURES_DIR/Cyberbeest.png"
 install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 \
-	"$DIR/lib/assets/cyberbeest-desktop-bg-simplified.png" "$TARGET_HOME/Pictures/Cyberbeest-simplified.png"
+	"$DIR/lib/assets/cyberbeest-desktop-bg-simplified.png" "$PICTURES_DIR/Cyberbeest-simplified.png"
 
 echo "--- Also dropping it into /usr/share/backgrounds/xfce/ ---"
 # So it's directly pickable from Desktop Settings' "xfce" folder (the one

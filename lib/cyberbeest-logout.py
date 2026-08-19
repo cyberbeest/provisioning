@@ -8,7 +8,15 @@ import sys
 
 from i18n import t
 
-LOGO_PATH = os.path.expanduser("~/Pictures/Cyberbeest-green.png")
+
+def _pictures_dir():
+    try:
+        return subprocess.check_output(["xdg-user-dir", "PICTURES"], text=True).strip()
+    except (OSError, subprocess.CalledProcessError):
+        return os.path.expanduser("~/Pictures")
+
+
+LOGO_PATH = os.path.join(_pictures_dir(), "Cyberbeest-green.png")
 
 ACTIONS = [
     (t("logout.lock"), ["xflock4"]),

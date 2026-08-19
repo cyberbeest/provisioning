@@ -33,6 +33,7 @@ echo "=== $(date) : applying xfce4 panel layout ==="
 
 TARGET_USER="${SUDO_USER:-cyberbeest}"
 TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
+. "$DIR/lib/xdg-dirs.sh"
 LAYOUT="$DIR/lib/xfce-panel-layout"
 
 echo "--- Installing whiskermenu, genmon, power-manager and pulseaudio panel plugins ---"
@@ -71,9 +72,10 @@ install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 "$DIR"/lib/i18n/strings_*.py 
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.local/share/update-genmon-icons"
 install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 \
 	"$DIR/lib/assets/ok-check.png" "$TARGET_HOME/.local/share/update-genmon-icons/ok-check.png"
-install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/Pictures"
+PICTURES_DIR="$(xdg_dir PICTURES)"
+install -d -o "$TARGET_USER" -g "$TARGET_USER" "$PICTURES_DIR"
 install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 \
-	"$DIR/lib/assets/Cyberbeest-panel-icon.png" "$TARGET_HOME/Pictures/Cyberbeest-panel-icon.png"
+	"$DIR/lib/assets/Cyberbeest-panel-icon.png" "$PICTURES_DIR/Cyberbeest-panel-icon.png"
 
 # The pulseaudio plugin's volume icon comes from Adwaita (not hicolor --
 # Tango, the active GTK icon theme, inherits from Adwaita before falling

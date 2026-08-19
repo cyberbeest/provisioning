@@ -11,6 +11,7 @@ echo "=== $(date) : installing cyberbeest-logout dialog ==="
 
 TARGET_USER="${SUDO_USER:-cyberbeest}"
 TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
+. "$DIR/lib/xdg-dirs.sh"
 
 echo "--- Installing python3-gi (GTK bindings the dialog needs) ---"
 apt-get -o DPkg::Lock::Timeout=60 update -qq
@@ -30,9 +31,10 @@ install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.local/bin/i18n"
 install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 "$DIR"/lib/i18n/strings_*.py "$TARGET_HOME/.local/bin/i18n/"
 
 echo "--- Installing logo ---"
-install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/Pictures"
+PICTURES_DIR="$(xdg_dir PICTURES)"
+install -d -o "$TARGET_USER" -g "$TARGET_USER" "$PICTURES_DIR"
 install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 \
 	"$DIR/lib/assets/Cyberbeest-green.png" \
-	"$TARGET_HOME/Pictures/Cyberbeest-green.png"
+	"$PICTURES_DIR/Cyberbeest-green.png"
 
 echo "=== $(date) : done ==="
