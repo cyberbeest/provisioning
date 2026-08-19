@@ -352,8 +352,12 @@ if [ -n "$PANEL_PID" ]; then
 	# login/reboot spawns a properly session-launched xfdesktop instead).
 
 	# Thunar's daemon process name is capitalized ("Thunar"), not "thunar".
+	# --daemon: just re-register the file-manager service so the desktop/menu
+	# pick up the renamed identity -- without it, relaunching with no running
+	# instance to hand off to pops open a visible browser window at the
+	# default folder instead of starting quietly in the background.
 	restart_and_confirm "$TARGET_USER" Thunar \
-		"DISPLAY='${DISPLAY:-:0}' DBUS_SESSION_BUS_ADDRESS='$DBUS_ADDR' nohup thunar >/dev/null 2>&1 & disown"
+		"DISPLAY='${DISPLAY:-:0}' DBUS_SESSION_BUS_ADDRESS='$DBUS_ADDR' nohup thunar --daemon >/dev/null 2>&1 & disown"
 
 	# xfdesktop draws the desktop icons (including the Trash/Wastebasket
 	# one) -- restart it so the new catalog picks up immediately instead of

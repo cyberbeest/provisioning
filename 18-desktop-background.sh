@@ -69,4 +69,4 @@ echo "=== $(date) : done. Set it via Desktop Settings -> pick Cyberbeest (one-ti
 # See run-gui.py's MANUAL_TODO convention: it collects these into a "Things
 # to do" pane instead of them getting lost in a scrolling log. Still on fd 3
 # too, so a CLI run (run-all.sh/run-changed.sh/menu.sh) shows it directly.
-echo "MANUAL_TODO: Pick the desktop background: right-click desktop -> Desktop Settings -> select Cyberbeest." >&3
+echo "MANUAL_TODO: Pick the desktop background: right-click desktop -> Desktop Settings -> select Cyberbeest, and set Style to 'Scaled'." >&3
