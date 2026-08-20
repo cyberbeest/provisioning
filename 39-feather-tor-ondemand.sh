@@ -58,8 +58,10 @@ cat > "$TARGET_HOME/.local/bin/feather-wrapper.sh" <<'EOF'
 # Starts the system Tor daemon before Feather opens and stops it again when
 # Feather exits, so Tor isn't a heavy always-on background service --
 # Feather is the only Tor-dependent app shipped by default. Skips the stop
-# if another Feather window/instance is still running. Written by
-# provisioning/39-feather-tor-ondemand.sh.
+# if another Feather window/instance is still running. Runs Feather itself
+# under firejail (lib/feather.profile, see 40-jail-wallets-viber.sh) so the
+# Tor start/stop stays outside the sandbox while the wallet process is
+# isolated. Written by provisioning/39-feather-tor-ondemand.sh.
 set -uo pipefail
 
 sudo -n /usr/bin/systemctl start tor
@@ -71,7 +73,7 @@ for _ in $(seq 1 40); do
     sleep 0.25
 done
 
-/usr/bin/feather "$@"
+firejail /usr/bin/feather "$@"
 
 if ! pgrep -x feather >/dev/null; then
     sudo -n /usr/bin/systemctl stop tor
