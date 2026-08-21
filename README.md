@@ -29,13 +29,8 @@ otherwise.
 
 ## Running the full set
 
-- `./menu.sh` — the recommended entry point for a fresh install. Shows a
-  checklist of all `NN-*.sh` scripts (all selected by default) so you can
-  deselect ones that don't apply to this machine (e.g. Bluetooth tethering on
-  a VM), then runs the selected ones in order via `sudo`, stopping if one
-  fails since later scripts may depend on it.
-- `./run-gui.py` — graphical alternative to `menu.sh` (dev tool, not part of
-  the shipped image): a sidebar lists every `NN-*.sh` script with its
+- `./run-gui.py` — the recommended entry point for a fresh install, and what
+  `beestify.sh` runs: a sidebar lists every `NN-*.sh` script with its
   pending/running/done/failed status, and a shared log pane on the right
   streams whichever one is currently running. "Run all" runs every script
   unconditionally; "Run changed only" skips any script whose `.log` is newer
@@ -46,7 +41,16 @@ otherwise.
   graphical sudo prompt (zenity), which `sudo` normally only asks for once
   every few scripts thanks to credential caching. "Stop after current
   script" doesn't kill anything mid-script -- it lets the running one finish,
-  then skips the rest.
+  then skips the rest. Unlike `menu.sh`, there's no upfront checklist to
+  deselect scripts that don't apply to this machine (e.g. Bluetooth
+  tethering on a VM) — either let them run (most are harmless no-ops on
+  hardware they don't apply to) or double-click around them individually.
+- `./menu.sh` — text-mode (whiptail) alternative: shows a checklist of all
+  `NN-*.sh` scripts (all selected by default) so you can deselect ones that
+  don't apply to this machine up front, then runs the selected ones in order
+  via `sudo`, stopping if one fails since later scripts may depend on it.
+  Useful with no graphical session available, or when you want that upfront
+  deselection `run-gui.py` doesn't offer.
 
 ## Getting this directory onto a fresh install
 
@@ -57,11 +61,11 @@ This repo is public on GitHub, so on a freshly installed Debian machine
 sudo apt install git
 git clone https://github.com/cyberbeest/provisioning.git
 cd provisioning
-./menu.sh
+./run-gui.py
 ```
 
 Or, via the `beestify.sh` bootstrap script (installs git, clones this repo,
-and runs `./menu.sh` for you). This tracks the `stable` branch -- only
+and runs `./run-gui.py` for you). This tracks the `stable` branch -- only
 fast-forwarded to a `main` commit once it's been validated end-to-end on a
 fresh install, unlike `main` itself where every fix lands immediately:
 

@@ -32,4 +32,4 @@ else
 fi
 
 cd "$CLONE_DIR"
-exec ./menu.sh
+exec python3 ./run-gui.py
