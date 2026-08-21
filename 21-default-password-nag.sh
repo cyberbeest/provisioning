@@ -135,4 +135,18 @@ sed "s|/home/cyberbeest/|$TARGET_HOME/|g" "$DIR/lib/cyberbeest-password-nag.desk
 	> "$TARGET_HOME/.config/autostart/cyberbeest-password-nag.desktop"
 chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.config/autostart/cyberbeest-password-nag.desktop"
 
+echo "--- Checking for still-default weak passwords ---"
+# Surfaces the same nag the user will hit at next login as a run-gui.py
+# "Things to do" entry too, so it's not just something they'd discover by
+# logging out and back in -- run-gui.py greps stdout for MANUAL_TODO lines
+# (see its own docstring). Only weak-tagged defaults nag here; a
+# secure-tagged (shipped, per-device) default is intentionally left alone.
+CHECK_OUT="$(/usr/local/sbin/cyberbeest-check-default-passwords "")"
+if grep -q '^MASTER_STILL_DEFAULT=1$' <<<"$CHECK_OUT" && grep -q '^MASTER_TAG=weak$' <<<"$CHECK_OUT"; then
+	echo "MANUAL_TODO: Change the weak default disk (master) password -- open Cyberbeest Passwords & Boot."
+fi
+if grep -q '^SHORT_STILL_DEFAULT=1$' <<<"$CHECK_OUT" && grep -q '^SHORT_TAG=weak$' <<<"$CHECK_OUT"; then
+	echo "MANUAL_TODO: Change the weak default login password -- open Cyberbeest Passwords & Boot."
+fi
+
 echo "=== $(date) : done. Nag runs at next login; run cyberbeest-password-nag now to test. ==="
