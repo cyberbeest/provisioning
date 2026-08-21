@@ -9,11 +9,12 @@ log view on the right and updating that script's sidebar status as it goes.
 
 "Run all" / "Run changed only" walk the whole list; double-clicking a single
 row in the sidebar runs just that script (handy for debugging one step),
-regardless of whether it's already marked done. Each row also has a
-checkbox, independent of the listbox's own row selection, for picking an
-arbitrary subset to run via "Run selected" -- handy for e.g. re-running a
-few specific steps without doing the whole sequence. Only one run -- whole
-sequence, selected subset, or single script -- can be active at a time.
+regardless of whether it's already marked done. The sidebar also supports
+native multi-select (plain click, ctrl+click to toggle, shift+click for a
+range) for picking an arbitrary subset to run via "Run selected" -- handy
+for e.g. re-running a few specific steps without doing the whole sequence.
+Only one run -- whole sequence, selected subset, or single script -- can be
+active at a time.
 
 Each script keeps its own log text (self.logs, keyed by script name, plus a
 "" bucket for messages not tied to any one script, like the zenity-install
@@ -26,7 +27,11 @@ including while a run is active elsewhere. Selecting the row that's
 currently running resumes live-following it (self.follow_live); selecting
 any other row shows a frozen snapshot without interrupting or hiding the
 active run, which keeps updating that script's stored log in the
-background regardless of what's currently displayed.
+background regardless of what's currently displayed. This log-viewing
+behavior only kicks in when exactly one row ends up selected (a plain
+click): ctrl/shift-click selections of more than one row, built up for
+"Run selected", leave whatever log was last shown alone rather than trying
+to guess which of several scripts to display.
 
 No batch-level xfce4-panel reload here:
 the only two scripts that touch panel config, 11-xfce-panel-plugins.sh and
@@ -167,14 +172,6 @@ class ScriptRow(Gtk.ListBoxRow):
         box.set_border_width(4)
         self.add(box)
 
-        # Selection for the "Run selected" button, independent of the
-        # listbox's own (single-row) selection -- clicking this checkbox is
-        # absorbed by the checkbox itself and doesn't trigger row-selected or
-        # row-activated on the listbox, so it doesn't disturb the "click to
-        # view log / double-click to run just this one" behavior below.
-        self.checkbox = Gtk.CheckButton()
-        box.pack_start(self.checkbox, False, False, 0)
-
         name_label = Gtk.Label(label=script, xalign=0)
         name_label.set_ellipsize(Pango.EllipsizeMode.END)
         box.pack_start(name_label, True, True, 0)
@@ -247,7 +244,7 @@ class RunGuiWindow(Gtk.Window):
         self.status_label = Gtk.Label(label="Idle. Double-click a script below to run just that one.", xalign=0)
         root.pack_start(self.status_label, False, False, 0)
 
-        self.todo_frame = Gtk.Frame(label="Things to do")
+        self.todo_frame = Gtk.Frame(label="Things to do after the provisioning completed")
         # Hidden whenever self.todos is empty (start of day, or once every
         # entry has been dismissed) -- set_no_show_all so the later
         # self.show_all() doesn't force it visible regardless.
@@ -267,12 +264,14 @@ class RunGuiWindow(Gtk.Window):
         paned.pack1(self.sidebar_scroller, False, False)
 
         self.listbox = Gtk.ListBox()
-        self.listbox.set_selection_mode(Gtk.SelectionMode.SINGLE)
+        # MULTIPLE (not SINGLE) so plain click / ctrl+click / shift+click
+        # range-select all work natively, feeding "Run selected" below.
+        self.listbox.set_selection_mode(Gtk.SelectionMode.MULTIPLE)
         # Explicitly False: GtkListBox defaults to activating (i.e. running)
         # a row on a single click, which is not what we want here.
         self.listbox.set_activate_on_single_click(False)
         self.listbox.connect("row-activated", self.on_row_activated)
-        self.listbox.connect("row-selected", self.on_row_selected)
+        self.listbox.connect("selected-rows-changed", self.on_selection_changed)
         self.sidebar_scroller.add(self.listbox)
 
         for script in list_scripts():
@@ -425,9 +424,16 @@ class RunGuiWindow(Gtk.Window):
                 action_label, callback = action
                 action_button = Gtk.Button(label=action_label)
                 action_button.connect("clicked", callback)
+                # These are things to do only once provisioning has finished
+                # (a reboot, opening desktop settings, ...) -- kept
+                # unclickable while a run is still active so they can't be
+                # triggered mid-run, e.g. rebooting out from under a script
+                # that's still going.
+                action_button.set_sensitive(not self.busy)
                 row.pack_start(action_button, False, False, 0)
             dismiss_button = Gtk.Button(label="Dismiss")
             dismiss_button.connect("clicked", lambda _b, k=key: self._dismiss_todo(k))
+            dismiss_button.set_sensitive(not self.busy)
             row.pack_start(dismiss_button, False, False, 0)
             self.todo_box.pack_start(row, False, False, 0)
         if self.todos:
@@ -438,6 +444,12 @@ class RunGuiWindow(Gtk.Window):
             self.todo_frame.show()
         else:
             self.todo_frame.hide()
+
+    def _update_todo_button_sensitivity(self):
+        for row in self.todo_box.get_children():
+            for child in row.get_children():
+                if isinstance(child, Gtk.Button):
+                    child.set_sensitive(not self.busy)
 
     def _todo_action_for(self, script):
         # The only MANUAL_TODO source that has an obvious one-click shortcut
@@ -477,22 +489,31 @@ class RunGuiWindow(Gtk.Window):
             text = f"{script} hasn't been run yet in this session. Double-click it to run.\n"
         self.log_buffer.set_text(text)
 
-    def on_row_selected(self, _listbox, row):
-        if row is None:
+    def on_selection_changed(self, _listbox):
+        # Only treat this as "view this script's log" when exactly one row
+        # ends up selected (a plain click, or ctrl/shift-click narrowing a
+        # multi-selection back down to one) -- a multi-row selection being
+        # built up for "Run selected" shouldn't fight over which one log to
+        # show, so it's left alone in that case.
+        selected = self.listbox.get_selected_rows()
+        if len(selected) != 1:
             return
+        row = selected[0]
         self.show_log(row.script)
         self.follow_live = row.script == self.currently_running_script
 
     def _begin_script_display(self, script):
         # Fresh log for this run of the script -- doesn't touch any other
         # script's stored log, and doesn't disturb the view if the user has
-        # manually navigated away to look at something else.
+        # manually navigated away to look at something else. Deliberately
+        # doesn't touch listbox selection -- selection now doubles as the
+        # "Run selected" picker, so auto-following the running script must
+        # not silently add/remove it from whatever the user has selected.
         self.logs[script] = ""
         if self.follow_live:
             self.show_log(script)
             row = self.rows.get(script)
             if row is not None:
-                self.listbox.select_row(row)
                 self._scroll_sidebar_to(row)
 
     def _scroll_sidebar_to(self, row):
@@ -525,6 +546,11 @@ class RunGuiWindow(Gtk.Window):
         self.run_all_button.set_sensitive(not busy)
         self.run_selected_button.set_sensitive(not busy)
         self.stop_button.set_sensitive(busy)
+        # Existing todo entries' action/dismiss buttons are things-to-do-once
+        # provisioning is done -- re-lock/unlock them for the busy state that
+        # just changed, since _rebuild_todo_pane only sets sensitivity at the
+        # moment a row is (re)built, not continuously.
+        self._update_todo_button_sensitivity()
         # Deliberately NOT self.listbox.set_sensitive(not busy): the sidebar
         # stays clickable during a run so scripts' logs can be inspected
         # without interrupting it. on_row_activated's own busy check is what
@@ -562,12 +588,14 @@ class RunGuiWindow(Gtk.Window):
     def start_selected(self):
         if self.busy:
             return
-        scripts = [s for s in list_scripts() if self.rows[s].checkbox.get_active()]
+        selected = {row.script for row in self.listbox.get_selected_rows()}
+        scripts = [s for s in list_scripts() if s in selected]
         if not scripts:
-            self.status_label.set_text("Nothing selected -- check one or more scripts below first.")
+            self.status_label.set_text(
+                "Nothing selected -- click (or ctrl/shift+click) one or more scripts below first."
+            )
             return
-        for script in scripts:
-            self.rows[script].checkbox.set_active(False)
+        self.listbox.unselect_all()
         # Treated as a batch run (reboot suggestion included) since, like
         # "Run all"/"Run changed only" and unlike a single-script debug
         # double-click, this is an explicit "get these steps applied" run
