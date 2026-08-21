@@ -5,11 +5,18 @@ REPO_URL="https://github.com/cyberbeest/provisioning.git"
 CLONE_DIR="$HOME/provisioning"
 BRANCH="stable"
 
+# Fresh installs from DVD media leave a cdrom:// source in sources.list,
+# which apt then blocks on (prompting to insert the disc) instead of just
+# skipping. Unconditional and up front, not just inside the "installing
+# git" block below: git may already be present (e.g. pulled in by
+# cyberbeest-bootstrap.sh's own curl install) while zenity, installed later
+# by run-gui.py, still isn't -- that apt-get call has no cdrom handling of
+# its own and was hanging on the disc prompt with the old gated version of
+# this fix.
+sudo sed -i '/^deb cdrom:/ s/^/# /' /etc/apt/sources.list
+
 if ! command -v git >/dev/null 2>&1; then
   echo "Installing git..."
-  # Fresh installs from DVD media leave a cdrom:// source in sources.list,
-  # which has no Release file and makes apt-get update fail outright.
-  sudo sed -i '/^deb cdrom:/ s/^/# /' /etc/apt/sources.list
   sudo apt-get -o DPkg::Lock::Timeout=60 update
   sudo apt-get -o DPkg::Lock::Timeout=60 install -y git
 fi

@@ -5,11 +5,14 @@ REPO_URL="https://github.com/cyberbeest/provisioning.git"
 CLONE_DIR="$HOME/provisioning-bleeding"
 BRANCH="main"
 
+# Fresh installs from DVD media leave a cdrom:// source in sources.list,
+# which apt then blocks on (prompting to insert the disc) instead of just
+# skipping. Unconditional and up front, not just inside the "installing
+# git" block below -- see beestify.sh for why.
+sudo sed -i '/^deb cdrom:/ s/^/# /' /etc/apt/sources.list
+
 if ! command -v git >/dev/null 2>&1; then
   echo "Installing git..."
-  # Fresh installs from DVD media leave a cdrom:// source in sources.list,
-  # which has no Release file and makes apt-get update fail outright.
-  sudo sed -i '/^deb cdrom:/ s/^/# /' /etc/apt/sources.list
   sudo apt-get -o DPkg::Lock::Timeout=60 update
   sudo apt-get -o DPkg::Lock::Timeout=60 install -y git
 fi
