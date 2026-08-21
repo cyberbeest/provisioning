@@ -9,8 +9,11 @@ log view on the right and updating that script's sidebar status as it goes.
 
 "Run all" / "Run changed only" walk the whole list; double-clicking a single
 row in the sidebar runs just that script (handy for debugging one step),
-regardless of whether it's already marked done. Only one run -- whole
-sequence or single script -- can be active at a time.
+regardless of whether it's already marked done. Each row also has a
+checkbox, independent of the listbox's own row selection, for picking an
+arbitrary subset to run via "Run selected" -- handy for e.g. re-running a
+few specific steps without doing the whole sequence. Only one run -- whole
+sequence, selected subset, or single script -- can be active at a time.
 
 Each script keeps its own log text (self.logs, keyed by script name, plus a
 "" bucket for messages not tied to any one script, like the zenity-install
@@ -164,6 +167,14 @@ class ScriptRow(Gtk.ListBoxRow):
         box.set_border_width(4)
         self.add(box)
 
+        # Selection for the "Run selected" button, independent of the
+        # listbox's own (single-row) selection -- clicking this checkbox is
+        # absorbed by the checkbox itself and doesn't trigger row-selected or
+        # row-activated on the listbox, so it doesn't disturb the "click to
+        # view log / double-click to run just this one" behavior below.
+        self.checkbox = Gtk.CheckButton()
+        box.pack_start(self.checkbox, False, False, 0)
+
         name_label = Gtk.Label(label=script, xalign=0)
         name_label.set_ellipsize(Pango.EllipsizeMode.END)
         box.pack_start(name_label, True, True, 0)
@@ -220,6 +231,10 @@ class RunGuiWindow(Gtk.Window):
         self.run_all_button = Gtk.Button(label="Run all")
         self.run_all_button.connect("clicked", lambda _b: self.start_sequence(changed_only=False))
         button_box.pack_start(self.run_all_button, False, False, 0)
+
+        self.run_selected_button = Gtk.Button(label="Run selected")
+        self.run_selected_button.connect("clicked", lambda _b: self.start_selected())
+        button_box.pack_start(self.run_selected_button, False, False, 0)
 
         self.stop_button = Gtk.Button(label="Stop after current script")
         self.stop_button.set_sensitive(False)
@@ -508,6 +523,7 @@ class RunGuiWindow(Gtk.Window):
         self.busy = busy
         self.run_changed_button.set_sensitive(not busy)
         self.run_all_button.set_sensitive(not busy)
+        self.run_selected_button.set_sensitive(not busy)
         self.stop_button.set_sensitive(busy)
         # Deliberately NOT self.listbox.set_sensitive(not busy): the sidebar
         # stays clickable during a run so scripts' logs can be inspected
@@ -542,6 +558,21 @@ class RunGuiWindow(Gtk.Window):
                 self.status_label.set_text("Nothing to run -- everything is already up to date.")
                 return
         self._start_run(scripts, label="Run changed only" if changed_only else "Run all", batch=True)
+
+    def start_selected(self):
+        if self.busy:
+            return
+        scripts = [s for s in list_scripts() if self.rows[s].checkbox.get_active()]
+        if not scripts:
+            self.status_label.set_text("Nothing selected -- check one or more scripts below first.")
+            return
+        for script in scripts:
+            self.rows[script].checkbox.set_active(False)
+        # Treated as a batch run (reboot suggestion included) since, like
+        # "Run all"/"Run changed only" and unlike a single-script debug
+        # double-click, this is an explicit "get these steps applied" run
+        # that can span multiple scripts.
+        self._start_run(scripts, label="Run selected", batch=True)
 
     def on_row_activated(self, _listbox, row):
         if self.busy:
