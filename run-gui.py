@@ -49,9 +49,13 @@ file from inside the shell instead of trusting xterm's proc.returncode.
 Requires zenity (for the graphical sudo prompt). On a brand new machine that
 hasn't run any NN-*.sh script yet, zenity may not be installed at all (it's
 only otherwise pulled in as a side effect of 04-software-launch-warning.sh)
--- checked for at startup and installed automatically if missing (plain
-`sudo apt-get install`, prompting on whatever terminal this tool itself was
-launched from, since the graphical askpass obviously can't be used yet).
+-- checked for at startup and installed automatically if missing, via an
+explicit xterm window (same technique as _run_in_terminal below) rather than
+prompting on whatever terminal happened to launch this tool: since
+beestify.sh's autostart flow launches this from inside an
+`xfce4-terminal --hold` window that sits behind the GTK window once this
+tool takes over, a plain background sudo prompt there would be invisible to
+whoever's just looking at the GTK app.
 
 Only prompts for the sudo password once per run of run-gui.py, not once per
 script: the first sudo call uses zenity-askpass.sh as normal, but run-gui.py
@@ -285,25 +289,39 @@ class RunGuiWindow(Gtk.Window):
         # (~35-40MB all in, mostly its GTK4/libadwaita deps that a GTK3-based
         # XFCE image wouldn't otherwise have). Plain `sudo` (not -A), since
         # zenity itself -- needed for the graphical askpass -- doesn't exist
-        # yet: this needs a real terminal to prompt on, same assumption the
-        # rest of this dev-only tool already makes about how it's launched.
-        self.append_log("", "zenity not found -- installing it (enter your sudo password in this terminal if asked)...\n")
-        self.status_label.set_text("Installing zenity...")
+        # yet, so this needs a real terminal to prompt on. Opened as its own
+        # visible xterm window (not a background prompt on whatever terminal
+        # happened to launch this tool) since that launching terminal may
+        # not be what the user is actually looking at -- see class docstring.
+        self.append_log("", "zenity not found -- opening a terminal window to install it (enter your sudo password there)...\n")
+        self.status_label.set_text("Installing zenity -- see the terminal window...")
         self._set_controls_busy(True)
         threading.Thread(target=self._install_zenity_worker, daemon=True).start()
 
     def _install_zenity_worker(self):
-        proc = subprocess.Popen(
-            ["sudo", "apt-get", "-o", "DPkg::Lock::Timeout=60", "install", "-y", "zenity"],
-            stdin=None,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1,
-        )
-        for line in proc.stdout:
-            GLib.idle_add(self.append_log, "", line)
-        status = proc.wait()
+        fd, exit_file = tempfile.mkstemp(prefix="run-gui-zenity-install-")
+        os.close(fd)
+        env = dict(os.environ, EXITFILE=exit_file)
+        try:
+            proc = subprocess.Popen(
+                [
+                    "xterm", "-T", "Install zenity", "-e", "bash", "-c",
+                    'status=0; "$@" || status=$?; echo "$status" > "$EXITFILE"',
+                    "_", "sudo", "apt-get", "-o", "DPkg::Lock::Timeout=60", "install", "-y", "zenity",
+                ],
+                env=env,
+                start_new_session=True,
+            )
+            proc.wait()
+            try:
+                status = int(open(exit_file).read().strip())
+            except (OSError, ValueError):
+                status = 1
+        finally:
+            try:
+                os.remove(exit_file)
+            except OSError:
+                pass
         GLib.idle_add(self._on_zenity_installed, status)
 
     def _on_zenity_installed(self, status):
