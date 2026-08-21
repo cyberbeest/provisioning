@@ -154,6 +154,18 @@ if command -v xfce4-panel >/dev/null 2>&1; then
 		su - "$TARGET_USER" -c "DISPLAY='${DISPLAY:-:0}' DBUS_SESSION_BUS_ADDRESS='$DBUS_ADDR' xfconf-query -c xfce4-panel -p /panels -t int -s 1 --force-array" || true
 
 		su - "$TARGET_USER" -c "DISPLAY='${DISPLAY:-:0}' DBUS_SESSION_BUS_ADDRESS='$DBUS_ADDR' xfce4-panel -r" || true
+
+		# `-r` above only works if a panel process is still alive to receive
+		# it -- it asks a running instance to restart itself, it doesn't
+		# launch one from scratch. Killing xfconfd just before it can knock
+		# the panel process out (it depends on xfconfd for its own config),
+		# leaving no process left for `-r` to reach and no panel on screen
+		# until the next full login. Fall back to a plain launch in that case.
+		sleep 1
+		if ! pgrep -u "$TARGET_USER" -x xfce4-panel >/dev/null; then
+			echo "--- Panel process didn't come back after reload; launching it fresh ---"
+			su - "$TARGET_USER" -c "DISPLAY='${DISPLAY:-:0}' DBUS_SESSION_BUS_ADDRESS='$DBUS_ADDR' setsid xfce4-panel >/dev/null 2>&1 < /dev/null &"
+		fi
 	fi
 fi
 

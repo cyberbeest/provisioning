@@ -68,7 +68,7 @@ echo "--- Running xdg-user-dirs-update as $TARGET_USER, under their configured l
 # This creates user-dirs.dirs (translated) on a genuinely first-ever run,
 # or is a no-op for any folder that already has an entry -- see header.
 LOCALE_VALUE="$(. /etc/default/locale 2>/dev/null; echo "${LANG:-en_US.UTF-8}")"
-su - "$TARGET_USER" -c "LANG='$LOCALE_VALUE' LC_ALL='$LOCALE_VALUE' xdg-user-dirs-update"
+su - "$TARGET_USER" -c "LANGUAGE= LANG='$LOCALE_VALUE' LC_ALL='$LOCALE_VALUE' xdg-user-dirs-update"
 
 # gettext silently falls back to the untranslated string -- exit 0, no
 # warning of its own -- if $LOCALE_VALUE isn't actually a generated glibc
@@ -80,6 +80,15 @@ su - "$TARGET_USER" -c "LANG='$LOCALE_VALUE' LC_ALL='$LOCALE_VALUE' xdg-user-dir
 # that precondition directly here instead of trusting its output blind.
 # Compare case/hyphen-insensitively since /etc/default/locale spells it
 # "de_DE.UTF-8" but `locale -a` lists "de_DE.utf8".
+#
+# Also clear LANGUAGE (above and in the gettext call below) wherever
+# LANG/LC_ALL are set for translation purposes: glibc gettext prefers
+# LANGUAGE over LC_ALL/LANG whenever it's set to anything non-empty, so an
+# inherited LANGUAGE (e.g. "en_US:en" from whatever shell launched this
+# script) silently forces English lookups no matter what LOCALE_VALUE is,
+# with the same no-warning exit 0 as the missing-locale case above --
+# confirmed: `LANGUAGE=en_US:en LANG=de_DE.UTF-8 LC_ALL=de_DE.UTF-8 gettext
+# -d xdg-user-dirs Pictures` prints "Pictures", not "Bilder".
 LOCALE_NORM="$(echo "$LOCALE_VALUE" | tr 'A-Z' 'a-z' | tr -d '-')"
 if ! locale -a | tr 'A-Z' 'a-z' | tr -d '-' | grep -qx "$LOCALE_NORM"; then
 	echo "MANUAL_TODO: locale $LOCALE_VALUE is not actually generated on this machine (check 'locale -a'), so folder names could NOT be translated to match it even though that's what was configured. Run 'sudo dpkg-reconfigure locales' (or re-run 00-locale-keyboard-timezone.sh) to fix the locale, then re-run 08-xdg-user-dirs.sh." >&3
@@ -93,7 +102,7 @@ echo "--- Reconciling fixed English names against what this locale actually tran
 while IFS='=' read -r key default_name; do
 	[ -n "$key" ] || continue
 	var="XDG_${key}_DIR"
-	translated_name="$(LANG="$LOCALE_VALUE" LC_ALL="$LOCALE_VALUE" gettext -d xdg-user-dirs "$default_name")"
+	translated_name="$(LANGUAGE= LANG="$LOCALE_VALUE" LC_ALL="$LOCALE_VALUE" gettext -d xdg-user-dirs "$default_name")"
 	if [ "$translated_name" = "$default_name" ]; then
 		continue # genuinely untranslated in this locale (e.g. Downloads, Videos under German) -- nothing to do
 	fi
