@@ -33,7 +33,7 @@
   </property>
   <property name="plugins" type="empty">
     <property name="plugin-1" type="string" value="whiskermenu">
-      <property name="button-icon" type="string" value="__HOME__/Pictures/Cyberbeest-panel-icon.png"/>
+      <property name="button-icon" type="string" value="__ICONS_DIR__/Cyberbeest-panel-icon.png"/>
       <property name="favorites" type="array">
         <value type="string" value="xfce4-file-manager.desktop"/>
         <value type="string" value="browser-sandbox.desktop"/>

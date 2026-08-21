@@ -24,7 +24,6 @@ echo "=== $(date) : installing cyberbeest-package-manager ==="
 
 TARGET_USER="${SUDO_USER:-cyberbeest}"
 TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
-. "$DIR/lib/xdg-dirs.sh"
 
 echo "--- Installing python3-gi (GTK bindings the GUI needs) ---"
 apt-get -o DPkg::Lock::Timeout=60 update -qq
@@ -50,11 +49,16 @@ install -o "$TARGET_USER" -g "$TARGET_USER" -m 755 \
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.local/share/cyberbeest"
 
 echo "--- Installing icon ---"
-PICTURES_DIR="$(xdg_dir PICTURES)"
-install -d -o "$TARGET_USER" -g "$TARGET_USER" "$PICTURES_DIR"
+# Not Pictures/Bilder: that's user-visible and locale-renamed (English
+# "Pictures" vs. German "Bilder"), so a hardcoded/stale reference to it can
+# silently break this app-UI icon. .local/share/cyberbeest/icons is a fixed,
+# non-user-facing location no XDG-dirs translation or user reorganization
+# touches.
+ICONS_DIR="$TARGET_HOME/.local/share/cyberbeest/icons"
+install -d -o "$TARGET_USER" -g "$TARGET_USER" "$ICONS_DIR"
 install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 \
 	"$DIR/lib/assets/Cyberbeest-black.png" \
-	"$PICTURES_DIR/Cyberbeest-black.png"
+	"$ICONS_DIR/Cyberbeest-black.png"
 
 echo "--- Installing app menu entry (Whisker menu, Settings category) ---"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.local/share/applications"
@@ -66,7 +70,7 @@ Name[de]=Cyberbeest-Paketverwaltung
 Comment=Install or remove optional Cyberbeest applications
 Comment[de]=Optionale Cyberbeest-Anwendungen installieren oder entfernen
 Exec=$TARGET_HOME/.local/bin/cyberbeest-package-manager
-Icon=$PICTURES_DIR/Cyberbeest-black.png
+Icon=$ICONS_DIR/Cyberbeest-black.png
 Terminal=false
 Categories=Cyberbeest;Settings;
 StartupNotify=true

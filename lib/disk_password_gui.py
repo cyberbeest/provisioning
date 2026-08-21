@@ -44,14 +44,7 @@ SET_BOOT_BRIGHT_MODE = "/usr/local/sbin/cyberbeest-set-boot-bright-mode"
 BOOT_BRIGHT_MODE_FILE = "/etc/cyberbeest/plymouth-bright-mode"
 
 
-def _pictures_dir():
-    try:
-        return subprocess.check_output(["xdg-user-dir", "PICTURES"], text=True).strip()
-    except (OSError, subprocess.CalledProcessError):
-        return os.path.expanduser("~/Pictures")
-
-
-LOGO_PATH = os.path.join(_pictures_dir(), "Cyberbeest-black.png")
+LOGO_PATH = os.path.expanduser("~/.local/share/cyberbeest/icons/Cyberbeest-black.png")
 LOGO_SIZE = 96
 WORDLISTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "wordlists")
 
