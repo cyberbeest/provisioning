@@ -42,13 +42,36 @@ TARGET_USER="${SUDO_USER:-cyberbeest}"
 TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
 
 echo "--- Enabling 'contrib' component (needed for torbrowser-launcher) ---"
+# Newer Debian installers (Trixie) may write the legacy one-line
+# /etc/apt/sources.list, the new deb822 /etc/apt/sources.list.d/debian.sources,
+# or both (one active, one just comments) -- handle whichever is actually
+# live rather than assuming one exact string, and verify afterward instead
+# of silently trusting the edit (see torbrowser-launcher install failure
+# 2026-08-21: the old exact-line sed silently no-op'd, leaving contrib
+# missing until the later apt-get install failed).
 SOURCES=/etc/apt/sources.list
-if grep -qE '^deb http://deb\.debian\.org/debian/ trixie main non-free-firmware$' "$SOURCES" \
-   && ! grep -qE '^deb http://deb\.debian\.org/debian/ trixie main contrib non-free-firmware$' "$SOURCES"; then
-    sed -i 's|^deb http://deb\.debian\.org/debian/ trixie main non-free-firmware$|deb http://deb.debian.org/debian/ trixie main contrib non-free-firmware|' "$SOURCES"
-    echo "Enabled contrib on the trixie main line"
-else
-    echo "contrib already enabled (or line format unexpected), skipping edit"
+if [ -f "$SOURCES" ] && grep -qE '^deb http://deb\.debian\.org/debian/? trixie main( [a-z-]*)* non-free-firmware$' "$SOURCES" \
+   && ! grep -qE '^deb http://deb\.debian\.org/debian/? trixie main( [a-z-]*)*\bcontrib\b' "$SOURCES"; then
+    sed -i -E 's|^(deb http://deb\.debian\.org/debian/? trixie main) (non-free-firmware)$|\1 contrib \2|' "$SOURCES"
+    echo "Enabled contrib on the trixie main line in $SOURCES"
+fi
+
+for DEB822 in /etc/apt/sources.list.d/*.sources; do
+    [ -f "$DEB822" ] || continue
+    if grep -qE '^Suites:\s*trixie\s*$' "$DEB822" \
+       && grep -qE '^Components:' "$DEB822" \
+       && ! grep -qE '^Components:.*\bcontrib\b' "$DEB822"; then
+        sed -i -E '/^Components:/ s/$/ contrib/' "$DEB822"
+        echo "Enabled contrib on the trixie Components line in $DEB822"
+    fi
+done
+
+echo "--- Verifying 'contrib' is actually enabled ---"
+apt-get -o DPkg::Lock::Timeout=60 update
+if ! apt-cache policy torbrowser-launcher 2>/dev/null | grep -q '/contrib '; then
+    echo "ERROR: contrib component still not providing torbrowser-launcher after edits." >&2
+    echo "Checked $SOURCES and /etc/apt/sources.list.d/*.sources -- inspect apt sources manually." >&2
+    exit 1
 fi
 
 echo "--- Enabling trixie-backports (needed for telegram-desktop) ---"
