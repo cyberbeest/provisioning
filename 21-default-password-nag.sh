@@ -7,10 +7,13 @@
 # tab preselected, then re-checking and nagging again after it closes (see
 # lib/cyberbeest-password-nag.py).
 #
-# The actual initial-password value is NEVER part of this repo or this
-# script -- it only exists, if at all, in /etc/cyberbeest/initial-
-# passwords.conf, a root-only local file you create by hand, once, right
-# after actually setting the password:
+# The actual initial-password value lives only in /etc/cyberbeest/initial-
+# passwords.conf, a root-only local file. For the ISO's own fixed installer
+# passwords this script records itself, below (so preseeded units nag out of
+# the box). For anything else -- a value you set by hand later, e.g. during
+# support or re-imaging -- record it the same way, once, right after setting
+# it (or check the "temporary password" box in the change-password GUI,
+# which does exactly this):
 #
 #   sudo cyberbeest-record-initial-password master '<the value you just set it to>' weak
 #   sudo cyberbeest-record-initial-password short '<the value you just set it to>' weak
@@ -19,9 +22,9 @@
 # change-password GUI's own "Generate" button), put it on a sticker, set it
 # as the actual password, and record it tagged "secure" instead of "weak" --
 # secure-tagged defaults get a "keep it" option in the nag instead of only
-# "change now". A self-installer who sets their own password during Debian
-# install never runs the record command at all, so there's nothing to check
-# and the nag never appears.
+# "change now". A self-installer who picks their own password during Debian
+# install just never matches the recorded ISO defaults below, so the nag
+# never appears for them.
 #
 # Idempotent: safe to re-run.
 set -euo pipefail
@@ -95,6 +98,17 @@ install -o root -g root -m 755 \
 	"$DIR/lib/cyberbeest-check-default-passwords.sh" /usr/local/sbin/cyberbeest-check-default-passwords
 install -o root -g root -m 755 \
 	"$DIR/lib/cyberbeest-record-initial-password.sh" /usr/local/sbin/cyberbeest-record-initial-password
+
+echo "--- Recording the ISO's fixed installer passwords as temporary ---"
+# These match installer-usb/preseed.cfg's d-i passwd/user-password and
+# partman-crypto/passphrase -- update both places together if either changes.
+# Safe to run unconditionally, including for a self-installer who picked
+# their own password during Debian install instead of using the preseeded
+# ISO: the checker only nags when the CURRENT password still matches what's
+# recorded here, so a self-installer's real password just never matches and
+# nothing is ever shown to them.
+/usr/local/sbin/cyberbeest-record-initial-password master 'change-me-immediately' weak
+/usr/local/sbin/cyberbeest-record-initial-password short 'change-me' weak
 
 echo "--- Installing narrowly-scoped NOPASSWD sudoers rule for the checker ---"
 # Exact path, no arguments -- lets the login-time nag run the (read-only,

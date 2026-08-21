@@ -84,6 +84,8 @@ STRINGS = {
     "pw.change_failed": "The password could not be changed.",
     "pw.details": "Details",
     "pw.unknown_error": "unknown error",
+    "pw.mark_temp_checkbox": "This is a temporary password — remind me to change it later",
+    "pw.mark_temp_failed": "The password was changed, but could not be marked as temporary:",
     "pw.pkexec_error": "Could not start pkexec:",
     "pw.pty_error": "Could not open a pty:",
     "pw.change_failed_wrong_current": (

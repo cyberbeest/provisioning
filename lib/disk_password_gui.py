@@ -176,6 +176,34 @@ def change_luks_passphrase(device, slot, old_password, new_password):
     return False, f"{t('pw.change_failed')}\n\n{t('pw.details')}: {detail or t('pw.unknown_error')}"
 
 
+RECORD_INITIAL_PASSWORD = "/usr/local/sbin/cyberbeest-record-initial-password"
+
+
+def record_as_temporary(ptype, value):
+    """Marks a just-set password as temporary, arming the login-time nag
+    (cyberbeest-password-nag.py) to prompt for it to be changed later --
+    the same effect as manually running cyberbeest-record-initial-password
+    (see 21-default-password-nag.sh), but from the checkbox in this GUI.
+    Always tags "weak" (nag-until-changed, no "keep it" option), since this
+    checkbox is specifically for passwords you know aren't meant to stick.
+
+    Runs via pkexec since the recorder writes root-only
+    /etc/cyberbeest/initial-passwords.conf. Returns (success, message).
+    """
+    try:
+        proc = subprocess.run(
+            ["pkexec", RECORD_INITIAL_PASSWORD, ptype, value, "weak"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return False, str(e)
+    if proc.returncode == 0:
+        return True, None
+    return False, (proc.stderr or proc.stdout).strip() or t("pw.unknown_error")
+
+
 def change_user_password(current_password, new_password):
     """Change the login password by running `passwd` in a pty, as the
     current user -- no root needed.
@@ -750,6 +778,9 @@ class PasswordWindow(Gtk.Window):
         grid.attach(self.generate_button, 2, 2, 1, 1)
         grid.attach(self.language_selector, 3, 2, 1, 1)
 
+        self.mark_temp_checkbox = Gtk.CheckButton(label=t("pw.mark_temp_checkbox"))
+        self.password_section.pack_start(self.mark_temp_checkbox, False, False, 0)
+
         self.status_label = Gtk.Label(label="", wrap=True, xalign=0)
         self.status_label.set_no_show_all(True)
         self.password_section.pack_start(self.status_label, False, False, 0)
@@ -985,6 +1016,7 @@ class PasswordWindow(Gtk.Window):
         self._set_entry_visibility(self.confirm_entry, False)
         self.status_label.set_no_show_all(True)
         self.status_label.hide()
+        self.mark_temp_checkbox.set_active(False)
 
         if info["requires_current"]:
             self.current_label.show()
@@ -1027,7 +1059,9 @@ class PasswordWindow(Gtk.Window):
 
         # Run on a background thread so the pkexec prompt doesn't freeze the window.
         threading.Thread(
-            target=self._run_change, args=(info["change"], current, new), daemon=True
+            target=self._run_change,
+            args=(info["change"], current, new, self.active_type, self.mark_temp_checkbox.get_active()),
+            daemon=True,
         ).start()
 
     def _confirm_written_down(self, title, new_password):
@@ -1045,8 +1079,12 @@ class PasswordWindow(Gtk.Window):
         dialog.destroy()
         return response == Gtk.ResponseType.YES
 
-    def _run_change(self, change_fn, current, new):
+    def _run_change(self, change_fn, current, new, ptype, mark_temp):
         success, message = change_fn(current, new)
+        if success and mark_temp:
+            rec_ok, rec_error = record_as_temporary(ptype, new)
+            if not rec_ok:
+                message = f"{message}\n\n{t('pw.mark_temp_failed')} {rec_error}"
         GLib.idle_add(self._on_change_done, success, message)
 
     def _on_change_done(self, success, message):

@@ -88,6 +88,8 @@ STRINGS = {
     "pw.change_failed": "Das Passwort konnte nicht geändert werden.",
     "pw.details": "Details",
     "pw.unknown_error": "unbekannter Fehler",
+    "pw.mark_temp_checkbox": "Das ist ein vorläufiges Passwort — erinnere mich, es später zu ändern",
+    "pw.mark_temp_failed": "Das Passwort wurde geändert, konnte aber nicht als vorläufig markiert werden:",
     "pw.pkexec_error": "pkexec konnte nicht gestartet werden:",
     "pw.pty_error": "Pty konnte nicht geöffnet werden:",
     "pw.change_failed_wrong_current": (
