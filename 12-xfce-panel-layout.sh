@@ -119,7 +119,7 @@ chown -R "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.config/xfce4"
 
 echo "--- Reloading xfce4-panel for the logged-in user, if one is running ---"
 if command -v xfce4-panel >/dev/null 2>&1; then
-	PANEL_PID="$(pgrep -u "$TARGET_USER" -x xfce4-panel | head -1)"
+	PANEL_PID="$(pgrep -u "$TARGET_USER" -x xfce4-panel | head -1)" || true
 	if [ -n "$PANEL_PID" ]; then
 		DBUS_ADDR=""
 		# cat (not `< file`) so a PID that vanishes between pgrep and here
