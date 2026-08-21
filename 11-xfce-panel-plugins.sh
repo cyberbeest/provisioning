@@ -24,7 +24,7 @@ make -C "$DIR/lib/xfce-panel-plugins" clean install
 echo "--- Reloading xfce4-panel for the logged-in user, if one is running ---"
 TARGET_USER="${SUDO_USER:-cyberbeest}"
 if command -v xfce4-panel >/dev/null 2>&1; then
-	PANEL_PID="$(pgrep -u "$TARGET_USER" -x xfce4-panel | head -1)"
+	PANEL_PID="$(pgrep -u "$TARGET_USER" -x xfce4-panel | head -1)" || true
 	if [ -n "$PANEL_PID" ]; then
 		DBUS_ADDR=""
 		# cat (not `< file`) so a PID that vanishes between pgrep and here

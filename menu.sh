@@ -93,7 +93,7 @@ if command -v xfce4-panel >/dev/null 2>&1; then
 	echo "Reloading xfce4-panel to pick up new/changed desktop entries..."
 	if [ "$(id -u)" -eq 0 ] && [ -n "${SUDO_USER:-}" ]; then
 		TARGET_UID="$(id -u "$SUDO_USER")"
-		PANEL_PID="$(pgrep -u "$SUDO_USER" -x xfce4-panel | head -1)"
+		PANEL_PID="$(pgrep -u "$SUDO_USER" -x xfce4-panel | head -1)" || true
 		DBUS_ADDR=""
 		if [ -n "$PANEL_PID" ]; then
 			# cat (not `< file`) so a PID that vanishes between pgrep and here

@@ -141,7 +141,7 @@ sudo -u "$TARGET_USER" pkill -f '^/opt/Element/element-desktop' 2>&1 || true
 sudo -u "$TARGET_USER" pkill -f 'telegram-desktop -autostart' 2>&1 || true
 sleep 1
 
-PANEL_PID="$(pgrep -u "$TARGET_USER" -x xfce4-panel | head -1)"
+PANEL_PID="$(pgrep -u "$TARGET_USER" -x xfce4-panel | head -1)" || true
 if [ -n "$PANEL_PID" ]; then
 	DBUS_ADDR="$(cat "/proc/$PANEL_PID/environ" 2>/dev/null | tr '\0' '\n' | sed -n 's/^DBUS_SESSION_BUS_ADDRESS=//p')" || true
 	DBUS_ADDR="${DBUS_ADDR:-unix:path=/run/user/$(id -u "$TARGET_USER")/bus}"
