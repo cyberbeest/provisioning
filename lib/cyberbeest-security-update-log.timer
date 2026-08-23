@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily run of the security update history logger
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+RandomizedDelaySec=1h
+
+[Install]
+WantedBy=timers.target

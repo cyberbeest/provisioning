@@ -1,0 +1,6 @@
+[Unit]
+Description=Append new package upgrades to the permanent security update history log
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/log-security-updates.py
