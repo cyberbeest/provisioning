@@ -6,8 +6,10 @@
 # that it wasn't worth the complexity; see provisioning/experimental/cyberbeest-power-settings.sh
 # for that removed code.
 
-DEFAULT_SHUTDOWN_MIN=60 # default minutes locked before shutdown
-POLL_INTERVAL=15        # how often to check lock state
+DEFAULT_SHUTDOWN_MIN=60  # default minutes locked before shutdown
+DEFAULT_MINIMIZE_MIN=10  # default minutes locked before minimizing windows (power saving: minimized windows stop repainting)
+POLL_INTERVAL=15         # how often to check lock state
+MINIMIZED_STATE_FILE="$HOME/.cache/cyberbeest/lock-minimized-windows.list"
 # AC adapter's sysfs device name varies by hardware (ADP1, AC, ACAD, ...) --
 # find whichever one is of type Mains rather than hardcoding it.
 AC_ONLINE=""
@@ -50,11 +52,55 @@ on_battery() {
     [ "$(cat "$AC_ONLINE" 2>/dev/null)" = "0" ]
 }
 
+# Minimizes every normal top-level window that isn't already minimized, and
+# records their IDs so restore_windows can bring back only those ones later
+# (windows the user had already minimized before locking are left alone).
+minimize_windows() {
+    mkdir -p "$(dirname "$MINIMIZED_STATE_FILE")"
+    : > "$MINIMIZED_STATE_FILE"
+    local id type state
+    while read -r id _; do
+        [ -z "$id" ] && continue
+        type=$(xprop -id "$id" _NET_WM_WINDOW_TYPE 2>/dev/null)
+        case "$type" in
+            *_NET_WM_WINDOW_TYPE_DESKTOP*|*_NET_WM_WINDOW_TYPE_DOCK*) continue ;;
+        esac
+        state=$(xprop -id "$id" _NET_WM_STATE 2>/dev/null)
+        case "$state" in
+            *_NET_WM_STATE_HIDDEN*) continue ;; # already minimized, leave as-is
+        esac
+        wmctrl -ir "$id" -b add,hidden
+        echo "$id" >> "$MINIMIZED_STATE_FILE"
+    done < <(wmctrl -l 2>/dev/null)
+    logger -t lock-shutdown-watcher "Minimized $(wc -l < "$MINIMIZED_STATE_FILE") window(s) after prolonged lock"
+}
+
+restore_windows() {
+    [ -s "$MINIMIZED_STATE_FILE" ] || { rm -f "$MINIMIZED_STATE_FILE"; return; }
+    local id
+    while read -r id; do
+        [ -z "$id" ] && continue
+        wmctrl -ir "$id" -b remove,hidden
+    done < "$MINIMIZED_STATE_FILE"
+    rm -f "$MINIMIZED_STATE_FILE"
+}
+
+windows_minimized=0
+
 while true; do
     if is_locked; then
         now=$(date +%s)
         if [ "$locked_since" -eq 0 ]; then
             locked_since=$now
+        fi
+        elapsed=$(( now - locked_since ))
+
+        if [ "$windows_minimized" -eq 0 ]; then
+            minimize_min=$(read_setting MINIMIZE_MINUTES "$DEFAULT_MINIMIZE_MIN")
+            if [ "$minimize_min" -gt 0 ] && [ "$elapsed" -ge $(( minimize_min * 60 )) ]; then
+                minimize_windows
+                windows_minimized=1
+            fi
         fi
 
         if on_battery; then
@@ -69,7 +115,6 @@ while true; do
         else
             SHUTDOWN_AFTER=$(( shutdown_min * 60 ))
 
-            elapsed=$(( now - locked_since ))
             if [ "$elapsed" -ge "$SHUTDOWN_AFTER" ]; then
                 logger -t lock-shutdown-watcher "Locked for >= ${SHUTDOWN_AFTER}s, shutting down"
                 systemctl poweroff
@@ -79,6 +124,10 @@ while true; do
             sleep "$POLL_INTERVAL"
         fi
     else
+        if [ "$windows_minimized" -eq 1 ]; then
+            restore_windows
+            windows_minimized=0
+        fi
         locked_since=0
         sleep "$POLL_INTERVAL"
     fi
