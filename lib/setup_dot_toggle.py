@@ -53,7 +53,7 @@ DOT_DISABLE_SH = """#!/bin/bash
 
 set -uo pipefail
 
-sudo -n systemctl stop dnscrypt-proxy-resolvconf.service dnscrypt-proxy.socket dnscrypt-proxy.service
+sudo -n systemctl stop dnscrypt-proxy-local.service
 "$HOME/.local/bin/dot-panel-icon.sh" add
 
 notify-send --urgency=normal --app-name="Encrypted DNS" \\
@@ -67,7 +67,7 @@ DOT_ENABLE_SH = """#!/bin/bash
 
 set -uo pipefail
 
-sudo -n systemctl start dnscrypt-proxy.socket
+sudo -n systemctl start dnscrypt-proxy-local.service
 sleep 1
 if command -v dig >/dev/null 2>&1; then
     dig @127.0.2.1 anthropic.com +short +time=3 +tries=1 >/dev/null 2>&1
@@ -209,7 +209,7 @@ DOT_GENMON_SH = """#!/bin/bash
 # disables the systemd units -- it removes itself instead of showing a
 # stale warning.
 
-if systemctl is-active --quiet dnscrypt-proxy.service; then
+if systemctl is-active --quiet dnscrypt-proxy-local.service; then
     "$HOME/.local/bin/dot-panel-icon.sh" remove
     exit 0
 fi

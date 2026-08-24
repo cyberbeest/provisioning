@@ -2,7 +2,7 @@
 # Installs dnscrypt-proxy as a local encrypted DNS stub resolver, so plain DNS
 # queries aren't sent in cleartext to whatever router/network is upstream --
 # including a hostile/compromised tether (phone hotspot, hotel wifi, etc.).
-# Queries go to 127.0.2.1 (dnscrypt-proxy's socket-activated address), which
+# Queries go to 127.0.2.1 (dnscrypt-proxy self-binds there directly), which
 # forwards them encrypted (DNSCrypt/DoH) to Cloudflare.
 #
 # Composes correctly with the WireGuard VPN toggle's own DNS-leak protection
@@ -12,15 +12,29 @@
 # > plain router DNS.
 #
 # Root cause notes from bring-up (see cyberbeest_encrypted_dns_dnscrypt_proxy
-# memory for the full story): the shipped config's listen_addresses MUST be
-# left empty ([]) -- it says so in its own comment -- so dnscrypt-proxy relies
-# purely on the systemd socket-activation fd instead of trying to self-bind
-# port 53, which fails ("permission denied") since the daemon runs as the
-# unprivileged _dnscrypt-proxy user. Also: dnscrypt-proxy.socket has
-# "Wants=dnscrypt-proxy-resolvconf.service", so starting the socket registers
-# 127.0.2.1 into /etc/resolv.conf immediately, regardless of whether the
-# backing service is actually up -- so this script verifies end-to-end
-# resolution right after starting, and reverts itself if it doesn't work.
+# memory for the full story): this used to rely on dnscrypt-proxy.socket for
+# systemd socket activation (listen_addresses = [] in the shipped config),
+# but that upstream feature is explicitly flagged by the binary itself as
+# "untested and unsupported", and in practice the daemon didn't reliably
+# service the activated fd -- queries to 127.0.2.1 just timed out even
+# though systemd reported the service as active. Fixed by dropping socket
+# activation entirely: dnscrypt-proxy now self-binds 127.0.2.1:53 directly,
+# granted via CAP_NET_BIND_SERVICE so the unprivileged _dnscrypt-proxy user
+# can still bind port 53.
+#
+# This runs as its own unit, dnscrypt-proxy-local.service, rather than the
+# packaged dnscrypt-proxy.service -- systemd auto-pairs a .service with a
+# .socket of the same name (implicit Requires=/After=, injected regardless
+# of what the .service file itself says), so reusing that name can't be
+# decoupled from dnscrypt-proxy.socket via a drop-in override; a `Requires=`
+# reset in a drop-in does not clear it (verified with `systemctl show -p
+# Requires`, which still listed dnscrypt-proxy.socket after the override).
+# A differently-named unit sidesteps that pairing entirely. Both packaged
+# units (dnscrypt-proxy.service, dnscrypt-proxy.socket) are masked so
+# nothing can start them and steal the port out from under the self-bound
+# daemon. resolv.conf registration is handled directly by this unit's own
+# ExecStartPost/ExecStopPost, rather than the packaged
+# dnscrypt-proxy-resolvconf.service.
 #
 # Idempotent: safe to re-run.
 set -u
@@ -29,9 +43,11 @@ exec > "$LOG" 2>&1
 
 echo "=== $(date) starting 37-encrypted-dns.sh ==="
 
+UNIT=dnscrypt-proxy-local.service
+
 revert() {
     echo "--- REVERTING: disabling dnscrypt-proxy, restoring plain DNS ---"
-    systemctl disable --now dnscrypt-proxy-resolvconf.service dnscrypt-proxy.socket dnscrypt-proxy.service 2>&1
+    systemctl disable --now "$UNIT" 2>&1
     cat /etc/resolv.conf
     getent hosts anthropic.com || echo "WARNING: still not resolving after revert, check network itself"
 }
@@ -41,19 +57,57 @@ apt-get update
 apt-get install -y dnscrypt-proxy
 
 echo "--- stopping everything first (idempotent re-run safety) ---"
-systemctl stop dnscrypt-proxy-resolvconf.service dnscrypt-proxy.service dnscrypt-proxy.socket 2>&1
-systemctl reset-failed dnscrypt-proxy.socket dnscrypt-proxy.service 2>&1
+systemctl stop "$UNIT" dnscrypt-proxy-resolvconf.service dnscrypt-proxy.service dnscrypt-proxy.socket 2>&1
+systemctl reset-failed "$UNIT" dnscrypt-proxy.socket dnscrypt-proxy.service 2>&1
+rm -rf /etc/systemd/system/dnscrypt-proxy.service.d /etc/systemd/system/dnscrypt-proxy-resolvconf.service.d
 
 CONF=/etc/dnscrypt-proxy/dnscrypt-proxy.toml
 echo "--- configuring $CONF ---"
-sed -i "s/^listen_addresses.*/listen_addresses = []/" "$CONF"
+sed -i "s/^listen_addresses.*/listen_addresses = ['127.0.2.1:53']/" "$CONF"
 sed -i "s/^require_nolog.*/require_nolog = true/" "$CONF"
 sed -i "s/^require_nofilter.*/require_nofilter = true/" "$CONF"
 sed -i "s/^require_dnssec.*/require_dnssec = true/" "$CONF"
 grep -n "^listen_addresses\|^require_nolog\|^require_nofilter\|^require_dnssec" "$CONF"
 
-echo "--- starting socket (also triggers the package's resolvconf registration via Wants=) ---"
-systemctl start dnscrypt-proxy.socket
+echo "--- masking packaged dnscrypt-proxy.service/.socket (self-binding via our own unit now) ---"
+systemctl disable --now dnscrypt-proxy-resolvconf.service dnscrypt-proxy.service dnscrypt-proxy.socket 2>&1
+systemctl mask dnscrypt-proxy.socket dnscrypt-proxy.service dnscrypt-proxy-resolvconf.service
+
+echo "--- installing $UNIT: self-bound via CAP_NET_BIND_SERVICE, no socket activation ---"
+cat > "/etc/systemd/system/$UNIT" <<'EOF'
+[Unit]
+Description=DNSCrypt client proxy (self-bound, no systemd socket activation)
+Documentation=https://github.com/DNSCrypt/dnscrypt-proxy/wiki
+After=network.target
+Before=nss-lookup.target
+Wants=nss-lookup.target
+
+[Service]
+NonBlocking=true
+ExecStart=/usr/sbin/dnscrypt-proxy -config /etc/dnscrypt-proxy/dnscrypt-proxy.toml
+ExecStartPost=+/bin/sh -c 'echo "nameserver 127.0.2.1" | /sbin/resolvconf -a lo.dnscrypt-proxy'
+ExecStopPost=+/sbin/resolvconf -d lo.dnscrypt-proxy
+ProtectHome=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+MemoryDenyWriteExecute=true
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+
+User=_dnscrypt-proxy
+CacheDirectory=dnscrypt-proxy
+LogsDirectory=dnscrypt-proxy
+RuntimeDirectory=dnscrypt-proxy
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+
+echo "--- starting $UNIT ---"
+systemctl start "$UNIT"
 sleep 1
 
 echo "--- triggering the service with an actual query ---"
@@ -63,9 +117,9 @@ fi
 sleep 1
 
 echo "--- checking service is alive ---"
-if ! systemctl is-active --quiet dnscrypt-proxy.service; then
-    echo "FAIL: dnscrypt-proxy.service is not active:"
-    systemctl status dnscrypt-proxy.service --no-pager -l
+if ! systemctl is-active --quiet "$UNIT"; then
+    echo "FAIL: $UNIT is not active:"
+    systemctl status "$UNIT" --no-pager -l
     revert
     exit 1
 fi
@@ -79,7 +133,7 @@ if ! getent hosts anthropic.com; then
 fi
 
 echo "--- enabling for persistence across reboots ---"
-systemctl enable dnscrypt-proxy.socket dnscrypt-proxy.service dnscrypt-proxy-resolvconf.service 2>&1
+systemctl enable "$UNIT" 2>&1
 
 # "fritz.box" is a public domain AVM (the FritzBox maker) actually owns, and
 # encrypted-DNS resolvers like Cloudflare answer it with AVM's real public
@@ -100,7 +154,7 @@ CONF=/etc/dnscrypt-proxy/dnscrypt-proxy.toml
 # file"), breaking all DNS. Insert right after server_names instead.
 sed -i "/^forwarding_rules/d" "$CONF"
 sed -i "/^server_names/a forwarding_rules = '$RULES'" "$CONF"
-systemctl restart dnscrypt-proxy.service
+systemctl restart "$UNIT"
 sleep 1
 getent hosts anthropic.com || echo "WARNING: general DNS resolution broken after adding forwarding rule"
 
@@ -112,9 +166,9 @@ getent hosts anthropic.com || echo "WARNING: general DNS resolution broken after
 echo "--- installing dot-toggle sudoers rule ---"
 DOT_SUDOERS=/etc/sudoers.d/dot-toggle
 TMP_FILE="$(mktemp)"
-cat > "$TMP_FILE" <<'EOF'
-cyberbeest ALL=(root) NOPASSWD: /usr/bin/systemctl stop dnscrypt-proxy-resolvconf.service dnscrypt-proxy.socket dnscrypt-proxy.service
-cyberbeest ALL=(root) NOPASSWD: /usr/bin/systemctl start dnscrypt-proxy.socket
+cat > "$TMP_FILE" <<EOF
+cyberbeest ALL=(root) NOPASSWD: /usr/bin/systemctl stop $UNIT
+cyberbeest ALL=(root) NOPASSWD: /usr/bin/systemctl start $UNIT
 EOF
 if visudo -c -f "$TMP_FILE"; then
     install -m 0440 -o root -g root "$TMP_FILE" "$DOT_SUDOERS"
