@@ -8,8 +8,16 @@
 # script is what turns it back off for good afterwards).
 # Stops+disables the service before purging the package too, in case sshd
 # was ever manually re-enabled or reinstalled outside the normal apt flow.
+#
+# Also wipes every local user's ~/.ssh/authorized_keys(2) -- purging the
+# server alone leaves any debugging pubkey sitting there, which would grant
+# instant access again the moment sshd (or any SSH daemon) is ever
+# reinstalled or re-enabled by accident. Deliberately targets only the
+# authorized_keys files (the inbound-access grant), not the rest of ~/.ssh
+# -- a private key generated on the machine for its own outbound git/ssh use
+# isn't a backdoor and shouldn't be swept up here.
 # Idempotent: safe to re-run (every step below is already a no-op if
-# openssh-server isn't installed/running).
+# openssh-server isn't installed/running, or no authorized_keys exist).
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG="$DIR/99-remove-openssh-server.log"
@@ -25,5 +33,18 @@ if dpkg -s openssh-server >/dev/null 2>&1; then
 else
 	echo "openssh-server not installed -- nothing to purge." | tee -a "$LOG"
 fi
+
+echo "--- Clearing authorized_keys for every local user (including root) ---" | tee -a "$LOG"
+{
+	echo "/root"
+	getent passwd | awk -F: '$3 >= 1000 && $3 < 60000 {print $6}'
+} | sort -u | while read -r home; do
+	for f in "$home/.ssh/authorized_keys" "$home/.ssh/authorized_keys2"; do
+		if [ -e "$f" ]; then
+			rm -f "$f"
+			echo "removed $f" | tee -a "$LOG"
+		fi
+	done
+done
 
 echo "=== $(date) : done ===" | tee -a "$LOG"
