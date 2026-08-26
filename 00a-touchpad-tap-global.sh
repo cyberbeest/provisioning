@@ -75,43 +75,63 @@ echo "Wrote $CONF_FILE" | tee -a "$LOG"
 
 echo "--- Per-user touchpad tuning (xfconf) ---" | tee -a "$LOG"
 TARGET_USER="${SUDO_USER:-cyberbeest}"
-TARGET_UID="$(id -u "$TARGET_USER")"
-HAVE_SESSION=0
-if [ -d "/run/user/$TARGET_UID" ]; then
-	HAVE_SESSION=1
-	DBUS_ADDR="unix:path=/run/user/$TARGET_UID/bus"
-fi
+TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
 
 # The touchpad's xfconf property node is keyed off its raw input device
 # name (e.g. "SYNA3602:00 0911:5288 Touchpad"), which xfce4-settings turns
 # into a property path by dropping every ':' and turning spaces into '_'
 # (verified against a live xfconf dump: "SYNA3602:00 0911:5288 Touchpad" ->
-# "/SYNA360200_09115288_Touchpad/..."). That name embeds a per-unit serial,
-# so it can't be hardcoded -- read it from the kernel's own device list
-# instead and derive the node fresh on whatever machine this runs on.
+# "/SYNA360200_09115288_Touchpad/..."). "0911:5288" here is the chip's
+# vendor:product ID, not a per-unit serial (confirmed via /proc/bus/input/
+# devices' empty "Uniq=" field) -- same on every Cyberbeest unit with this
+# touchpad today, but derived fresh from the kernel's own device list
+# rather than hardcoded anyway, in case a future hardware revision changes
+# it.
 TOUCHPAD_NAME="$(awk -F'"' '/^N: Name=/{name=$2} /^N: Name=/ && name ~ /[Tt]ouchpad/{print name; exit}' /proc/bus/input/devices)"
 
 if [ -z "$TOUCHPAD_NAME" ]; then
 	echo "No touchpad device found in /proc/bus/input/devices -- skipping per-user xfconf tuning." | tee -a "$LOG"
 	echo "MANUAL_TODO: No touchpad detected -- open Settings > Mouse and Touchpad to tune it by hand if one is attached later." | tee -a "$LOG"
-elif [ "$HAVE_SESSION" -ne 1 ]; then
-	echo "No active desktop session for $TARGET_USER -- skipping per-user xfconf tuning." | tee -a "$LOG"
-	echo "MANUAL_TODO: Re-run 00a-touchpad-tap-global.sh once logged in to apply the per-user touchpad tuning (sensitivity/scrolling)." | tee -a "$LOG"
 else
 	NODE="$(printf '%s' "$TOUCHPAD_NAME" | tr -d ':' | tr ' ' '_')"
 	echo "Touchpad device: $TOUCHPAD_NAME -> xfconf node /$NODE" | tee -a "$LOG"
 
-	set_prop() {
-		sudo -u "$TARGET_USER" DBUS_SESSION_BUS_ADDRESS="$DBUS_ADDR" \
-			xfconf-query -c pointers -p "/$NODE/$1" -n -t "$2" -s "$3"
-	}
-	set_prop "Acceleration" double "5.000000"
-	set_prop "Threshold" int "1"
-	set_prop "RightHanded" bool "true"
-	set_prop "ReverseScrolling" bool "true"
-	set_prop "Properties/libinput_Tapping_Enabled" int "1"
-	echo "Applied touchpad tuning under /$NODE" | tee -a "$LOG"
+	# Written to disk only, like 16-power-lock-config.sh's xfconf channel
+	# files -- deliberately NOT pushed live via xfconf-query. Tried that
+	# first, and on a live machine it made the pointer crawl: xfce4-
+	# settings-helper translates this generic "Acceleration" value into
+	# whatever scale the actual bound driver (synaptics vs. libinput) wants,
+	# and catching a live xfconf change this early in a session (00a- runs
+	# right after login, before xfce4-settings-helper's own device-
+	# capability probe has necessarily settled) risked that translation
+	# running against stale/incomplete device info. A fresh login re-derives
+	# it correctly every time, and a reboot/logout is already required for
+	# the global tap-to-click piece above, so there's no reason to also
+	# force this live in the same script run.
+	XML_DIR="$TARGET_HOME/.config/xfce4/xfconf/xfce-perchannel-xml"
+	install -d -o "$TARGET_USER" -g "$TARGET_USER" "$XML_DIR"
+	DEST="$XML_DIR/pointers.xml"
+	if [ -e "$DEST" ] && [ ! -e "$DEST.pre-cyberbeest" ]; then
+		cp "$DEST" "$DEST.pre-cyberbeest"
+	fi
+	cat > "$DEST" <<EOF
+<?xml version="1.1" encoding="UTF-8"?>
+
+<channel name="pointers" version="1.0">
+  <property name="$NODE" type="empty">
+    <property name="Properties" type="empty">
+      <property name="libinput_Tapping_Enabled" type="int" value="1"/>
+    </property>
+    <property name="RightHanded" type="bool" value="true"/>
+    <property name="ReverseScrolling" type="bool" value="true"/>
+    <property name="Threshold" type="int" value="1"/>
+    <property name="Acceleration" type="double" value="5"/>
+  </property>
+</channel>
+EOF
+	chown "$TARGET_USER:$TARGET_USER" "$DEST"
+	echo "Wrote $DEST (node /$NODE)" | tee -a "$LOG"
 fi
 
-echo "=== $(date) : done. Reboot (or log out/in) for the global tap-to-click change to fully apply. ===" | tee -a "$LOG"
-echo "MANUAL_TODO: Reboot (or log out/in) for the LightDM-level tap-to-click change to fully apply." | tee -a "$LOG"
+echo "=== $(date) : done. Reboot (or log out/in) for both changes above to fully apply. ===" | tee -a "$LOG"
+echo "MANUAL_TODO: Reboot (or log out/in) for the touchpad tap-to-click and tuning changes to fully apply." | tee -a "$LOG"
