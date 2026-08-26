@@ -17,14 +17,18 @@
 # short curated list can't cover it as well as the real region/city picker.
 #
 # Needs a real terminal (whiptail can't run headlessly) -- if stdin isn't a
-# TTY (e.g. a scripted/automated run-all.sh pass), this step is skipped with
-# a warning rather than hanging, and can be run manually afterwards.
+# TTY (e.g. invoking this script directly over a non-interactive channel,
+# like `ssh host bash 00-....sh` with no `-t`), this step is skipped with a
+# warning rather than hanging, and can be run manually afterwards. run-gui.py
+# always gives this particular script a real terminal (its own xterm window,
+# see NEEDS_TERMINAL there), so this branch normally isn't hit through the
+# GUI.
 #
 # Unlike every other NN-*.sh step, re-running this one always re-prompts
 # (like every dpkg-reconfigure) rather than being a no-op -- so it self-skips
 # the interactive part if it's already completed successfully since it was
 # last edited (log newer than script, same test run-changed.sh uses), even
-# under run-all.sh/menu.sh which otherwise always run every step. Delete the
+# under run-gui.py/menu.sh which otherwise always run every step. Delete the
 # log (or edit this script) to force it to prompt again.
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"

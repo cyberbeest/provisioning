@@ -14,7 +14,7 @@ DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG="$DIR/18-desktop-background.log"
 # Save the real console on fd 3 before redirecting stdout/stderr to the log,
 # so the manual-selection reminder at the end can still reach the person
-# running this (whether directly, via menu.sh, or run-all.sh/run-changed.sh)
+# running this (whether directly, via menu.sh, or run-gui.py)
 # instead of getting silently swallowed into the log file with everything else.
 exec 3>&1
 exec > >(tee -a "$LOG") 2>&1
@@ -70,5 +70,5 @@ echo "=== $(date) : done. Set it via Desktop Settings -> pick Cyberbeest (one-ti
 
 # See run-gui.py's MANUAL_TODO convention: it collects these into a "Things
 # to do" pane instead of them getting lost in a scrolling log. Still on fd 3
-# too, so a CLI run (run-all.sh/run-changed.sh/menu.sh) shows it directly.
+# too, so a CLI run (menu.sh) shows it directly.
 echo "MANUAL_TODO: Pick the desktop background: right-click desktop -> Desktop Settings -> select Cyberbeest, and set Style to 'Scaled'." >&3

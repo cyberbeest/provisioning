@@ -1,6 +1,6 @@
 #!/bin/bash
 # Standalone launcher for cyberbeest_llm_chat_gui.py -- NOT part of the numbered NN-*.sh
-# provisioning sequence (deliberately unnumbered so run-all.sh/run-gui.py's [0-9][0-9]-*.sh
+# provisioning sequence (deliberately unnumbered so run-gui.py's [0-9][0-9]-*.sh
 # glob never picks it up). Meant for `git checkout`-ing just this one file onto another
 # machine (e.g. a desktop PC) to run the chat UI there, typically with the "Discoverable"
 # switch on so a Cyberbeest laptop's own copy of the UI can connect to it remotely.

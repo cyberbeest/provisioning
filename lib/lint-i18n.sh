@@ -1,9 +1,8 @@
 #!/bin/bash
 # Checks that the en/de i18n catalogs (lib/i18n/) define exactly the same
-# set of keys, in both the bash and the Python catalog pairs. Run this from
-# run-all.sh/run-changed.sh or by hand after editing a catalog -- a missing
-# key silently falls back to English at runtime, which is easy to miss
-# without this check.
+# set of keys, in both the bash and the Python catalog pairs. Run this by
+# hand after editing a catalog -- a missing key silently falls back to
+# English at runtime, which is easy to miss without this check.
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)/i18n"
 status=0

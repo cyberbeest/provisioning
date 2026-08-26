@@ -1,6 +1,6 @@
 #!/bin/bash
 # RETIRED, not part of the numbered NN-*.sh provisioning sequence (deliberately
-# unnumbered so run-all.sh/run-gui.py's [0-9][0-9]-*.sh glob never picks it up).
+# unnumbered so run-gui.py's [0-9][0-9]-*.sh glob never picks it up).
 # Kept here for reference/history only -- removed 2026-08-15 because battery
 # measurements showed screen-off power draw is low enough that the
 # suspend/wake notification-cycling this GUI configured (the "Experimental"
