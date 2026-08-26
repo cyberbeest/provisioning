@@ -73,7 +73,7 @@ fi
 click_line="$(t shutdown_genmon.click_to_change)"
 
 if [ "$linked" = "true" ] || [ "$ac_min" = "$bat_min" ]; then
-    echo "<txt>⏻ $(fmt "$ac_min")${warn_txt}</txt>"
+    echo "<txt>🔒 $(fmt "$idle_delay_min") ⏻ $(fmt "$ac_min")${warn_txt}</txt>"
     if [ "$ac_min" -eq 0 ]; then
         echo "<tool>${warn_line}${lock_line}&#10;$(t shutdown_genmon.disabled_both)&#10;${click_line}</tool>"
     else
@@ -82,7 +82,7 @@ if [ "$linked" = "true" ] || [ "$ac_min" = "$bat_min" ]; then
         echo "<tool>${warn_line}${lock_line}&#10;${after_both}&#10;${click_line}</tool>"
     fi
 else
-    echo "<txt>⏻ $(fmt "$ac_min")/$(fmt "$bat_min")${warn_txt}</txt>"
+    echo "<txt>🔒 $(fmt "$idle_delay_min") ⏻ $(fmt "$ac_min")/$(fmt "$bat_min")${warn_txt}</txt>"
     ac_line="$(t shutdown_genmon.ac_label)"
     ac_line="${ac_line//DURATION/$(fmt "$ac_min")}"
     bat_line="$(t shutdown_genmon.battery_label)"

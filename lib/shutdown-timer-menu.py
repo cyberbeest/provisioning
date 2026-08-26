@@ -35,14 +35,14 @@ LEGACY_SHUTDOWN_KEY = "SHUTDOWN_MINUTES"
 # 0 is the "Never" sentinel -- lock-shutdown-watcher.sh skips the shutdown
 # check entirely for that power source when it reads 0. Listed last since
 # it's conceptually the far end of the scale (infinity), not a short time.
-PRESETS = [15, 30, 60, 120, 240, 0]
+PRESETS = [30, 60, 120, 240, 480, 720, 1440, 0]
 
 # The idle-to-lock delay isn't part of power-settings.conf -- xfce4-screensaver
 # 4.18 reads it from gsettings directly (org.gnome.desktop.session idle-delay,
 # in seconds), same as lock-countdown-genmon.sh already does. 0 is the same
 # "Never" sentinel as PRESETS above -- gsettings' idle-delay=0 is the
 # documented way to disable idle-triggered locking/blanking entirely.
-LOCK_PRESETS = [1, 2, 5, 10, 15, 30, 0]
+LOCK_PRESETS = [1, 5, 15, 30, 60, 0]
 
 
 def read_settings():
