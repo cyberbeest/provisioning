@@ -22,9 +22,17 @@ if ! command -v whiptail >/dev/null 2>&1; then
 fi
 
 scripts=()
-for f in [0-9][0-9]-*.sh; do
+# The optional trailing letter (e.g. 00a-) lets a script slot in right after
+# an existing NN- step without renumbering everything after it -- see
+# run-gui.py's list_scripts() for the sort-order reasoning.
+for f in [0-9][0-9]-*.sh [0-9][0-9][a-z]-*.sh; do
 	[ -e "$f" ] && scripts+=("$f")
 done
+# LC_ALL=C: a locale-aware sort here (e.g. en_US.UTF-8) treats '-' as
+# ignorable punctuation, so "00a-touchpad..." sorts *before*
+# "00-locale...", defeating the whole point of the 00a- naming trick. Plain
+# byte order (same as Python's sorted() in run-gui.py) gets it right.
+mapfile -t scripts < <(printf '%s\n' "${scripts[@]}" | LC_ALL=C sort)
 
 if [ "${#scripts[@]}" -eq 0 ]; then
 	echo "No NN-*.sh provisioning scripts found in $DIR" >&2

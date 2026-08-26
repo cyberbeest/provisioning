@@ -12,7 +12,12 @@ competing product or service on top of.
 ## Pattern
 
 Each script:
-- Is named `NN-short-description.sh` (numbered = run order).
+- Is named `NN-short-description.sh` (numbered = run order). A trailing
+  letter (`00a-`, `00b-`, ...) slots a script in right after an existing
+  step without renumbering everything after it — used for a second
+  interactive/whiptail confirmation that needs to run back-to-back with
+  `00-locale-keyboard-timezone.sh` rather than popping up mid-run (see
+  `00a-touchpad-tap-global.sh`).
 - Is idempotent — safe to re-run on a machine that already has it applied.
 - Logs its own output to `NN-short-description.log` in this directory.
 - Expects to be run as root itself (`sudo bash NN-*.sh`), since there's a

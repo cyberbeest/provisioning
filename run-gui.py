@@ -128,7 +128,7 @@ DIR = os.path.dirname(os.path.realpath(__file__))
 ASKPASS = os.path.join(DIR, "lib", "zenity-askpass.sh")
 CACHED_ASKPASS = os.path.join(DIR, "lib", "cached-askpass.sh")
 
-NEEDS_TERMINAL = {"00-locale-keyboard-timezone.sh"}
+NEEDS_TERMINAL = {"00-locale-keyboard-timezone.sh", "00a-touchpad-tap-global.sh"}
 
 MANUAL_TODO_RE = re.compile(r"^MANUAL_TODO:\s*(.+?)\s*$", re.MULTILINE)
 REBOOT_TODO_KEY = "__reboot__"
@@ -142,7 +142,15 @@ STATUS_STYLE = {
 
 
 def list_scripts():
-    return sorted(os.path.basename(p) for p in glob.glob(os.path.join(DIR, "[0-9][0-9]-*.sh")))
+    # [0-9][0-9][a-z]?-*.sh: the optional trailing letter lets a script slot
+    # in right after an existing NN- step (e.g. 00a- runs between 00- and
+    # 01-) without renumbering everything after it. '-' (0x2D) sorts before
+    # any letter, so "00-..." still sorts before "00a-..." before "01-...".
+    return sorted(
+        os.path.basename(p)
+        for pattern in ("[0-9][0-9]-*.sh", "[0-9][0-9][a-z]-*.sh")
+        for p in glob.glob(os.path.join(DIR, pattern))
+    )
 
 
 def log_path_for(script):
@@ -208,6 +216,8 @@ class RunGuiWindow(Gtk.Window):
         self.follow_live = True
         self.todos = {}
         self.current_run_is_batch = False
+        self.queue_total = 0
+        self.queue_done = 0
         # Sum of individual script durations run in this session -- not
         # wall-clock time since the window opened (which would also count
         # idle time sitting on this screen doing nothing), and deliberately
@@ -243,6 +253,14 @@ class RunGuiWindow(Gtk.Window):
 
         self.status_label = Gtk.Label(label="Idle. Double-click a script below to run just that one.", xalign=0)
         root.pack_start(self.status_label, False, False, 0)
+
+        # Counts every script the worker attempts (success or failure) out of
+        # the queue it was handed, not just successes -- a failed/skipped
+        # script still "used up" its slot in the run. Reset to empty at
+        # startup and refilled at the start of each run in _start_run().
+        self.progress_bar = Gtk.ProgressBar()
+        self.progress_bar.set_show_text(True)
+        root.pack_start(self.progress_bar, False, False, 0)
 
         self.todo_frame = Gtk.Frame(label="Things to do after the provisioning completed")
         # Hidden whenever self.todos is empty (start of day, or once every
@@ -618,8 +636,23 @@ class RunGuiWindow(Gtk.Window):
         if self.displayed_script == "":
             self.log_buffer.set_text("")
         self.status_label.set_text(f"{label}: starting (enter sudo password if prompted)...")
+        self.queue_total = len(scripts)
+        self.queue_done = 0
+        self._update_progress()
         self._set_controls_busy(True)
         threading.Thread(target=self._worker, args=(scripts,), daemon=True).start()
+
+    def _update_progress(self):
+        if self.queue_total:
+            self.progress_bar.set_fraction(self.queue_done / self.queue_total)
+            self.progress_bar.set_text(f"{self.queue_done} / {self.queue_total}")
+        else:
+            self.progress_bar.set_fraction(0.0)
+            self.progress_bar.set_text("")
+
+    def _bump_progress(self):
+        self.queue_done += 1
+        self._update_progress()
 
     # -- running a single script --------------------------------------------------
 
@@ -746,6 +779,7 @@ class RunGuiWindow(Gtk.Window):
             duration = time.monotonic() - start_time
             self.current_script_start = None
             GLib.idle_add(self._add_session_runtime, duration)
+            GLib.idle_add(self._bump_progress)
 
             if status == 0:
                 GLib.idle_add(self.append_log, script, f"=== {script} done ({format_duration(duration)}) ===\n")
