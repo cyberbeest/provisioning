@@ -138,7 +138,17 @@ if command -v xfce4-panel >/dev/null 2>&1; then
 		# top/bottom bar, id != 1). Overwriting the file above doesn't remove
 		# it from a *live* xfconfd's in-memory state -- kill xfconfd so it
 		# comes back reading only our file, before restarting the panel.
+		#
+		# Also kill the live xfce4-panel process itself rather than asking it
+		# to `-r`/restart in place: `-r` rebuilds from whatever config that
+		# process already has cached client-side (e.g. the stock defaults from
+		# the very first, pre-provisioning login), then persists that stale
+		# state back to xfconfd as part of its own "restart" bookkeeping --
+		# silently clobbering the file we just wrote a few seconds later.
+		# Killing it outright and launching a fresh process below forces it to
+		# actually read xfconfd from scratch instead.
 		pkill -u "$TARGET_USER" -x xfconfd || true
+		pkill -u "$TARGET_USER" -x xfce4-panel || true
 		sleep 1
 		# grep/while both legitimately exit non-zero when there are no stray
 		# panels to remove (the normal case) -- under pipefail+set -e that
@@ -153,18 +163,14 @@ if command -v xfce4-panel >/dev/null 2>&1; then
 		done || true
 		su - "$TARGET_USER" -c "DISPLAY='${DISPLAY:-:0}' DBUS_SESSION_BUS_ADDRESS='$DBUS_ADDR' xfconf-query -c xfce4-panel -p /panels -t int -s 1 --force-array" || true
 
-		su - "$TARGET_USER" -c "DISPLAY='${DISPLAY:-:0}' DBUS_SESSION_BUS_ADDRESS='$DBUS_ADDR' xfce4-panel -r" || true
-
-		# `-r` above only works if a panel process is still alive to receive
-		# it -- it asks a running instance to restart itself, it doesn't
-		# launch one from scratch. Killing xfconfd just before it can knock
-		# the panel process out (it depends on xfconfd for its own config),
-		# leaving no process left for `-r` to reach and no panel on screen
-		# until the next full login. Fall back to a plain launch in that case.
+		# A plain fresh launch, not `xfce4-panel -r` -- we just killed the
+		# panel process above precisely so nothing is left holding stale
+		# in-memory config to read from or write back; `-r` would have
+		# nothing to restart anyway since there's no running instance left.
+		su - "$TARGET_USER" -c "DISPLAY='${DISPLAY:-:0}' DBUS_SESSION_BUS_ADDRESS='$DBUS_ADDR' setsid xfce4-panel >/dev/null 2>&1 < /dev/null &"
 		sleep 1
 		if ! pgrep -u "$TARGET_USER" -x xfce4-panel >/dev/null; then
-			echo "--- Panel process didn't come back after reload; launching it fresh ---"
-			su - "$TARGET_USER" -c "DISPLAY='${DISPLAY:-:0}' DBUS_SESSION_BUS_ADDRESS='$DBUS_ADDR' setsid xfce4-panel >/dev/null 2>&1 < /dev/null &"
+			echo "--- Panel process didn't come up after launch ---"
 		fi
 	fi
 fi

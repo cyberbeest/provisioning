@@ -130,6 +130,17 @@ CACHED_ASKPASS = os.path.join(DIR, "lib", "cached-askpass.sh")
 
 NEEDS_TERMINAL = {"00-locale-keyboard-timezone.sh", "00a-touchpad-tap-global.sh"}
 
+# Scripts whose effects are hard to walk back (or actively dangerous to run
+# on a machine you're still debugging over SSH) get a confirmation dialog
+# right before they run, even inside a "Run all"/"Run changed only" batch.
+NEEDS_CONFIRMATION = {
+    "99-remove-openssh-server.sh": (
+        "This permanently removes the SSH server and wipes every user's "
+        "authorized_keys, cutting off remote SSH access to this machine.\n\n"
+        "Continue?"
+    ),
+}
+
 # Must match cyberbeest-bootstrap.sh's own AUTOSTART_FILE -- that's the
 # fresh-install autostart entry that relaunches beestify.sh (and so this
 # GUI) on every login until provisioning is complete. Deleting it directly
@@ -146,6 +157,7 @@ STATUS_STYLE = {
     "running": ("running...", "#2b78e4"),
     "done": ("done", "#2a9d3f"),
     "failed": ("failed", "#d43f3f"),
+    "skipped": ("skipped", "#8a8a8a"),
 }
 
 
@@ -694,6 +706,32 @@ class RunGuiWindow(Gtk.Window):
 
     # -- running a single script --------------------------------------------------
 
+    def _confirm(self, script, message):
+        # Called from the worker thread; the dialog itself has to be built
+        # and shown on the GTK main thread, so hand off via idle_add and
+        # block this thread on an Event until the user answers.
+        result = {}
+        done = threading.Event()
+
+        def show_dialog():
+            dialog = Gtk.MessageDialog(
+                transient_for=self,
+                modal=True,
+                message_type=Gtk.MessageType.WARNING,
+                buttons=Gtk.ButtonsType.YES_NO,
+                text=f"Run {script}?",
+            )
+            dialog.format_secondary_text(message)
+            response = dialog.run()
+            dialog.destroy()
+            result["confirmed"] = response == Gtk.ResponseType.YES
+            done.set()
+            return False
+
+        GLib.idle_add(show_dialog)
+        done.wait()
+        return result["confirmed"]
+
     def _get_sudo_password(self):
         if self.sudo_password is not None:
             return self.sudo_password
@@ -798,6 +836,14 @@ class RunGuiWindow(Gtk.Window):
                 break
 
             script = remaining.pop(0)
+
+            confirm_message = NEEDS_CONFIRMATION.get(script)
+            if confirm_message and not self._confirm(script, confirm_message):
+                GLib.idle_add(self.append_log, script, f"=== {script} skipped (not confirmed) ===\n")
+                GLib.idle_add(self.set_row_status, script, "skipped")
+                GLib.idle_add(self._bump_progress)
+                continue
+
             self.currently_running_script = script
             GLib.idle_add(self._begin_script_display, script)
             GLib.idle_add(self.set_row_status, script, "running")
