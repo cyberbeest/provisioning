@@ -130,6 +130,14 @@ CACHED_ASKPASS = os.path.join(DIR, "lib", "cached-askpass.sh")
 
 NEEDS_TERMINAL = {"00-locale-keyboard-timezone.sh", "00a-touchpad-tap-global.sh"}
 
+# Must match cyberbeest-bootstrap.sh's own AUTOSTART_FILE -- that's the
+# fresh-install autostart entry that relaunches beestify.sh (and so this
+# GUI) on every login until provisioning is complete. Deleting it directly
+# is exactly what cyberbeest-bootstrap.sh itself does on a clean finish;
+# see the "Disable auto-provisioning on login" button below for doing that
+# manually, on purpose, before every script has run.
+AUTOSTART_FILE = os.path.expanduser("~/.config/autostart/cyberbeest-provisioning.desktop")
+
 MANUAL_TODO_RE = re.compile(r"^MANUAL_TODO:\s*(.+?)\s*$", re.MULTILINE)
 REBOOT_TODO_KEY = "__reboot__"
 
@@ -247,6 +255,11 @@ class RunGuiWindow(Gtk.Window):
         self.stop_button.set_sensitive(False)
         self.stop_button.connect("clicked", self.on_stop)
         button_box.pack_start(self.stop_button, False, False, 0)
+
+        self.disable_autostart_button = Gtk.Button(label="Disable auto-provisioning on login")
+        self.disable_autostart_button.set_sensitive(os.path.exists(AUTOSTART_FILE))
+        self.disable_autostart_button.connect("clicked", self.on_disable_autostart)
+        button_box.pack_start(self.disable_autostart_button, False, False, 0)
 
         self.total_time_label = Gtk.Label(label="Total run time this session: 0s", xalign=1)
         button_box.pack_end(self.total_time_label, False, False, 0)
@@ -822,6 +835,38 @@ class RunGuiWindow(Gtk.Window):
                     "Reboot to fully apply everything from this run.",
                     action=("Reboot Now", self._do_reboot),
                 )
+
+    def on_disable_autostart(self, _button):
+        pending = [s for s in list_scripts() if not script_is_done(s)]
+        message = (
+            "This machine will no longer offer to run provisioning automatically "
+            "at login."
+        )
+        if pending:
+            message += (
+                f"\n\n{len(pending)} script(s) haven't completed yet:\n"
+                + "\n".join(f"  • {s}" for s in pending)
+                + "\n\nYou can still run this tool by hand any time (beestify.sh)."
+            )
+        dialog = Gtk.MessageDialog(
+            transient_for=self,
+            modal=True,
+            message_type=Gtk.MessageType.QUESTION,
+            buttons=Gtk.ButtonsType.YES_NO,
+            text="Disable auto-provisioning on login?",
+        )
+        dialog.format_secondary_text(message)
+        response = dialog.run()
+        dialog.destroy()
+        if response != Gtk.ResponseType.YES:
+            return
+        try:
+            os.remove(AUTOSTART_FILE)
+        except OSError as e:
+            self.status_label.set_text(f"Could not remove {AUTOSTART_FILE}: {e}")
+            return
+        self.disable_autostart_button.set_sensitive(False)
+        self.status_label.set_text("Auto-provisioning on login disabled. Run beestify.sh by hand any time to pick up where you left off.")
 
     def on_stop(self, _button):
         if not self.busy:
