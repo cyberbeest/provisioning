@@ -256,10 +256,20 @@ class RunGuiWindow(Gtk.Window):
         self.stop_button.connect("clicked", self.on_stop)
         button_box.pack_start(self.stop_button, False, False, 0)
 
-        self.disable_autostart_button = Gtk.Button(label="Disable auto-provisioning on login")
-        self.disable_autostart_button.set_sensitive(os.path.exists(AUTOSTART_FILE))
-        self.disable_autostart_button.connect("clicked", self.on_disable_autostart)
-        button_box.pack_start(self.disable_autostart_button, False, False, 0)
+        # A small drop-down (just the triangle, no label) rather than another
+        # full-size button -- this is a rare, one-off action, not something
+        # that deserves the same visual weight as Run all/Run selected/Stop.
+        self.more_menu_button = Gtk.MenuButton()
+        self.more_menu_button.set_image(Gtk.Image.new_from_icon_name("pan-down-symbolic", Gtk.IconSize.BUTTON))
+        self.more_menu_button.set_tooltip_text("More actions")
+        more_menu = Gtk.Menu()
+        self.disable_autostart_item = Gtk.MenuItem(label="Disable auto-provisioning on login")
+        self.disable_autostart_item.set_sensitive(os.path.exists(AUTOSTART_FILE))
+        self.disable_autostart_item.connect("activate", self.on_disable_autostart)
+        more_menu.append(self.disable_autostart_item)
+        more_menu.show_all()
+        self.more_menu_button.set_popup(more_menu)
+        button_box.pack_start(self.more_menu_button, False, False, 0)
 
         self.total_time_label = Gtk.Label(label="Total run time this session: 0s", xalign=1)
         button_box.pack_end(self.total_time_label, False, False, 0)
@@ -517,7 +527,19 @@ class RunGuiWindow(Gtk.Window):
         self.displayed_script = script
         text = self.logs.get(script, "")
         if not text and script:
-            text = f"{script} hasn't been run yet in this session. Double-click it to run.\n"
+            # Nothing run yet *this session* -- fall back to whatever this
+            # script logged last time it ran (e.g. from an earlier run-gui.py
+            # session, or menu.sh), rather than just claiming there's nothing
+            # to show.
+            try:
+                with open(log_path_for(script)) as f:
+                    on_disk = f.read()
+            except OSError:
+                on_disk = ""
+            if on_disk:
+                text = f"-- {script} hasn't run in this session; showing its log from a previous run --\n\n{on_disk}"
+            else:
+                text = f"{script} hasn't been run yet. Double-click it to run.\n"
         self.log_buffer.set_text(text)
 
     def on_selection_changed(self, _listbox):
@@ -836,7 +858,7 @@ class RunGuiWindow(Gtk.Window):
                     action=("Reboot Now", self._do_reboot),
                 )
 
-    def on_disable_autostart(self, _button):
+    def on_disable_autostart(self, _menuitem):
         pending = [s for s in list_scripts() if not script_is_done(s)]
         message = (
             "This machine will no longer offer to run provisioning automatically "
@@ -865,7 +887,7 @@ class RunGuiWindow(Gtk.Window):
         except OSError as e:
             self.status_label.set_text(f"Could not remove {AUTOSTART_FILE}: {e}")
             return
-        self.disable_autostart_button.set_sensitive(False)
+        self.disable_autostart_item.set_sensitive(False)
         self.status_label.set_text("Auto-provisioning on login disabled. Run beestify.sh by hand any time to pick up where you left off.")
 
     def on_stop(self, _button):
