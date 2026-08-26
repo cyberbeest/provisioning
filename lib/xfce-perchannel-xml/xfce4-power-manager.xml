@@ -18,6 +18,13 @@
     <property name="dpms-on-ac-off" type="uint" value="6"/>
     <property name="dpms-on-battery-sleep" type="uint" value="5"/>
     <property name="dpms-on-battery-off" type="uint" value="6"/>
+    <!-- "Reduce brightness on inactivity" (a separate feature from DPMS
+         sleep/off above): explicitly disabled, rather than relying on
+         whatever this xfce4-power-manager build's compiled-in default
+         happens to be for an unset key -- seen enabled by default on a
+         fresh install, dimming the screen ahead of the actual lock. -->
+    <property name="brightness-inactivity-on-ac" type="uint" value="0"/>
+    <property name="brightness-inactivity-on-battery" type="uint" value="0"/>
     <property name="dpms-enabled" type="bool" value="true"/>
     <property name="inactivity-on-ac" type="uint" value="0"/>
     <property name="inactivity-on-battery" type="uint" value="0"/>

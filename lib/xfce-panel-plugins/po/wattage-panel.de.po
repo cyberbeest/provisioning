@@ -18,6 +18,9 @@ msgstr "Netz"
 msgid "Battery: %.0f%% (%s)\nPower: %.1f W (instant, as reported)"
 msgstr "Akku: %.0f%% (%s)\nLeistung: %.1f W (Momentanwert, laut Gerät)"
 
+msgid "Battery: %.0f%% (%s)\nPower: %.1f W (10 min average)"
+msgstr "Akku: %.0f%% (%s)\nLeistung: %.1f W (10-Min-Durchschnitt)"
+
 msgid "\n\nAverages since on battery (%s):"
 msgstr "\n\nDurchschnitt seit Akkubetrieb (%s):"
 

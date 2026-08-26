@@ -1,9 +1,12 @@
 #!/bin/bash
 # Installs this machine's power-manager and screen-lock settings: display
-# sleeps after 6 minutes idle and turns off after 7 (DPMS), the screen
-# locks after 5 minutes idle, and there's no separate system auto-suspend
-# (that's handled by lock-shutdown-watcher.sh instead) -- see
-# lib/xfce-perchannel-xml/xfce4-power-manager.xml and xfce4-screensaver.xml.
+# sleeps after 5 minutes idle and turns off after 6 (DPMS), the screen
+# locks after 5 minutes idle, brightness reduction on inactivity is
+# disabled outright (found enabled by default on a fresh install,
+# dimming the screen ahead of the actual lock), and there's no separate
+# system auto-suspend (that's handled by lock-shutdown-watcher.sh instead)
+# -- see lib/xfce-perchannel-xml/xfce4-power-manager.xml and
+# xfce4-screensaver.xml.
 # Also disables light-locker's autostart: it's pulled in as an xfce4-session
 # recommend, and having it running alongside xfce4-screensaver makes both
 # fight over the lock/unlock X grab -- intermittently leaving the unlock

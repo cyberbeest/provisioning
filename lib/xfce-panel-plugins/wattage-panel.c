@@ -399,10 +399,23 @@ watt_update_label(WattPlugin *wp)
         wp->have_last_valid = FALSE; /* reseed next time we go on battery */
     }
 
-    /* The panel label always shows the machine's own instant reading for
-     * now; the multi-window averages below (tooltip only) are purely
-     * informational while we figure out what should drive this instead. */
+    /* Prefer the machine's own instant power_now reading. Some hardware
+     * (seen on the GRTY/E140 board) never populates power_now at all -- it
+     * reads a flat 0 -- so fall back to the 10-minute tick-based average in
+     * that case. Confirmed on that hardware (via a CPU-burn test) that
+     * energy_now itself updates on a real, load-responsive ~20s cadence
+     * there, fine-grained enough for a 10-minute window to track actual
+     * draw rather than just being a slow-moving average. */
     gdouble watts = power_uw / 1000000.0;
+    gboolean watts_is_average = FALSE;
+    if (watts <= 0.0 && status == BATT_DISCHARGING) {
+        gdouble avg_w;
+        guint avg_ticks;
+        if (watt_window_average(wp, now_s, AVG_WINDOWS[0].seconds, &avg_w, &avg_ticks)) {
+            watts = avg_w;
+            watts_is_average = TRUE;
+        }
+    }
 
     gchar text[64];
     switch (status) {
@@ -428,7 +441,10 @@ watt_update_label(WattPlugin *wp)
     gtk_label_set_text(GTK_LABEL(wp->label), text);
 
     GString *tooltip = g_string_new(NULL);
-    g_string_append_printf(tooltip, _("Battery: %.0f%% (%s)\nPower: %.1f W (instant, as reported)"),
+    g_string_append_printf(tooltip,
+                            watts_is_average
+                                ? _("Battery: %.0f%% (%s)\nPower: %.1f W (10 min average)")
+                                : _("Battery: %.0f%% (%s)\nPower: %.1f W (instant, as reported)"),
                             capacity, status_buf, watts);
 
     if (status == BATT_DISCHARGING) {
