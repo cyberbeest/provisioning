@@ -275,6 +275,9 @@ class RunGuiWindow(Gtk.Window):
         button_box.pack_end(self.total_time_label, False, False, 0)
 
         self.status_label = Gtk.Label(label="Idle. Double-click a script below to run just that one.", xalign=0)
+        status_css = Gtk.CssProvider()
+        status_css.load_from_data(b"label { font-size: 200%; }")
+        self.status_label.get_style_context().add_provider(status_css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
         root.pack_start(self.status_label, False, False, 0)
 
         # Counts every script the worker attempts (success or failure) out of
