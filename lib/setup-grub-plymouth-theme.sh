@@ -18,6 +18,14 @@ GRUB_FILE="/etc/default/grub"
 . "$SELF_DIR/i18n.sh"
 
 echo "--- Installing plymouth-themes (base spinner assets our theme reuses) ---"
+# Installing plymouth fires initramfs-tools' own dpkg trigger, rebuilding
+# the initramfs once with the stock "spinner" theme baked in before
+# "plymouth-set-default-theme -R cyberbeest" below rebuilds it again for
+# real. That first rebuild is thrown away almost immediately, but it's a
+# few seconds against a provisioning run that takes minutes -- not worth
+# risking a permanently-broken initramfs on a real customer machine (e.g. a
+# hard kill mid-script) by diverting update-initramfs to skip it. Left as
+# two rebuilds, deliberately.
 apt-get -o DPkg::Lock::Timeout=60 update -qq
 apt-get -o DPkg::Lock::Timeout=60 install -y plymouth plymouth-themes
 
