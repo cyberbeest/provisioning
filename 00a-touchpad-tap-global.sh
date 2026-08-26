@@ -83,10 +83,11 @@ TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
 # (verified against a live xfconf dump: "SYNA3602:00 0911:5288 Touchpad" ->
 # "/SYNA360200_09115288_Touchpad/..."). "0911:5288" here is the chip's
 # vendor:product ID, not a per-unit serial (confirmed via /proc/bus/input/
-# devices' empty "Uniq=" field) -- same on every Cyberbeest unit with this
-# touchpad today, but derived fresh from the kernel's own device list
-# rather than hardcoded anyway, in case a future hardware revision changes
-# it.
+# devices' empty "Uniq=" field) -- but NOT constant across units either:
+# a second machine (2026-08-26), same touchpad model (SYNA3602:00) but a
+# different board (see below), reported "347D:7640" instead. Good thing
+# this is derived fresh from the kernel's own device list every run rather
+# than hardcoded.
 TOUCHPAD_NAME="$(awk -F'"' '/^N: Name=/{name=$2} /^N: Name=/ && name ~ /[Tt]ouchpad/{print name; exit}' /proc/bus/input/devices)"
 
 if [ -z "$TOUCHPAD_NAME" ]; then
