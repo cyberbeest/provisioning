@@ -111,7 +111,7 @@ echo "--- Recording the ISO's fixed installer passwords as temporary ---"
 # ISO: the checker only nags when the CURRENT password still matches what's
 # recorded here, so a self-installer's real password just never matches and
 # nothing is ever shown to them.
-/usr/local/sbin/cyberbeest-record-initial-password master 'change-me-immediately' weak
+/usr/local/sbin/cyberbeest-record-initial-password master 'change-me-now' weak
 /usr/local/sbin/cyberbeest-record-initial-password short 'change-me' weak
 
 echo "--- Installing narrowly-scoped NOPASSWD sudoers rule for the checker ---"
