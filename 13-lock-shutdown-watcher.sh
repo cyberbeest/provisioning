@@ -1,10 +1,12 @@
 #!/bin/bash
 # Installs the lock-shutdown-watcher user service: shuts the machine down
 # after the screen has stayed continuously locked for SHUTDOWN_MINUTES
-# (default 60), reading that from ~/.config/cyberbeest/power-settings.conf --
-# the file the shutdown-timer panel icon's menu edits (see
-# 12-xfce-panel-layout.sh, lib/shutdown-timer-menu.py). See
-# lib/lock-shutdown-watcher.sh.
+# (default 60), and along the way minimizes windows and throttles the
+# browser's CPU usage (MINIMIZE_MINUTES / BROWSER_THROTTLE_PERCENT, default
+# 10min / 10%) to save power -- reading all of this from
+# ~/.config/cyberbeest/power-settings.conf, the file the shutdown-timer panel
+# icon's menu edits (see 12-xfce-panel-layout.sh, lib/shutdown-timer-menu.py).
+# See lib/lock-shutdown-watcher.sh.
 # Idempotent: safe to re-run.
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -17,9 +19,9 @@ TARGET_USER="${SUDO_USER:-cyberbeest}"
 TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
 TARGET_UID="$(id -u "$TARGET_USER")"
 
-echo "--- Installing dependencies (xprintidle, dbus-send, xset, wmctrl, xprop) ---"
+echo "--- Installing dependencies (xprintidle, dbus-send, xset, wmctrl, xprop, cpulimit) ---"
 apt-get -o DPkg::Lock::Timeout=60 update -qq
-apt-get -o DPkg::Lock::Timeout=60 install -y xprintidle dbus-bin x11-xserver-utils wmctrl x11-utils
+apt-get -o DPkg::Lock::Timeout=60 install -y xprintidle dbus-bin x11-xserver-utils wmctrl x11-utils cpulimit
 
 echo "--- Installing watcher script to $TARGET_HOME/bin/lock-shutdown-watcher.sh ---"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/bin"

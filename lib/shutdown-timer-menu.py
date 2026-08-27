@@ -29,6 +29,11 @@ DEFAULTS = {
     "AC_SHUTDOWN_MINUTES": "60",
     "BATTERY_SHUTDOWN_MINUTES": "60",
     "LINK_AC_BATTERY": "true",
+    # Not surfaced in this menu (see lock-power-saving-dialog.py instead) --
+    # kept here anyway so this menu's own write_settings() calls don't drop
+    # them from the config file when saving an unrelated setting.
+    "MINIMIZE_MINUTES": "10",
+    "BROWSER_THROTTLE_PERCENT": "10",
 }
 LEGACY_SHUTDOWN_KEY = "SHUTDOWN_MINUTES"
 
@@ -191,6 +196,16 @@ def run_logout_action(_item, cmd):
     subprocess.Popen(cmd)
 
 
+def open_power_saving_dialog(_item):
+    # Launched as a separate process rather than opening a Gtk.Dialog here:
+    # this menu's own "deactivate" handler calls Gtk.main_quit() the moment
+    # the menu closes (which happens as soon as this item is clicked), and
+    # that would tear down a nested dialog.run() loop started in the same
+    # process before the user got to see it.
+    Gtk.main_quit()
+    subprocess.Popen([os.path.expanduser("~/.local/bin/lock-power-saving-dialog.py")])
+
+
 def add_preset_section(menu, label, key, current, linked):
     header = Gtk.MenuItem(label=label)
     header.set_sensitive(False)
@@ -317,6 +332,11 @@ def build_menu():
         add_preset_section(menu, t("timer.on_ac"), "AC_SHUTDOWN_MINUTES", ac_min, linked)
         menu.append(Gtk.SeparatorMenuItem())
         add_preset_section(menu, t("timer.on_battery"), "BATTERY_SHUTDOWN_MINUTES", bat_min, linked)
+
+    menu.append(Gtk.SeparatorMenuItem())
+    power_saving_item = Gtk.MenuItem(label=t("timer.power_saving_while_locked"))
+    power_saving_item.connect("activate", open_power_saving_dialog)
+    menu.append(power_saving_item)
 
     menu.show_all()
     return menu

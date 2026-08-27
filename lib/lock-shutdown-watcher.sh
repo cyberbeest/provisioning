@@ -8,8 +8,14 @@
 
 DEFAULT_SHUTDOWN_MIN=60  # default minutes locked before shutdown
 DEFAULT_MINIMIZE_MIN=10  # default minutes locked before minimizing windows (power saving: minimized windows stop repainting)
+DEFAULT_THROTTLE_PERCENT=10  # default CPU cap (% of one core, per process) applied to the browser while locked; 0 disables
 POLL_INTERVAL=15         # how often to check lock state
 MINIMIZED_STATE_FILE="$HOME/.cache/cyberbeest/lock-minimized-windows.list"
+THROTTLE_STATE_FILE="$HOME/.cache/cyberbeest/lock-throttle-cpulimit.pids"
+# Process names to throttle while locked. firejail's sandboxed launch (see
+# browser-sandbox.sh) doesn't hide these from the host process table, so
+# plain pgrep/cpulimit on the host works regardless of the sandbox.
+BROWSER_PROCESS_NAMES="firefox-esr firefox chromium chromium-browser google-chrome"
 # AC adapter's sysfs device name varies by hardware (ADP1, AC, ACAD, ...) --
 # find whichever one is of type Mains rather than hardcoding it.
 AC_ONLINE=""
@@ -85,6 +91,38 @@ restore_windows() {
     rm -f "$MINIMIZED_STATE_FILE"
 }
 
+# Caps each matched browser process (and its children, e.g. tab/GPU
+# processes -- cpulimit -m tracks those as they fork) to PERCENT% of one CPU
+# core via periodic SIGSTOP/SIGCONT. Deliberately not a hard freeze: this
+# keeps enough cycles flowing that in-progress downloads still make progress
+# and queued web-notification audio still plays, just slower, rather than
+# using something like a full SIGSTOP that would silence audio outright.
+throttle_browser() {
+    local percent="$1"
+    mkdir -p "$(dirname "$THROTTLE_STATE_FILE")"
+    : > "$THROTTLE_STATE_FILE"
+    local name pid
+    for name in $BROWSER_PROCESS_NAMES; do
+        for pid in $(pgrep -x "$name" 2>/dev/null); do
+            cpulimit -z -q -l "$percent" -p "$pid" -m &
+            echo $! >> "$THROTTLE_STATE_FILE"
+        done
+    done
+    logger -t lock-shutdown-watcher "Throttled browser CPU to ${percent}% after prolonged lock"
+}
+
+unthrottle_browser() {
+    [ -s "$THROTTLE_STATE_FILE" ] || { rm -f "$THROTTLE_STATE_FILE"; return; }
+    local pid
+    while read -r pid; do
+        [ -z "$pid" ] && continue
+        # cpulimit's own exit handler SIGCONTs whatever it last stopped, so
+        # just killing the watcher is enough to release the throttle.
+        kill "$pid" 2>/dev/null
+    done < "$THROTTLE_STATE_FILE"
+    rm -f "$THROTTLE_STATE_FILE"
+}
+
 windows_minimized=0
 
 while true; do
@@ -99,6 +137,8 @@ while true; do
             minimize_min=$(read_setting MINIMIZE_MINUTES "$DEFAULT_MINIMIZE_MIN")
             if [ "$minimize_min" -gt 0 ] && [ "$elapsed" -ge $(( minimize_min * 60 )) ]; then
                 minimize_windows
+                throttle_percent=$(read_setting BROWSER_THROTTLE_PERCENT "$DEFAULT_THROTTLE_PERCENT")
+                [ "$throttle_percent" -gt 0 ] && throttle_browser "$throttle_percent"
                 windows_minimized=1
             fi
         fi
@@ -126,6 +166,7 @@ while true; do
     else
         if [ "$windows_minimized" -eq 1 ]; then
             restore_windows
+            unthrottle_browser
             windows_minimized=0
         fi
         locked_since=0

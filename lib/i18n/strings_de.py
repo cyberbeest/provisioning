@@ -51,6 +51,20 @@ STRINGS = {
     "timer.shutdown_after_both": "Abschalten nach Sperrdauer von:",
     "timer.on_ac": "Im Netzbetrieb:",
     "timer.on_battery": "Im Akkubetrieb:",
+    "timer.power_saving_while_locked": "Energiesparen bei Sperrung…",
+
+    "lockpower.window_title": "Cyberbeest Erweiterte Energieoptionen",
+    "lockpower.info": (
+        "Sobald der Bildschirm so lange gesperrt ist, werden Fenster "
+        "minimiert und die CPU-Nutzung des Browsers begrenzt, um Energie "
+        "zu sparen. Downloads und Benachrichtigungstöne funktionieren "
+        "weiterhin, nur langsamer."
+    ),
+    "lockpower.minimize_after": "Fenster minimieren nach (Minuten):",
+    "lockpower.limit_cpu": "Browser-CPU begrenzen auf (%):",
+    "lockpower.never": "Nie",
+    "lockpower.off": "Aus",
+    "lockpower.close": "Schließen",
 
     "pw.window_title": "Cyberbeest-Passwörter & Start",
     "pw.master_title": "Master-Passwort",

@@ -47,6 +47,19 @@ STRINGS = {
     "timer.shutdown_after_both": "Shutdown after locked for:",
     "timer.on_ac": "On AC power:",
     "timer.on_battery": "On battery:",
+    "timer.power_saving_while_locked": "Power saving while locked…",
+
+    "lockpower.window_title": "Cyberbeest Extended Power Options",
+    "lockpower.info": (
+        "Once the screen has been locked this long, windows are minimized "
+        "and the browser's CPU use is capped, to save power. Downloads and "
+        "notification sounds keep working, just slower."
+    ),
+    "lockpower.minimize_after": "Minimize windows after (minutes):",
+    "lockpower.limit_cpu": "Limit browser CPU to (%):",
+    "lockpower.never": "Never",
+    "lockpower.off": "Off",
+    "lockpower.close": "Close",
 
     "pw.window_title": "Cyberbeest Passwords & Boot",
     "pw.master_title": "Master password",

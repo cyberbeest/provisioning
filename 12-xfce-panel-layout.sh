@@ -17,6 +17,11 @@
 # clock, last so any dynamically-added icons (e.g. the optional i2pd toggle
 # from 22-i2p-package-manager.sh) can always insert themselves right before
 # it.
+# Also installs Cyberbeest Extended Power Options (lib/lock-power-saving-dialog.py):
+# a small Whisker-menu app (Cyberbeest category) for the window-minimize-delay
+# and browser-CPU-throttle settings lock-shutdown-watcher.sh applies while
+# locked. shutdown-timer-menu.py's "Power saving while locked..." item opens
+# the same script as a shortcut.
 # Depends on: 07-security-update-timer.sh, 09-cyberbeest-logout-dialog.sh,
 # 10-browser-sandbox.sh, 11-xfce-panel-plugins.sh.
 # Idempotent: safe to re-run (overwrites its own config files; backs up any
@@ -63,6 +68,12 @@ sed "s|__GENMON_WIDGET__|genmon-16|g" "$DIR/lib/shutdown-timer-menu.py" \
 	> "$TARGET_HOME/.local/bin/shutdown-timer-menu.py"
 chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.local/bin/shutdown-timer-menu.py"
 chmod 755 "$TARGET_HOME/.local/bin/shutdown-timer-menu.py"
+# The menu's "Power saving while locked..." item launches this as a
+# separate process (see shutdown-timer-menu.py's open_power_saving_dialog).
+sed "s|__GENMON_WIDGET__|genmon-16|g" "$DIR/lib/lock-power-saving-dialog.py" \
+	> "$TARGET_HOME/.local/bin/lock-power-saving-dialog.py"
+chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.local/bin/lock-power-saving-dialog.py"
+chmod 755 "$TARGET_HOME/.local/bin/lock-power-saving-dialog.py"
 # i18n.py does `from i18n import t`, which only resolves if i18n.py (and its
 # strings_*.py catalogs) sit next to the installed script -- see lib/i18n.py.
 install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 "$DIR/lib/i18n.py" "$TARGET_HOME/.local/bin/i18n.py"
@@ -81,6 +92,27 @@ ICONS_DIR="$TARGET_HOME/.local/share/cyberbeest/icons"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$ICONS_DIR"
 install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 \
 	"$DIR/lib/assets/Cyberbeest-panel-icon.png" "$ICONS_DIR/Cyberbeest-panel-icon.png"
+# Also installed by 21-/48- -- duplicated here (idempotent, same file) since
+# this script doesn't depend on those running first.
+install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 \
+	"$DIR/lib/assets/Cyberbeest-black.png" "$ICONS_DIR/Cyberbeest-black.png"
+
+echo "--- Installing app menu entry for Cyberbeest Extended Power Options (Whisker menu, Cyberbeest category) ---"
+install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.local/share/applications"
+cat > "$TARGET_HOME/.local/share/applications/cyberbeest-extended-power-options.desktop" <<EOF
+[Desktop Entry]
+Type=Application
+Name=Cyberbeest Extended Power Options
+Name[de]=Cyberbeest Erweiterte Energieoptionen
+Comment=Window minimizing and browser CPU throttling while the screen is locked
+Comment[de]=Fenster minimieren und Browser-CPU begrenzen bei gesperrtem Bildschirm
+Exec=$TARGET_HOME/.local/bin/lock-power-saving-dialog.py
+Icon=$ICONS_DIR/Cyberbeest-black.png
+Terminal=false
+Categories=Cyberbeest;Settings;
+StartupNotify=true
+EOF
+chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.local/share/applications/cyberbeest-extended-power-options.desktop"
 
 # The pulseaudio plugin's volume icon comes from Adwaita (not hicolor --
 # Tango, the active GTK icon theme, inherits from Adwaita before falling
