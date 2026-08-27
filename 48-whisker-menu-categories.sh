@@ -39,6 +39,16 @@ MENU_DIR="$TARGET_HOME/.config/menus"
 DIRS_DIR="$TARGET_HOME/.local/share/desktop-directories"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$MENU_DIR" "$DIRS_DIR"
 
+# .local/share/cyberbeest/icons is the fixed, non-user-facing location used
+# throughout provisioning (09-, 12-, 21-, 22-, 25-) specifically because
+# ~/Pictures gets translated (e.g. to ~/Bilder under a German locale) by
+# xdg-user-dirs -- a hardcoded ~/Pictures/... path silently breaks this icon
+# on any non-English-locale install.
+ICONS_DIR="$TARGET_HOME/.local/share/cyberbeest/icons"
+install -d -o "$TARGET_USER" -g "$TARGET_USER" "$ICONS_DIR"
+install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 \
+	"$DIR/lib/assets/Cyberbeest-black.png" "$ICONS_DIR/Cyberbeest-black.png"
+
 echo "--- Writing $MENU_DIR/xfce-applications.menu ---"
 cat > "$MENU_DIR/xfce-applications.menu" <<'EOF'
 <!DOCTYPE Menu PUBLIC "-//freedesktop//DTD Menu 1.0//EN"
@@ -100,7 +110,7 @@ cat > "$DIRS_DIR/cyberbeest.directory" <<EOF
 Version=1.0
 Type=Directory
 Name=Cyberbeest
-Icon=$TARGET_HOME/Pictures/Cyberbeest-black.png
+Icon=$ICONS_DIR/Cyberbeest-black.png
 EOF
 
 cat > "$DIRS_DIR/messengers.directory" <<'EOF'

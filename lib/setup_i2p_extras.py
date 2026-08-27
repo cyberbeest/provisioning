@@ -79,10 +79,12 @@ StartupNotify=true
 START_DESKTOP_ENTRY = """[Desktop Entry]
 Type=Application
 Name=Start I2P (i2pd)
+Name[de]=I2P starten (i2pd)
 Comment=Starts the i2pd anonymous-network daemon and adds a panel icon to monitor/stop it
+Comment[de]=Startet den i2pd-Anonymisierungsdienst und zeigt ein Panel-Symbol zum Überwachen/Beenden an
 Exec=%s/i2pd-start.sh
 Icon=network-vpn
-Categories=Network;
+Categories=Darknet;
 Terminal=false
 """ % BIN_DIR
 
