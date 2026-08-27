@@ -42,6 +42,8 @@
       <property name="default-category" type="int" value="1"/>
       <property name="hover-switch-category" type="bool" value="true"/>
       <property name="recent-items-max" type="int" value="10"/>
+      <property name="menu-width" type="int" value="600"/>
+      <property name="menu-height" type="int" value="650"/>
     </property>
     <property name="plugin-2" type="string" value="tasklist">
       <property name="grouping" type="bool" value="false"/>
