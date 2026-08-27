@@ -23,16 +23,10 @@ make -C "$DIR/lib/xfce-panel-plugins" clean install
 
 echo "--- Reloading xfce4-panel for the logged-in user, if one is running ---"
 TARGET_USER="${SUDO_USER:-cyberbeest}"
-if command -v xfce4-panel >/dev/null 2>&1; then
-	PANEL_PID="$(pgrep -u "$TARGET_USER" -x xfce4-panel | head -1)" || true
-	if [ -n "$PANEL_PID" ]; then
-		DBUS_ADDR=""
-		# cat (not `< file`) so a PID that vanishes between pgrep and here
-		# just yields empty output instead of a fatal shell redirection error.
-		DBUS_ADDR="$(cat "/proc/$PANEL_PID/environ" 2>/dev/null | tr '\0' '\n' | sed -n 's/^DBUS_SESSION_BUS_ADDRESS=//p')" || true
-		DBUS_ADDR="${DBUS_ADDR:-unix:path=/run/user/$(id -u "$TARGET_USER")/bus}"
-		su - "$TARGET_USER" -c "DISPLAY='${DISPLAY:-:0}' DBUS_SESSION_BUS_ADDRESS='$DBUS_ADDR' xfce4-panel -r" || true
-	fi
+. "$DIR/lib/xfce-panel-reload.sh"
+if xfce_panel_dbus_addr; then
+	xfce_panel_kill
+	xfce_panel_launch
 fi
 
 echo "=== $(date) : done ==="

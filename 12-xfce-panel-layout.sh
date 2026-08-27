@@ -156,55 +156,29 @@ echo "--- Fixing ownership ---"
 chown -R "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.config/xfce4"
 
 echo "--- Reloading xfce4-panel for the logged-in user, if one is running ---"
-if command -v xfce4-panel >/dev/null 2>&1; then
-	PANEL_PID="$(pgrep -u "$TARGET_USER" -x xfce4-panel | head -1)" || true
-	if [ -n "$PANEL_PID" ]; then
-		DBUS_ADDR=""
-		# cat (not `< file`) so a PID that vanishes between pgrep and here
-		# just yields empty output instead of a fatal shell redirection error.
-		DBUS_ADDR="$(cat "/proc/$PANEL_PID/environ" 2>/dev/null | tr '\0' '\n' | sed -n 's/^DBUS_SESSION_BUS_ADDRESS=//p')" || true
-		DBUS_ADDR="${DBUS_ADDR:-unix:path=/run/user/$(id -u "$TARGET_USER")/bus}"
+. "$DIR/lib/xfce-panel-reload.sh"
+if xfce_panel_dbus_addr; then
+	# Debian's stock xfce4-panel default (or a first login that happened
+	# before this script ran) may have created a second panel (its own
+	# top/bottom bar, id != 1). Overwriting the file above doesn't remove
+	# it from a *live* xfconfd's in-memory state -- kill xfconfd so it
+	# comes back reading only our file, before restarting the panel.
+	xfce_panel_kill
 
-		# Debian's stock xfce4-panel default (or a first login that happened
-		# before this script ran) may have created a second panel (its own
-		# top/bottom bar, id != 1). Overwriting the file above doesn't remove
-		# it from a *live* xfconfd's in-memory state -- kill xfconfd so it
-		# comes back reading only our file, before restarting the panel.
-		#
-		# Also kill the live xfce4-panel process itself rather than asking it
-		# to `-r`/restart in place: `-r` rebuilds from whatever config that
-		# process already has cached client-side (e.g. the stock defaults from
-		# the very first, pre-provisioning login), then persists that stale
-		# state back to xfconfd as part of its own "restart" bookkeeping --
-		# silently clobbering the file we just wrote a few seconds later.
-		# Killing it outright and launching a fresh process below forces it to
-		# actually read xfconfd from scratch instead.
-		pkill -u "$TARGET_USER" -x xfconfd || true
-		pkill -u "$TARGET_USER" -x xfce4-panel || true
-		sleep 1
-		# grep/while both legitimately exit non-zero when there are no stray
-		# panels to remove (the normal case) -- under pipefail+set -e that
-		# would otherwise kill the whole script right here, so guard the
-		# entire pipeline with || true.
-		su - "$TARGET_USER" -c "DISPLAY='${DISPLAY:-:0}' DBUS_SESSION_BUS_ADDRESS='$DBUS_ADDR' xfconf-query -c xfce4-panel -p /panels" \
-			| tail -n +2 | sed '/^$/d' \
-			| grep -v '^1$' | while read -r stray_id; do
-			[ -n "$stray_id" ] || continue
-			echo "removing stray panel-$stray_id"
-			su - "$TARGET_USER" -c "DISPLAY='${DISPLAY:-:0}' DBUS_SESSION_BUS_ADDRESS='$DBUS_ADDR' xfconf-query -c xfce4-panel -p /panels/panel-$stray_id --reset -R" || true
-		done || true
-		su - "$TARGET_USER" -c "DISPLAY='${DISPLAY:-:0}' DBUS_SESSION_BUS_ADDRESS='$DBUS_ADDR' xfconf-query -c xfce4-panel -p /panels -t int -s 1 --force-array" || true
+	# grep/while both legitimately exit non-zero when there are no stray
+	# panels to remove (the normal case) -- under pipefail+set -e that
+	# would otherwise kill the whole script right here, so guard the
+	# entire pipeline with || true.
+	su - "$TARGET_USER" -c "DISPLAY='${DISPLAY:-:0}' DBUS_SESSION_BUS_ADDRESS='$XFCE_PANEL_DBUS_ADDR' xfconf-query -c xfce4-panel -p /panels" \
+		| tail -n +2 | sed '/^$/d' \
+		| grep -v '^1$' | while read -r stray_id; do
+		[ -n "$stray_id" ] || continue
+		echo "removing stray panel-$stray_id"
+		su - "$TARGET_USER" -c "DISPLAY='${DISPLAY:-:0}' DBUS_SESSION_BUS_ADDRESS='$XFCE_PANEL_DBUS_ADDR' xfconf-query -c xfce4-panel -p /panels/panel-$stray_id --reset -R" || true
+	done || true
+	su - "$TARGET_USER" -c "DISPLAY='${DISPLAY:-:0}' DBUS_SESSION_BUS_ADDRESS='$XFCE_PANEL_DBUS_ADDR' xfconf-query -c xfce4-panel -p /panels -t int -s 1 --force-array" || true
 
-		# A plain fresh launch, not `xfce4-panel -r` -- we just killed the
-		# panel process above precisely so nothing is left holding stale
-		# in-memory config to read from or write back; `-r` would have
-		# nothing to restart anyway since there's no running instance left.
-		su - "$TARGET_USER" -c "DISPLAY='${DISPLAY:-:0}' DBUS_SESSION_BUS_ADDRESS='$DBUS_ADDR' setsid xfce4-panel >/dev/null 2>&1 < /dev/null &"
-		sleep 1
-		if ! pgrep -u "$TARGET_USER" -x xfce4-panel >/dev/null; then
-			echo "--- Panel process didn't come up after launch ---"
-		fi
-	fi
+	xfce_panel_launch
 fi
 
 echo "=== $(date) : done ==="
