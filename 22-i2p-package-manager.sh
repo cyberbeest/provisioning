@@ -1,15 +1,17 @@
 #!/bin/bash
-# Installs the Cyberbeest Package Manager GUI (Whisker app; currently a
-# single opt-in entry: I2P (i2pd) + qBittorrent, with a dedicated
-# Alpenglow-themed Firefox profile for eepsites, and an on-demand
-# start/stop toggle -- Whisker entry starts i2pd + adds a panel icon,
-# clicking the icon opens a menu to stop i2pd / open the I2P Firefox
-# profile / start qBittorrent -- all set up automatically once installed)
-# -- see lib/cyberbeest_package_manager_gui.py and lib/setup_i2p_extras.py.
+# Installs the Cyberbeest Package Manager GUI (Whisker app; opt-in rows
+# for qBittorrent, Mullvad VPN, and Proton VPN) -- see
+# lib/cyberbeest_package_manager_gui.py.
 #
-# This only deploys the *tool*; it does not install i2pd/qbittorrent
-# itself -- that stays opt-in, checked by hand in the GUI, same as every
-# other row it might grow later.
+# i2pd itself is NOT one of these rows anymore -- it's installed by
+# default now (see 50-i2pd-default.sh), same tier as Signal/Firefox/etc.
+# qBittorrent stays opt-in here since it's an unrelated torrenting client;
+# its post-install step (lib/enable_qbittorrent_i2p.py) just flips on I2P
+# support in its own config, assuming i2pd is already present.
+#
+# This only deploys the *tool*; it does not install qbittorrent/mullvad-vpn/
+# proton-vpn-gnome-desktop themselves -- those stay opt-in, checked by hand
+# in the GUI.
 #
 # Privileged installs happen via lib/cyberbeest-pkg-helper.sh under pkexec,
 # so the polkit policy authorizing that (root-owned, not writable by the
@@ -37,14 +39,14 @@ install -m 644 "$DIR/lib/com.cyberbeest.package-manager.policy" /usr/share/polki
 echo "--- Installing GUI + post-install helper to $TARGET_HOME/.local/bin ---"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.local/bin"
 sed "s|__LOG_PATH__|$TARGET_HOME/.local/share/cyberbeest/cyberbeest_package_manager.log|g; \
-     s|__POST_INSTALL_SCRIPT__|$TARGET_HOME/.local/bin/setup_i2p_extras.py|g" \
+     s|__QBT_POST_INSTALL_SCRIPT__|$TARGET_HOME/.local/bin/enable_qbittorrent_i2p.py|g" \
 	"$DIR/lib/cyberbeest_package_manager_gui.py" \
 	> "$TARGET_HOME/.local/bin/cyberbeest-package-manager"
 chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.local/bin/cyberbeest-package-manager"
 chmod 755 "$TARGET_HOME/.local/bin/cyberbeest-package-manager"
 
 install -o "$TARGET_USER" -g "$TARGET_USER" -m 755 \
-	"$DIR/lib/setup_i2p_extras.py" "$TARGET_HOME/.local/bin/setup_i2p_extras.py"
+	"$DIR/lib/enable_qbittorrent_i2p.py" "$TARGET_HOME/.local/bin/enable_qbittorrent_i2p.py"
 
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.local/share/cyberbeest"
 

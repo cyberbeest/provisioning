@@ -1,26 +1,27 @@
 #!/usr/bin/env python3
-"""Post-install setup for the I2P + qBittorrent package manager entry.
+"""Post-install setup for i2pd's on-demand toggle.
 
-Runs unprivileged, as the user, after cyberbeest-pkg-helper.sh has already
-apt-installed i2pd and qbittorrent (and, root-side, set up the on-demand
-sudoers rule -- see do_setup_i2pd_toggle in cyberbeest-pkg-helper.sh).
-Handles everything that doesn't need root: a dedicated Firefox profile for
-eepsites (proxied through i2pd, Alpenglow theme so it's visually distinct
-from normal browsing), its Whisker launcher, flipping qBittorrent's I2P
-setting on, and the on-demand start/stop toggle (Whisker entry -> starts
-i2pd + spawns a panel icon; clicking the icon opens a menu to stop i2pd,
-open the I2P Firefox profile, or start qBittorrent; state persists across
-logins via a state file).
+i2pd itself is installed by default (see 50-i2pd-default.sh), unlike
+qBittorrent, which stays its own opt-in row in the Cyberbeest Package
+Manager (see lib/enable_qbittorrent_i2p.py for its much smaller,
+qBittorrent-only post-install step).
 
-Run with "remove" as the first argument to tear the user-owned half of
-this back out (called when the package manager row is unchecked) --
-stops i2pd/removes the panel icon if live, then deletes everything this
-script wrote. It deliberately does NOT touch the Firefox profile/qBittorrent
-config on removal, matching the rest of the package manager's behavior of
-leaving user data (bookmarks, torrents, ...) in place when unchecking a box.
+Runs unprivileged, as the user, after i2pd has already been apt-installed
+and (root-side) the on-demand sudoers rule set up -- see
+do_setup_i2pd_toggle in cyberbeest-pkg-helper.sh. Handles everything that
+doesn't need root: a dedicated Firefox profile for eepsites (proxied
+through i2pd, Alpenglow theme so it's visually distinct from normal
+browsing), its Whisker launcher, and the on-demand start/stop toggle
+(Whisker entry -> starts i2pd + spawns a panel icon; clicking the icon
+opens a menu to stop i2pd, open the I2P Firefox profile, or start
+qBittorrent if installed; state persists across logins via a state file).
 
-Idempotent: safe to re-run (e.g. if the package manager row is
-unchecked/rechecked, or this is run again after a manual tweak).
+Run with "remove" as the first argument to tear this back out -- stops
+i2pd/removes the panel icon if live, then deletes everything this script
+wrote. Not currently wired up to anything (i2pd isn't an opt-in row
+anymore, so nothing unchecks it), kept as a manual uninstall path.
+
+Idempotent: safe to re-run.
 """
 
 import json
@@ -33,7 +34,6 @@ HOME = os.path.expanduser("~")
 PROFILE_DIR = os.path.join(HOME, ".mozilla", "firefox", "i2p-profile")
 PROFILES_INI = os.path.join(HOME, ".mozilla", "firefox", "profiles.ini")
 DESKTOP_FILE = os.path.join(HOME, ".local", "share", "applications", "firefox-i2p.desktop")
-QBT_CONF = os.path.join(HOME, ".config", "qBittorrent", "qBittorrent.conf")
 PAC_FILE = os.path.join(PROFILE_DIR, "i2p-proxy.pac")
 
 BIN_DIR = os.path.join(HOME, ".local", "bin")
@@ -464,42 +464,6 @@ def ensure_desktop_entry():
         log("Whisker launcher entry already up to date")
 
 
-def ensure_qbittorrent_i2p_enabled():
-    key = r"Session\I2P\Enabled"
-    line = f"{key}=true\n"
-    os.makedirs(os.path.dirname(QBT_CONF), exist_ok=True)
-
-    if not os.path.exists(QBT_CONF):
-        with open(QBT_CONF, "w", encoding="utf-8") as f:
-            f.write("[BitTorrent]\n" + line)
-        log("Created qBittorrent.conf with I2P enabled")
-        return
-
-    with open(QBT_CONF, encoding="utf-8") as f:
-        lines = f.readlines()
-
-    for i, existing_line in enumerate(lines):
-        if existing_line.strip() == f"{key}=true":
-            log("qBittorrent I2P support already enabled")
-            return
-        if existing_line.startswith(f"{key}="):
-            lines[i] = line
-            with open(QBT_CONF, "w", encoding="utf-8") as f:
-                f.writelines(lines)
-            log("Updated existing I2P setting to enabled")
-            return
-
-    if "[BitTorrent]\n" in lines:
-        idx = lines.index("[BitTorrent]\n") + 1
-        lines.insert(idx, line)
-    else:
-        lines.append("\n[BitTorrent]\n")
-        lines.append(line)
-    with open(QBT_CONF, "w", encoding="utf-8") as f:
-        f.writelines(lines)
-    log("Enabled I2P support in qBittorrent.conf")
-
-
 def ensure_toggle_scripts():
     os.makedirs(BIN_DIR, exist_ok=True)
     for name, content in TOGGLE_SCRIPTS.items():
@@ -570,7 +534,6 @@ def main():
     write_pac_file()
     ensure_theme_active()
     ensure_desktop_entry()
-    ensure_qbittorrent_i2p_enabled()
     ensure_toggle_scripts()
     ensure_toggle_launchers()
     log("Done")

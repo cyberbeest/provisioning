@@ -52,18 +52,15 @@ LOG_DISPLAY_LIMIT = 100
 
 APPS = [
     {
-        "id": "i2p",
-        "name": "I2P + qBittorrent",
-        "description": "Anonymous eepsite browsing (i2pd, dedicated Alpenglow-themed Firefox profile) and I2P torrenting (qBittorrent, SAM bridge)",
+        "id": "qbittorrent",
+        "name": "qBittorrent",
+        "description": "BitTorrent client. I2P (installed by default -- see the Darknet menu) is enabled automatically so .i2p torrents work over it alongside normal torrenting",
         "category": "Privacy & Anonymity",
-        "check_pkg": "i2pd",
-        "install_pkg": "i2pd qbittorrent",
-        "remove_pkg": "i2pd qbittorrent",
+        "check_pkg": "qbittorrent",
+        "install_pkg": "qbittorrent",
+        "remove_pkg": "qbittorrent",
         "repo": None,
-        "extra_install_steps": ["setup-i2pd-toggle"],
-        "extra_remove_steps": ["teardown-i2pd-toggle"],
-        "post_install_script": "__POST_INSTALL_SCRIPT__",
-        "post_remove_script": "__POST_INSTALL_SCRIPT__",
+        "post_install_script": "__QBT_POST_INSTALL_SCRIPT__",
     },
     {
         "id": "mullvad",

@@ -3,7 +3,8 @@
 # The dev-machine copy is invoked via pkexec from a fixed path (see
 # com.cyberbeest.package-manager.policy in this same directory); this copy
 # is called directly as root during provisioning (install-secure-messengers.sh
-# calls it for setup-repo), so no pkexec/fixed-path requirement applies here.
+# calls it for setup-repo; 50-i2pd-default.sh calls it for
+# setup-i2pd-toggle), so no pkexec/fixed-path requirement applies here.
 #
 # Usage:
 #   cyberbeest-pkg-helper.sh setup-repo <signal|element|mullvad|protonvpn>
@@ -172,7 +173,8 @@ EOF
 
     # i2pd.service is disabled from boot-autostart on purpose -- it's only
     # started via the Whisker launcher / login-restore script from here on,
-    # so a machine that never opts in never sees it running.
+    # so it's installed by default but never actually running unless the
+    # user starts it.
     systemctl disable i2pd >>"$LOG" 2>&1 || log "systemctl disable i2pd failed (non-fatal, may already be disabled)"
     log "i2pd toggle set up"
 }
