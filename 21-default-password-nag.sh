@@ -104,7 +104,7 @@ install -o root -g root -m 755 \
 	"$DIR/lib/cyberbeest-record-initial-password.sh" /usr/local/sbin/cyberbeest-record-initial-password
 
 echo "--- Recording the ISO's fixed installer passwords as temporary ---"
-# These match installer-usb/preseed.cfg's d-i passwd/user-password and
+# These match usb-stick-maker/preseed.cfg's d-i passwd/user-password and
 # partman-crypto/passphrase -- update both places together if either changes.
 # Safe to run unconditionally, including for a self-installer who picked
 # their own password during Debian install instead of using the preseeded
