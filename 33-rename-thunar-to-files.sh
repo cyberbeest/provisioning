@@ -78,7 +78,7 @@ Icon=org.xfce.thunar
 Terminal=false
 StartupNotify=true
 Type=Application
-Categories=System;Core;GTK;FileTools;FileManager;
+Categories=Core;GTK;FileTools;FileManager;
 MimeType=inode/directory;
 Actions=open-home;open-computer;open-trash;
 

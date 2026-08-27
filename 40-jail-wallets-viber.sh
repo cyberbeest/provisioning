@@ -51,6 +51,12 @@ fi
 echo "--- Installing .desktop overrides to $TARGET_HOME/.local/share/applications/ ---"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.local/share/applications"
 
+# Both viber.desktop and com.viber.Viber.desktop are separate desktop-file
+# IDs that otherwise render as two identical "Viber" entries in Whisker --
+# this script used to install both as visible; now only com.viber.Viber.desktop
+# (the modern reverse-DNS id) is shown, and viber.desktop is kept installed
+# but hidden (NoDisplay=true) since something else (an old MimeType/startup
+# association, maybe) could still resolve the older id.
 cat > "$TARGET_HOME/.local/share/applications/viber.desktop" <<EOF
 [Desktop Entry]
 Name=Viber
@@ -61,9 +67,10 @@ Icon=viber
 Terminal=false
 Type=Application
 StartupWMClass=Viber
-Categories=Network;InstantMessaging;Chat;
+Categories=Messengers;
 Path=
 StartupNotify=false
+NoDisplay=true
 EOF
 
 cat > "$TARGET_HOME/.local/share/applications/com.viber.Viber.desktop" <<EOF
@@ -76,7 +83,7 @@ Icon=viber
 Terminal=false
 Type=Application
 StartupWMClass=Viber
-Categories=Network;InstantMessaging;Chat;
+Categories=Messengers;
 Path=
 StartupNotify=false
 EOF
@@ -90,7 +97,7 @@ Exec=$TARGET_HOME/bin/sparrow-sandbox.sh %U
 Icon=/opt/sparrowwallet/lib/Sparrow.png
 Terminal=false
 Type=Application
-Categories=Finance;Network;
+Categories=Wallets;
 MimeType=application/psbt;application/bitcoin-transaction;application/pgp-signature;x-scheme-handler/bitcoin;x-scheme-handler/auth47;x-scheme-handler/lightning
 StartupWMClass=Sparrow
 SingleMainWindow=true
