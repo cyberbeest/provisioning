@@ -71,7 +71,7 @@
 #define DISK_WARNING_LEVEL 0.80 /* disk fraction at/above which we flag low free space */
 
 #define TOP_PROC_COUNT 3            /* how many processes to list in the tooltip */
-#define TOP_PROC_MIN_KIB 1024       /* hide processes using less RSS than this */
+#define TOP_PROC_MIN_KIB 1024       /* hide processes using less PSS than this */
 #define TOP_PROC_MIN_DISPLAY_GB 0.1 /* never show less than this, to avoid a misleading "0.0 GB" */
 #define TOOLTIP_REFRESH_INTERVAL_S 3 /* how often the tooltip's numbers update while hovered */
 
@@ -277,14 +277,24 @@ mem_status_text(gdouble frac)
 
 typedef struct {
     gchar comm[256];
-    gulong rss_kib;
+    gulong pss_kib;
 } TopProc;
 
-/* Parses /proc/<pid>/status rather than statm: VmRSS is already in KiB and
- * spares us a page-size multiplication, and status's line-per-field layout
- * is far less brittle to parse than statm's positional columns. comm comes
- * from the Name: line, which -- unlike /proc/<pid>/stat's "(comm)" field --
- * is never wrapped in parens that could themselves appear in the name. */
+/* comm comes from /proc/<pid>/status's Name: line, which -- unlike
+ * /proc/<pid>/stat's "(comm)" field -- is never wrapped in parens that
+ * could themselves appear in the name.
+ *
+ * Memory comes from /proc/<pid>/smaps_rollup's Pss (proportional set size)
+ * rather than status's VmRSS. A shared library page mapped into N
+ * processes counts fully in every one of their VmRSS, so summing VmRSS
+ * across e.g. the panel's ten GTK wrapper processes wildly overstates
+ * real usage -- most of each process's RSS is libgtk/libc/fontconfig
+ * pages physically resident once and shared, not memory that vanishes
+ * if that one process exits. Pss divides each shared page by its
+ * mapper count, so PSS across all processes sums to real physical
+ * usage. Falls back to VmRSS if smaps_rollup can't be read (older
+ * kernel, permissions) so a process still shows up rather than vanishing
+ * from the list entirely. */
 static gboolean
 read_proc_rss(const gchar *pid_str, TopProc *out)
 {
@@ -295,27 +305,47 @@ read_proc_rss(const gchar *pid_str, TopProc *out)
         return FALSE;
 
     gboolean have_name = FALSE, have_rss = FALSE;
+    gulong vmrss_kib = 0;
     gchar line[256];
     while (fgets(line, sizeof(line), f)) {
         gulong val;
         if (sscanf(line, "Name: %255s", out->comm) == 1) {
             have_name = TRUE;
         } else if (sscanf(line, "VmRSS: %lu kB", &val) == 1) {
-            out->rss_kib = val;
+            vmrss_kib = val;
             have_rss = TRUE;
             break; /* VmRSS comes after Name in every kernel's status layout */
         }
     }
     fclose(f);
-    return have_name && have_rss;
+    if (!have_name || !have_rss)
+        return FALSE;
+
+    g_snprintf(path, sizeof(path), "/proc/%s/smaps_rollup", pid_str);
+    f = fopen(path, "r");
+    if (!f) {
+        out->pss_kib = vmrss_kib; /* fallback: no smaps_rollup available */
+        return TRUE;
+    }
+    gulong pss_kib;
+    gboolean have_pss = FALSE;
+    while (fgets(line, sizeof(line), f)) {
+        if (sscanf(line, "Pss: %lu kB", &pss_kib) == 1) {
+            have_pss = TRUE;
+            break;
+        }
+    }
+    fclose(f);
+    out->pss_kib = have_pss ? pss_kib : vmrss_kib;
+    return TRUE;
 }
 
 static gint
 top_proc_cmp(gconstpointer a, gconstpointer b)
 {
     const TopProc *ta = a, *tb = b;
-    if (ta->rss_kib < tb->rss_kib) return 1;
-    if (ta->rss_kib > tb->rss_kib) return -1;
+    if (ta->pss_kib < tb->pss_kib) return 1;
+    if (ta->pss_kib > tb->pss_kib) return -1;
     return 0;
 }
 
@@ -341,14 +371,14 @@ get_top_processes(TopProc *out, gint max_out)
             if (!isdigit((unsigned char) ent->d_name[0]))
                 continue;
             TopProc tp;
-            if (!read_proc_rss(ent->d_name, &tp) || tp.rss_kib < TOP_PROC_MIN_KIB)
+            if (!read_proc_rss(ent->d_name, &tp) || tp.pss_kib < TOP_PROC_MIN_KIB)
                 continue;
             gulong *sum = g_hash_table_lookup(totals, tp.comm);
             if (sum) {
-                *sum += tp.rss_kib;
+                *sum += tp.pss_kib;
             } else {
                 sum = g_new(gulong, 1);
-                *sum = tp.rss_kib;
+                *sum = tp.pss_kib;
                 g_hash_table_insert(totals, g_strdup(tp.comm), sum);
             }
         }
@@ -362,7 +392,7 @@ get_top_processes(TopProc *out, gint max_out)
     while (g_hash_table_iter_next(&iter, &key, &value)) {
         TopProc tp;
         g_strlcpy(tp.comm, key, sizeof(tp.comm));
-        tp.rss_kib = *(gulong *) value;
+        tp.pss_kib = *(gulong *) value;
         g_array_append_val(procs, tp);
     }
     g_hash_table_destroy(totals);
@@ -417,9 +447,9 @@ on_query_tooltip(GtkWidget *widget, gint x, gint y, gboolean keyboard_mode,
     if (top_n > 0) {
         n += g_snprintf(buf + n, sizeof(buf) - n, _("\n\nTop RAM:"));
         for (gint i = 0; i < top_n && n < (gint) sizeof(buf); i++) {
-            gdouble gb = MAX(top[i].rss_kib / 1048576.0, TOP_PROC_MIN_DISPLAY_GB);
+            gdouble gb = MAX(top[i].pss_kib / 1048576.0, TOP_PROC_MIN_DISPLAY_GB);
             gdouble pct_of_ram = mp->mem_total_kib > 0
-                ? (gdouble) top[i].rss_kib / mp->mem_total_kib * 100.0 : 0.0;
+                ? (gdouble) top[i].pss_kib / mp->mem_total_kib * 100.0 : 0.0;
             const gchar *name = mp->friendly_names ? process_alias(top[i].comm) : top[i].comm;
             n += g_snprintf(buf + n, sizeof(buf) - n, "\n%s  %.1f GB (%.0f%%)",
                              name, gb, pct_of_ram);
