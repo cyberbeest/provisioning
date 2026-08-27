@@ -1,8 +1,11 @@
 #!/bin/bash
-# Checks that the en/de i18n catalogs (lib/i18n/) define exactly the same
-# set of keys, in both the bash and the Python catalog pairs. Run this by
-# hand after editing a catalog -- a missing key silently falls back to
-# English at runtime, which is easy to miss without this check.
+# Checks that every non-English i18n catalog (lib/i18n/) defines exactly the
+# same set of keys as the English one, for both the bash and the Python
+# catalogs. Run this by hand after editing a catalog -- a missing key
+# silently falls back to English at runtime, which is easy to miss without
+# this check. Locales are discovered from whatever strings.<locale>.sh /
+# strings_<locale>.py files exist, so adding a new language needs no edit
+# here.
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)/i18n"
 status=0
@@ -45,8 +48,21 @@ check_python_pair() {
 	fi
 }
 
-check_bash_pair "$DIR/strings.en.sh" "$DIR/strings.de.sh" "shell catalog"
-check_python_pair "$DIR/strings_en.py" "$DIR/strings_de.py" "python catalog"
+for l10n_file in "$DIR"/strings.*.sh; do
+	[ -e "$l10n_file" ] || continue
+	locale="$(basename "$l10n_file" .sh)"
+	locale="${locale#strings.}"
+	[ "$locale" = "en" ] && continue
+	check_bash_pair "$DIR/strings.en.sh" "$l10n_file" "shell catalog: $locale"
+done
+
+for l10n_file in "$DIR"/strings_*.py; do
+	[ -e "$l10n_file" ] || continue
+	locale="$(basename "$l10n_file" .py)"
+	locale="${locale#strings_}"
+	[ "$locale" = "en" ] && continue
+	check_python_pair "$DIR/strings_en.py" "$l10n_file" "python catalog: $locale"
+done
 
 if [ "$status" -eq 0 ]; then
 	echo "i18n catalogs in sync."
