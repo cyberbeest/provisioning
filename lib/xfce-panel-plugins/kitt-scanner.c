@@ -270,9 +270,15 @@ top_proc_cmp(gconstpointer a, gconstpointer b)
  * Grouped by process name (summed %) rather than listed per-pid: a
  * multi-process app -- a browser, this very assistant -- otherwise fills
  * the whole top-3 with several near-identical rows of its own helper
- * processes, crowding out everything else using CPU. */
+ * processes, crowding out everything else using CPU.
+ *
+ * When friendly_names is set, grouping keys on the *aliased* name rather
+ * than the raw comm: several kworker threads for the same driver (e.g.
+ * "kworker/u13:0-rtw_tx_wq" and "kworker/u13:1-rtw_tx_wq") have distinct
+ * raw comms but alias to the same friendly name, and without this they'd
+ * coalesce separately and show up as duplicate-looking rows in the top-3. */
 static gint
-get_top_processes(TopProc *out, gint max_out)
+get_top_processes(TopProc *out, gint max_out, gboolean friendly_names)
 {
     /* Measure the actual wall-clock gap rather than assuming it's exactly
      * TOP_PROC_SAMPLE_INTERVAL_MS: scanning every process in /proc twice
@@ -312,13 +318,14 @@ get_top_processes(TopProc *out, gint max_out)
          * "share of one core", which can run past 100% for a single
          * multi-threaded process and confuses more than it informs. */
         gdouble percent = ((now->ticks - prev->ticks) / (gdouble) clk_tck) / interval_s * 100.0 / ncpus;
-        gdouble *sum = g_hash_table_lookup(totals, now->comm);
+        const gchar *key_name = friendly_names ? process_alias(now->comm) : now->comm;
+        gdouble *sum = g_hash_table_lookup(totals, key_name);
         if (sum) {
             *sum += percent;
         } else {
             sum = g_new(gdouble, 1);
             *sum = percent;
-            g_hash_table_insert(totals, g_strdup(now->comm), sum);
+            g_hash_table_insert(totals, g_strdup(key_name), sum);
         }
     }
 
@@ -357,13 +364,11 @@ on_query_tooltip(GtkWidget *widget, gint x, gint y, gboolean keyboard_mode,
                             kp->load * 100.0, cpu_status_text(kp->load));
 
     TopProc top[TOP_PROC_COUNT];
-    gint n = get_top_processes(top, TOP_PROC_COUNT);
+    gint n = get_top_processes(top, TOP_PROC_COUNT, kp->friendly_names);
     if (n > 0) {
         g_string_append(text, _("\n\nTop CPU:"));
-        for (gint i = 0; i < n; i++) {
-            const gchar *name = kp->friendly_names ? process_alias(top[i].comm) : top[i].comm;
-            g_string_append_printf(text, "\n%s  %.0f%%", name, top[i].percent);
-        }
+        for (gint i = 0; i < n; i++)
+            g_string_append_printf(text, "\n%s  %.0f%%", top[i].comm, top[i].percent);
     }
 
     gtk_tooltip_set_text(tooltip, text->str);

@@ -358,9 +358,15 @@ top_proc_cmp(gconstpointer a, gconstpointer b)
  * Grouped by process name (summed RSS) rather than listed per-pid: a
  * multi-process app like a browser or this very assistant otherwise fills
  * the whole top-3 with N near-identical rows of its own helper processes,
- * crowding out everything else using RAM. */
+ * crowding out everything else using RAM.
+ *
+ * When friendly_names is set, grouping keys on the *aliased* name rather
+ * than the raw comm, matching kitt-scanner's get_top_processes: several
+ * processes with distinct raw comms can alias to the same friendly name,
+ * and without this they'd coalesce separately and show up as
+ * duplicate-looking rows in the top-3. */
 static gint
-get_top_processes(TopProc *out, gint max_out)
+get_top_processes(TopProc *out, gint max_out, gboolean friendly_names)
 {
     GHashTable *totals = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
 
@@ -373,13 +379,14 @@ get_top_processes(TopProc *out, gint max_out)
             TopProc tp;
             if (!read_proc_rss(ent->d_name, &tp) || tp.pss_kib < TOP_PROC_MIN_KIB)
                 continue;
-            gulong *sum = g_hash_table_lookup(totals, tp.comm);
+            const gchar *key_name = friendly_names ? process_alias(tp.comm) : tp.comm;
+            gulong *sum = g_hash_table_lookup(totals, key_name);
             if (sum) {
                 *sum += tp.pss_kib;
             } else {
                 sum = g_new(gulong, 1);
                 *sum = tp.pss_kib;
-                g_hash_table_insert(totals, g_strdup(tp.comm), sum);
+                g_hash_table_insert(totals, g_strdup(key_name), sum);
             }
         }
         closedir(d);
@@ -443,16 +450,15 @@ on_query_tooltip(GtkWidget *widget, gint x, gint y, gboolean keyboard_mode,
         n += g_snprintf(buf + n, sizeof(buf) - n, "\n%s", mem_status_text(mp->target_level));
 
     TopProc top[TOP_PROC_COUNT];
-    gint top_n = get_top_processes(top, TOP_PROC_COUNT);
+    gint top_n = get_top_processes(top, TOP_PROC_COUNT, mp->friendly_names);
     if (top_n > 0) {
         n += g_snprintf(buf + n, sizeof(buf) - n, _("\n\nTop RAM:"));
         for (gint i = 0; i < top_n && n < (gint) sizeof(buf); i++) {
             gdouble gb = MAX(top[i].pss_kib / 1048576.0, TOP_PROC_MIN_DISPLAY_GB);
             gdouble pct_of_ram = mp->mem_total_kib > 0
                 ? (gdouble) top[i].pss_kib / mp->mem_total_kib * 100.0 : 0.0;
-            const gchar *name = mp->friendly_names ? process_alias(top[i].comm) : top[i].comm;
             n += g_snprintf(buf + n, sizeof(buf) - n, "\n%s  %.1f GB (%.0f%%)",
-                             name, gb, pct_of_ram);
+                             top[i].comm, gb, pct_of_ram);
         }
     }
 

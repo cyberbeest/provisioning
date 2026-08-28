@@ -5,6 +5,9 @@
 # prebuilt .so files, since the panel plugin ABI is tied to the exact
 # xfce4-panel/gtk3 versions installed, which a binary can't guarantee.
 # Idempotent: safe to re-run (make install just overwrites).
+# 2026-08-28: kitt-scanner/mem-liquid top-3 dedup fix (coalesce on the
+# aliased name, not the raw comm) -- bumps this script so run-gui's
+# change-detection re-runs it after a lib/ dep-only edit.
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG="$DIR/11-xfce-panel-plugins.log"
