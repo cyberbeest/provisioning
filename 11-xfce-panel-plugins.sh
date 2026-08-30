@@ -8,6 +8,10 @@
 # 2026-08-28: kitt-scanner/mem-liquid top-3 dedup fix (coalesce on the
 # aliased name, not the raw comm) -- bumps this script so run-gui's
 # change-detection re-runs it after a lib/ dep-only edit.
+# 2026-08-28: mem-liquid contention warning fix -- exclude Shmem from the
+# CountMapped "passive cache" credit (tmpfs/shared-memory pages aren't
+# reclaimable page cache), so the displayed % and the warning threshold
+# stop diverging when Shmem usage is large.
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG="$DIR/11-xfce-panel-plugins.log"

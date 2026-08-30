@@ -142,6 +142,7 @@ typedef struct {
     gulong buffers_kib;
     gulong cached_kib;
     gulong mapped_kib;
+    gulong shmem_kib;
     gulong swap_total_kib;
     gulong swap_free_kib;
 } MemInfo;
@@ -173,6 +174,8 @@ read_meminfo(MemInfo *mi)
             mi->cached_kib = val;
         } else if (sscanf(line, "Mapped: %lu kB", &val) == 1) {
             mi->mapped_kib = val;
+        } else if (sscanf(line, "Shmem: %lu kB", &val) == 1) {
+            mi->shmem_kib = val;
         } else if (sscanf(line, "SwapTotal: %lu kB", &val) == 1) {
             mi->swap_total_kib = val;
         } else if (sscanf(line, "SwapFree: %lu kB", &val) == 1) {
@@ -197,7 +200,11 @@ read_meminfo(MemInfo *mi)
  * pages" mode accounts for that by treating every resident (i.e.
  * actually loaded, not just reserved-but-unfaulted) mmap'd page as used,
  * while still letting ordinary passive file cache (Cached - Mapped) count
- * as free headroom. */
+ * as free headroom. Shmem is excluded from that passive cache too: it's
+ * counted in Cached but, unlike file-backed cache, isn't page-cache the
+ * kernel can just drop under pressure -- it's live tmpfs/shared-memory
+ * data (large IPC/shared buffers from things like WebKit or ML runtimes),
+ * so crediting it as free headroom understates real usage. */
 static gulong
 compute_used_kib(const MemInfo *mi, gboolean count_mapped)
 {
@@ -205,6 +212,7 @@ compute_used_kib(const MemInfo *mi, gboolean count_mapped)
         return mi->total_kib > mi->avail_kib ? mi->total_kib - mi->avail_kib : 0;
 
     gulong passive_cache = mi->cached_kib > mi->mapped_kib ? mi->cached_kib - mi->mapped_kib : 0;
+    passive_cache = passive_cache > mi->shmem_kib ? passive_cache - mi->shmem_kib : 0;
     gulong free_ish = mi->free_kib + mi->buffers_kib + passive_cache;
     return mi->total_kib > free_ish ? mi->total_kib - free_ish : 0;
 }
