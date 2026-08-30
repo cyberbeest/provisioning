@@ -62,6 +62,35 @@ if [ -d "$DESKTOP_BASE_WALLPAPER_DIR" ]; then
 		"$DESKTOP_BASE_WALLPAPER_DIR/cyberbeest.png"
 fi
 
+echo "--- Also dropping the fallback wallpaper into /usr/share/backgrounds/xfce/ ---"
+# Same reasoning as the Cyberbeest copy above: makes it directly reselectable
+# from Desktop Settings by name, rather than only existing as whatever
+# update-alternatives' desktop-background symlink currently happens to
+# target below -- if that alternative is ever superseded, the symlink's
+# content changes/disappears, but this stable-named copy doesn't.
+install -m 644 "$DIR/lib/assets/desktop-base-fallback-wallpaper.png" \
+	/usr/share/backgrounds/xfce/cyberbeest-fallback.png
+
+echo "--- Setting the system-wide fallback wallpaper (desktop-base alternative) ---"
+# xfdesktop falls back to /usr/share/images/desktop-base/default (-> ...
+# /desktop-background -> /etc/alternatives/desktop-background) whenever it
+# can't find a matching per-monitor xfconf key for the current display --
+# e.g. a live-boot session on unfamiliar hardware/a VM, or (per
+# cyberbeest_desktop_background memory) even real hardware if xfdesktop ever
+# regenerates generic monitor0/monitor1 keys instead of the connector-named
+# one this laptop actually uses. Left alone, that fallback is Debian's own
+# "ceratopsian" theme wallpaper. update-alternatives itself doesn't care
+# about image format (PNG here, vs. the SVGs every desktop-base theme
+# ships) -- xfdesktop loads either via GdkPixbuf regardless. This is
+# separate from (and doesn't replace) the manual Cyberbeest-branded pick
+# above -- it only ever shows up when nothing else was ever selected.
+# Priority 100 comfortably beats every desktop-base theme's own entry
+# (highest observed: 70, for whichever theme happens to be "active").
+update-alternatives --install /usr/share/images/desktop-base/desktop-background \
+	desktop-background "$DIR/lib/assets/desktop-base-fallback-wallpaper.png" 100
+update-alternatives --set desktop-background \
+	"$DIR/lib/assets/desktop-base-fallback-wallpaper.png"
+
 echo "--- Removing the old xfconf-automation autostart entry/script, if present ---"
 rm -f "$TARGET_HOME/.config/autostart/cyberbeest-set-wallpaper.desktop"
 rm -f "$TARGET_HOME/.local/bin/set-desktop-background.sh"
