@@ -51,4 +51,24 @@ StartupNotify=false
 EOF
 chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.local/share/applications/browser-sandbox.desktop"
 
+# Make the sandboxed wrapper the default browser on every path an app might
+# use to find one, not just the desktop MIME association above:
+#   - x-scheme-handler/http(s) + text/html in mimeapps.list (set via
+#     xdg-settings below) covers GTK apps calling gio open/gtk_show_uri.
+#   - the x-www-browser update-alternatives link covers the legacy
+#     sensible-browser/xdg-open fallback path, which several Electron apps'
+#     shell.openExternal() end up on. Left alone, this defaults to whichever
+#     browser package has the highest alternative priority --
+#     google-chrome-stable (200) beats firefox-esr (70) -- so an Electron
+#     app's "open this link" can silently bypass the sandbox and pop
+#     unsandboxed Chrome instead of firejailed Firefox. Registering the
+#     wrapper itself at a higher priority and setting it explicitly closes
+#     that gap for both current and any future browser packages.
+echo "--- Pointing x-www-browser (sensible-browser/xdg-open fallback) at the sandboxed wrapper ---"
+update-alternatives --install /usr/bin/x-www-browser x-www-browser "$TARGET_HOME/bin/browser-sandbox.sh" 300
+update-alternatives --set x-www-browser "$TARGET_HOME/bin/browser-sandbox.sh"
+
+echo "--- Setting xdg-settings default-web-browser to the sandboxed wrapper ---"
+su - "$TARGET_USER" -c "DISPLAY='${DISPLAY:-:0}' xdg-settings set default-web-browser browser-sandbox.desktop" || true
+
 echo "=== $(date) : done ==="
