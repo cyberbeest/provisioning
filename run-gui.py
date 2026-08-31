@@ -956,8 +956,8 @@ class RunGuiWindow(Gtk.Window):
         target = max(0.0, min(target, max(0.0, adj.get_upper() - page_size)))
         adj.set_value(target)
 
-    def set_row_status(self, script, state, duration=None):
-        self.rows[script].set_status(state, duration)
+    def set_row_status(self, script, state, duration=None, estimate=None):
+        self.rows[script].set_status(state, duration, estimate)
 
     def _add_session_runtime(self, seconds):
         self.session_total_seconds += seconds
@@ -1228,7 +1228,7 @@ class RunGuiWindow(Gtk.Window):
 
             self.currently_running_script = script
             GLib.idle_add(self._begin_script_display, script)
-            GLib.idle_add(self.set_row_status, script, "running")
+            GLib.idle_add(self.set_row_status, script, "running", None, SCRIPT_DURATION_ESTIMATES.get(script))
             GLib.idle_add(self.status_label.set_text, f"Running: {script}")
 
             start_time = time.monotonic()
