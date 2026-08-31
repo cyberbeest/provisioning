@@ -167,13 +167,47 @@ PROFILE_COUNTRIES = [
     ("XD", "Other (default: German UI)", "de", "en_US.UTF-8", "de_DE.UTF-8", "de", "UTC"),
 ]
 
-PROFILE_KEYBOARDS = [
+XKB_BASE_LST = "/usr/share/X11/xkb/rules/base.lst"
+
+# Small fallback used only if XKB_BASE_LST is missing (shouldn't happen --
+# x11-xkb-utils is installed by 00-locale-keyboard-timezone.sh itself, and
+# this dialog isn't shown before that point). Codes match the country
+# defaults in PROFILE_COUNTRIES above.
+FALLBACK_KEYBOARDS = [
     ("de", "German"),
-    ("at", "Austrian"),
-    ("ch", "Swiss German"),
-    ("us", "US"),
-    ("gb", "UK"),
+    ("at", "German (Austria)"),
+    ("ch", "German (Switzerland)"),
+    ("us", "English (US)"),
+    ("gb", "English (UK)"),
 ]
+
+
+def load_keyboard_layouts():
+    # Full xkb layout list (~100 entries, not just the 5 Cyberbeest markets)
+    # -- the installer should be able to pick any keyboard layout even for a
+    # UI language Cyberbeest doesn't ship a translation catalog for yet.
+    # base.lst's "! layout" section is one "<code>  <description>" pair per
+    # line; sorted by description so the searchable combo below reads
+    # naturally when typing a country/language name.
+    try:
+        layouts = []
+        in_section = False
+        with open(XKB_BASE_LST) as f:
+            for line in f:
+                if line.startswith("! layout"):
+                    in_section = True
+                    continue
+                if line.startswith("!"):
+                    in_section = False
+                    continue
+                if in_section and line.strip():
+                    code, _, name = line.strip().partition(" ")
+                    layouts.append((code, name.strip()))
+        if layouts:
+            return sorted(layouts, key=lambda row: row[1])
+    except OSError:
+        pass
+    return FALLBACK_KEYBOARDS
 
 # Scripts whose effects are hard to walk back (or actively dangerous to run
 # on a machine you're still debugging over SSH) get a confirmation dialog
@@ -285,16 +319,6 @@ class ProvisioningProfileDialog(Gtk.Dialog):
         box.set_border_width(12)
         box.set_spacing(10)
 
-        intro = Gtk.Label(xalign=0)
-        intro.set_line_wrap(True)
-        intro.set_markup(
-            "Answers every locale/keyboard/timezone/touchpad question upfront, "
-            "so <b>00-locale-keyboard-timezone.sh</b> and "
-            "<b>00a-touchpad-tap-global.sh</b> can run without further "
-            "interruptions."
-        )
-        box.pack_start(intro, False, False, 0)
-
         grid = Gtk.Grid(row_spacing=8, column_spacing=10)
         box.pack_start(grid, False, False, 0)
         row = 0
@@ -322,10 +346,35 @@ class ProvisioningProfileDialog(Gtk.Dialog):
         lang_box.pack_start(self.lang_de, False, False, 0)
         add_row("UI language:", lang_box)
 
-        self.keyboard_combo = Gtk.ComboBoxText()
-        for code, name in PROFILE_KEYBOARDS:
-            self.keyboard_combo.append(code, name)
-        self.keyboard_combo.connect("changed", self._on_keyboard_changed)
+        # Free-text combo (not a fixed radiolist like the old whiptail
+        # dialog): the full ~100-entry xkb layout list, searchable by
+        # country/language name, but also accepting any raw xkb layout code
+        # typed directly -- a UI language Cyberbeest doesn't ship a
+        # translation catalog for yet is still a real keyboard someone may
+        # be typing on.
+        self.keyboard_combo = Gtk.ComboBoxText.new_with_entry()
+        keyboard_layouts = load_keyboard_layouts()
+        self.keyboard_entry = self.keyboard_combo.get_child()
+        kbd_store = Gtk.ListStore(str, str)
+        for code, name in keyboard_layouts:
+            kbd_store.append([code, f"{code} — {name}"])
+        kbd_completion = Gtk.EntryCompletion()
+        kbd_completion.set_model(kbd_store)
+        kbd_completion.set_text_column(1)
+        kbd_completion.set_popup_completion(True)
+
+        def kbd_match_selected(_completion, model, treeiter):
+            # set_text_column above drives what the popup *shows* ("de --
+            # German"), but the entry (and so the final answer) should only
+            # ever hold the raw layout code -- fill it in ourselves instead
+            # of letting GTK insert the display text verbatim.
+            self.keyboard_entry.set_text(model[treeiter][0])
+            self.keyboard_entry.set_position(-1)
+            return True
+
+        kbd_completion.connect("match-selected", kbd_match_selected)
+        self.keyboard_entry.set_completion(kbd_completion)
+        self.keyboard_entry.connect("changed", self._on_keyboard_changed)
         add_row("Keyboard layout:", self.keyboard_combo)
 
         self.menu_key_remap = Gtk.CheckButton(
@@ -368,7 +417,7 @@ class ProvisioningProfileDialog(Gtk.Dialog):
         elif prev.get("PROVISIONING_LANG") == "en":
             self.lang_en.set_active(True)
         if prev.get("PROVISIONING_KEYBOARD"):
-            self.keyboard_combo.set_active_id(prev["PROVISIONING_KEYBOARD"])
+            self.keyboard_entry.set_text(prev["PROVISIONING_KEYBOARD"])
         if prev.get("PROVISIONING_TIMEZONE"):
             tz_entry.set_text(prev["PROVISIONING_TIMEZONE"])
 
@@ -389,8 +438,8 @@ class ProvisioningProfileDialog(Gtk.Dialog):
         # the first time (dialog open, or a fresh country pick) -- doesn't
         # clobber an explicit override the user already made to those fields
         # on a later "changed" signal from something else.
-        if initial or not self.keyboard_combo.get_active_id():
-            self.keyboard_combo.set_active_id(kbd_default)
+        if initial or not self.keyboard_entry.get_text().strip():
+            self.keyboard_entry.set_text(kbd_default)
         if initial:
             if default_lang == "de":
                 self.lang_de.set_active(True)
@@ -398,9 +447,10 @@ class ProvisioningProfileDialog(Gtk.Dialog):
                 self.lang_en.set_active(True)
             self.tz_combo.get_child().set_text(tz_default)
 
-    def _on_keyboard_changed(self, _combo):
-        self.menu_key_remap.set_sensitive(self.keyboard_combo.get_active_id() == "de")
-        if self.keyboard_combo.get_active_id() != "de":
+    def _on_keyboard_changed(self, _entry):
+        is_de = self.keyboard_entry.get_text().strip() == "de"
+        self.menu_key_remap.set_sensitive(is_de)
+        if not is_de:
             self.menu_key_remap.set_active(False)
 
     def collect(self):
@@ -420,7 +470,7 @@ class ProvisioningProfileDialog(Gtk.Dialog):
             "PROVISIONING_COUNTRY": country_code or "",
             "PROVISIONING_LANG": lang_choice,
             "PROVISIONING_LOCALE": locale,
-            "PROVISIONING_KEYBOARD": self.keyboard_combo.get_active_id() or "us",
+            "PROVISIONING_KEYBOARD": self.keyboard_entry.get_text().strip() or "us",
             "PROVISIONING_MENU_KEY_REMAP": "yes" if self.menu_key_remap.get_active() else "no",
             "PROVISIONING_TIMEZONE": self.tz_combo.get_child().get_text().strip() or "UTC",
             "PROVISIONING_TOUCHPAD_TUNING": "yes" if self.touchpad_tuning.get_active() else "no",
