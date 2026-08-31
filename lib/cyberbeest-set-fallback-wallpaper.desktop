@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Set Cyberbeest fallback wallpaper
+Comment=Fills in unset xfce4-desktop wallpaper slots so a fresh/live/VM session shows our fallback instead of XFCE's own default, regardless of what XRandR calls the monitor
+Exec=/home/cyberbeest/.local/bin/set-fallback-wallpaper.sh
+NoDisplay=true
+OnlyShowIn=XFCE;
+X-XFCE-Autostart-Phase=Application

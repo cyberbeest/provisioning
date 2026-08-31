@@ -1,13 +1,13 @@
 #!/bin/bash
 # Installs the Cyberbeest desktop wallpaper images so they're pickable from
-# Desktop Settings, but deliberately does NOT try to select one via
-# xfconf-query automation: that was tried (setting /backdrop/screen0/...
-# properties directly + xfdesktop --reload) and it left the desktop in a
-# half-applied state -- Desktop Settings would show the right image already
-# selected, but the wallpaper wouldn't actually render correctly until you
-# reselected it and toggled the scaling style off and back on. Simpler and
-# more reliable to just drop the file where it's one click away and let a
-# human pick it once.
+# Desktop Settings, and installs an autostart entry (lib/set-fallback-wallpaper.sh)
+# that fills in a fallback image via xfconf for any monitor/workspace slot
+# nobody has explicitly set yet -- so a fresh/live/VM session shows our
+# branding instead of XFCE's own default (a teal swirl with the XFCE mouse
+# logo), without ever overriding a human's manual "pick Cyberbeest in
+# Desktop Settings" choice. See that script's header for why an earlier,
+# similar attempt (removed in b321043) looked half-applied instead of just
+# working.
 # Idempotent: safe to re-run.
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -72,20 +72,17 @@ install -m 644 "$DIR/lib/assets/desktop-base-fallback-wallpaper.png" \
 	/usr/share/backgrounds/xfce/cyberbeest-fallback.png
 
 echo "--- Setting the system-wide fallback wallpaper (desktop-base alternative) ---"
-# xfdesktop falls back to /usr/share/images/desktop-base/default (-> ...
-# /desktop-background -> /etc/alternatives/desktop-background) whenever it
-# can't find a matching per-monitor xfconf key for the current display --
-# e.g. a live-boot session on unfamiliar hardware/a VM, or (per
-# cyberbeest_desktop_background memory) even real hardware if xfdesktop ever
-# regenerates generic monitor0/monitor1 keys instead of the connector-named
-# one this laptop actually uses. Left alone, that fallback is Debian's own
-# "ceratopsian" theme wallpaper. update-alternatives itself doesn't care
-# about image format (PNG here, vs. the SVGs every desktop-base theme
-# ships) -- xfdesktop loads either via GdkPixbuf regardless. This is
-# separate from (and doesn't replace) the manual Cyberbeest-branded pick
-# above -- it only ever shows up when nothing else was ever selected.
-# Priority 100 comfortably beats every desktop-base theme's own entry
-# (highest observed: 70, for whichever theme happens to be "active").
+# This part is NOT what actually makes xfdesktop render our fallback --
+# verified empirically (2026-08-31, screenshot of a live VM session) that
+# xfdesktop does NOT consult /usr/share/images/desktop-base/default when it
+# can't find a matching per-monitor xfconf key; it renders its own
+# hardcoded default (a teal swirl with the XFCE mouse logo) instead. This
+# update-alternatives dance is kept anyway because it's what some other
+# consumers of the desktop-base alternative (e.g. lightdm-gtk-greeter's
+# `user-background` fallback, some login/lock screens) DO honor, and
+# because it's what a human sees if they browse the "desktop-base" folder
+# in Desktop Settings. Priority 100 comfortably beats every desktop-base
+# theme's own entry (highest observed: 70).
 update-alternatives --install /usr/share/images/desktop-base/desktop-background \
 	desktop-background "$DIR/lib/assets/desktop-base-fallback-wallpaper.png" 100
 update-alternatives --set desktop-background \
@@ -94,6 +91,40 @@ update-alternatives --set desktop-background \
 echo "--- Removing the old xfconf-automation autostart entry/script, if present ---"
 rm -f "$TARGET_HOME/.config/autostart/cyberbeest-set-wallpaper.desktop"
 rm -f "$TARGET_HOME/.local/bin/set-desktop-background.sh"
+
+echo "--- Installing set-fallback-wallpaper.sh + autostart entry ---"
+# This is what actually makes xfdesktop render our fallback instead of its
+# own default: it fills in the real, connector-named xfconf key (via
+# xrandr, at login time, since the connector name isn't known any earlier)
+# for every workspace, but only where nothing is set yet -- so it never
+# overrides a human's manual "pick Cyberbeest in Desktop Settings" choice.
+# See lib/set-fallback-wallpaper.sh for why the earlier attempt at this
+# (removed in b321043) looked "half-applied": it only updated
+# already-existing workspace<N> xfconf keys, so newly-created ones (the
+# common case on a fresh session) stayed unset and xfdesktop fell through
+# to its own default anyway.
+install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.local/bin"
+install -o "$TARGET_USER" -g "$TARGET_USER" -m 755 \
+	"$DIR/lib/set-fallback-wallpaper.sh" "$TARGET_HOME/.local/bin/set-fallback-wallpaper.sh"
+
+install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.config/autostart"
+sed "s|/home/cyberbeest/|$TARGET_HOME/|g" "$DIR/lib/cyberbeest-set-fallback-wallpaper.desktop" \
+	> "$TARGET_HOME/.config/autostart/cyberbeest-set-fallback-wallpaper.desktop"
+chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.config/autostart/cyberbeest-set-fallback-wallpaper.desktop"
+
+echo "--- Running it now, if the target user has an active session ---"
+TARGET_UID="$(id -u "$TARGET_USER")"
+if [ -d "/run/user/$TARGET_UID" ]; then
+	SESSION_PID="$(pgrep -u "$TARGET_USER" -x xfce4-session | head -1)"
+	DBUS_ADDR=""
+	if [ -n "$SESSION_PID" ]; then
+		DBUS_ADDR="$(cat "/proc/$SESSION_PID/environ" 2>/dev/null | tr '\0' '\n' | sed -n 's/^DBUS_SESSION_BUS_ADDRESS=//p')" || true
+	fi
+	DBUS_ADDR="${DBUS_ADDR:-unix:path=/run/user/$TARGET_UID/bus}"
+	su - "$TARGET_USER" -c "DISPLAY='${DISPLAY:-:0}' DBUS_SESSION_BUS_ADDRESS='$DBUS_ADDR' $TARGET_HOME/.local/bin/set-fallback-wallpaper.sh" || true
+else
+	echo "no active session for $TARGET_USER -- it'll run at next login"
+fi
 
 echo "=== $(date) : done. Set it via Desktop Settings -> pick Cyberbeest (one-time). ==="
 
