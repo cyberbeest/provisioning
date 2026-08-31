@@ -239,6 +239,66 @@ STATUS_STYLE = {
     "skipped": ("skipped", "#8a8a8a"),
 }
 
+# Wall-clock durations captured from a real end-to-end provisioning run
+# (2026-08-31, derived from the "=== <date> : ..." timestamp on each
+# script's first log line vs. the next script's), shown next to "pending"
+# rows as a rough per-script estimate. Actual time on a given machine varies
+# mainly with network speed (apt/pip installs) and whether packages are
+# already cached -- treat these as ballpark, not a guarantee. A script not
+# in this dict (e.g. one added since) just shows "pending" with no estimate.
+SCRIPT_DURATION_ESTIMATES = {
+    "00-locale-keyboard-timezone.sh": 37,
+    "00a-touchpad-tap-global.sh": 0,
+    "01-bluetooth-tethering.sh": 26,
+    "02-gnome-software-store.sh": 14,
+    "03-secure-messengers.sh": 176,
+    "04-software-launch-warning.sh": 0,
+    "05-unattended-upgrades-security.sh": 87,
+    "06-vendor-origins-unattended-upgrades.sh": 52,
+    "07-security-update-timer.sh": 114,
+    "08-xdg-user-dirs.sh": 2,
+    "09-cyberbeest-logout-dialog.sh": 2,
+    "10-browser-sandbox.sh": 23,
+    "11-xfce-panel-plugins.sh": 99,
+    "12-xfce-panel-layout.sh": 7,
+    "13-lock-shutdown-watcher.sh": 16,
+    "14-user-avatar.sh": 0,
+    "15-grub-plymouth-theme.sh": 67,
+    "16-power-lock-config.sh": 5,
+    "17-login-lock-screen.sh": 0,
+    "18-desktop-background.sh": 0,
+    "19-low-battery-shutdown.sh": 1,
+    "20-shutdown-sound.sh": 0,
+    "21-default-password-nag.sh": 9,
+    "22-i2p-package-manager.sh": 2,
+    "23-vlc-media-player.sh": 22,
+    "24-avif-mime-default.sh": 0,
+    "25-cyberbeest-panel-color.sh": 2,
+    "26-lid-close-policy.sh": 3,
+    "27-desktop-hotlinks.sh": 7,
+    "29-wireguard-vpn-toggle.sh": 5,
+    "30-lockscreen-shutdown-button.sh": 99,
+    "31-disable-sleep-states.sh": 1,
+    "32-minor-apt-packages.sh": 109,
+    "33-rename-thunar-to-files.sh": 11,
+    "35-boot-chime.sh": 3,
+    "36-crypto-wallets.sh": 47,
+    "37-encrypted-dns.sh": 20,
+    "38-jail-messengers.sh": 2,
+    "39-feather-tor-ondemand.sh": 2,
+    "40-jail-wallets-viber.sh": 2,
+    "41-bookmark-seeder.sh": 3,
+    "42-security-watch.sh": 17,
+    "43-intrusion-watch.sh": 3,
+    "44-wipe-app-data.sh": 2,
+    "45-hide-redundant-terminals.sh": 1,
+    "46-cyberbeest-keyboard-shortcuts.sh": 0,
+    "47-set-max-volume.sh": 0,
+    "48-whisker-menu-categories.sh": 0,
+    "49-whisker-category-cleanup.sh": 1,
+    "50-i2pd-default.sh": 281,
+}
+
 
 def list_scripts():
     # [0-9][0-9][a-z]?-*.sh: the optional trailing letter lets a script slot
@@ -286,12 +346,17 @@ class ScriptRow(Gtk.ListBoxRow):
         self.status_label = Gtk.Label(label="", xalign=1)
         box.pack_start(self.status_label, False, False, 0)
 
-        self.set_status("done" if script_is_done(script) else "pending")
+        if script_is_done(script):
+            self.set_status("done")
+        else:
+            self.set_status("pending", estimate=SCRIPT_DURATION_ESTIMATES.get(script))
 
-    def set_status(self, state, duration=None):
+    def set_status(self, state, duration=None, estimate=None):
         text, color = STATUS_STYLE[state]
         if duration is not None:
             text = f"{text} ({format_duration(duration)})"
+        elif estimate:
+            text = f"{text} (~{format_duration(estimate)})"
         self.status_label.set_markup(f'<span foreground="{color}">{GLib.markup_escape_text(text)}</span>')
 
 
@@ -795,14 +860,19 @@ class RunGuiWindow(Gtk.Window):
                     child.set_sensitive(not self.busy)
 
     def _todo_action_for(self, script):
-        # The only MANUAL_TODO source that has an obvious one-click shortcut
-        # to offer alongside it right now.
+        # MANUAL_TODO sources that have an obvious one-click shortcut to
+        # offer alongside them right now.
         if script == "18-desktop-background.sh":
             return ("Open Desktop Settings", self._open_desktop_settings)
+        if script == "21-default-password-nag.sh":
+            return ("Open Passwords & Boot", self._open_password_settings)
         return None
 
     def _open_desktop_settings(self, _button):
         subprocess.Popen(["xfdesktop-settings"])
+
+    def _open_password_settings(self, _button):
+        subprocess.Popen([os.path.expanduser("~/.local/bin/cyberbeest-change-password")])
 
     def _do_reboot(self, _button):
         dialog = Gtk.MessageDialog(
@@ -1213,10 +1283,14 @@ class RunGuiWindow(Gtk.Window):
         else:
             self.status_label.set_text("Finished successfully.")
             if self.current_run_is_batch:
-                # Supersedes the weaker "reboot or log out/in" locale/keyboard
-                # todo, if present -- no point showing both once a full
-                # reboot is already on offer.
-                self.todos.pop("00-locale-keyboard-timezone.sh", None)
+                # Supersedes any per-script "reboot (or log out/in) for X to
+                # apply" todo (00-locale-keyboard-timezone.sh,
+                # 00a-touchpad-tap-global.sh, 46-cyberbeest-keyboard-shortcuts.sh,
+                # ...) -- no point showing those once a full reboot covering
+                # everything is already on offer.
+                for key, (text, _action) in list(self.todos.items()):
+                    if text.startswith("Reboot (or log out/in)"):
+                        self.todos.pop(key, None)
                 self._add_todo(
                     REBOOT_TODO_KEY,
                     "Reboot to fully apply everything from this run.",
