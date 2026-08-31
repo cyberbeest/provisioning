@@ -310,7 +310,7 @@ class ProvisioningProfileDialog(Gtk.Dialog):
         super().__init__(title="Provisioning profile", transient_for=parent, modal=True)
         self.add_buttons(
             Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
-            "_Apply", Gtk.ResponseType.OK,
+            "_Continue", Gtk.ResponseType.OK,
         )
         self.set_default_size(480, -1)
         self.answers = None
@@ -357,7 +357,25 @@ class ProvisioningProfileDialog(Gtk.Dialog):
         self.keyboard_entry = self.keyboard_combo.get_child()
         kbd_store = Gtk.ListStore(str, str)
         for code, name in keyboard_layouts:
-            kbd_store.append([code, f"{code} — {name}"])
+            label = f"{code} — {name}"
+            kbd_store.append([code, label])
+            # Also populate the combo's own dropdown (its arrow button opens
+            # this list independently of the type-ahead completion below) --
+            # without this it renders as an empty list.
+            self.keyboard_combo.append(code, label)
+
+        def kbd_combo_selected(combo):
+            # The dropdown (unlike the completion popup's match-selected
+            # below) has no hook to rewrite what lands in the entry, so a
+            # row picked here would otherwise leave the full "code — name"
+            # label in the entry instead of just the raw code.
+            idx = combo.get_active()
+            if idx >= 0:
+                self.keyboard_entry.set_text(combo.get_active_id())
+                self.keyboard_entry.set_position(-1)
+
+        self.keyboard_combo.connect("changed", kbd_combo_selected)
+
         kbd_completion = Gtk.EntryCompletion()
         kbd_completion.set_model(kbd_store)
         kbd_completion.set_text_column(1)
@@ -961,14 +979,18 @@ class RunGuiWindow(Gtk.Window):
         # touches one of the scripts it covers, and only once per run-gui.py
         # session -- "Provisioning profile..." in the more-actions menu
         # covers revisiting/editing it later.
+        # Returns False if the run should be aborted (dialog was shown and
+        # cancelled), True otherwise.
         if self.profile_env is not None:
-            return
+            return True
         if not (set(scripts) & PROFILE_SCRIPTS):
-            return
+            return True
         self._edit_profile()
+        return self.profile_env is not None
 
     def _start_run(self, scripts, label, batch):
-        self._ensure_profile(scripts)
+        if not self._ensure_profile(scripts):
+            return
         self.current_run_is_batch = batch
         self.stop_requested = False
         self.follow_live = True
