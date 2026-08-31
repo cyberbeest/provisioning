@@ -118,6 +118,7 @@ import subprocess
 import tempfile
 import threading
 import time
+import zoneinfo
 
 import gi
 
@@ -129,6 +130,50 @@ ASKPASS = os.path.join(DIR, "lib", "zenity-askpass.sh")
 CACHED_ASKPASS = os.path.join(DIR, "lib", "cached-askpass.sh")
 
 NEEDS_TERMINAL = {"00-locale-keyboard-timezone.sh", "00a-touchpad-tap-global.sh"}
+
+# Scripts driven by the upfront "Provisioning profile" dialog (see
+# ProvisioningProfileDialog) instead of their own whiptail prompts. Once the
+# dialog has been answered, both scripts run piped like every other step --
+# they only need NEEDS_TERMINAL's xterm/whiptail treatment when no profile
+# has been collected (e.g. run standalone via menu.sh, or the dialog was
+# cancelled).
+PROFILE_SCRIPTS = {"00-locale-keyboard-timezone.sh", "00a-touchpad-tap-global.sh"}
+
+# Where the collected profile answers are handed to 00-/00a-. A plain file
+# rather than environment variables: sudo's default env_reset policy strips
+# arbitrary env vars from the escalated command (only SUDO_ASKPASS and
+# friends survive, since those are consumed by sudo itself before the
+# reset), but a file in this directory is trivially readable by root once
+# the script is running as root anyway. Not sensitive data (locale/keyboard/
+# timezone/touchpad choices), so no special permissions needed; removed on
+# exit purely for tidiness, see RunGuiWindow.on_destroy.
+PROFILE_FILE = os.path.join(DIR, ".provisioning-profile.env")
+
+# code|Display name|default language (en/de)|en locale|de locale|keyboard layout|default IANA timezone
+# Keep in sync with 00-locale-keyboard-timezone.sh's own COUNTRIES array --
+# that script's interactive whiptail path (used when no profile was
+# collected) is the source of truth this mirrors.
+PROFILE_COUNTRIES = [
+    ("DE", "Germany", "de", "en_US.UTF-8", "de_DE.UTF-8", "de", "Europe/Berlin"),
+    ("AT", "Austria", "de", "en_US.UTF-8", "de_AT.UTF-8", "at", "Europe/Vienna"),
+    ("CH", "Switzerland", "de", "en_US.UTF-8", "de_CH.UTF-8", "ch", "Europe/Zurich"),
+    ("US", "United States", "en", "en_US.UTF-8", "de_DE.UTF-8", "us", "America/New_York"),
+    ("GB", "United Kingdom", "en", "en_GB.UTF-8", "de_DE.UTF-8", "gb", "Europe/London"),
+    ("IE", "Ireland", "en", "en_IE.UTF-8", "de_DE.UTF-8", "gb", "Europe/Dublin"),
+    ("CA", "Canada", "en", "en_CA.UTF-8", "de_DE.UTF-8", "us", "America/Toronto"),
+    ("AU", "Australia", "en", "en_AU.UTF-8", "de_DE.UTF-8", "us", "Australia/Sydney"),
+    ("NZ", "New Zealand", "en", "en_NZ.UTF-8", "de_DE.UTF-8", "us", "Pacific/Auckland"),
+    ("XE", "Other (default: English UI)", "en", "en_US.UTF-8", "de_DE.UTF-8", "us", "UTC"),
+    ("XD", "Other (default: German UI)", "de", "en_US.UTF-8", "de_DE.UTF-8", "de", "UTC"),
+]
+
+PROFILE_KEYBOARDS = [
+    ("de", "German"),
+    ("at", "Austrian"),
+    ("ch", "Swiss German"),
+    ("us", "US"),
+    ("gb", "UK"),
+]
 
 # Scripts whose effects are hard to walk back (or actively dangerous to run
 # on a machine you're still debugging over SSH) get a confirmation dialog
@@ -216,6 +261,174 @@ class ScriptRow(Gtk.ListBoxRow):
         self.status_label.set_markup(f'<span foreground="{color}">{GLib.markup_escape_text(text)}</span>')
 
 
+class ProvisioningProfileDialog(Gtk.Dialog):
+    """Collects every per-installer answer (country/language/keyboard/menu-key
+    remap/timezone/touchpad tuning) in one place upfront, so
+    00-locale-keyboard-timezone.sh and 00a-touchpad-tap-global.sh can run
+    straight through without popping their own whiptail prompts mid-run.
+    Named "Provisioning profile" (not just "settings") since a longer
+    question list down the road is expected to turn this into a set of
+    reusable named profiles rather than a one-off form -- see run-gui.py's
+    PROFILE_SCRIPTS/PROFILE_COUNTRIES for the rest of this design's context.
+    """
+
+    def __init__(self, parent, previous=None):
+        super().__init__(title="Provisioning profile", transient_for=parent, modal=True)
+        self.add_buttons(
+            Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
+            "_Apply", Gtk.ResponseType.OK,
+        )
+        self.set_default_size(480, -1)
+        self.answers = None
+
+        box = self.get_content_area()
+        box.set_border_width(12)
+        box.set_spacing(10)
+
+        intro = Gtk.Label(xalign=0)
+        intro.set_line_wrap(True)
+        intro.set_markup(
+            "Answers every locale/keyboard/timezone/touchpad question upfront, "
+            "so <b>00-locale-keyboard-timezone.sh</b> and "
+            "<b>00a-touchpad-tap-global.sh</b> can run without further "
+            "interruptions."
+        )
+        box.pack_start(intro, False, False, 0)
+
+        grid = Gtk.Grid(row_spacing=8, column_spacing=10)
+        box.pack_start(grid, False, False, 0)
+        row = 0
+
+        def add_row(label_text, widget):
+            nonlocal row
+            label = Gtk.Label(label=label_text, xalign=0)
+            grid.attach(label, 0, row, 1, 1)
+            grid.attach(widget, 1, row, 1, 1)
+            row += 1
+
+        prev = previous or {}
+
+        self.country_combo = Gtk.ComboBoxText()
+        for code, name, *_rest in PROFILE_COUNTRIES:
+            self.country_combo.append(code, name)
+        # "changed" is wired up below, once every widget it touches
+        # (keyboard/language/timezone) actually exists.
+        add_row("Country:", self.country_combo)
+
+        self.lang_en = Gtk.RadioButton.new_with_label_from_widget(None, "English")
+        self.lang_de = Gtk.RadioButton.new_with_label_from_widget(self.lang_en, "Deutsch (German)")
+        lang_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        lang_box.pack_start(self.lang_en, False, False, 0)
+        lang_box.pack_start(self.lang_de, False, False, 0)
+        add_row("UI language:", lang_box)
+
+        self.keyboard_combo = Gtk.ComboBoxText()
+        for code, name in PROFILE_KEYBOARDS:
+            self.keyboard_combo.append(code, name)
+        self.keyboard_combo.connect("changed", self._on_keyboard_changed)
+        add_row("Keyboard layout:", self.keyboard_combo)
+
+        self.menu_key_remap = Gtk.CheckButton(
+            label="Remap Menu key to </>/| (canonical Cyberbeest hardware only, German keyboard)"
+        )
+        self.menu_key_remap.set_active(prev.get("PROVISIONING_MENU_KEY_REMAP") == "yes")
+        add_row("", self.menu_key_remap)
+
+        self.tz_combo = Gtk.ComboBoxText.new_with_entry()
+        for tz in sorted(zoneinfo.available_timezones()):
+            self.tz_combo.append_text(tz)
+        tz_entry = self.tz_combo.get_child()
+        completion = Gtk.EntryCompletion()
+        tz_store = Gtk.ListStore(str)
+        for tz in sorted(zoneinfo.available_timezones()):
+            tz_store.append([tz])
+        completion.set_model(tz_store)
+        completion.set_text_column(0)
+        completion.set_inline_completion(True)
+        completion.set_popup_completion(True)
+        tz_entry.set_completion(completion)
+        add_row("Timezone:", self.tz_combo)
+
+        self.touchpad_tuning = Gtk.CheckButton(
+            label="Apply Cyberbeest touchpad tuning (tap-to-click everywhere, "
+            "sensitivity/scrolling dialed in on reference hardware)"
+        )
+        self.touchpad_tuning.set_active(prev.get("PROVISIONING_TOUCHPAD_TUNING", "yes") != "no")
+        add_row("Touchpad:", self.touchpad_tuning)
+
+        # Now that every widget exists, wire up the country "changed" signal
+        # and seed language/keyboard/timezone from the previous answers if
+        # there were any, else derive them from the country default like the
+        # whiptail flow does.
+        self.country_combo.connect("changed", self._on_country_changed)
+        self.country_combo.set_active_id(prev.get("PROVISIONING_COUNTRY", "US"))
+        self._on_country_changed(self.country_combo, initial=True)
+        if prev.get("PROVISIONING_LANG") == "de":
+            self.lang_de.set_active(True)
+        elif prev.get("PROVISIONING_LANG") == "en":
+            self.lang_en.set_active(True)
+        if prev.get("PROVISIONING_KEYBOARD"):
+            self.keyboard_combo.set_active_id(prev["PROVISIONING_KEYBOARD"])
+        if prev.get("PROVISIONING_TIMEZONE"):
+            tz_entry.set_text(prev["PROVISIONING_TIMEZONE"])
+
+        box.show_all()
+
+    def _country_row(self, code):
+        for row in PROFILE_COUNTRIES:
+            if row[0] == code:
+                return row
+        return None
+
+    def _on_country_changed(self, _combo, initial=False):
+        row = self._country_row(self.country_combo.get_active_id())
+        if not row:
+            return
+        _code, _name, default_lang, _en_loc, _de_loc, kbd_default, tz_default = row
+        # Only push the country's defaults onto language/keyboard/timezone
+        # the first time (dialog open, or a fresh country pick) -- doesn't
+        # clobber an explicit override the user already made to those fields
+        # on a later "changed" signal from something else.
+        if initial or not self.keyboard_combo.get_active_id():
+            self.keyboard_combo.set_active_id(kbd_default)
+        if initial:
+            if default_lang == "de":
+                self.lang_de.set_active(True)
+            else:
+                self.lang_en.set_active(True)
+            self.tz_combo.get_child().set_text(tz_default)
+
+    def _on_keyboard_changed(self, _combo):
+        self.menu_key_remap.set_sensitive(self.keyboard_combo.get_active_id() == "de")
+        if self.keyboard_combo.get_active_id() != "de":
+            self.menu_key_remap.set_active(False)
+
+    def collect(self):
+        """Runs the dialog; returns an answers dict (see PROFILE_SCRIPTS'
+        env-var contract with the two shell scripts) or None if cancelled."""
+        response = self.run()
+        if response != Gtk.ResponseType.OK:
+            self.destroy()
+            return None
+
+        country_code = self.country_combo.get_active_id()
+        row = self._country_row(country_code)
+        lang_choice = "de" if self.lang_de.get_active() else "en"
+        locale = (row[4] if lang_choice == "de" else row[3]) if row else "en_US.UTF-8"
+        answers = {
+            "PROVISIONING_PROFILE": "1",
+            "PROVISIONING_COUNTRY": country_code or "",
+            "PROVISIONING_LANG": lang_choice,
+            "PROVISIONING_LOCALE": locale,
+            "PROVISIONING_KEYBOARD": self.keyboard_combo.get_active_id() or "us",
+            "PROVISIONING_MENU_KEY_REMAP": "yes" if self.menu_key_remap.get_active() else "no",
+            "PROVISIONING_TIMEZONE": self.tz_combo.get_child().get_text().strip() or "UTC",
+            "PROVISIONING_TOUCHPAD_TUNING": "yes" if self.touchpad_tuning.get_active() else "no",
+        }
+        self.destroy()
+        return answers
+
+
 class RunGuiWindow(Gtk.Window):
     def __init__(self):
         super().__init__(title="Cyberbeest Provisioning Runner")
@@ -235,6 +448,9 @@ class RunGuiWindow(Gtk.Window):
         self.currently_running_script = None
         self.follow_live = True
         self.todos = {}
+        # Answers dict from ProvisioningProfileDialog.collect(), or None if
+        # it hasn't been shown yet (or was cancelled) -- see _ensure_profile.
+        self.profile_env = None
         self.current_run_is_batch = False
         self.queue_total = 0
         self.queue_done = 0
@@ -279,6 +495,9 @@ class RunGuiWindow(Gtk.Window):
         self.disable_autostart_item.set_sensitive(os.path.exists(AUTOSTART_FILE))
         self.disable_autostart_item.connect("activate", self.on_disable_autostart)
         more_menu.append(self.disable_autostart_item)
+        self.edit_profile_item = Gtk.MenuItem(label="Provisioning profile...")
+        self.edit_profile_item.connect("activate", lambda _mi: self._edit_profile())
+        more_menu.append(self.edit_profile_item)
         more_menu.show_all()
         self.more_menu_button.set_popup(more_menu)
         button_box.pack_start(self.more_menu_button, False, False, 0)
@@ -678,7 +897,28 @@ class RunGuiWindow(Gtk.Window):
         # does.
         self._start_run([row.script], label=f"Run {row.script}", batch=False)
 
+    def _edit_profile(self):
+        dialog = ProvisioningProfileDialog(self, previous=self.profile_env)
+        answers = dialog.collect()
+        if answers is not None:
+            self.profile_env = answers
+            with open(PROFILE_FILE, "w") as f:
+                for key, value in answers.items():
+                    f.write(f"{key}={value}\n")
+
+    def _ensure_profile(self, scripts):
+        # Only bother the user with the profile dialog if this run actually
+        # touches one of the scripts it covers, and only once per run-gui.py
+        # session -- "Provisioning profile..." in the more-actions menu
+        # covers revisiting/editing it later.
+        if self.profile_env is not None:
+            return
+        if not (set(scripts) & PROFILE_SCRIPTS):
+            return
+        self._edit_profile()
+
     def _start_run(self, scripts, label, batch):
+        self._ensure_profile(scripts)
         self.current_run_is_batch = batch
         self.stop_requested = False
         self.follow_live = True
@@ -851,7 +1091,11 @@ class RunGuiWindow(Gtk.Window):
 
             start_time = time.monotonic()
             self.current_script_start = start_time
-            if script in NEEDS_TERMINAL:
+            # A profile-driven script has no whiptail prompts left to draw,
+            # so it no longer needs the xterm/TTY treatment -- runs piped
+            # like everything else.
+            profile_driven = self.profile_env is not None and script in PROFILE_SCRIPTS
+            if script in NEEDS_TERMINAL and not profile_driven:
                 status = self._run_in_terminal(script)
             else:
                 GLib.idle_add(self.append_log, script, f"=== running {script} ===\n")
@@ -950,6 +1194,10 @@ class RunGuiWindow(Gtk.Window):
         if self.proc is not None and self.proc.poll() is None:
             self.append_log(self.currently_running_script or "", "\n[run-gui.py] window closed while a run was active -- ")
             self.append_log(self.currently_running_script or "", "leaving the root process running; check a terminal with `ps` if unsure.\n")
+        try:
+            os.remove(PROFILE_FILE)
+        except OSError:
+            pass
         Gtk.main_quit()
 
 

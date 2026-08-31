@@ -30,9 +30,19 @@
 # last edited (log newer than script, same test run-changed.sh uses), even
 # under run-gui.py/menu.sh which otherwise always run every step. Delete the
 # log (or edit this script) to force it to prompt again.
+#
+# When run-gui.py's "Provisioning profile" dialog has already collected an
+# answer for all of this (country/language/keyboard/menu-key-remap/timezone;
+# see .provisioning-profile.env, written by that dialog), every whiptail
+# prompt below is skipped and this runs piped like every other step -- no
+# terminal needed at all in that case. Timezone still gets its own
+# non-interactive dpkg-reconfigure in that path rather than a curated list,
+# for the same "no short list beats the real picker" reason as the
+# interactive path below.
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG="$DIR/00-locale-keyboard-timezone.log"
+PROFILE_FILE="$DIR/.provisioning-profile.env"
 
 # rsync goes in first, and ahead of the skip/TTY checks below, so it's
 # available from the very start of provisioning (including headless
@@ -48,7 +58,19 @@ if [ -e "$LOG" ] && [ "$LOG" -nt "$0" ]; then
 	exit 0
 fi
 
-if [ ! -t 0 ]; then
+# run-gui.py's "Provisioning profile" dialog collects this question (and
+# 00a-touchpad-tap-global.sh's) upfront and drops the answers here, so
+# provisioning can run start-to-finish without popping a whiptail prompt
+# mid-run. Falls back to asking here directly (below) when run standalone,
+# e.g. via menu.sh or by hand -- that path still needs a real terminal.
+PROFILE_DRIVEN=0
+if [ -e "$PROFILE_FILE" ]; then
+	# shellcheck disable=SC1090
+	. "$PROFILE_FILE"
+	[ "${PROVISIONING_PROFILE:-}" = "1" ] && PROFILE_DRIVEN=1
+fi
+
+if [ "$PROFILE_DRIVEN" -eq 0 ] && [ ! -t 0 ]; then
 	# Deliberately not treated as "done" by the skip check above: backdate the
 	# log so it stays older than this script and a later interactive run still
 	# prompts, instead of this headless skip permanently masking it.
@@ -58,98 +80,108 @@ if [ ! -t 0 ]; then
 	exit 0
 fi
 
-apt-get -o DPkg::Lock::Timeout=60 install -y whiptail locales keyboard-configuration tzdata console-setup x11-xkb-utils
+apt-get -o DPkg::Lock::Timeout=60 install -y locales keyboard-configuration tzdata console-setup x11-xkb-utils
+[ "$PROFILE_DRIVEN" -eq 0 ] && apt-get -o DPkg::Lock::Timeout=60 install -y whiptail
 
 echo "=== $(date) : configuring locale/keyboard/timezone ===" | tee "$LOG"
 
-# code|Display name|default language (en/de)|en locale|de locale|keyboard layout
-COUNTRIES=(
-	"DE|Germany|de|en_US.UTF-8|de_DE.UTF-8|de"
-	"AT|Austria|de|en_US.UTF-8|de_AT.UTF-8|at"
-	"CH|Switzerland|de|en_US.UTF-8|de_CH.UTF-8|ch"
-	"US|United States|en|en_US.UTF-8|de_DE.UTF-8|us"
-	"GB|United Kingdom|en|en_GB.UTF-8|de_DE.UTF-8|gb"
-	"IE|Ireland|en|en_IE.UTF-8|de_DE.UTF-8|gb"
-	"CA|Canada|en|en_CA.UTF-8|de_DE.UTF-8|us"
-	"AU|Australia|en|en_AU.UTF-8|de_DE.UTF-8|us"
-	"NZ|New Zealand|en|en_NZ.UTF-8|de_DE.UTF-8|us"
-	"XE|Other (default: English UI)|en|en_US.UTF-8|de_DE.UTF-8|us"
-	"XD|Other (default: German UI)|de|en_US.UTF-8|de_DE.UTF-8|de"
-)
-
-echo "--- Country ---"
-echo "Picks sensible defaults for language and keyboard below -- both are still"
-echo "asked separately and can be changed, e.g. if you're in Germany but want"
-echo "an English UI, or typing on a US keyboard. For anything more unusual than"
-echo "this list (a different regional locale, a less common keyboard layout),"
-echo "run 'dpkg-reconfigure locales' or 'dpkg-reconfigure keyboard-configuration'"
-echo "by hand afterwards -- this picker only covers the common cases."
-
-country_args=()
-for row in "${COUNTRIES[@]}"; do
-	IFS='|' read -r code name _ _ _ _ <<<"$row"
-	status="OFF"
-	[ "$code" = "US" ] && status="ON"
-	country_args+=("$code" "$name" "$status")
-done
-COUNTRY=$(whiptail --title "Country" --radiolist \
-	"Choose the country this machine will be used in:" 22 70 12 \
-	"${country_args[@]}" 3>&1 1>&2 2>&3)
-
-default_lang="" en_locale="" de_locale="" kbd_default=""
-for row in "${COUNTRIES[@]}"; do
-	IFS='|' read -r code _ lang en_loc de_loc kbd <<<"$row"
-	if [ "$code" = "$COUNTRY" ]; then
-		default_lang="$lang"
-		en_locale="$en_loc"
-		de_locale="$de_loc"
-		kbd_default="$kbd"
-	fi
-done
-
-echo "--- Language ---"
-en_status="OFF"; de_status="OFF"
-[ "$default_lang" = "en" ] && en_status="ON" || de_status="ON"
-LANG_CHOICE=$(whiptail --title "Language" --radiolist \
-	"Choose the system/UI language:" 12 60 2 \
-	"en" "English" "$en_status" \
-	"de" "Deutsch (German)" "$de_status" \
-	3>&1 1>&2 2>&3)
-
-if [ "$LANG_CHOICE" = "de" ]; then
-	LOCALE="$de_locale"
+if [ "$PROFILE_DRIVEN" -eq 1 ]; then
+	COUNTRY="${PROVISIONING_COUNTRY:-}"
+	LANG_CHOICE="${PROVISIONING_LANG:-en}"
+	LOCALE="${PROVISIONING_LOCALE:-en_US.UTF-8}"
+	KEYBOARD="${PROVISIONING_KEYBOARD:-us}"
+	MENU_KEY_REMAP="${PROVISIONING_MENU_KEY_REMAP:-no}"
+	echo "Using the pre-collected provisioning profile answers (country/language/keyboard/timezone/menu-key-remap)." | tee -a "$LOG"
 else
-	LOCALE="$en_locale"
-fi
+	# code|Display name|default language (en/de)|en locale|de locale|keyboard layout
+	COUNTRIES=(
+		"DE|Germany|de|en_US.UTF-8|de_DE.UTF-8|de"
+		"AT|Austria|de|en_US.UTF-8|de_AT.UTF-8|at"
+		"CH|Switzerland|de|en_US.UTF-8|de_CH.UTF-8|ch"
+		"US|United States|en|en_US.UTF-8|de_DE.UTF-8|us"
+		"GB|United Kingdom|en|en_GB.UTF-8|de_DE.UTF-8|gb"
+		"IE|Ireland|en|en_IE.UTF-8|de_DE.UTF-8|gb"
+		"CA|Canada|en|en_CA.UTF-8|de_DE.UTF-8|us"
+		"AU|Australia|en|en_AU.UTF-8|de_DE.UTF-8|us"
+		"NZ|New Zealand|en|en_NZ.UTF-8|de_DE.UTF-8|us"
+		"XE|Other (default: English UI)|en|en_US.UTF-8|de_DE.UTF-8|us"
+		"XD|Other (default: German UI)|de|en_US.UTF-8|de_DE.UTF-8|de"
+	)
 
-echo "--- Keyboard layout ---"
-kbd_status_de="OFF" kbd_status_at="OFF" kbd_status_ch="OFF" kbd_status_us="OFF" kbd_status_gb="OFF"
-case "$kbd_default" in
-	de) kbd_status_de="ON" ;;
-	at) kbd_status_at="ON" ;;
-	ch) kbd_status_ch="ON" ;;
-	us) kbd_status_us="ON" ;;
-	gb) kbd_status_gb="ON" ;;
-esac
-KEYBOARD=$(whiptail --title "Keyboard layout" --radiolist \
-	"Choose the physical keyboard layout:" 15 60 5 \
-	"de" "German" "$kbd_status_de" \
-	"at" "Austrian" "$kbd_status_at" \
-	"ch" "Swiss German" "$kbd_status_ch" \
-	"us" "US" "$kbd_status_us" \
-	"gb" "UK" "$kbd_status_gb" \
-	3>&1 1>&2 2>&3)
+	echo "--- Country ---"
+	echo "Picks sensible defaults for language and keyboard below -- both are still"
+	echo "asked separately and can be changed, e.g. if you're in Germany but want"
+	echo "an English UI, or typing on a US keyboard. For anything more unusual than"
+	echo "this list (a different regional locale, a less common keyboard layout),"
+	echo "run 'dpkg-reconfigure locales' or 'dpkg-reconfigure keyboard-configuration'"
+	echo "by hand afterwards -- this picker only covers the common cases."
+
+	country_args=()
+	for row in "${COUNTRIES[@]}"; do
+		IFS='|' read -r code name _ _ _ _ <<<"$row"
+		status="OFF"
+		[ "$code" = "US" ] && status="ON"
+		country_args+=("$code" "$name" "$status")
+	done
+	COUNTRY=$(whiptail --title "Country" --radiolist \
+		"Choose the country this machine will be used in:" 22 70 12 \
+		"${country_args[@]}" 3>&1 1>&2 2>&3)
+
+	default_lang="" en_locale="" de_locale="" kbd_default=""
+	for row in "${COUNTRIES[@]}"; do
+		IFS='|' read -r code _ lang en_loc de_loc kbd <<<"$row"
+		if [ "$code" = "$COUNTRY" ]; then
+			default_lang="$lang"
+			en_locale="$en_loc"
+			de_locale="$de_loc"
+			kbd_default="$kbd"
+		fi
+	done
+
+	echo "--- Language ---"
+	en_status="OFF"; de_status="OFF"
+	[ "$default_lang" = "en" ] && en_status="ON" || de_status="ON"
+	LANG_CHOICE=$(whiptail --title "Language" --radiolist \
+		"Choose the system/UI language:" 12 60 2 \
+		"en" "English" "$en_status" \
+		"de" "Deutsch (German)" "$de_status" \
+		3>&1 1>&2 2>&3)
+
+	if [ "$LANG_CHOICE" = "de" ]; then
+		LOCALE="$de_locale"
+	else
+		LOCALE="$en_locale"
+	fi
+
+	echo "--- Keyboard layout ---"
+	kbd_status_de="OFF" kbd_status_at="OFF" kbd_status_ch="OFF" kbd_status_us="OFF" kbd_status_gb="OFF"
+	case "$kbd_default" in
+		de) kbd_status_de="ON" ;;
+		at) kbd_status_at="ON" ;;
+		ch) kbd_status_ch="ON" ;;
+		us) kbd_status_us="ON" ;;
+		gb) kbd_status_gb="ON" ;;
+	esac
+	KEYBOARD=$(whiptail --title "Keyboard layout" --radiolist \
+		"Choose the physical keyboard layout:" 15 60 5 \
+		"de" "German" "$kbd_status_de" \
+		"at" "Austrian" "$kbd_status_at" \
+		"ch" "Swiss German" "$kbd_status_ch" \
+		"us" "US" "$kbd_status_us" \
+		"gb" "UK" "$kbd_status_gb" \
+		3>&1 1>&2 2>&3)
+
+	MENU_KEY_REMAP="no"
+	if [ "$KEYBOARD" = "de" ]; then
+		if whiptail --title "Menu key remap (canonical Cyberbeest hardware only)" --yesno \
+			"Canonical Cyberbeest laptops ship an ANSI-body (104-key) keyboard with German stickers/keymap applied, so the physical ISO key left of Y -- normally < / > / | on a real German keyboard -- doesn't exist. This can remap the unused Menu key to act as that key instead (plain = <, Shift = >, AltGr = |).\n\nOnly say Yes if this really is canonical Cyberbeest hardware -- on a real German (ISO) keyboard or different hardware this would break the Menu key for no reason." \
+			15 78; then
+			MENU_KEY_REMAP="yes"
+		fi
+	fi
+fi
 
 echo "Country: $COUNTRY | Language: $LANG_CHOICE | Locale: $LOCALE | Keyboard: $KEYBOARD" | tee -a "$LOG"
-
-MENU_KEY_REMAP="no"
-if [ "$KEYBOARD" = "de" ]; then
-	if whiptail --title "Menu key remap (canonical Cyberbeest hardware only)" --yesno \
-		"Canonical Cyberbeest laptops ship an ANSI-body (104-key) keyboard with German stickers/keymap applied, so the physical ISO key left of Y -- normally < / > / | on a real German keyboard -- doesn't exist. This can remap the unused Menu key to act as that key instead (plain = <, Shift = >, AltGr = |).\n\nOnly say Yes if this really is canonical Cyberbeest hardware -- on a real German (ISO) keyboard or different hardware this would break the Menu key for no reason." \
-		15 78; then
-		MENU_KEY_REMAP="yes"
-	fi
-fi
 
 echo "--- Applying locale ($LOCALE) ---"
 # Always also generate en_US.UTF-8 as a fallback for tools/logs that assume
@@ -202,7 +234,7 @@ setupcon || true
 echo "--- Updating initramfs (keyboard layout for the LUKS unlock prompt) ---"
 update-initramfs -u -k all
 
-if [ "$MENU_KEY_REMAP" = "yes" ]; then
+if [ "$MENU_KEY_REMAP" = "yes" ] && [ "$KEYBOARD" = "de" ]; then
 	echo "--- Installing Menu key remap (German <>| key) ---"
 	TARGET_USER="${SUDO_USER:-cyberbeest}"
 	TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
@@ -216,7 +248,19 @@ if [ "$MENU_KEY_REMAP" = "yes" ]; then
 fi
 
 echo "--- Timezone ---"
-dpkg-reconfigure tzdata
+if [ "$PROFILE_DRIVEN" -eq 1 ]; then
+	TIMEZONE="${PROVISIONING_TIMEZONE:-UTC}"
+	echo "Timezone: $TIMEZONE" | tee -a "$LOG"
+	echo "$TIMEZONE" > /etc/timezone
+	ln -fs "/usr/share/zoneinfo/$TIMEZONE" /etc/localtime
+	dpkg-reconfigure -f noninteractive tzdata
+else
+	# A short curated list can't cover this as well as the real region/city
+	# picker (see file header), so this always goes through the real
+	# interactive `dpkg-reconfigure tzdata` -- there's no PROFILE_DRIVEN=0
+	# non-interactive equivalent.
+	dpkg-reconfigure tzdata
+fi
 
 echo "=== $(date) : done. Reboot (or log out/in) for the new locale/keyboard to fully apply to the desktop session. ===" | tee -a "$LOG"
 # run-gui.py's terminal-script path doesn't stream this script's own output

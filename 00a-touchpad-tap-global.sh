@@ -20,9 +20,15 @@
 # already completed since this script was last edited, using the same
 # log-newer-than-script check, so "Run all" doesn't re-pop the confirmation
 # on every pass. Delete the log (or edit this script) to be asked again.
+#
+# When run-gui.py's "Provisioning profile" dialog has already collected an
+# answer for this (see .provisioning-profile.env, written by that dialog),
+# this whiptail prompt is skipped entirely and the script runs piped like
+# every other step -- no terminal/whiptail needed at all in that case.
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG="$DIR/00a-touchpad-tap-global.log"
+PROFILE_FILE="$DIR/.provisioning-profile.env"
 
 if [ -e "$LOG" ] && [ "$LOG" -nt "$0" ]; then
 	echo "Already configured touchpad tuning since this script was last edited -- skipping."
@@ -30,7 +36,19 @@ if [ -e "$LOG" ] && [ "$LOG" -nt "$0" ]; then
 	exit 0
 fi
 
-if [ ! -t 0 ]; then
+# run-gui.py's "Provisioning profile" dialog collects this question (and
+# 00-locale-keyboard-timezone.sh's) upfront and drops the answers here, so
+# provisioning can run start-to-finish without popping a whiptail prompt
+# mid-run. Falls back to asking here directly (below) when run standalone,
+# e.g. via menu.sh or by hand.
+PROFILE_DRIVEN=0
+if [ -e "$PROFILE_FILE" ]; then
+	# shellcheck disable=SC1090
+	. "$PROFILE_FILE"
+	[ "${PROVISIONING_PROFILE:-}" = "1" ] && PROFILE_DRIVEN=1
+fi
+
+if [ "$PROFILE_DRIVEN" -eq 0 ] && [ ! -t 0 ]; then
 	# Same reasoning as 00-locale-keyboard-timezone.sh: backdate the log so a
 	# later interactive run still prompts, instead of this headless skip
 	# permanently masking it.
@@ -40,15 +58,19 @@ if [ ! -t 0 ]; then
 	exit 0
 fi
 
-apt-get -o DPkg::Lock::Timeout=60 install -y whiptail
-
 echo "=== $(date) : configuring touchpad tuning ===" | tee "$LOG"
 
-APPLY="no"
-if whiptail --title "Touchpad tuning (Cyberbeest reference hardware)" --yesno \
-	"Apply Cyberbeest's recommended touchpad feel?\n\nThis makes tap-to-click work everywhere, including the LightDM login screen (normally tap-to-click only kicks in once you're logged into the desktop), and sets the scrolling direction, sensitivity and motion threshold dialed in on the reference Cyberbeest hardware.\n\nSay Yes for standard Cyberbeest hardware. Say No to leave the touchpad at its Debian/libinput defaults." \
-	16 78; then
-	APPLY="yes"
+if [ "$PROFILE_DRIVEN" -eq 1 ]; then
+	APPLY="${PROVISIONING_TOUCHPAD_TUNING:-no}"
+	echo "Using the pre-collected provisioning profile answer for touchpad tuning." | tee -a "$LOG"
+else
+	apt-get -o DPkg::Lock::Timeout=60 install -y whiptail
+	APPLY="no"
+	if whiptail --title "Touchpad tuning (Cyberbeest reference hardware)" --yesno \
+		"Apply Cyberbeest's recommended touchpad feel?\n\nThis makes tap-to-click work everywhere, including the LightDM login screen (normally tap-to-click only kicks in once you're logged into the desktop), and sets the scrolling direction, sensitivity and motion threshold dialed in on the reference Cyberbeest hardware.\n\nSay Yes for standard Cyberbeest hardware. Say No to leave the touchpad at its Debian/libinput defaults." \
+		16 78; then
+		APPLY="yes"
+	fi
 fi
 
 echo "Apply touchpad tuning: $APPLY" | tee -a "$LOG"
