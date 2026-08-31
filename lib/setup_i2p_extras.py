@@ -416,7 +416,16 @@ def ensure_theme_active():
         while time.time() < deadline and not os.path.exists(ext_json):
             time.sleep(1)
         subprocess.run(["pkill", "-f", "-P i2p -headless"], capture_output=True)
-        proc.wait(timeout=15)
+        try:
+            proc.wait(timeout=30)
+        except subprocess.TimeoutExpired:
+            # SIGTERM (pkill's default) alone wasn't enough within 30s --
+            # headless Firefox shutdown can be slow flushing profile state,
+            # but this has already gotten what it needs (extensions.json),
+            # so don't let a slow exit fail the whole provisioning step.
+            log("Headless Firefox didn't exit after SIGTERM -- sending SIGKILL")
+            proc.kill()
+            proc.wait(timeout=15)
         if not os.path.exists(ext_json):
             raise RuntimeError("extensions.json never appeared after headless first-run")
 

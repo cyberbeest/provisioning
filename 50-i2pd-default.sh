@@ -18,6 +18,12 @@
 # of from the package manager GUI.
 #
 # Idempotent: safe to re-run.
+#
+# Bumped 2026-08-31: lib/setup_i2p_extras.py's headless-Firefox-shutdown
+# timeout in ensure_theme_active() was too short (SIGTERM alone didn't
+# reliably exit it within 15s) -- touched here so run-gui.py's
+# log-newer-than-script skip check re-runs this on machines that already
+# completed it.
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG="$DIR/50-i2pd-default.log"
