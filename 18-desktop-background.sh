@@ -126,9 +126,4 @@ else
 	echo "no active session for $TARGET_USER -- it'll run at next login"
 fi
 
-echo "=== $(date) : done. Set it via Desktop Settings -> pick Cyberbeest (one-time). ==="
-
-# See run-gui.py's MANUAL_TODO convention: it collects these into a "Things
-# to do" pane instead of them getting lost in a scrolling log. Still on fd 3
-# too, so a CLI run (menu.sh) shows it directly.
-echo "MANUAL_TODO: Pick the desktop background: right-click desktop -> Desktop Settings -> select Cyberbeest, and set Style to 'Scaled'." >&3
+echo "=== $(date) : done. ==="
