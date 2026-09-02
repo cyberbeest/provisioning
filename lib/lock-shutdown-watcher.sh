@@ -81,13 +81,37 @@ minimize_windows() {
     logger -t lock-shutdown-watcher "Minimized $(wc -l < "$MINIMIZED_STATE_FILE") window(s) after prolonged lock"
 }
 
+is_hidden() {
+    xprop -id "$1" _NET_WM_STATE 2>/dev/null | grep -q "_NET_WM_STATE_HIDDEN"
+}
+
 restore_windows() {
     [ -s "$MINIMIZED_STATE_FILE" ] || { rm -f "$MINIMIZED_STATE_FILE"; return; }
-    local id
+    local id restored=0 failed=0
     while read -r id; do
         [ -z "$id" ] && continue
-        wmctrl -ir "$id" -b remove,hidden
+        # Right after unlock, xfwm4/the screensaver's own teardown can briefly
+        # re-assert a window's prior (hidden) state a moment after our own
+        # unhide lands -- a race a single immediate check won't catch. Keep
+        # reasserting for a few seconds so it settles into the visible state.
+        local attempt
+        for attempt in 1 2 3 4 5; do
+            if is_hidden "$id"; then
+                wmctrl -ir "$id" -b remove,hidden
+                xdotool windowmap "$id" windowactivate "$id" 2>/dev/null
+            fi
+            sleep 1
+            is_hidden "$id" || break
+        done
+        if is_hidden "$id"; then
+            failed=$(( failed + 1 ))
+        else
+            restored=$(( restored + 1 ))
+        fi
     done < "$MINIMIZED_STATE_FILE"
+    local msg="Restored ${restored} window(s) after unlock"
+    [ "$failed" -gt 0 ] && msg="${msg}, ${failed} failed to restore"
+    logger -t lock-shutdown-watcher "$msg"
     rm -f "$MINIMIZED_STATE_FILE"
 }
 
