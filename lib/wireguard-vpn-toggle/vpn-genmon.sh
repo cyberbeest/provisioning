@@ -3,9 +3,9 @@
 # menu (vpn-menu.py). Present whenever >=1 profile is imported; removed by
 # vpn-remove-profile.sh when the last one is deleted.
 
-ICON_CONNECTED=/usr/share/icons/gnome/24x24/status/network-transmit-receive.png
-ICON_DISCONNECTED=/usr/share/icons/gnome/24x24/status/network-offline.png
-ICON_WARNING=/usr/share/icons/gnome/24x24/status/network-error.png
+ICON_CONNECTED=/usr/share/icons/gnome/24x24/categories/applications-internet.png
+ICON_DISCONNECTED=/usr/share/icons/gnome/24x24/status/network-wired-disconnected.png
+ICON_WARNING=/usr/share/icons/gnome/24x24/status/dialog-warning.png
 
 STATE_FILE="$HOME/.config/cyberbeest/vpn_active"
 ACTIVE="$(cat "$STATE_FILE" 2>/dev/null || true)"

@@ -106,6 +106,8 @@ def show_nag(pending):
             dialog.add_button(t("nag.keep").format(title=TITLES[ptype]), next_id)
             action_for_response[next_id] = ("keep", ptype)
             next_id += 1
+    dialog.add_button(t("nag.stop_nagging"), next_id)
+    action_for_response[next_id] = ("stop", None)
 
     response = dialog.run()
     dialog.destroy()
@@ -115,6 +117,23 @@ def show_nag(pending):
         Gtk.main_iteration()
 
     return action_for_response.get(response, ("later", None))
+
+
+def notify_stop_nagging():
+    try:
+        subprocess.run(
+            [
+                "notify-send",
+                "--urgency=normal",
+                "--app-name=" + t("nag.stop_notify_title"),
+                "--expire-time=8000",
+                t("nag.stop_notify_title"),
+                t("nag.stop_notify_body"),
+            ],
+            check=False,
+        )
+    except OSError:
+        pass
 
 
 def main():
@@ -135,6 +154,12 @@ def main():
             dismissed.add(ptype)
             save_dismissed(dismissed)
             continue  # re-check -- the other type might still be pending
+
+        if action == "stop":
+            dismissed.update(pending.keys())
+            save_dismissed(dismissed)
+            notify_stop_nagging()
+            return  # dismissed for good, not just this login
 
         return  # "later" -- stop nagging for this login
 

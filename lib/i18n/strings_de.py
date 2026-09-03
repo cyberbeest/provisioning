@@ -172,6 +172,13 @@ STRINGS = {
     "nag.remind_later": "Später erinnern",
     "nag.change_now": "{title} jetzt ändern",
     "nag.keep": "{title} behalten",
+    "nag.stop_nagging": "Nicht mehr erinnern",
+    "nag.stop_notify_title": "Cyberbeest-Passwörter & Start",
+    "nag.stop_notify_body": (
+        "Du kannst deine Passwörter, den Namen auf dem Startbildschirm und "
+        "die Start-/Herunterfahr-Klänge jederzeit über Einstellungen → "
+        "Cyberbeest-Passwörter & Start ändern."
+    ),
 
     "panelcolor.window_title": "Cyberbeest-Panelfarbe",
     "panelcolor.heading": "Panelfarbe",

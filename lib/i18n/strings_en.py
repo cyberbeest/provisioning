@@ -165,6 +165,12 @@ STRINGS = {
     "nag.remind_later": "Remind me later",
     "nag.change_now": "Change {title} now",
     "nag.keep": "Keep {title}",
+    "nag.stop_nagging": "Stop nagging me",
+    "nag.stop_notify_title": "Cyberbeest Passwords & Boot",
+    "nag.stop_notify_body": (
+        "You can still change your passwords, boot screen name, and startup "
+        "sounds anytime from Settings → Cyberbeest Passwords & Boot."
+    ),
 
     "panelcolor.window_title": "Cyberbeest Panel Color",
     "panelcolor.heading": "Panel color",
