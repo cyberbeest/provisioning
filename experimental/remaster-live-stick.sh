@@ -39,6 +39,14 @@ fi
 WORK="/root/live-stick-remaster"
 CHROOT="$WORK/chroot"
 
+echo "--- Clearing any leftover build state from a previous run ---"
+# A prior interrupted/failed run can leave $CHROOT in a half-configured
+# state (found 2026-09-04: a stale dpkg-divert from an earlier live-tools
+# install collided with the same divert on a later run, since rsync below
+# has no --delete and never gets a clean slate otherwise) that then breaks
+# apt in ways unrelated to whatever actually caused this run.
+rm -rf "$WORK"
+
 echo "--- Installing live-build host toolchain ---"
 # Same list build-live-stick.sh needed on the dev machine, discovered one
 # failure at a time during that bring-up: --build-with-chroot false (used
@@ -99,7 +107,11 @@ rm -f "$CHROOT"/etc/ssh/ssh_host_*
 # SSH keypairs (this machine's own login keys / known_hosts) and saved wifi
 # passwords -- both plausible credential leaks if shipped as-is.
 rm -rf "$CHROOT"/root/.ssh "$CHROOT"/home/*/.ssh
-rm -f "$CHROOT"/etc/NetworkManager/system-connections/*.nmconnection
+rm -f "$CHROOT"/etc/NetworkManager/system-connections/*
+# (matches both the modern *.nmconnection naming and the older bare-name
+# keyfile convention -- found 2026-09-04 that a profile saved under the old
+# naming scheme survived the *.nmconnection-only glob and shipped a real
+# wifi PSK on a remastered stick)
 
 # Disk-specific config that doesn't apply to a squashfs+overlay live root
 # and would otherwise make the live initramfs try to unlock/mount devices
