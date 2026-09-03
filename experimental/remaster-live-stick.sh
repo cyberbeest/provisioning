@@ -130,6 +130,19 @@ chroot "$CHROOT" apt-get -o DPkg::Lock::Timeout=60 update
 chroot "$CHROOT" apt-get -o DPkg::Lock::Timeout=60 install -y \
 	live-boot live-config live-config-systemd
 
+# The donor machine only ever needed its own GPU's firmware (Intel, on the
+# dev laptop), so that's all /lib/firmware carries in this copy. A stick
+# booted on different graphics hardware then has no firmware to load at all
+# -- found 2026-09-03 booting on an AMD-GPU machine ("fatal amd gpu error"
+# during KMS init), severe enough to wedge boot before live-config finishes
+# creating the autologin "user" account, so every VT loops on the same
+# authentication failure instead of just showing a broken display. Installing
+# every vendor's firmware package covers whatever GPU/wifi/etc. a given boot
+# target has, at the cost of a larger image.
+chroot "$CHROOT" apt-get -o DPkg::Lock::Timeout=60 install -y \
+	firmware-amd-graphics firmware-misc-nonfree firmware-realtek \
+	firmware-iwlwifi firmware-atheros firmware-linux
+
 echo "--- Regenerating initramfs (with crypttab cleared, live-boot hooks added) ---"
 # live-build's own binary_linux-image stage just cp's whatever
 # chroot/boot/initrd.img-* already exists (see /usr/lib/live/build/
