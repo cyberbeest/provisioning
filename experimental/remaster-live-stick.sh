@@ -85,6 +85,109 @@ lb config \
 	--chroot-squashfs-compression-type zstd \
 	--build-with-chroot false
 
+echo "--- Adding a 'Boot from hard disk' boot-menu entry ---"
+# Same idea as usb-stick-maker/build-iso.sh's installer stick: lets you leave
+# this stick in a machine and still boot its own disk, without digging into
+# BIOS/UEFI boot-order settings. Overrides live-build's stock templates
+# (config/bootloaders/<name>/... wins over
+# /usr/share/live/build/bootloaders/<name>/...).
+mkdir -p config/bootloaders/isolinux config/bootloaders/grub-pc
+
+# BIOS (isolinux): stock menu.cfg (from syslinux_common) plus one extra
+# "include" line pulling in our new harddisk.cfg as a top-level entry.
+cat >config/bootloaders/isolinux/menu.cfg <<'EOF'
+menu hshift 0
+menu width 82
+
+menu title Boot menu
+include stdmenu.cfg
+include live.cfg
+include harddisk.cfg
+menu begin utilities
+	menu label ^Utilities
+	menu title Utilities
+	include stdmenu.cfg
+	label mainmenu
+		menu label ^Back..
+		menu exit
+	include utilities.cfg
+menu end
+
+menu clear
+EOF
+cat >config/bootloaders/isolinux/harddisk.cfg <<'EOF'
+label hd
+	menu label Boot from ^hard disk
+	localboot 0x80
+EOF
+
+# UEFI (grub): stock grub.cfg (its own comment even shows how to add an
+# entry) plus a "Boot from hard disk" one that just exits GRUB, which falls
+# through to the next boot device.
+cat >config/bootloaders/grub-pc/grub.cfg <<'EOF'
+source /boot/grub/config.cfg
+
+# Live boot
+@LINUX_LIVE@
+
+menuentry "Boot from hard disk" {
+	exit
+}
+
+# You can add more entries like this
+# menuentry "Alternate live boot" {
+# linux @KERNEL_LIVE@ @APPEND_LIVE@ custom options here
+# initrd @INITRD_LIVE@
+# }
+# menuentry "Alternate graphical installer" {
+# linux @KERNEL_GI@ @APPEND_GI@ custom options here
+# initrd @INITRD_GI@
+# }
+# menuentry "Alternate textual installer" {
+# linux @KERNEL_DI@ @APPEND_DI@ custom options here
+# initrd @INITRD_DI@
+# }
+
+# Installer (if any)
+if @ENABLE_INSTALL_MENU@; then
+
+source	/boot/grub/install_start.cfg
+
+submenu 'Advanced install options ...' --hotkey=a {
+
+	source /boot/grub/theme.cfg
+
+	source	/boot/grub/install.cfg
+
+}
+fi
+
+submenu 'Utilities...' --hotkey=u {
+
+	source /boot/grub/theme.cfg
+
+	# Memtest (if any)
+	if @ENABLE_MEMTEST@; then
+		source /boot/grub/memtest.cfg
+	fi
+
+	# Firmware setup (UEFI)
+	if [ "${grub_platform}" = "efi" ]; then
+		menuentry "UEFI Firmware Settings" --hotkey=f {
+			fwsetup
+		}
+	fi
+
+	# Verify the checksums
+	if @ENABLE_VERIFY_CHECKSUMS@; then
+		menuentry "Verify integrity of the boot medium" --hotkey=v {
+			linux	@KERNEL_LIVE@ @APPEND_VERIFY_CHECKSUMS@
+			initrd	@INITRD_LIVE@
+		}
+	fi
+}
+EOF
+
 echo "--- Copying this machine's root filesystem into $CHROOT ---"
 echo "(this reads from / but writes only under $WORK -- nothing on the"
 echo "source system is modified)"
