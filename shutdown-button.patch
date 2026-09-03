@@ -21,7 +21,7 @@
 +    GSLockPlug *plug = GS_LOCK_PLUG (data);
 +
 +    if (plug->priv->auth_shutdown_button != NULL) {
-+        gtk_button_set_label (GTK_BUTTON (plug->priv->auth_shutdown_button), "Shut _Down");
++        gtk_button_set_label (GTK_BUTTON (plug->priv->auth_shutdown_button), _("Shut _Down"));
 +        gtk_style_context_remove_class (
 +            gtk_widget_get_style_context (plug->priv->auth_shutdown_button),
 +            "destructive-action");
@@ -38,7 +38,7 @@
 +                         GSLockPlug *plug) {
 +    if (!plug->priv->shutdown_armed) {
 +        plug->priv->shutdown_armed = TRUE;
-+        gtk_button_set_label (GTK_BUTTON (button), "Really Shut Down?");
++        gtk_button_set_label (GTK_BUTTON (button), _("Really Shut Down?"));
 +        gtk_style_context_add_class (gtk_widget_get_style_context (GTK_WIDGET (button)),
 +                                     "destructive-action");
 +
@@ -57,7 +57,7 @@
 +    }
 +    plug->priv->shutdown_armed = FALSE;
 +
-+    gtk_button_set_label (GTK_BUTTON (button), "Shutting Down…");
++    gtk_button_set_label (GTK_BUTTON (button), _("Shutting Down…"));
 +    gtk_widget_set_sensitive (GTK_WIDGET (button), FALSE);
 +
 +    {
@@ -106,6 +106,28 @@
      G_OBJECT_CLASS (gs_lock_plug_parent_class)->finalize (object);
  }
  
+--- a/po/de.po	2026-08-05 01:26:12.790322192 +0200
++++ b/po/de.po	2026-08-05 01:26:12.906328062 +0200
+@@ -504,7 +504,19 @@
+ #: src/xfce4-screensaver-dialog.ui:211
+ msgid "You have the Caps Lock key on."
+ msgstr "Du hast die Feststelltaste aktiviert."
+ 
++#: src/xfce4-screensaver-dialog.ui:271
++msgid "Shut _Down"
++msgstr "_Herunterfahren"
++
++#: src/gs-lock-plug.c:1489
++msgid "Really Shut Down?"
++msgstr "Wirklich herunterfahren?"
++
++#: src/gs-lock-plug.c:1508
++msgid "Shutting Down…"
++msgstr "Wird heruntergefahren…"
++
+ #: src/xfce4-screensaver-dialog.ui:271
+ msgid "_Switch User"
+ msgstr "_Benutzer wechseln"
 --- a/src/xfce4-screensaver-dialog.ui	2026-08-05 01:26:12.790322192 +0200
 +++ b/src/xfce4-screensaver-dialog.ui	2026-08-05 01:26:12.906328062 +0200
 @@ -267,6 +267,22 @@

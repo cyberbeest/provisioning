@@ -11,6 +11,14 @@
 # script regenerates src/xfce4-screensaver-dialog-ui.h by hand with
 # xdt-csource after applying the patch -- skipping that step silently
 # ships the unpatched button layout.
+#
+# Same gap applies to translations: the build ships po/de.gmo as
+# pre-compiled from the tarball rather than regenerating it from po/de.po
+# (verified by comparing the staged .mo to the shipped .gmo -- byte
+# identical, and neither contains the shutdown-button strings even after
+# patching po/de.po). This script regenerates po/de.gmo by hand with
+# msgfmt after applying the patch -- skipping that step silently ships
+# the shutdown-button labels untranslated.
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 BUILD_ROOT="/tmp/cyberbeest-xfce4-screensaver-build"
@@ -31,6 +39,8 @@ SRC_DIR="$(find "$BUILD_ROOT" -maxdepth 1 -type d -name 'xfce4-screensaver-*' | 
 cd "$SRC_DIR"
 
 patch -p1 < "$DIR/../shutdown-button.patch"
+
+msgfmt -o po/de.gmo po/de.po
 
 xdt-csource --static --strip-comments --strip-content \
     --name=xfce4_screensaver_dialog_ui \
