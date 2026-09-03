@@ -1,0 +1,7 @@
+// Installed by 51-fail2ban.sh. Fires after every apt/dpkg run; the script
+// itself no-ops in well under a second unless openssh-server is actually
+// installed, so this costs nothing on the machines (the overwhelming
+// majority) that never touch ssh. Backgrounded + detached so it can't
+// deadlock against the apt lock the triggering process is still releasing;
+// see lib/cyberbeest-fail2ban-autoinstall.sh for the wait-then-install logic.
+DPkg::Post-Invoke { "setsid -f /usr/local/sbin/cyberbeest-fail2ban-autoinstall.sh </dev/null >/dev/null 2>&1 || true"; };

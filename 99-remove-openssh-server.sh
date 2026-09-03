@@ -18,6 +18,10 @@
 # isn't a backdoor and shouldn't be swept up here.
 # Idempotent: safe to re-run (every step below is already a no-op if
 # openssh-server isn't installed/running, or no authorized_keys exist).
+#
+# Bumped 2026-09-03: also purges fail2ban (see 51-fail2ban.sh), which only
+# exists here to protect sshd -- touched so run-gui.py's log-newer-than-script
+# skip check re-runs this on machines that already completed it.
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG="$DIR/99-remove-openssh-server.log"
@@ -32,6 +36,14 @@ if dpkg -s openssh-server >/dev/null 2>&1; then
 	apt-get -o DPkg::Lock::Timeout=60 autoremove -y
 else
 	echo "openssh-server not installed -- nothing to purge." | tee -a "$LOG"
+fi
+
+# fail2ban (see 51-fail2ban.sh) exists here only to protect sshd -- with
+# ssh gone it's dead weight, and the apt hook it installs will bring it
+# straight back if sshd is ever reinstalled.
+if dpkg -s fail2ban >/dev/null 2>&1; then
+	echo "--- Purging fail2ban (no longer needed without sshd) ---" | tee -a "$LOG"
+	apt-get -o DPkg::Lock::Timeout=60 purge -y fail2ban
 fi
 
 echo "--- Clearing authorized_keys for every local user (including root) ---" | tee -a "$LOG"
