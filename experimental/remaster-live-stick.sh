@@ -45,7 +45,18 @@ echo "--- Clearing any leftover build state from a previous run ---"
 # install collided with the same divert on a later run, since rsync below
 # has no --delete and never gets a clean slate otherwise) that then breaks
 # apt in ways unrelated to whatever actually caused this run.
-rm -rf "$WORK"
+#
+# A prior run failing (set -e) between the mount --bind calls below and
+# their matching umount can leave $CHROOT/{dev,proc,sys} bind-mounted to
+# the REAL host directories. Plain `rm -rf` does not stop at mount-point
+# boundaries -- it recurses straight through a stale bind mount and
+# deletes the host's actual /dev contents (done once already, 2026-09-04,
+# wiped the real /dev on a build host and broke sshd). Unmount anything
+# still mounted under $CHROOT first, every time, before removing it.
+for sub in dev proc sys; do
+	mountpoint -q "$CHROOT/$sub" 2>/dev/null && umount "$CHROOT/$sub"
+done
+rm -rf --one-file-system "$WORK"
 
 echo "--- Installing live-build host toolchain ---"
 # Same list build-live-stick.sh needed on the dev machine, discovered one
@@ -137,6 +148,11 @@ echo "--- Installing live-boot/live-config into the copied system ---"
 mount --bind /dev "$CHROOT/dev"
 mount --bind /proc "$CHROOT/proc"
 mount --bind /sys "$CHROOT/sys"
+# Guarantee these come back off even if a later command in this script
+# fails (set -e exits immediately) -- otherwise the next run's cleanup has
+# to deal with a live bind mount to the real host directories instead of
+# an ordinary leftover directory.
+trap 'umount "$CHROOT/dev" "$CHROOT/proc" "$CHROOT/sys" 2>/dev/null' EXIT
 cp /etc/resolv.conf "$CHROOT/etc/resolv.conf"
 chroot "$CHROOT" apt-get -o DPkg::Lock::Timeout=60 update
 chroot "$CHROOT" apt-get -o DPkg::Lock::Timeout=60 install -y \
