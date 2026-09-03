@@ -71,4 +71,21 @@ update-alternatives --set x-www-browser "$TARGET_HOME/bin/browser-sandbox.sh"
 echo "--- Setting xdg-settings default-web-browser to the sandboxed wrapper ---"
 su - "$TARGET_USER" -c "DISPLAY='${DISPLAY:-:0}' xdg-settings set default-web-browser browser-sandbox.desktop" || true
 
+echo "--- Hiding the stock 'Firefox ESR' Whisker menu entry (firejailed 'Firefox' above replaces it) ---"
+STOCK_DESKTOP="/usr/share/applications/firefox-esr.desktop"
+STOCK_OVERRIDE="$TARGET_HOME/.local/share/applications/firefox-esr.desktop"
+if [ -f "$STOCK_DESKTOP" ]; then
+	cp "$STOCK_DESKTOP" "$STOCK_OVERRIDE"
+	if grep -q '^NoDisplay=' "$STOCK_OVERRIDE"; then
+		sed -i 's/^NoDisplay=.*/NoDisplay=true/' "$STOCK_OVERRIDE"
+	else
+		echo 'NoDisplay=true' >> "$STOCK_OVERRIDE"
+	fi
+	chown "$TARGET_USER:$TARGET_USER" "$STOCK_OVERRIDE"
+else
+	echo "skipping: $STOCK_DESKTOP not found"
+fi
+command -v update-desktop-database >/dev/null 2>&1 && \
+	su - "$TARGET_USER" -c "update-desktop-database '$TARGET_HOME/.local/share/applications' 2>/dev/null" || true
+
 echo "=== $(date) : done ==="
