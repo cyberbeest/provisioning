@@ -16,6 +16,12 @@ for e.g. re-running a few specific steps without doing the whole sequence.
 Only one run -- whole sequence, selected subset, or single script -- can be
 active at a time.
 
+Pass --run-changed on the command line to click "Run changed only"
+automatically once the window is up (and zenity, if missing, has finished
+installing) -- used by cyberbeest-update (52-cyberbeest-update.sh) so the
+Whisker menu entry it installs goes straight from a git pull into applying
+whatever's new, without the user having to find the button themselves.
+
 Each script keeps its own log text (self.logs, keyed by script name, plus a
 "" bucket for messages not tied to any one script, like the zenity-install
 step). Single-clicking a row just selects it and shows its stored log --
@@ -115,6 +121,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -700,8 +707,15 @@ class RunGuiWindow(Gtk.Window):
 
         self.show_all()
 
+        # --run-changed: used by cyberbeest-update (see 52-cyberbeest-update.sh)
+        # to go straight into "Run changed only" after a git pull, without
+        # making the user find and click the button themselves.
+        self._auto_run_changed = "--run-changed" in sys.argv
+
         if shutil.which("zenity") is None:
             self._ensure_zenity()
+        elif self._auto_run_changed:
+            GLib.idle_add(self.start_sequence, True)
 
     def _ensure_zenity(self):
         # On a brand new machine that hasn't run any NN-*.sh script yet,
@@ -751,6 +765,8 @@ class RunGuiWindow(Gtk.Window):
         if status == 0 and shutil.which("zenity"):
             self.append_log("", "=== zenity installed ===\n")
             self.status_label.set_text("Idle. Double-click a script below to run just that one.")
+            if self._auto_run_changed:
+                self.start_sequence(True)
         else:
             self.append_log(
                 "",

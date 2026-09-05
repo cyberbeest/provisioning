@@ -190,6 +190,19 @@ menu simply as "Calculator"), `xclip` (Claude Code's clipboard-image paste
 needs it), `kleopatra` (GUI PGP key manager), `ncdu` (terminal disk usage
 analyzer).
 
+## Cyberbeest Update (52-cyberbeest-update.sh)
+
+Installs a "Cyberbeest Update" Whisker menu entry so an already-provisioned
+machine can pick up new provisioning features without a full reinstall: it
+finds the existing `~/provisioning` (or `~/provisioning-bleeding`) checkout
+left behind by `beestify.sh`/`beestify-bleeding.sh`, confirms via zenity,
+`git pull`s (ff-only) the branch that checkout already tracks, then opens
+`run-gui.py --run-changed` -- the same GUI as a fresh install, but going
+straight into "Run changed only" instead of making the user find and click
+it themselves. Requires that initial checkout to already exist; shows a
+zenity error instead of failing outright if it doesn't (e.g. run on a
+machine that was imaged some other way).
+
 ## What's NOT provisioned here
 
 Per-user setup that only makes sense on the end-user's own device — e.g.
