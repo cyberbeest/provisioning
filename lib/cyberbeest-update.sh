@@ -50,14 +50,30 @@ zenity --question --title="$(t update.title)" --width=380 --text="$confirm_msg" 
 zenity --progress --title="$(t update.title)" --text="$(t update.progress_message)" \
 	--pulsate --no-cancel --width=380 &
 progress_pid=$!
+progress_started_at=$(date +%s%N)
+
+# On a fast (e.g. LAN) connection the fetch/reset below can finish in well
+# under a second, closing the dialog before it's even had a chance to
+# render -- just a flash in the taskbar, easy to mistake for nothing having
+# happened at all. Padding out to a fixed minimum keeps it visible
+# regardless of how fast the actual work was.
+wait_out_min_progress_time() {
+	local min_ms=600
+	local elapsed_ms=$(( ($(date +%s%N) - progress_started_at) / 1000000 ))
+	if [ "$elapsed_ms" -lt "$min_ms" ]; then
+		sleep "0.$(printf '%03d' $((min_ms - elapsed_ms)))"
+	fi
+}
 
 if ! PULL_OUTPUT="$(git -C "$REPO_DIR" fetch origin "$BRANCH" 2>&1 && git -C "$REPO_DIR" reset --hard "origin/$BRANCH" 2>&1)"; then
+	wait_out_min_progress_time
 	kill "$progress_pid" 2>/dev/null || true
 	failed_msg="$(t update.pull_failed_message)"
 	zenity --error --title="$(t update.title)" --width=460 --text="${failed_msg//OUTPUT/$PULL_OUTPUT}"
 	exit 1
 fi
 
+wait_out_min_progress_time
 kill "$progress_pid" 2>/dev/null || true
 
 exec python3 "$REPO_DIR/run-gui.py" --run-changed
