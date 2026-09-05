@@ -71,4 +71,7 @@ Du wirst pro geändertem Schritt einmal nach deinem Passwort gefragt, wie bei de
 	[update.pull_failed_message]="git pull fehlgeschlagen:
 
 OUTPUT"
+	[askpass.title]="Cyberbeest provisioning"
+	[askpass.heading]="Gib dein kurzes Passwort ein, um die Provisioning-Skripte als root auszuführen:"
+	[askpass.field_label]="Kurzes Passwort:"
 )

@@ -69,4 +69,7 @@ You'll be asked for your password once per changed step, same as during setup."
 	[update.pull_failed_message]="git pull failed:
 
 OUTPUT"
+	[askpass.title]="Cyberbeest provisioning"
+	[askpass.heading]="Enter your short password to run provisioning scripts as root:"
+	[askpass.field_label]="Short password:"
 )
