@@ -192,4 +192,99 @@ STRINGS = {
     "update_genmon.log_title": "Security Update Log",
     "update_genmon.log_missing": "No update log found yet -- the check hasn't run.",
     "update_genmon.close": "Close",
+
+    "run_gui.window_title": "Cyberbeest Provisioning Runner",
+    "run_gui.confirm_remove_openssh": (
+        "This permanently removes the SSH server and wipes every user's "
+        "authorized_keys, cutting off remote SSH access to this machine.\n\n"
+        "Continue?"
+    ),
+    "run_gui.state_pending": "pending",
+    "run_gui.state_running": "running...",
+    "run_gui.state_done": "done",
+    "run_gui.state_failed": "failed",
+    "run_gui.state_skipped": "skipped",
+    "run_gui.profile_dialog_title": "Provisioning profile",
+    "run_gui.profile_continue": "_Continue",
+    "run_gui.profile_country_label": "Country:",
+    "run_gui.profile_ui_language_label": "UI language:",
+    "run_gui.profile_lang_english": "English",
+    "run_gui.profile_lang_german": "Deutsch (German)",
+    "run_gui.profile_keyboard_label": "Keyboard layout:",
+    "run_gui.profile_menu_key_remap": (
+        "Remap Menu key to </>/| (canonical Cyberbeest hardware only, German keyboard)"
+    ),
+    "run_gui.profile_timezone_label": "Timezone:",
+    "run_gui.profile_touchpad_label": "Touchpad:",
+    "run_gui.profile_touchpad_checkbox": (
+        "Apply Cyberbeest touchpad tuning (tap-to-click everywhere, "
+        "sensitivity/scrolling dialed in on reference hardware)"
+    ),
+    "run_gui.button_run_changed": "Run changed only",
+    "run_gui.button_run_all": "Run all",
+    "run_gui.button_run_selected": "Run selected",
+    "run_gui.button_stop": "Stop after current script",
+    "run_gui.more_actions_tooltip": "More actions",
+    "run_gui.menu_disable_autostart": "Disable auto-provisioning on login",
+    "run_gui.menu_edit_profile": "Provisioning profile...",
+    "run_gui.total_time": "Total run time this session: {duration}",
+    "run_gui.status_idle": "Idle. Double-click a script below to run just that one.",
+    "run_gui.todo_frame_title": "Things to do after the provisioning completed",
+    "run_gui.status_installing_zenity": "Installing zenity -- see the terminal window...",
+    "run_gui.log_zenity_not_found": (
+        "zenity not found -- opening a terminal window to install it "
+        "(enter your sudo password there)...\n"
+    ),
+    "run_gui.log_zenity_installed": "=== zenity installed ===\n",
+    "run_gui.log_zenity_install_failed": (
+        "=== failed to install zenity (exit {status}) -- install it manually "
+        "(sudo apt-get install zenity) and restart this tool ===\n"
+    ),
+    "run_gui.status_zenity_install_failed": "zenity install failed -- see log above.",
+    "run_gui.log_hasnt_run_this_session": (
+        "-- {script} hasn't run in this session; showing its log from a previous run --\n\n"
+    ),
+    "run_gui.log_hasnt_run_yet": "{script} hasn't been run yet. Double-click it to run.\n",
+    "run_gui.status_running_script": "Running: {script}",
+    "run_gui.status_running_script_elapsed": "Running: {script} ({elapsed})",
+    "run_gui.status_nothing_to_run": "Nothing to run -- everything is already up to date.",
+    "run_gui.status_nothing_selected": (
+        "Nothing selected -- click (or ctrl/shift+click) one or more scripts below first."
+    ),
+    "run_gui.status_starting": "{label}: starting (enter sudo password if prompted)...",
+    "run_gui.label_run_single": "Run {script}",
+    "run_gui.dismiss_button": "Dismiss",
+    "run_gui.action_open_desktop_settings": "Open Desktop Settings",
+    "run_gui.action_open_password_settings": "Open Passwords & Boot",
+    "run_gui.reboot_confirm_title": "Reboot now?",
+    "run_gui.reboot_confirm_secondary": "This will restart the machine immediately.",
+    "run_gui.confirm_run_title": "Run {script}?",
+    "run_gui.log_opening_terminal": (
+        "=== opening {script} in a terminal window (needs an interactive TTY) -- "
+        "complete it there ===\n"
+    ),
+    "run_gui.log_stop_requested": "=== stop requested: skipping {count} remaining script(s) ===\n",
+    "run_gui.log_skipped": "=== {script} skipped (not confirmed) ===\n",
+    "run_gui.log_running_marker": "=== running {script} ===\n",
+    "run_gui.log_done_marker": "=== {script} done ({duration}) ===\n",
+    "run_gui.log_failed_marker": "=== {script} FAILED ({duration}, exit {status}) ===\n",
+    "run_gui.log_stopping_dependency": "Stopping here since later scripts may depend on this one.\n",
+    "run_gui.status_stopped": "Stopped after current script.",
+    "run_gui.status_failed": "Failed: {script} -- see log above.",
+    "run_gui.status_finished": "Finished successfully.",
+    "run_gui.todo_reboot_text": "Reboot to fully apply everything from this run.",
+    "run_gui.todo_reboot_action": "Reboot Now",
+    "run_gui.disable_autostart_confirm_title": "Disable auto-provisioning on login?",
+    "run_gui.disable_autostart_message": (
+        "This machine will no longer offer to run provisioning automatically at login."
+    ),
+    "run_gui.disable_autostart_pending_note": (
+        "\n\n{count} script(s) haven't completed yet:\n{list}\n\n"
+        "You can still run this tool by hand any time (beestify.sh)."
+    ),
+    "run_gui.status_disable_autostart_failed": "Could not remove {path}: {error}",
+    "run_gui.status_autostart_disabled": (
+        "Auto-provisioning on login disabled. Run beestify.sh by hand any time to pick up where you left off."
+    ),
+    "run_gui.status_stop_requested": "Stop requested -- finishing current script, then stopping...",
 }

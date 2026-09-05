@@ -201,4 +201,105 @@ STRINGS = {
     "update_genmon.log_title": "Sicherheitsupdate-Protokoll",
     "update_genmon.log_missing": "Noch kein Update-Protokoll vorhanden -- die Prüfung wurde noch nicht ausgeführt.",
     "update_genmon.close": "Schließen",
+
+    "run_gui.window_title": "Cyberbeest-Provisioning-Runner",
+    "run_gui.confirm_remove_openssh": (
+        "Dies entfernt den SSH-Server dauerhaft und löscht die "
+        "authorized_keys aller Benutzer -- der Fernzugriff per SSH auf "
+        "diesen Rechner wird damit gekappt.\n\n"
+        "Fortfahren?"
+    ),
+    "run_gui.state_pending": "ausstehend",
+    "run_gui.state_running": "läuft...",
+    "run_gui.state_done": "fertig",
+    "run_gui.state_failed": "fehlgeschlagen",
+    "run_gui.state_skipped": "übersprungen",
+    "run_gui.profile_dialog_title": "Provisioning-Profil",
+    "run_gui.profile_continue": "_Weiter",
+    "run_gui.profile_country_label": "Land:",
+    "run_gui.profile_ui_language_label": "Oberflächensprache:",
+    "run_gui.profile_lang_english": "English",
+    "run_gui.profile_lang_german": "Deutsch",
+    "run_gui.profile_keyboard_label": "Tastaturlayout:",
+    "run_gui.profile_menu_key_remap": (
+        "Menü-Taste auf </>/| umbelegen (nur auf originaler Cyberbeest-Hardware, "
+        "deutsche Tastatur)"
+    ),
+    "run_gui.profile_timezone_label": "Zeitzone:",
+    "run_gui.profile_touchpad_label": "Touchpad:",
+    "run_gui.profile_touchpad_checkbox": (
+        "Cyberbeest-Touchpad-Feinabstimmung anwenden (Tippen zum Klicken "
+        "überall, Empfindlichkeit/Scrollen abgestimmt auf Referenz-Hardware)"
+    ),
+    "run_gui.button_run_changed": "Nur Geändertes ausführen",
+    "run_gui.button_run_all": "Alles ausführen",
+    "run_gui.button_run_selected": "Auswahl ausführen",
+    "run_gui.button_stop": "Nach aktuellem Skript stoppen",
+    "run_gui.more_actions_tooltip": "Weitere Aktionen",
+    "run_gui.menu_disable_autostart": "Automatisches Provisioning beim Anmelden deaktivieren",
+    "run_gui.menu_edit_profile": "Provisioning-Profil...",
+    "run_gui.total_time": "Laufzeit in dieser Sitzung: {duration}",
+    "run_gui.status_idle": "Bereit. Doppelklick auf ein Skript unten, um nur dieses auszuführen.",
+    "run_gui.todo_frame_title": "Nach dem Provisioning noch zu erledigen",
+    "run_gui.status_installing_zenity": "zenity wird installiert -- siehe Terminalfenster...",
+    "run_gui.log_zenity_not_found": (
+        "zenity nicht gefunden -- ein Terminalfenster zur Installation wird "
+        "geöffnet (dort das sudo-Passwort eingeben)...\n"
+    ),
+    "run_gui.log_zenity_installed": "=== zenity installiert ===\n",
+    "run_gui.log_zenity_install_failed": (
+        "=== zenity-Installation fehlgeschlagen (Exitcode {status}) -- manuell "
+        "installieren (sudo apt-get install zenity) und dieses Tool neu starten ===\n"
+    ),
+    "run_gui.status_zenity_install_failed": "zenity-Installation fehlgeschlagen -- siehe Protokoll oben.",
+    "run_gui.log_hasnt_run_this_session": (
+        "-- {script} wurde in dieser Sitzung noch nicht ausgeführt; zeige das "
+        "Protokoll eines früheren Laufs --\n\n"
+    ),
+    "run_gui.log_hasnt_run_yet": "{script} wurde noch nicht ausgeführt. Doppelklick zum Ausführen.\n",
+    "run_gui.status_running_script": "Läuft: {script}",
+    "run_gui.status_running_script_elapsed": "Läuft: {script} ({elapsed})",
+    "run_gui.status_nothing_to_run": "Nichts auszuführen -- bereits alles auf dem neuesten Stand.",
+    "run_gui.status_nothing_selected": (
+        "Nichts ausgewählt -- erst unten ein oder mehrere Skripte anklicken "
+        "(oder Strg/Umschalt+Klick)."
+    ),
+    "run_gui.status_starting": "{label}: startet (sudo-Passwort eingeben, falls gefragt)...",
+    "run_gui.label_run_single": "{script} ausführen",
+    "run_gui.dismiss_button": "Verwerfen",
+    "run_gui.action_open_desktop_settings": "Desktop-Einstellungen öffnen",
+    "run_gui.action_open_password_settings": "Passwörter & Start öffnen",
+    "run_gui.reboot_confirm_title": "Jetzt neu starten?",
+    "run_gui.reboot_confirm_secondary": "Der Rechner wird sofort neu gestartet.",
+    "run_gui.confirm_run_title": "{script} ausführen?",
+    "run_gui.log_opening_terminal": (
+        "=== {script} wird in einem Terminalfenster geöffnet (braucht ein "
+        "interaktives Terminal) -- dort abschließen ===\n"
+    ),
+    "run_gui.log_stop_requested": "=== Stopp angefordert: {count} verbleibende(s) Skript(e) übersprungen ===\n",
+    "run_gui.log_skipped": "=== {script} übersprungen (nicht bestätigt) ===\n",
+    "run_gui.log_running_marker": "=== {script} läuft ===\n",
+    "run_gui.log_done_marker": "=== {script} fertig ({duration}) ===\n",
+    "run_gui.log_failed_marker": "=== {script} FEHLGESCHLAGEN ({duration}, Exitcode {status}) ===\n",
+    "run_gui.log_stopping_dependency": "Stoppe hier, da spätere Skripte hiervon abhängen könnten.\n",
+    "run_gui.status_stopped": "Nach aktuellem Skript gestoppt.",
+    "run_gui.status_failed": "Fehlgeschlagen: {script} -- siehe Protokoll oben.",
+    "run_gui.status_finished": "Erfolgreich abgeschlossen.",
+    "run_gui.todo_reboot_text": "Neu starten, um alle Änderungen dieses Laufs vollständig zu übernehmen.",
+    "run_gui.todo_reboot_action": "Jetzt neu starten",
+    "run_gui.disable_autostart_confirm_title": "Automatisches Provisioning beim Anmelden deaktivieren?",
+    "run_gui.disable_autostart_message": (
+        "Dieser Rechner bietet Provisioning beim Anmelden künftig nicht mehr "
+        "automatisch an."
+    ),
+    "run_gui.disable_autostart_pending_note": (
+        "\n\n{count} Skript(e) sind noch nicht abgeschlossen:\n{list}\n\n"
+        "Du kannst dieses Tool jederzeit manuell starten (beestify.sh)."
+    ),
+    "run_gui.status_disable_autostart_failed": "{path} konnte nicht entfernt werden: {error}",
+    "run_gui.status_autostart_disabled": (
+        "Automatisches Provisioning beim Anmelden deaktiviert. Starte beestify.sh "
+        "jederzeit manuell, um dort weiterzumachen, wo du aufgehört hast."
+    ),
+    "run_gui.status_stop_requested": "Stopp angefordert -- aktuelles Skript wird noch beendet, dann Stopp...",
 }

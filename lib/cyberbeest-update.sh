@@ -10,6 +10,7 @@
 # the user should see what's about to happen rather than have it start
 # on a stray click of the menu entry.
 set -euo pipefail
+. "$(cd "$(dirname "$0")" && pwd)/i18n.sh"
 
 REPO_DIR=""
 for candidate in "$HOME/provisioning" "$HOME/provisioning-bleeding"; do
@@ -20,10 +21,7 @@ for candidate in "$HOME/provisioning" "$HOME/provisioning-bleeding"; do
 done
 
 if [ -z "$REPO_DIR" ]; then
-	zenity --error --title="Cyberbeest Update" --width=380 \
-		--text="No provisioning checkout found at ~/provisioning or ~/provisioning-bleeding.
-
-Run beestify.sh first (see cyberbeest.com)."
+	zenity --error --title="$(t update.title)" --width=380 --text="$(t update.no_repo_message)"
 	exit 1
 fi
 
@@ -31,15 +29,13 @@ fi
 # this checkout on -- ff-only below stays correct either way.
 BRANCH="$(git -C "$REPO_DIR" rev-parse --abbrev-ref HEAD)"
 
-zenity --question --title="Cyberbeest Update" --width=380 --text="Pull the latest Cyberbeest provisioning updates ($BRANCH branch) and apply anything new?
-
-You'll be asked for your password once per changed step, same as during setup." || exit 0
+confirm_msg="$(t update.confirm_message)"
+confirm_msg="${confirm_msg//BRANCH/$BRANCH}"
+zenity --question --title="$(t update.title)" --width=380 --text="$confirm_msg" || exit 0
 
 if ! PULL_OUTPUT="$(git -C "$REPO_DIR" fetch origin "$BRANCH" 2>&1 && git -C "$REPO_DIR" merge --ff-only "origin/$BRANCH" 2>&1)"; then
-	zenity --error --title="Cyberbeest Update" --width=460 \
-		--text="git pull failed:
-
-$PULL_OUTPUT"
+	failed_msg="$(t update.pull_failed_message)"
+	zenity --error --title="$(t update.title)" --width=460 --text="${failed_msg//OUTPUT/$PULL_OUTPUT}"
 	exit 1
 fi
 

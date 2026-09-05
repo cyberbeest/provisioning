@@ -60,4 +60,14 @@ Fahre nur fort, wenn du einen Installations-Link auf einer vertrauenswürdigen S
 	[shutdown_genmon.ac_label]="Netzbetrieb: DURATION"
 	[shutdown_genmon.battery_label]="Akku: DURATION"
 	[shutdown_genmon.click_to_change]="Zum Ändern klicken"
+	[update.title]="Cyberbeest-Update"
+	[update.no_repo_message]="Kein Provisioning-Checkout unter ~/provisioning oder ~/provisioning-bleeding gefunden.
+
+Führe zuerst beestify.sh aus (siehe cyberbeest.com)."
+	[update.confirm_message]="Die neuesten Cyberbeest-Provisioning-Updates holen (Branch BRANCH) und alles Neue anwenden?
+
+Du wirst pro geändertem Schritt einmal nach deinem Passwort gefragt, wie bei der Einrichtung."
+	[update.pull_failed_message]="git pull fehlgeschlagen:
+
+OUTPUT"
 )

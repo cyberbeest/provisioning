@@ -28,6 +28,14 @@ install -o "$TARGET_USER" -g "$TARGET_USER" -m 755 \
 	"$DIR/lib/cyberbeest-update.sh" \
 	"$TARGET_HOME/.local/bin/cyberbeest-update.sh"
 
+# i18n.sh does `. "$DIR/i18n.sh"` relative to its own location, so this
+# script's i18n.sh (and its i18n/ catalogs) have to sit next to the
+# installed script -- see lib/i18n.sh.
+echo "--- Installing shared i18n runtime ---"
+install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 "$DIR/lib/i18n.sh" "$TARGET_HOME/.local/bin/i18n.sh"
+install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.local/bin/i18n"
+install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 "$DIR"/lib/i18n/strings.*.sh "$TARGET_HOME/.local/bin/i18n/"
+
 echo "--- Installing Whisker menu entry ---"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.local/share/applications"
 cat > "$TARGET_HOME/.local/share/applications/cyberbeest-update.desktop" <<EOF

@@ -58,4 +58,14 @@ Only continue if you clicked an install link on a page you trust."
 	[shutdown_genmon.ac_label]="AC: DURATION"
 	[shutdown_genmon.battery_label]="Battery: DURATION"
 	[shutdown_genmon.click_to_change]="Click to change"
+	[update.title]="Cyberbeest Update"
+	[update.no_repo_message]="No provisioning checkout found at ~/provisioning or ~/provisioning-bleeding.
+
+Run beestify.sh first (see cyberbeest.com)."
+	[update.confirm_message]="Pull the latest Cyberbeest provisioning updates (BRANCH branch) and apply anything new?
+
+You'll be asked for your password once per changed step, same as during setup."
+	[update.pull_failed_message]="git pull failed:
+
+OUTPUT"
 )

@@ -136,6 +136,13 @@ DIR = os.path.dirname(os.path.realpath(__file__))
 ASKPASS = os.path.join(DIR, "lib", "zenity-askpass.sh")
 CACHED_ASKPASS = os.path.join(DIR, "lib", "cached-askpass.sh")
 
+# lib/i18n.py only resolves `from i18n import t` if lib/ is on sys.path --
+# unlike the installed Python GUI scripts (see lib/i18n.py's own docstring),
+# this one runs straight out of the repo checkout rather than being copied
+# next to i18n.py, so that has to be added explicitly here.
+sys.path.insert(0, os.path.join(DIR, "lib"))
+from i18n import t
+
 NEEDS_TERMINAL = {"00-locale-keyboard-timezone.sh", "00a-touchpad-tap-global.sh"}
 
 # Scripts driven by the upfront "Provisioning profile" dialog (see
@@ -220,11 +227,7 @@ def load_keyboard_layouts():
 # on a machine you're still debugging over SSH) get a confirmation dialog
 # right before they run, even inside a "Run all"/"Run changed only" batch.
 NEEDS_CONFIRMATION = {
-    "99-remove-openssh-server.sh": (
-        "This permanently removes the SSH server and wipes every user's "
-        "authorized_keys, cutting off remote SSH access to this machine.\n\n"
-        "Continue?"
-    ),
+    "99-remove-openssh-server.sh": t("run_gui.confirm_remove_openssh"),
 }
 
 # Must match cyberbeest-bootstrap.sh's own AUTOSTART_FILE -- that's the
@@ -239,11 +242,11 @@ MANUAL_TODO_RE = re.compile(r"^MANUAL_TODO:\s*(.+?)\s*$", re.MULTILINE)
 REBOOT_TODO_KEY = "__reboot__"
 
 STATUS_STYLE = {
-    "pending": ("pending", "#8a8a8a"),
-    "running": ("running...", "#2b78e4"),
-    "done": ("done", "#2a9d3f"),
-    "failed": ("failed", "#d43f3f"),
-    "skipped": ("skipped", "#8a8a8a"),
+    "pending": (t("run_gui.state_pending"), "#8a8a8a"),
+    "running": (t("run_gui.state_running"), "#2b78e4"),
+    "done": (t("run_gui.state_done"), "#2a9d3f"),
+    "failed": (t("run_gui.state_failed"), "#d43f3f"),
+    "skipped": (t("run_gui.state_skipped"), "#8a8a8a"),
 }
 
 # Wall-clock durations captured from a real end-to-end provisioning run
@@ -379,10 +382,10 @@ class ProvisioningProfileDialog(Gtk.Dialog):
     """
 
     def __init__(self, parent, previous=None):
-        super().__init__(title="Provisioning profile", transient_for=parent, modal=True)
+        super().__init__(title=t("run_gui.profile_dialog_title"), transient_for=parent, modal=True)
         self.add_buttons(
             Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
-            "_Continue", Gtk.ResponseType.OK,
+            t("run_gui.profile_continue"), Gtk.ResponseType.OK,
         )
         self.set_default_size(480, -1)
         self.answers = None
@@ -409,14 +412,14 @@ class ProvisioningProfileDialog(Gtk.Dialog):
             self.country_combo.append(code, name)
         # "changed" is wired up below, once every widget it touches
         # (keyboard/language/timezone) actually exists.
-        add_row("Country:", self.country_combo)
+        add_row(t("run_gui.profile_country_label"), self.country_combo)
 
-        self.lang_en = Gtk.RadioButton.new_with_label_from_widget(None, "English")
-        self.lang_de = Gtk.RadioButton.new_with_label_from_widget(self.lang_en, "Deutsch (German)")
+        self.lang_en = Gtk.RadioButton.new_with_label_from_widget(None, t("run_gui.profile_lang_english"))
+        self.lang_de = Gtk.RadioButton.new_with_label_from_widget(self.lang_en, t("run_gui.profile_lang_german"))
         lang_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
         lang_box.pack_start(self.lang_en, False, False, 0)
         lang_box.pack_start(self.lang_de, False, False, 0)
-        add_row("UI language:", lang_box)
+        add_row(t("run_gui.profile_ui_language_label"), lang_box)
 
         # Free-text combo (not a fixed radiolist like the old whiptail
         # dialog): the full ~100-entry xkb layout list, searchable by
@@ -465,10 +468,10 @@ class ProvisioningProfileDialog(Gtk.Dialog):
         kbd_completion.connect("match-selected", kbd_match_selected)
         self.keyboard_entry.set_completion(kbd_completion)
         self.keyboard_entry.connect("changed", self._on_keyboard_changed)
-        add_row("Keyboard layout:", self.keyboard_combo)
+        add_row(t("run_gui.profile_keyboard_label"), self.keyboard_combo)
 
         self.menu_key_remap = Gtk.CheckButton(
-            label="Remap Menu key to </>/| (canonical Cyberbeest hardware only, German keyboard)"
+            label=t("run_gui.profile_menu_key_remap")
         )
         self.menu_key_remap.set_active(prev.get("PROVISIONING_MENU_KEY_REMAP") == "yes")
         add_row("", self.menu_key_remap)
@@ -486,14 +489,13 @@ class ProvisioningProfileDialog(Gtk.Dialog):
         completion.set_inline_completion(True)
         completion.set_popup_completion(True)
         tz_entry.set_completion(completion)
-        add_row("Timezone:", self.tz_combo)
+        add_row(t("run_gui.profile_timezone_label"), self.tz_combo)
 
         self.touchpad_tuning = Gtk.CheckButton(
-            label="Apply Cyberbeest touchpad tuning (tap-to-click everywhere, "
-            "sensitivity/scrolling dialed in on reference hardware)"
+            label=t("run_gui.profile_touchpad_checkbox")
         )
         self.touchpad_tuning.set_active(prev.get("PROVISIONING_TOUCHPAD_TUNING", "yes") != "no")
-        add_row("Touchpad:", self.touchpad_tuning)
+        add_row(t("run_gui.profile_touchpad_label"), self.touchpad_tuning)
 
         # Now that every widget exists, wire up the country "changed" signal
         # and seed language/keyboard/timezone from the previous answers if
@@ -571,7 +573,7 @@ class ProvisioningProfileDialog(Gtk.Dialog):
 
 class RunGuiWindow(Gtk.Window):
     def __init__(self):
-        super().__init__(title="Cyberbeest Provisioning Runner")
+        super().__init__(title=t("run_gui.window_title"))
         self.set_default_size(920, 560)
         self.set_position(Gtk.WindowPosition.CENTER)
         self.connect("destroy", self.on_destroy)
@@ -607,19 +609,19 @@ class RunGuiWindow(Gtk.Window):
         button_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         root.pack_start(button_box, False, False, 0)
 
-        self.run_changed_button = Gtk.Button(label="Run changed only")
+        self.run_changed_button = Gtk.Button(label=t("run_gui.button_run_changed"))
         self.run_changed_button.connect("clicked", lambda _b: self.start_sequence(changed_only=True))
         button_box.pack_start(self.run_changed_button, False, False, 0)
 
-        self.run_all_button = Gtk.Button(label="Run all")
+        self.run_all_button = Gtk.Button(label=t("run_gui.button_run_all"))
         self.run_all_button.connect("clicked", lambda _b: self.start_sequence(changed_only=False))
         button_box.pack_start(self.run_all_button, False, False, 0)
 
-        self.run_selected_button = Gtk.Button(label="Run selected")
+        self.run_selected_button = Gtk.Button(label=t("run_gui.button_run_selected"))
         self.run_selected_button.connect("clicked", lambda _b: self.start_selected())
         button_box.pack_start(self.run_selected_button, False, False, 0)
 
-        self.stop_button = Gtk.Button(label="Stop after current script")
+        self.stop_button = Gtk.Button(label=t("run_gui.button_stop"))
         self.stop_button.set_sensitive(False)
         self.stop_button.connect("clicked", self.on_stop)
         button_box.pack_start(self.stop_button, False, False, 0)
@@ -629,23 +631,23 @@ class RunGuiWindow(Gtk.Window):
         # that deserves the same visual weight as Run all/Run selected/Stop.
         self.more_menu_button = Gtk.MenuButton()
         self.more_menu_button.set_image(Gtk.Image.new_from_icon_name("pan-down-symbolic", Gtk.IconSize.BUTTON))
-        self.more_menu_button.set_tooltip_text("More actions")
+        self.more_menu_button.set_tooltip_text(t("run_gui.more_actions_tooltip"))
         more_menu = Gtk.Menu()
-        self.disable_autostart_item = Gtk.MenuItem(label="Disable auto-provisioning on login")
+        self.disable_autostart_item = Gtk.MenuItem(label=t("run_gui.menu_disable_autostart"))
         self.disable_autostart_item.set_sensitive(os.path.exists(AUTOSTART_FILE))
         self.disable_autostart_item.connect("activate", self.on_disable_autostart)
         more_menu.append(self.disable_autostart_item)
-        self.edit_profile_item = Gtk.MenuItem(label="Provisioning profile...")
+        self.edit_profile_item = Gtk.MenuItem(label=t("run_gui.menu_edit_profile"))
         self.edit_profile_item.connect("activate", lambda _mi: self._edit_profile())
         more_menu.append(self.edit_profile_item)
         more_menu.show_all()
         self.more_menu_button.set_popup(more_menu)
         button_box.pack_start(self.more_menu_button, False, False, 0)
 
-        self.total_time_label = Gtk.Label(label="Total run time this session: 0s", xalign=1)
+        self.total_time_label = Gtk.Label(label=t("run_gui.total_time").format(duration=format_duration(0)), xalign=1)
         button_box.pack_end(self.total_time_label, False, False, 0)
 
-        self.status_label = Gtk.Label(label="Idle. Double-click a script below to run just that one.", xalign=0)
+        self.status_label = Gtk.Label(label=t("run_gui.status_idle"), xalign=0)
         status_css = Gtk.CssProvider()
         status_css.load_from_data(b"label { font-size: 200%; }")
         self.status_label.get_style_context().add_provider(status_css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
@@ -659,7 +661,7 @@ class RunGuiWindow(Gtk.Window):
         self.progress_bar.set_show_text(True)
         root.pack_start(self.progress_bar, False, False, 0)
 
-        self.todo_frame = Gtk.Frame(label="Things to do after the provisioning completed")
+        self.todo_frame = Gtk.Frame(label=t("run_gui.todo_frame_title"))
         # Hidden whenever self.todos is empty (start of day, or once every
         # entry has been dismissed) -- set_no_show_all so the later
         # self.show_all() doesn't force it visible regardless.
@@ -729,8 +731,8 @@ class RunGuiWindow(Gtk.Window):
         # visible xterm window (not a background prompt on whatever terminal
         # happened to launch this tool) since that launching terminal may
         # not be what the user is actually looking at -- see class docstring.
-        self.append_log("", "zenity not found -- opening a terminal window to install it (enter your sudo password there)...\n")
-        self.status_label.set_text("Installing zenity -- see the terminal window...")
+        self.append_log("", t("run_gui.log_zenity_not_found"))
+        self.status_label.set_text(t("run_gui.status_installing_zenity"))
         self._set_controls_busy(True)
         threading.Thread(target=self._install_zenity_worker, daemon=True).start()
 
@@ -763,17 +765,13 @@ class RunGuiWindow(Gtk.Window):
     def _on_zenity_installed(self, status):
         self._set_controls_busy(False)
         if status == 0 and shutil.which("zenity"):
-            self.append_log("", "=== zenity installed ===\n")
-            self.status_label.set_text("Idle. Double-click a script below to run just that one.")
+            self.append_log("", t("run_gui.log_zenity_installed"))
+            self.status_label.set_text(t("run_gui.status_idle"))
             if self._auto_run_changed:
                 self.start_sequence(True)
         else:
-            self.append_log(
-                "",
-                f"=== failed to install zenity (exit {status}) -- install it manually "
-                "(sudo apt-get install zenity) and restart this tool ===\n",
-            )
-            self.status_label.set_text("zenity install failed -- see log above.")
+            self.append_log("", t("run_gui.log_zenity_install_failed").format(status=status))
+            self.status_label.set_text(t("run_gui.status_zenity_install_failed"))
             self.run_changed_button.set_sensitive(False)
             self.run_all_button.set_sensitive(False)
             self.listbox.set_sensitive(False)
@@ -855,7 +853,7 @@ class RunGuiWindow(Gtk.Window):
                 # that's still going.
                 action_button.set_sensitive(not self.busy)
                 row.pack_start(action_button, False, False, 0)
-            dismiss_button = Gtk.Button(label="Dismiss")
+            dismiss_button = Gtk.Button(label=t("run_gui.dismiss_button"))
             dismiss_button.connect("clicked", lambda _b, k=key: self._dismiss_todo(k))
             dismiss_button.set_sensitive(not self.busy)
             row.pack_start(dismiss_button, False, False, 0)
@@ -879,9 +877,9 @@ class RunGuiWindow(Gtk.Window):
         # MANUAL_TODO sources that have an obvious one-click shortcut to
         # offer alongside them right now.
         if script == "18-desktop-background.sh":
-            return ("Open Desktop Settings", self._open_desktop_settings)
+            return (t("run_gui.action_open_desktop_settings"), self._open_desktop_settings)
         if script == "21-default-password-nag.sh":
-            return ("Open Passwords & Boot", self._open_password_settings)
+            return (t("run_gui.action_open_password_settings"), self._open_password_settings)
         return None
 
     def _open_desktop_settings(self, _button):
@@ -896,9 +894,9 @@ class RunGuiWindow(Gtk.Window):
             modal=True,
             message_type=Gtk.MessageType.QUESTION,
             buttons=Gtk.ButtonsType.YES_NO,
-            text="Reboot now?",
+            text=t("run_gui.reboot_confirm_title"),
         )
-        dialog.format_secondary_text("This will restart the machine immediately.")
+        dialog.format_secondary_text(t("run_gui.reboot_confirm_secondary"))
         response = dialog.run()
         dialog.destroy()
         if response != Gtk.ResponseType.YES:
@@ -925,9 +923,9 @@ class RunGuiWindow(Gtk.Window):
             except OSError:
                 on_disk = ""
             if on_disk:
-                text = f"-- {script} hasn't run in this session; showing its log from a previous run --\n\n{on_disk}"
+                text = t("run_gui.log_hasnt_run_this_session").format(script=script) + on_disk
             else:
-                text = f"{script} hasn't been run yet. Double-click it to run.\n"
+                text = t("run_gui.log_hasnt_run_yet").format(script=script)
         self.log_buffer.set_text(text)
 
     def on_selection_changed(self, _listbox):
@@ -977,7 +975,7 @@ class RunGuiWindow(Gtk.Window):
 
     def _add_session_runtime(self, seconds):
         self.session_total_seconds += seconds
-        self.total_time_label.set_text(f"Total run time this session: {format_duration(self.session_total_seconds)}")
+        self.total_time_label.set_text(t("run_gui.total_time").format(duration=format_duration(self.session_total_seconds)))
 
     # -- starting runs --------------------------------------------------
 
@@ -1009,10 +1007,14 @@ class RunGuiWindow(Gtk.Window):
         # instead of only jumping when a script finishes.
         elapsed_current = time.monotonic() - self.current_script_start if self.current_script_start else 0.0
         self.total_time_label.set_text(
-            f"Total run time this session: {format_duration(self.session_total_seconds + elapsed_current)}"
+            t("run_gui.total_time").format(duration=format_duration(self.session_total_seconds + elapsed_current))
         )
         if self.currently_running_script:
-            self.status_label.set_text(f"Running: {self.currently_running_script} ({format_duration(elapsed_current)})")
+            self.status_label.set_text(
+                t("run_gui.status_running_script_elapsed").format(
+                    script=self.currently_running_script, elapsed=format_duration(elapsed_current)
+                )
+            )
         return GLib.SOURCE_CONTINUE
 
     def start_sequence(self, changed_only):
@@ -1022,9 +1024,13 @@ class RunGuiWindow(Gtk.Window):
         if changed_only:
             scripts = [s for s in scripts if not script_is_done(s)]
             if not scripts:
-                self.status_label.set_text("Nothing to run -- everything is already up to date.")
+                self.status_label.set_text(t("run_gui.status_nothing_to_run"))
                 return
-        self._start_run(scripts, label="Run changed only" if changed_only else "Run all", batch=True)
+        self._start_run(
+            scripts,
+            label=t("run_gui.button_run_changed") if changed_only else t("run_gui.button_run_all"),
+            batch=True,
+        )
 
     def start_selected(self):
         if self.busy:
@@ -1032,16 +1038,14 @@ class RunGuiWindow(Gtk.Window):
         selected = {row.script for row in self.listbox.get_selected_rows()}
         scripts = [s for s in list_scripts() if s in selected]
         if not scripts:
-            self.status_label.set_text(
-                "Nothing selected -- click (or ctrl/shift+click) one or more scripts below first."
-            )
+            self.status_label.set_text(t("run_gui.status_nothing_selected"))
             return
         self.listbox.unselect_all()
         # Treated as a batch run (reboot suggestion included) since, like
         # "Run all"/"Run changed only" and unlike a single-script debug
         # double-click, this is an explicit "get these steps applied" run
         # that can span multiple scripts.
-        self._start_run(scripts, label="Run selected", batch=True)
+        self._start_run(scripts, label=t("run_gui.button_run_selected"), batch=True)
 
     def on_row_activated(self, _listbox, row):
         if self.busy:
@@ -1049,7 +1053,7 @@ class RunGuiWindow(Gtk.Window):
         # Not a batch run: a single-script debug run via double-click
         # shouldn't nag for a reboot the way finishing all of provisioning
         # does.
-        self._start_run([row.script], label=f"Run {row.script}", batch=False)
+        self._start_run([row.script], label=t("run_gui.label_run_single").format(script=row.script), batch=False)
 
     def _edit_profile(self):
         dialog = ProvisioningProfileDialog(self, previous=self.profile_env)
@@ -1083,7 +1087,7 @@ class RunGuiWindow(Gtk.Window):
         self.logs[""] = ""
         if self.displayed_script == "":
             self.log_buffer.set_text("")
-        self.status_label.set_text(f"{label}: starting (enter sudo password if prompted)...")
+        self.status_label.set_text(t("run_gui.status_starting").format(label=label))
         self.queue_total = len(scripts)
         self.queue_done = 0
         self._update_progress()
@@ -1117,7 +1121,7 @@ class RunGuiWindow(Gtk.Window):
                 modal=True,
                 message_type=Gtk.MessageType.WARNING,
                 buttons=Gtk.ButtonsType.YES_NO,
-                text=f"Run {script}?",
+                text=t("run_gui.confirm_run_title").format(script=script),
             )
             dialog.format_secondary_text(message)
             response = dialog.run()
@@ -1174,8 +1178,7 @@ class RunGuiWindow(Gtk.Window):
         GLib.idle_add(
             self.append_log,
             script,
-            f"=== opening {script} in a terminal window (needs an interactive TTY) -- "
-            "complete it there ===\n",
+            t("run_gui.log_opening_terminal").format(script=script),
         )
         # xterm doesn't reliably propagate the wrapped command's exit status as
         # its own (it exits 0 on normal termination regardless of how the
@@ -1230,14 +1233,14 @@ class RunGuiWindow(Gtk.Window):
         while remaining:
             if self.stop_requested:
                 stopped = True
-                GLib.idle_add(self.append_log, "", f"=== stop requested: skipping {len(remaining)} remaining script(s) ===\n")
+                GLib.idle_add(self.append_log, "", t("run_gui.log_stop_requested").format(count=len(remaining)))
                 break
 
             script = remaining.pop(0)
 
             confirm_message = NEEDS_CONFIRMATION.get(script)
             if confirm_message and not self._confirm(script, confirm_message):
-                GLib.idle_add(self.append_log, script, f"=== {script} skipped (not confirmed) ===\n")
+                GLib.idle_add(self.append_log, script, t("run_gui.log_skipped").format(script=script))
                 GLib.idle_add(self.set_row_status, script, "skipped")
                 GLib.idle_add(self._bump_progress)
                 continue
@@ -1245,7 +1248,7 @@ class RunGuiWindow(Gtk.Window):
             self.currently_running_script = script
             GLib.idle_add(self._begin_script_display, script)
             GLib.idle_add(self.set_row_status, script, "running", None, SCRIPT_DURATION_ESTIMATES.get(script))
-            GLib.idle_add(self.status_label.set_text, f"Running: {script}")
+            GLib.idle_add(self.status_label.set_text, t("run_gui.status_running_script").format(script=script))
 
             start_time = time.monotonic()
             self.current_script_start = start_time
@@ -1256,7 +1259,7 @@ class RunGuiWindow(Gtk.Window):
             if script in NEEDS_TERMINAL and not profile_driven:
                 status = self._run_in_terminal(script)
             else:
-                GLib.idle_add(self.append_log, script, f"=== running {script} ===\n")
+                GLib.idle_add(self.append_log, script, t("run_gui.log_running_marker").format(script=script))
                 status = self._run_piped(script)
             # For a NEEDS_TERMINAL script this includes however long the
             # xterm sat open waiting for someone to work through its
@@ -1268,7 +1271,10 @@ class RunGuiWindow(Gtk.Window):
             GLib.idle_add(self._bump_progress)
 
             if status == 0:
-                GLib.idle_add(self.append_log, script, f"=== {script} done ({format_duration(duration)}) ===\n")
+                GLib.idle_add(
+                    self.append_log, script,
+                    t("run_gui.log_done_marker").format(script=script, duration=format_duration(duration)),
+                )
                 GLib.idle_add(self.set_row_status, script, "done", duration)
             else:
                 failed_script = script
@@ -1277,13 +1283,18 @@ class RunGuiWindow(Gtk.Window):
                 # next run than to keep feeding sudo something that doesn't
                 # work.
                 self.sudo_password = None
-                GLib.idle_add(self.append_log, script, f"=== {script} FAILED ({format_duration(duration)}, exit {status}) ===\n")
+                GLib.idle_add(
+                    self.append_log, script,
+                    t("run_gui.log_failed_marker").format(
+                        script=script, duration=format_duration(duration), status=status
+                    ),
+                )
                 GLib.idle_add(self.set_row_status, script, "failed", duration)
                 if remaining:
                     GLib.idle_add(
                         self.append_log,
                         script,
-                        "Stopping here since later scripts may depend on this one.\n",
+                        t("run_gui.log_stopping_dependency"),
                     )
                 break
 
@@ -1293,11 +1304,11 @@ class RunGuiWindow(Gtk.Window):
     def _on_finished(self, stopped, failed_script):
         self._set_controls_busy(False)
         if stopped:
-            self.status_label.set_text("Stopped after current script.")
+            self.status_label.set_text(t("run_gui.status_stopped"))
         elif failed_script:
-            self.status_label.set_text(f"Failed: {failed_script} -- see log above.")
+            self.status_label.set_text(t("run_gui.status_failed").format(script=failed_script))
         else:
-            self.status_label.set_text("Finished successfully.")
+            self.status_label.set_text(t("run_gui.status_finished"))
             if self.current_run_is_batch:
                 # Supersedes any per-script "reboot (or log out/in) for X to
                 # apply" todo (00-locale-keyboard-timezone.sh,
@@ -1309,28 +1320,24 @@ class RunGuiWindow(Gtk.Window):
                         self.todos.pop(key, None)
                 self._add_todo(
                     REBOOT_TODO_KEY,
-                    "Reboot to fully apply everything from this run.",
-                    action=("Reboot Now", self._do_reboot),
+                    t("run_gui.todo_reboot_text"),
+                    action=(t("run_gui.todo_reboot_action"), self._do_reboot),
                 )
 
     def on_disable_autostart(self, _menuitem):
         pending = [s for s in list_scripts() if not script_is_done(s)]
-        message = (
-            "This machine will no longer offer to run provisioning automatically "
-            "at login."
-        )
+        message = t("run_gui.disable_autostart_message")
         if pending:
-            message += (
-                f"\n\n{len(pending)} script(s) haven't completed yet:\n"
-                + "\n".join(f"  • {s}" for s in pending)
-                + "\n\nYou can still run this tool by hand any time (beestify.sh)."
+            message += t("run_gui.disable_autostart_pending_note").format(
+                count=len(pending),
+                list="\n".join(f"  • {s}" for s in pending),
             )
         dialog = Gtk.MessageDialog(
             transient_for=self,
             modal=True,
             message_type=Gtk.MessageType.QUESTION,
             buttons=Gtk.ButtonsType.YES_NO,
-            text="Disable auto-provisioning on login?",
+            text=t("run_gui.disable_autostart_confirm_title"),
         )
         dialog.format_secondary_text(message)
         response = dialog.run()
@@ -1340,17 +1347,19 @@ class RunGuiWindow(Gtk.Window):
         try:
             os.remove(AUTOSTART_FILE)
         except OSError as e:
-            self.status_label.set_text(f"Could not remove {AUTOSTART_FILE}: {e}")
+            self.status_label.set_text(
+                t("run_gui.status_disable_autostart_failed").format(path=AUTOSTART_FILE, error=e)
+            )
             return
         self.disable_autostart_item.set_sensitive(False)
-        self.status_label.set_text("Auto-provisioning on login disabled. Run beestify.sh by hand any time to pick up where you left off.")
+        self.status_label.set_text(t("run_gui.status_autostart_disabled"))
 
     def on_stop(self, _button):
         if not self.busy:
             return
         self.stop_requested = True
         self.stop_button.set_sensitive(False)
-        self.status_label.set_text("Stop requested -- finishing current script, then stopping...")
+        self.status_label.set_text(t("run_gui.status_stop_requested"))
 
     def on_destroy(self, _window):
         if self.proc is not None and self.proc.poll() is None:
