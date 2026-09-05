@@ -17,14 +17,14 @@ Only one run -- whole sequence, selected subset, or single script -- can be
 active at a time.
 
 Pass --run-changed on the command line to click "Run changed only"
-automatically once the window is up (and zenity, if missing, has finished
-installing) -- used by cyberbeest-update (52-cyberbeest-update.sh) so the
-Whisker menu entry it installs goes straight from a git pull into applying
-whatever's new, without the user having to find the button themselves.
+automatically once the window is up -- used by cyberbeest-update
+(52-cyberbeest-update.sh) so the Whisker menu entry it installs goes
+straight from a git pull into applying whatever's new, without the user
+having to find the button themselves.
 
 Each script keeps its own log text (self.logs, keyed by script name, plus a
-"" bucket for messages not tied to any one script, like the zenity-install
-step). Single-clicking a row just selects it and shows its stored log --
+"" bucket for messages not tied to any one script). Single-clicking a row
+just selects it and shows its stored log --
 GtkListBox activates rows on a single click by default, which used to mean
 single-clicking accidentally started a run; activate-on-single-click is
 explicitly disabled so double-click is required for that, freeing up
@@ -60,29 +60,27 @@ as its own -- it exits 0 on normal termination regardless of how the command
 inside it fared -- so _run_in_terminal captures the real exit code to a temp
 file from inside the shell instead of trusting xterm's proc.returncode.
 
-Requires zenity (for the graphical sudo prompt). On a brand new machine that
-hasn't run any NN-*.sh script yet, zenity may not be installed at all (it's
-only otherwise pulled in as a side effect of 04-software-launch-warning.sh)
--- checked for at startup and installed automatically if missing, via an
-explicit xterm window (same technique as _run_in_terminal below) rather than
-prompting on whatever terminal happened to launch this tool: since
-beestify.sh's autostart flow launches this from inside an
-`xfce4-terminal --hold` window that sits behind the GTK window once this
-tool takes over, a plain background sudo prompt there would be invisible to
-whoever's just looking at the GTK app.
+The graphical sudo prompt is cyberbeest-askpass.py, a small dedicated GTK3
+dialog -- not zenity: this Debian's zenity (4.1.90, the GTK4 rewrite) either
+ignores custom prompt text on a --password dialog entirely, or via --forms
+(which does respect custom text) never wires Enter to the default button at
+all, confirmed both ways by hand. Since none of run-gui.py's own dialogs use
+zenity either (they're plain Gtk.MessageDialog), this tool has no zenity
+dependency at all.
 
 Only prompts for the sudo password once per run of run-gui.py, not once per
-script: the first sudo call uses zenity-askpass.sh as normal, but run-gui.py
-runs that same helper directly itself first (see _get_sudo_password) to grab
-the typed password into memory, then points every later sudo -A call at
-cached-askpass.sh instead, which just echoes that cached password back
-rather than popping a fresh dialog. (Relying on sudo's own timestamp/ticket
-cache instead wasn't reliable here -- each script subprocess runs in its own
-new session via start_new_session=True below, and tty_tickets-style caching
-keys off exactly that kind of session/tty identity, so it kept re-prompting
-every script instead of reusing the earlier authentication.) If a cached
-password turns out to be stale (e.g. the user changed it mid-run), the
-resulting sudo failure clears it so the next attempt re-prompts.
+script: the first sudo call uses cyberbeest-askpass.py as normal, but
+run-gui.py runs that same helper directly itself first (see
+_get_sudo_password) to grab the typed password into memory, then points
+every later sudo -A call at cached-askpass.sh instead, which just echoes
+that cached password back rather than popping a fresh dialog. (Relying on
+sudo's own timestamp/ticket cache instead wasn't reliable here -- each
+script subprocess runs in its own new session via start_new_session=True
+below, and tty_tickets-style caching keys off exactly that kind of
+session/tty identity, so it kept re-prompting every script instead of
+reusing the earlier authentication.) If a cached password turns out to be
+stale (e.g. the user changed it mid-run), the resulting sudo failure clears
+it so the next attempt re-prompts.
 
 Every script subprocess gets stdin=DEVNULL and start_new_session=True: without
 those, a script inherits run-gui.py's own stdin/process group -- i.e. the
@@ -90,9 +88,6 @@ terminal it was launched from, if any -- and a subprocess still alive when
 the window is closed can be left holding that terminal's controlling tty,
 making it look frozen even though it's really just an orphaned background
 process waiting to read from a tty nothing will ever type into again.
-
-Dev tool only (not shipped to end users), so unlike lib/*.py it doesn't use
-lib/i18n.py.
 
 Things-to-do pane: a handful of scripts can't fully finish themselves --
 either because a step is genuinely a human choice (18-desktop-background.sh
@@ -119,7 +114,6 @@ needed.
 import glob
 import os
 import re
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -133,7 +127,7 @@ gi.require_version("Gtk", "3.0")
 from gi.repository import GLib, Gtk, Pango
 
 DIR = os.path.dirname(os.path.realpath(__file__))
-ASKPASS = os.path.join(DIR, "lib", "zenity-askpass.sh")
+ASKPASS = os.path.join(DIR, "lib", "cyberbeest-askpass.py")
 CACHED_ASKPASS = os.path.join(DIR, "lib", "cached-askpass.sh")
 
 # lib/i18n.py only resolves `from i18n import t` if lib/ is on sys.path --
@@ -712,69 +706,8 @@ class RunGuiWindow(Gtk.Window):
         # --run-changed: used by cyberbeest-update (see 52-cyberbeest-update.sh)
         # to go straight into "Run changed only" after a git pull, without
         # making the user find and click the button themselves.
-        self._auto_run_changed = "--run-changed" in sys.argv
-
-        if shutil.which("zenity") is None:
-            self._ensure_zenity()
-        elif self._auto_run_changed:
+        if "--run-changed" in sys.argv:
             GLib.idle_add(self.start_sequence, True)
-
-    def _ensure_zenity(self):
-        # On a brand new machine that hasn't run any NN-*.sh script yet,
-        # zenity may not be installed (it's only pulled in as a side effect
-        # of 04-software-launch-warning.sh) -- install it ourselves here
-        # rather than making that a manual prerequisite, since it's tiny
-        # (~35-40MB all in, mostly its GTK4/libadwaita deps that a GTK3-based
-        # XFCE image wouldn't otherwise have). Plain `sudo` (not -A), since
-        # zenity itself -- needed for the graphical askpass -- doesn't exist
-        # yet, so this needs a real terminal to prompt on. Opened as its own
-        # visible xterm window (not a background prompt on whatever terminal
-        # happened to launch this tool) since that launching terminal may
-        # not be what the user is actually looking at -- see class docstring.
-        self.append_log("", t("run_gui.log_zenity_not_found"))
-        self.status_label.set_text(t("run_gui.status_installing_zenity"))
-        self._set_controls_busy(True)
-        threading.Thread(target=self._install_zenity_worker, daemon=True).start()
-
-    def _install_zenity_worker(self):
-        fd, exit_file = tempfile.mkstemp(prefix="run-gui-zenity-install-")
-        os.close(fd)
-        env = dict(os.environ, EXITFILE=exit_file)
-        try:
-            proc = subprocess.Popen(
-                [
-                    "xterm", "-T", "Install zenity", "-e", "bash", "-c",
-                    'status=0; "$@" || status=$?; echo "$status" > "$EXITFILE"',
-                    "_", "sudo", "apt-get", "-o", "DPkg::Lock::Timeout=60", "install", "-y", "zenity",
-                ],
-                env=env,
-                start_new_session=True,
-            )
-            proc.wait()
-            try:
-                status = int(open(exit_file).read().strip())
-            except (OSError, ValueError):
-                status = 1
-        finally:
-            try:
-                os.remove(exit_file)
-            except OSError:
-                pass
-        GLib.idle_add(self._on_zenity_installed, status)
-
-    def _on_zenity_installed(self, status):
-        self._set_controls_busy(False)
-        if status == 0 and shutil.which("zenity"):
-            self.append_log("", t("run_gui.log_zenity_installed"))
-            self.status_label.set_text(t("run_gui.status_idle"))
-            if self._auto_run_changed:
-                self.start_sequence(True)
-        else:
-            self.append_log("", t("run_gui.log_zenity_install_failed").format(status=status))
-            self.status_label.set_text(t("run_gui.status_zenity_install_failed"))
-            self.run_changed_button.set_sensitive(False)
-            self.run_all_button.set_sensitive(False)
-            self.listbox.set_sensitive(False)
 
     # -- log helpers --------------------------------------------------
 
@@ -1313,16 +1246,25 @@ class RunGuiWindow(Gtk.Window):
                 # Supersedes any per-script "reboot (or log out/in) for X to
                 # apply" todo (00-locale-keyboard-timezone.sh,
                 # 00a-touchpad-tap-global.sh, 46-cyberbeest-keyboard-shortcuts.sh,
-                # ...) -- no point showing those once a full reboot covering
-                # everything is already on offer.
+                # ...) with one aggregate suggestion -- but only if at least
+                # one of those actually fired. Without this check, a batch
+                # run whose scripts don't need a reboot at all (e.g.
+                # cyberbeest-update reinstalling just one always-live-effect
+                # script) would still nag for one, just because it went
+                # through the same "Run changed only"/"Run all"/"Run
+                # selected" machinery a real multi-step provisioning run
+                # does.
+                had_reboot_todo = False
                 for key, (text, _action) in list(self.todos.items()):
                     if text.startswith("Reboot (or log out/in)"):
                         self.todos.pop(key, None)
-                self._add_todo(
-                    REBOOT_TODO_KEY,
-                    t("run_gui.todo_reboot_text"),
-                    action=(t("run_gui.todo_reboot_action"), self._do_reboot),
-                )
+                        had_reboot_todo = True
+                if had_reboot_todo:
+                    self._add_todo(
+                        REBOOT_TODO_KEY,
+                        t("run_gui.todo_reboot_text"),
+                        action=(t("run_gui.todo_reboot_action"), self._do_reboot),
+                    )
 
     def on_disable_autostart(self, _menuitem):
         pending = [s for s in list_scripts() if not script_is_done(s)]

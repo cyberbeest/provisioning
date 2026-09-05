@@ -230,17 +230,6 @@ STRINGS = {
     "run_gui.total_time": "Total run time this session: {duration}",
     "run_gui.status_idle": "Idle. Double-click a script below to run just that one.",
     "run_gui.todo_frame_title": "Things to do after the provisioning completed",
-    "run_gui.status_installing_zenity": "Installing zenity -- see the terminal window...",
-    "run_gui.log_zenity_not_found": (
-        "zenity not found -- opening a terminal window to install it "
-        "(enter your sudo password there)...\n"
-    ),
-    "run_gui.log_zenity_installed": "=== zenity installed ===\n",
-    "run_gui.log_zenity_install_failed": (
-        "=== failed to install zenity (exit {status}) -- install it manually "
-        "(sudo apt-get install zenity) and restart this tool ===\n"
-    ),
-    "run_gui.status_zenity_install_failed": "zenity install failed -- see log above.",
     "run_gui.log_hasnt_run_this_session": (
         "-- {script} hasn't run in this session; showing its log from a previous run --\n\n"
     ),
@@ -287,4 +276,8 @@ STRINGS = {
         "Auto-provisioning on login disabled. Run beestify.sh by hand any time to pick up where you left off."
     ),
     "run_gui.status_stop_requested": "Stop requested -- finishing current script, then stopping...",
+
+    "askpass.title": "Cyberbeest provisioning",
+    "askpass.heading": "Enter your short password to run provisioning scripts as root:",
+    "askpass.field_label": "Short password:",
 }

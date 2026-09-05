@@ -241,17 +241,6 @@ STRINGS = {
     "run_gui.total_time": "Laufzeit in dieser Sitzung: {duration}",
     "run_gui.status_idle": "Bereit. Doppelklick auf ein Skript unten, um nur dieses auszuführen.",
     "run_gui.todo_frame_title": "Nach dem Provisioning noch zu erledigen",
-    "run_gui.status_installing_zenity": "zenity wird installiert -- siehe Terminalfenster...",
-    "run_gui.log_zenity_not_found": (
-        "zenity nicht gefunden -- ein Terminalfenster zur Installation wird "
-        "geöffnet (dort das sudo-Passwort eingeben)...\n"
-    ),
-    "run_gui.log_zenity_installed": "=== zenity installiert ===\n",
-    "run_gui.log_zenity_install_failed": (
-        "=== zenity-Installation fehlgeschlagen (Exitcode {status}) -- manuell "
-        "installieren (sudo apt-get install zenity) und dieses Tool neu starten ===\n"
-    ),
-    "run_gui.status_zenity_install_failed": "zenity-Installation fehlgeschlagen -- siehe Protokoll oben.",
     "run_gui.log_hasnt_run_this_session": (
         "-- {script} wurde in dieser Sitzung noch nicht ausgeführt; zeige das "
         "Protokoll eines früheren Laufs --\n\n"
@@ -302,4 +291,8 @@ STRINGS = {
         "jederzeit manuell, um dort weiterzumachen, wo du aufgehört hast."
     ),
     "run_gui.status_stop_requested": "Stopp angefordert -- aktuelles Skript wird noch beendet, dann Stopp...",
+
+    "askpass.title": "Cyberbeest provisioning",
+    "askpass.heading": "Gib dein kurzes Passwort ein, um die Provisioning-Skripte als root auszuführen:",
+    "askpass.field_label": "Kurzes Passwort:",
 }
