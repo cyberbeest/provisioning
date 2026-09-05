@@ -284,7 +284,7 @@ STRINGS = {
     "run_gui.log_stopping_dependency": "Stoppe hier, da spätere Skripte hiervon abhängen könnten.\n",
     "run_gui.status_stopped": "Nach aktuellem Skript gestoppt.",
     "run_gui.status_failed": "Fehlgeschlagen: {script} -- siehe Protokoll oben.",
-    "run_gui.status_finished": "Erfolgreich abgeschlossen.",
+    "run_gui.status_finished": "Erfolgreich abgeschlossen. Du kannst dieses Fenster jetzt schließen.",
     "run_gui.todo_reboot_text": "Neu starten, um alle Änderungen dieses Laufs vollständig zu übernehmen.",
     "run_gui.todo_reboot_action": "Jetzt neu starten",
     "run_gui.disable_autostart_confirm_title": "Automatisches Provisioning beim Anmelden deaktivieren?",

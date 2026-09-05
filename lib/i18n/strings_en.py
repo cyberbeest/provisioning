@@ -271,7 +271,7 @@ STRINGS = {
     "run_gui.log_stopping_dependency": "Stopping here since later scripts may depend on this one.\n",
     "run_gui.status_stopped": "Stopped after current script.",
     "run_gui.status_failed": "Failed: {script} -- see log above.",
-    "run_gui.status_finished": "Finished successfully.",
+    "run_gui.status_finished": "Finished successfully. You can close this window.",
     "run_gui.todo_reboot_text": "Reboot to fully apply everything from this run.",
     "run_gui.todo_reboot_action": "Reboot Now",
     "run_gui.disable_autostart_confirm_title": "Disable auto-provisioning on login?",
