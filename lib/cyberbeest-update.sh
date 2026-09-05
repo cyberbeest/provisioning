@@ -26,14 +26,23 @@ if [ -z "$REPO_DIR" ]; then
 fi
 
 # Whichever branch beestify.sh (stable) or beestify-bleeding.sh (main) left
-# this checkout on -- ff-only below stays correct either way.
+# this checkout on -- reset --hard below stays correct either way.
 BRANCH="$(git -C "$REPO_DIR" rev-parse --abbrev-ref HEAD)"
 
 confirm_msg="$(t update.confirm_message)"
 confirm_msg="${confirm_msg//BRANCH/$BRANCH}"
 zenity --question --title="$(t update.title)" --width=380 --text="$confirm_msg" || exit 0
 
-# A pulsating progress dialog while the fetch/merge runs -- without this,
+# reset --hard (not merge --ff-only): a plain fast-forward only touches
+# paths that actually changed in the new commits, so a tracked file that
+# got deleted or hand-edited locally -- by accident, or by an older/buggy
+# NN-*.sh -- stays that way forever even though the branch pointer moves.
+# This is meant to make the checkout match upstream exactly, the same as a
+# fresh clone would, so hard-reset it instead. No local commits or edits
+# are expected on an end-user checkout, so there's nothing legitimate this
+# could discard.
+#
+# A pulsating progress dialog while the fetch/reset runs -- without this,
 # a slow connection leaves the user staring at nothing for several seconds
 # after confirming, easy to mistake for the tool having silently died.
 # Closed by killing the process directly (not by closing its stdin) since
@@ -42,7 +51,7 @@ zenity --progress --title="$(t update.title)" --text="$(t update.progress_messag
 	--pulsate --no-cancel --width=380 &
 progress_pid=$!
 
-if ! PULL_OUTPUT="$(git -C "$REPO_DIR" fetch origin "$BRANCH" 2>&1 && git -C "$REPO_DIR" merge --ff-only "origin/$BRANCH" 2>&1)"; then
+if ! PULL_OUTPUT="$(git -C "$REPO_DIR" fetch origin "$BRANCH" 2>&1 && git -C "$REPO_DIR" reset --hard "origin/$BRANCH" 2>&1)"; then
 	kill "$progress_pid" 2>/dev/null || true
 	failed_msg="$(t update.pull_failed_message)"
 	zenity --error --title="$(t update.title)" --width=460 --text="${failed_msg//OUTPUT/$PULL_OUTPUT}"
