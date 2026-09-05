@@ -1,10 +1,11 @@
 #!/bin/bash
-# Installs "Cyberbeest Update": a Whisker menu entry that pulls the latest
-# commits into ~/provisioning (or ~/provisioning-bleeding) and applies
-# anything new via run-gui.py's "Run changed only", auto-clicked so the
-# user just confirms once and watches it run -- see lib/cyberbeest-update.sh
-# for the actual logic and run-gui.py's --run-changed flag for the
-# auto-click.
+# Installs "Cyberbeest Update": a Whisker menu entry that hard-resets
+# ~/provisioning (or ~/provisioning-bleeding) to the latest commit on
+# whichever branch it tracks and applies anything new via run-gui.py's
+# "Run changed only", auto-clicked so the user just confirms once (behind
+# a brief progress dialog for the git step) and watches it run -- see
+# lib/cyberbeest-update.sh for the actual logic and run-gui.py's
+# --run-changed flag for the auto-click.
 #
 # Assumes beestify.sh or beestify-bleeding.sh already ran (so a git
 # checkout exists to pull into) -- lib/cyberbeest-update.sh itself checks
