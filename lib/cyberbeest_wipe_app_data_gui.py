@@ -7,6 +7,10 @@ whatever the app's firejail sandbox whitelists as its own, since that's
 exactly the app's data footprint). Reads the path table from
 app-data-paths.conf (installed alongside this script).
 
+Only apps with data to wipe or that are currently installed are listed --
+an app the user never installed doesn't show up just because it's in the
+path table, but leftover data from a non-purge `apt remove` still does.
+
 Why plain delete is enough here, no multi-pass "secure" overwrite: this
 machine's disk is fully LUKS-encrypted, so a deleted file's leftover
 blocks are just ciphertext without the key -- shred-style overwriting is
@@ -55,11 +59,27 @@ def _is_safe_target(p):
 
 
 class App:
-    def __init__(self, app_id, name, paths, proc_pattern):
+    def __init__(self, app_id, name, paths, proc_pattern, dpkg_package=""):
         self.id = app_id
         self.name = name
         self.paths = paths  # list of raw path strings (may include ~ and globs)
         self.proc_pattern = proc_pattern
+        self.dpkg_package = dpkg_package
+
+    def is_installed(self):
+        """Whether the app package is currently installed (not just
+        removed-with-leftover-data). Used to decide whether to list the
+        app at all when it has no data yet -- see load_apps()/filtering
+        in WipeAppDataWindow. No package configured = never considered
+        "installed" by this check; such an app still shows up in the list
+        if it has data."""
+        if not self.dpkg_package:
+            return False
+        r = subprocess.run(
+            ["dpkg-query", "-W", "-f=${Status}", self.dpkg_package],
+            capture_output=True, text=True,
+        )
+        return r.returncode == 0 and "install ok installed" in r.stdout
 
     def resolved_paths(self):
         """Expand ~ and globs to actual existing paths on disk."""
@@ -100,6 +120,17 @@ class App:
         time.sleep(0.5)
         return not self.is_running()
 
+    def size_locked(self):
+        """True if this app's real size can't be determined as the
+        current user -- i.e. its data lives under a root/service-account
+        path this user isn't in the group for (i2pd's /var/lib/i2pd:
+        most of its state files are 750/640 owned by the i2pd user/group,
+        not readable by a normal desktop user). size_bytes() would report
+        0 for these regardless of actual size, which is indistinguishable
+        from genuinely empty -- callers should show that distinction
+        rather than mislabeling it "empty"."""
+        return self.id == "i2pd"
+
     def size_bytes(self):
         total = 0
         for p in self.resolved_paths():
@@ -128,12 +159,21 @@ def load_apps():
             if not line or line.startswith("#"):
                 continue
             parts = line.split("|")
-            while len(parts) < 4:
+            while len(parts) < 5:
                 parts.append("")
-            app_id, name, paths_raw, proc_pattern = parts[:4]
+            app_id, name, paths_raw, proc_pattern, dpkg_package = parts[:5]
             paths = paths_raw.split() if paths_raw else []
-            apps.append(App(app_id, name, paths, proc_pattern))
+            apps.append(App(app_id, name, paths, proc_pattern, dpkg_package))
     return apps
+
+
+def load_listable_apps():
+    """Apps worth showing at all: ones with data to wipe, or ones
+    currently installed (even with no data yet) -- so a fresh install
+    still shows up, and leftover data from a non-purge `apt remove`
+    remains wipeable, but an app never installed on this machine doesn't
+    clutter the list."""
+    return [app for app in load_apps() if app.size_bytes() > 0 or app.is_installed()]
 
 
 I2PD_SCRIPT = (
@@ -207,7 +247,16 @@ class WipeRow(Gtk.ListBoxRow):
         box.pack_start(name, False, False, 0)
 
         size = app.size_bytes()
-        self.size_label = Gtk.Label(label=human_size(size) if size else "empty")
+        locked = app.size_locked()
+        if locked:
+            self.size_label = Gtk.Label(label="root-locked")
+            self.size_label.set_tooltip_text(
+                "This app's data is owned by a system service account -- its "
+                "real size can't be checked as your user, only wiped (which "
+                "will prompt for the root password)."
+            )
+        else:
+            self.size_label = Gtk.Label(label=human_size(size) if size else "empty")
         self.size_label.set_xalign(0)
         self.size_label.set_width_chars(10)
         box.pack_start(self.size_label, False, False, 0)
@@ -216,7 +265,7 @@ class WipeRow(Gtk.ListBoxRow):
         self.status_label.set_xalign(0)
         box.pack_start(self.status_label, True, True, 0)
 
-        if size == 0:
+        if size == 0 and not locked:
             self.check.set_sensitive(False)
         elif app.is_running():
             self.status_label.set_markup('<span foreground="#a60">running -- will be closed automatically</span>')
@@ -252,7 +301,7 @@ class WipeAppDataWindow(Gtk.Window):
         root.pack_start(scroller, True, True, 0)
 
         self.rows = []
-        for app in load_apps():
+        for app in load_listable_apps():
             row = WipeRow(app)
             self.listbox.add(row)
             self.rows.append(row)
@@ -273,7 +322,7 @@ class WipeAppDataWindow(Gtk.Window):
         for child in self.listbox.get_children():
             self.listbox.remove(child)
         self.rows = []
-        for app in load_apps():
+        for app in load_listable_apps():
             row = WipeRow(app)
             self.listbox.add(row)
             self.rows.append(row)
