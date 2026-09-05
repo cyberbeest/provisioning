@@ -65,6 +65,7 @@ Run beestify.sh first (see cyberbeest.com)."
 	[update.confirm_message]="Pull the latest Cyberbeest provisioning updates (BRANCH branch) and apply anything new?
 
 You'll be asked for your password once per changed step, same as during setup."
+	[update.progress_message]="Checking for updates..."
 	[update.pull_failed_message]="git pull failed:
 
 OUTPUT"

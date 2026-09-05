@@ -67,6 +67,7 @@ Führe zuerst beestify.sh aus (siehe cyberbeest.com)."
 	[update.confirm_message]="Die neuesten Cyberbeest-Provisioning-Updates holen (Branch BRANCH) und alles Neue anwenden?
 
 Du wirst pro geändertem Schritt einmal nach deinem Passwort gefragt, wie bei der Einrichtung."
+	[update.progress_message]="Suche nach Updates..."
 	[update.pull_failed_message]="git pull fehlgeschlagen:
 
 OUTPUT"

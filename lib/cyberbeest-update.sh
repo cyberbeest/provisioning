@@ -33,10 +33,22 @@ confirm_msg="$(t update.confirm_message)"
 confirm_msg="${confirm_msg//BRANCH/$BRANCH}"
 zenity --question --title="$(t update.title)" --width=380 --text="$confirm_msg" || exit 0
 
+# A pulsating progress dialog while the fetch/merge runs -- without this,
+# a slow connection leaves the user staring at nothing for several seconds
+# after confirming, easy to mistake for the tool having silently died.
+# Closed by killing the process directly (not by closing its stdin) since
+# --pulsate mode doesn't reliably exit on EOF the way percentage mode does.
+zenity --progress --title="$(t update.title)" --text="$(t update.progress_message)" \
+	--pulsate --no-cancel --width=380 &
+progress_pid=$!
+
 if ! PULL_OUTPUT="$(git -C "$REPO_DIR" fetch origin "$BRANCH" 2>&1 && git -C "$REPO_DIR" merge --ff-only "origin/$BRANCH" 2>&1)"; then
+	kill "$progress_pid" 2>/dev/null || true
 	failed_msg="$(t update.pull_failed_message)"
 	zenity --error --title="$(t update.title)" --width=460 --text="${failed_msg//OUTPUT/$PULL_OUTPUT}"
 	exit 1
 fi
+
+kill "$progress_pid" 2>/dev/null || true
 
 exec python3 "$REPO_DIR/run-gui.py" --run-changed
