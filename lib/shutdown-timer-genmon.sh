@@ -73,21 +73,30 @@ fi
 click_line="$(t shutdown_genmon.click_to_change)"
 
 if [ "$linked" = "true" ] || [ "$ac_min" = "$bat_min" ]; then
-    echo "<txt>🔒 $(fmt "$idle_delay_min") ⏻ $(fmt "$ac_min")${warn_txt}</txt>"
+    SHUTDOWN_TIMER_TXT="🔒 $(fmt "$idle_delay_min") ⏻ $(fmt "$ac_min")${warn_txt}"
     if [ "$ac_min" -eq 0 ]; then
-        echo "<tool>${warn_line}${lock_line}&#10;$(t shutdown_genmon.disabled_both)&#10;${click_line}</tool>"
+        SHUTDOWN_TIMER_TOOL="${warn_line}${lock_line}&#10;$(t shutdown_genmon.disabled_both)&#10;${click_line}"
     else
         after_both="$(t shutdown_genmon.after_both)"
         after_both="${after_both//DURATION/$(fmt "$ac_min")}"
-        echo "<tool>${warn_line}${lock_line}&#10;${after_both}&#10;${click_line}</tool>"
+        SHUTDOWN_TIMER_TOOL="${warn_line}${lock_line}&#10;${after_both}&#10;${click_line}"
     fi
 else
-    echo "<txt>🔒 $(fmt "$idle_delay_min") ⏻ $(fmt "$ac_min")/$(fmt "$bat_min")${warn_txt}</txt>"
+    SHUTDOWN_TIMER_TXT="🔒 $(fmt "$idle_delay_min") ⏻ $(fmt "$ac_min")/$(fmt "$bat_min")${warn_txt}"
     ac_line="$(t shutdown_genmon.ac_label)"
     ac_line="${ac_line//DURATION/$(fmt "$ac_min")}"
     bat_line="$(t shutdown_genmon.battery_label)"
     bat_line="${bat_line//DURATION/$(fmt "$bat_min")}"
-    printf '<tool>%s%s&#10;  %s&#10;  %s&#10;%s</tool>\n' \
-        "${warn_line}${lock_line}&#10;" "$(t shutdown_genmon.after_locked_header)" "$ac_line" "$bat_line" "$click_line"
+    SHUTDOWN_TIMER_TOOL="$(printf '%s%s&#10;  %s&#10;  %s&#10;%s' \
+        "${warn_line}${lock_line}&#10;" "$(t shutdown_genmon.after_locked_header)" "$ac_line" "$bat_line" "$click_line")"
 fi
-echo "<txtclick>$HOME/.local/bin/shutdown-timer-menu.py</txtclick>"
+SHUTDOWN_TIMER_TXTCLICK="$HOME/.local/bin/shutdown-timer-menu.py"
+
+# panel-status-genmon.sh sources this script to combine it with
+# update-genmon.sh into one genmon plugin instance -- only emit standalone
+# genmon output when run directly, not when sourced.
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+    echo "<txt>${SHUTDOWN_TIMER_TXT}</txt>"
+    echo "<tool>${SHUTDOWN_TIMER_TOOL}</tool>"
+    echo "<txtclick>${SHUTDOWN_TIMER_TXTCLICK}</txtclick>"
+fi

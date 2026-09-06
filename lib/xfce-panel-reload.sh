@@ -39,8 +39,17 @@ xfce_panel_dbus_addr() {
 }
 
 xfce_panel_kill() {
-	pkill -u "$TARGET_USER" -x xfconfd || true
-	pkill -u "$TARGET_USER" -x xfce4-panel || true
+	# -9/SIGKILL, not a plain (SIGTERM) pkill: a graceful xfce4-panel exit
+	# re-persists its currently-loaded plugin config (rc files, xfconf
+	# plugin-ids) from its own in-memory state as part of shutting down --
+	# clobbering config a script just wrote to disk moments earlier, the
+	# same failure mode as the `-r` case above, just via a different path.
+	# Caught 2026-09-05 merging the genmon-11/genmon-16 widgets: the write
+	# step ran cleanly, but the plugin-11 rc and the plugin-ids array both
+	# reverted to their pre-merge contents once the killed panel finished
+	# exiting.
+	pkill -9 -u "$TARGET_USER" -x xfconfd || true
+	pkill -9 -u "$TARGET_USER" -x xfce4-panel || true
 	sleep 1
 }
 

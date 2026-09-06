@@ -7,13 +7,17 @@
 # padded version so it doesn't dominate the panel visually -- see the
 # icons-adwaita-symbolic-status install below) -- Status (the custom
 # monitoring plugins built by 11-xfce-panel-plugins.sh: kitt-scanner,
-# mem-liquid, wattage-panel; plus a genmon security-status widget fed by
-# 07-security-update-timer.sh) -- Power (the power manager plugin, and a
-# genmon shutdown-timer widget showing the current auto-shutdown-while-locked
-# time, fed by shutdown-timer-genmon.sh; click opens a quick preset menu via
-# shutdown-timer-menu.py -- which also has the Lock/Restart/Shut Down
-# actions from 09-cyberbeest-logout-dialog.sh's cyberbeest-logout, so there's
-# no separate standalone Power launcher pinned to the panel any more) --
+# mem-liquid, wattage-panel) -- Power (the power manager plugin, then a
+# single genmon widget (genmon-11), kept close to the clock rather than
+# grouped with Status so it reads as the last thing before the clock: it
+# merges security-status (fed by 07-security-update-timer.sh; icon-click
+# opens the log) and the shutdown-timer (showing the current
+# auto-shutdown-while-locked time; text-click opens a quick preset menu via
+# shutdown-timer-menu.py) -- panel-status-genmon.sh sources
+# update-genmon.sh and shutdown-timer-genmon.sh rather than running each as
+# its own genmon process; shutdown-timer-menu.py also has the Lock/Restart/
+# Shut Down actions from 09-cyberbeest-logout-dialog.sh's cyberbeest-logout,
+# so there's no separate standalone Power launcher pinned to the panel) --
 # clock, last so any dynamically-added icons (e.g. the optional i2pd toggle
 # from 22-i2p-package-manager.sh) can always insert themselves right before
 # it.
@@ -61,16 +65,21 @@ install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.local/bin/i18n"
 install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 "$DIR"/lib/i18n/strings.*.sh "$TARGET_HOME/.local/bin/i18n/"
 install -o "$TARGET_USER" -g "$TARGET_USER" -m 755 \
 	"$DIR/lib/shutdown-timer-genmon.sh" "$TARGET_HOME/.local/bin/shutdown-timer-genmon.sh"
-# GENMON_WIDGET_NAME must match this template's plugin-16 (see
+# panel-status-genmon.sh sources update-genmon.sh and shutdown-timer-genmon.sh
+# to combine both into the single genmon-11 widget (see xfce4-panel.xml.template),
+# instead of running each as its own genmon process.
+install -o "$TARGET_USER" -g "$TARGET_USER" -m 755 \
+	"$DIR/lib/panel-status-genmon.sh" "$TARGET_HOME/.local/bin/panel-status-genmon.sh"
+# GENMON_WIDGET_NAME must match this template's plugin-11 (see
 # xfce4-panel.xml.template) so the "refresh the panel icon now" call after
 # picking a preset targets the right widget.
-sed "s|__GENMON_WIDGET__|genmon-16|g" "$DIR/lib/shutdown-timer-menu.py" \
+sed "s|__GENMON_WIDGET__|genmon-11|g" "$DIR/lib/shutdown-timer-menu.py" \
 	> "$TARGET_HOME/.local/bin/shutdown-timer-menu.py"
 chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.local/bin/shutdown-timer-menu.py"
 chmod 755 "$TARGET_HOME/.local/bin/shutdown-timer-menu.py"
 # The menu's "Power saving while locked..." item launches this as a
 # separate process (see shutdown-timer-menu.py's open_power_saving_dialog).
-sed "s|__GENMON_WIDGET__|genmon-16|g" "$DIR/lib/lock-power-saving-dialog.py" \
+sed "s|__GENMON_WIDGET__|genmon-11|g" "$DIR/lib/lock-power-saving-dialog.py" \
 	> "$TARGET_HOME/.local/bin/lock-power-saving-dialog.py"
 chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.local/bin/lock-power-saving-dialog.py"
 chmod 755 "$TARGET_HOME/.local/bin/lock-power-saving-dialog.py"
@@ -126,17 +135,20 @@ install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 \
 	"$DIR"/lib/assets/icons-adwaita-symbolic-status/*.svg \
 	"$TARGET_HOME/.local/share/icons/Adwaita/symbolic/status/"
 
-echo "--- Writing genmon-11.rc, kitt-scanner-14.rc, mem-liquid-15.rc, genmon-16.rc ---"
+echo "--- Writing genmon-11.rc, kitt-scanner-14.rc, mem-liquid-15.rc ---"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.config/xfce4/panel"
 sed "s|__HOME__|$TARGET_HOME|g" "$LAYOUT/genmon.rc.template" > "$TARGET_HOME/.config/xfce4/panel/genmon-11.rc"
 install -m 644 "$LAYOUT/kitt-scanner.rc" "$TARGET_HOME/.config/xfce4/panel/kitt-scanner-14.rc"
 install -m 644 "$LAYOUT/mem-liquid.rc" "$TARGET_HOME/.config/xfce4/panel/mem-liquid-15.rc"
-sed "s|__HOME__|$TARGET_HOME|g" "$LAYOUT/shutdown-timer-genmon.rc.template" > "$TARGET_HOME/.config/xfce4/panel/genmon-16.rc"
 
 # Cleanup for machines provisioned before the terminal launcher was dropped
 # from the panel -- overwriting xfce4-panel.xml below removes plugin-9 from
 # the layout, but doesn't touch this now-orphaned launcher config dir.
 rm -rf "$TARGET_HOME/.config/xfce4/panel/launcher-9"
+# Cleanup for machines provisioned before the two genmon widgets (security
+# status + shutdown timer) were merged into one -- see panel-status-genmon.sh.
+rm -rf "$TARGET_HOME/.config/xfce4/panel/genmon-16"
+rm -f "$TARGET_HOME/.config/xfce4/panel/genmon-16.rc"
 
 echo "--- Writing launcher-18 (file manager) ---"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.config/xfce4/panel/launcher-18"

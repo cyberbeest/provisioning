@@ -58,6 +58,8 @@ Only continue if you clicked an install link on a page you trust."
 	[shutdown_genmon.ac_label]="AC: DURATION"
 	[shutdown_genmon.battery_label]="Battery: DURATION"
 	[shutdown_genmon.click_to_change]="Click to change"
+	[panel_status_genmon.lock_heading]="Lock &amp; auto-shutdown"
+	[panel_status_genmon.security_heading]="Security updates"
 	[update.title]="Cyberbeest Update"
 	[update.no_repo_message]="No provisioning checkout found at ~/provisioning or ~/provisioning-bleeding.
 

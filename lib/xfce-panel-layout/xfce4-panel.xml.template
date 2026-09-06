@@ -20,13 +20,12 @@
         <value type="int" value="7"/>
         <value type="int" value="17"/>
         <value type="int" value="5"/>
-        <value type="int" value="11"/>
         <value type="int" value="14"/>
         <value type="int" value="15"/>
         <value type="int" value="13"/>
         <value type="int" value="8"/>
         <value type="int" value="12"/>
-        <value type="int" value="16"/>
+        <value type="int" value="11"/>
         <value type="int" value="6"/>
       </property>
     </property>
@@ -75,7 +74,6 @@
     <property name="plugin-13" type="string" value="wattage-panel"/>
     <property name="plugin-14" type="string" value="kitt-scanner"/>
     <property name="plugin-15" type="string" value="mem-liquid"/>
-    <property name="plugin-16" type="string" value="genmon"/>
     <property name="plugin-17" type="string" value="pulseaudio">
       <property name="enable-keyboard-shortcuts" type="bool" value="true"/>
     </property>

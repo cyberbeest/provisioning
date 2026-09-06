@@ -22,7 +22,8 @@ from i18n import t
 CONFIG_DIR = os.path.expanduser("~/.config/cyberbeest")
 CONFIG_PATH = os.path.join(CONFIG_DIR, "power-settings.conf")
 
-# Must match this machine's live panel plugin id (~/.config/xfce4/panel/genmon-25.rc).
+# Must match this machine's live panel plugin id (~/.config/xfce4/panel/genmon-11.rc,
+# the merged security-status/shutdown-timer widget -- see panel-status-genmon.sh).
 GENMON_WIDGET_NAME = "__GENMON_WIDGET__"
 
 DEFAULTS = {

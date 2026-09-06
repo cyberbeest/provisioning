@@ -234,6 +234,15 @@ if [ -n "$apps_check_epoch" ]; then
     tool="${tool}&#10;${apps_line}"
 fi
 
-echo "<img>${img}</img>"
-echo "<tool>${tool}</tool>"
-echo "<click>${SELF_DIR}/update-genmon-view-log.py</click>"
+SECURITY_STATUS_IMG="$img"
+SECURITY_STATUS_TOOL="$tool"
+SECURITY_STATUS_CLICK="${SELF_DIR}/update-genmon-view-log.py"
+
+# panel-status-genmon.sh sources this script to combine it with
+# shutdown-timer-genmon.sh into one genmon plugin instance -- only emit
+# standalone genmon output when run directly, not when sourced.
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+    echo "<img>${SECURITY_STATUS_IMG}</img>"
+    echo "<tool>${SECURITY_STATUS_TOOL}</tool>"
+    echo "<click>${SECURITY_STATUS_CLICK}</click>"
+fi
