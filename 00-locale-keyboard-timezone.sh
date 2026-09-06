@@ -272,8 +272,29 @@ else
 	dpkg-reconfigure tzdata
 fi
 
+echo "--- Invalidating locale-dependent scripts' logs ---" | tee -a "$LOG"
+# A handful of other steps (currently 15-grub-plymouth-theme.sh,
+# 17-login-lock-screen.sh) bake translated text into a file at provisioning
+# time instead of looking the locale up live, because they touch things that
+# run before the desktop session even exists (Plymouth/GRUB, PAM's
+# pam_echo.so) -- see each one's own LOCALE_DEPENDENT comment. Deleting their
+# logs here makes them show up as "changed" in run-gui.py right after a
+# language change, instead of relying on someone remembering to re-run them
+# by hand. Cheap even when the language didn't actually change (re-picking
+# the same language on the profile dialog still re-triggers this) -- both are
+# idempotent and fast to re-run.
+while IFS= read -r -d '' script; do
+	name="$(basename "$script")"
+	script_log="$DIR/${name%.sh}.log"
+	if [ -e "$script_log" ]; then
+		echo "Invalidating $script_log ($name bakes in locale-dependent text)" | tee -a "$LOG"
+		rm -f "$script_log"
+	fi
+done < <(grep -lZ '^# LOCALE_DEPENDENT:' "$DIR"/*.sh 2>/dev/null)
+
 echo "=== $(date) : done. Reboot (or log out/in) for the new locale/keyboard to fully apply to the desktop session. ===" | tee -a "$LOG"
 # run-gui.py's terminal-script path doesn't stream this script's own output
 # live (see NEEDS_TERMINAL in run-gui.py) -- it re-reads the log file for
 # MANUAL_TODO lines afterwards instead, so this needs to land in $LOG too.
 echo "MANUAL_TODO: Reboot (or log out/in) for the new locale/keyboard to fully apply." | tee -a "$LOG"
+echo "MANUAL_TODO: Run \"Run changed\" to re-apply locale-dependent boot/login text (GRUB, LUKS prompt, lock screen)." | tee -a "$LOG"
