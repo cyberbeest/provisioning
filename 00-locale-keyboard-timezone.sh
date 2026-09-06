@@ -52,22 +52,32 @@ PROFILE_FILE="$DIR/.provisioning-profile.env"
 apt-get -o DPkg::Lock::Timeout=60 update -qq
 apt-get -o DPkg::Lock::Timeout=60 install -y rsync
 
-if [ -e "$LOG" ] && [ "$LOG" -nt "$0" ]; then
-	echo "Already configured locale/keyboard/timezone since this script was last edited -- skipping."
-	echo "Delete $LOG (or edit this script) to be prompted again."
-	exit 0
-fi
-
 # run-gui.py's "Provisioning profile" dialog collects this question (and
 # 00a-touchpad-tap-global.sh's) upfront and drops the answers here, so
 # provisioning can run start-to-finish without popping a whiptail prompt
 # mid-run. Falls back to asking here directly (below) when run standalone,
 # e.g. via menu.sh or by hand -- that path still needs a real terminal.
+#
+# Read (and act on) the profile file *before* the skip check below: the
+# profile dialog only ever appears because the user (or run-gui.py's
+# "Provisioning profile..." menu) just explicitly answered it moments ago --
+# e.g. to change the machine's language after the fact -- so that always
+# counts as fresh intent to reconfigure, regardless of how stale/fresh $LOG
+# is. Without this, a language change made through the profile dialog was
+# silently swallowed by the skip check below: the dialog wrote new answers,
+# but this script exited before ever reading them, leaving the machine on
+# its old language with no error or indication anything was skipped.
 PROFILE_DRIVEN=0
 if [ -e "$PROFILE_FILE" ]; then
 	# shellcheck disable=SC1090
 	. "$PROFILE_FILE"
 	[ "${PROVISIONING_PROFILE:-}" = "1" ] && PROFILE_DRIVEN=1
+fi
+
+if [ "$PROFILE_DRIVEN" -eq 0 ] && [ -e "$LOG" ] && [ "$LOG" -nt "$0" ]; then
+	echo "Already configured locale/keyboard/timezone since this script was last edited -- skipping."
+	echo "Delete $LOG (or edit this script) to be prompted again."
+	exit 0
 fi
 
 if [ "$PROFILE_DRIVEN" -eq 0 ] && [ ! -t 0 ]; then
