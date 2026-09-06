@@ -238,6 +238,7 @@ STRINGS = {
     "run_gui.more_actions_tooltip": "Weitere Aktionen",
     "run_gui.menu_disable_autostart": "Automatisches Provisioning beim Anmelden deaktivieren",
     "run_gui.menu_edit_profile": "Provisioning-Profil...",
+    "run_gui.menu_select_vm_scripts": "Skripte für VM-Installation auswählen",
     "run_gui.total_time": "Laufzeit in dieser Sitzung: {duration}",
     "run_gui.status_idle": "Bereit. Doppelklick auf ein Skript unten, um nur dieses auszuführen.",
     "run_gui.todo_frame_title": "Nach dem Provisioning noch zu erledigen",
@@ -252,6 +253,10 @@ STRINGS = {
     "run_gui.status_nothing_selected": (
         "Nichts ausgewählt -- erst unten ein oder mehrere Skripte anklicken "
         "(oder Strg/Umschalt+Klick)."
+    ),
+    "run_gui.status_vm_scripts_selected": (
+        "{count} Skripte für VM-Installation ausgewählt -- unten prüfen, "
+        "dann auf \"Auswahl ausführen\" klicken."
     ),
     "run_gui.status_starting": "{label}: startet (sudo-Passwort eingeben, falls gefragt)...",
     "run_gui.label_run_single": "{script} ausführen",

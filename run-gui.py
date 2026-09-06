@@ -139,6 +139,36 @@ from i18n import t
 
 NEEDS_TERMINAL = {"00-locale-keyboard-timezone.sh", "00a-touchpad-tap-global.sh"}
 
+# Scripts skipped by "Select scripts for VM install" (more-actions menu):
+# hardware that doesn't exist in a VM guest (touchpad/bluetooth/battery/
+# lid/sleep-states), the auto-lock/screensaver family (a VM guest doesn't
+# need its own lock screen), background daemons with nothing to watch or
+# warm up in a VM (boot/shutdown chimes, fail2ban with no sshd exposed --
+# see 99-remove-openssh-server.sh), and encrypted DNS -- assumes the VM
+# stays on VirtualBox's default NAT networking with natdnshostresolver
+# (not natdnsproxy) enabled, which is itself the default: the guest's DNS
+# queries then get resolved by the host's own resolver process, riding
+# through the host's dnscrypt-proxy transparently with nothing needed
+# guest-side. Everything else, including the apps (messengers/wallets/
+# browser sandbox/VPN/i2pd toggles), stays selected -- the point of this
+# profile is "all our apps, none of the automatic background stuff that
+# assumes real hardware or its own network path."
+VM_INSTALL_EXCLUDE = {
+    "00a-touchpad-tap-global.sh",
+    "01-bluetooth-tethering.sh",
+    "13-lock-shutdown-watcher.sh",
+    "16-power-lock-config.sh",
+    "17-login-lock-screen.sh",
+    "19-low-battery-shutdown.sh",
+    "20-shutdown-sound.sh",
+    "37-encrypted-dns.sh",
+    "26-lid-close-policy.sh",
+    "30-lockscreen-shutdown-button.sh",
+    "31-disable-sleep-states.sh",
+    "35-boot-chime.sh",
+    "51-fail2ban.sh",
+}
+
 # Scripts driven by the upfront "Provisioning profile" dialog (see
 # ProvisioningProfileDialog) instead of their own whiptail prompts. Once the
 # dialog has been answered, both scripts run piped like every other step --
@@ -634,6 +664,9 @@ class RunGuiWindow(Gtk.Window):
         self.edit_profile_item = Gtk.MenuItem(label=t("run_gui.menu_edit_profile"))
         self.edit_profile_item.connect("activate", lambda _mi: self._edit_profile())
         more_menu.append(self.edit_profile_item)
+        self.select_vm_scripts_item = Gtk.MenuItem(label=t("run_gui.menu_select_vm_scripts"))
+        self.select_vm_scripts_item.connect("activate", lambda _mi: self._select_vm_scripts())
+        more_menu.append(self.select_vm_scripts_item)
         more_menu.show_all()
         self.more_menu_button.set_popup(more_menu)
         button_box.pack_start(self.more_menu_button, False, False, 0)
@@ -979,6 +1012,25 @@ class RunGuiWindow(Gtk.Window):
         # double-click, this is an explicit "get these steps applied" run
         # that can span multiple scripts.
         self._start_run(scripts, label=t("run_gui.button_run_selected"), batch=True)
+
+    def _select_vm_scripts(self):
+        # Just sets up the sidebar selection -- doesn't run anything itself.
+        # The user reviews the selection (and can ctrl/shift-click to adjust
+        # it further, e.g. re-adding 37-encrypted-dns.sh if this particular
+        # VM should run its own dnscrypt-proxy rather than riding on the
+        # host's) and then clicks "Run selected" same as any other manual
+        # selection.
+        if self.busy:
+            return
+        self.listbox.unselect_all()
+        for script, row in self.rows.items():
+            if script not in VM_INSTALL_EXCLUDE:
+                self.listbox.select_row(row)
+        self.status_label.set_text(
+            t("run_gui.status_vm_scripts_selected").format(
+                count=len(self.listbox.get_selected_rows())
+            )
+        )
 
     def on_row_activated(self, _listbox, row):
         if self.busy:

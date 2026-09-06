@@ -227,6 +227,7 @@ STRINGS = {
     "run_gui.more_actions_tooltip": "More actions",
     "run_gui.menu_disable_autostart": "Disable auto-provisioning on login",
     "run_gui.menu_edit_profile": "Provisioning profile...",
+    "run_gui.menu_select_vm_scripts": "Select scripts for VM install",
     "run_gui.total_time": "Total run time this session: {duration}",
     "run_gui.status_idle": "Idle. Double-click a script below to run just that one.",
     "run_gui.todo_frame_title": "Things to do after the provisioning completed",
@@ -239,6 +240,9 @@ STRINGS = {
     "run_gui.status_nothing_to_run": "Nothing to run -- everything is already up to date.",
     "run_gui.status_nothing_selected": (
         "Nothing selected -- click (or ctrl/shift+click) one or more scripts below first."
+    ),
+    "run_gui.status_vm_scripts_selected": (
+        "{count} scripts selected for VM install -- review below, then click \"Run selected\"."
     ),
     "run_gui.status_starting": "{label}: starting (enter sudo password if prompted)...",
     "run_gui.label_run_single": "Run {script}",
