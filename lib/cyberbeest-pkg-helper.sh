@@ -7,7 +7,7 @@
 # setup-i2pd-toggle), so no pkexec/fixed-path requirement applies here.
 #
 # Usage:
-#   cyberbeest-pkg-helper.sh setup-repo <signal|element|mullvad|protonvpn>
+#   cyberbeest-pkg-helper.sh setup-repo <signal|element|mullvad|protonvpn|virtualbox>
 #   cyberbeest-pkg-helper.sh install <pkg>...
 #   cyberbeest-pkg-helper.sh remove <pkg>...
 #   cyberbeest-pkg-helper.sh install-deb-url <url>   (for vendors with no apt
@@ -107,6 +107,23 @@ do_setup_repo() {
             log "Proton VPN apt repository set up"
         else
             log "Proton VPN apt repository already present, skipping"
+        fi
+        ;;
+    virtualbox)
+        # Debian dropped its own "virtualbox" package years ago (licensing/
+        # maintenance friction) -- Oracle's own repo is the only source left
+        # on Debian 13. PUEL-licensed, not fully open source; no alternative
+        # exists for a real VirtualBox build on trixie.
+        if [ ! -f /etc/apt/sources.list.d/virtualbox.list ]; then
+            log "Setting up Oracle VirtualBox apt repository"
+            curl -fsSL https://www.virtualbox.org/download/oracle_vbox_2016.asc | gpg --yes --dearmor -o /usr/share/keyrings/oracle-virtualbox-2016.gpg \
+                || { log "VirtualBox keyring fetch failed"; return 1; }
+            echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/oracle-virtualbox-2016.gpg] https://download.virtualbox.org/virtualbox/debian trixie contrib" >/etc/apt/sources.list.d/virtualbox.list \
+                || { log "VirtualBox sources write failed"; return 1; }
+            apt-get -o DPkg::Lock::Timeout=60 update >>"$LOG" 2>&1 || { log "apt-get update failed after adding VirtualBox repo"; return 1; }
+            log "VirtualBox apt repository set up"
+        else
+            log "VirtualBox apt repository already present, skipping"
         fi
         ;;
     *)
