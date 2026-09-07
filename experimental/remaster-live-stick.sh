@@ -23,6 +23,13 @@
 # unit), as root. Needs a few GB free disk (rsync copy + squashfs + ISO all
 # coexist during the build) and modifies nothing on the source system itself
 # -- it only reads from / and writes to $WORK below.
+#
+# Persistence: the built ISO always asks live-boot to look for a
+# "persistence" boot param + a partition labeled "persistence" containing a
+# persistence.conf. If the stick has neither (e.g. right after a plain dd),
+# it just boots non-persistent as before -- no separate boot-menu entry
+# needed. Run add-persistence-partition.sh (same directory) against a
+# flashed stick to actually create that partition.
 set -euo pipefail
 
 DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -83,7 +90,8 @@ lb config \
 	--iso-application "Cyberbeest Live" \
 	--iso-volume "Cyberbeest Live" \
 	--chroot-squashfs-compression-type zstd \
-	--build-with-chroot false
+	--build-with-chroot false \
+	--bootappend-live "boot=live components persistence persistence-label=persistence"
 
 echo "--- Adding a 'Boot from hard disk' boot-menu entry ---"
 # Same idea as usb-stick-maker/build-iso.sh's installer stick: lets you leave
