@@ -31,6 +31,15 @@ fi
 
 REAL_USER="${SUDO_USER:-cyberbeest}"
 
+# Clean up any prior vendor VBoxLinuxAdditions.run install (e.g. a previous
+# failed attempt) so it can't leave a second, conflicting copy of the kernel
+# modules registered alongside the apt-packaged ones below.
+VENDOR_UNINSTALLER="$(find /opt -maxdepth 1 -iname 'VBoxGuestAdditions-*' -type d 2>/dev/null | head -1)/uninstall.sh"
+if [ -x "$VENDOR_UNINSTALLER" ]; then
+	echo "Removing previous vendor Guest Additions install first..."
+	"$VENDOR_UNINSTALLER" || true
+fi
+
 echo "Trying Debian's virtualbox-guest-x11 package first..."
 apt-get update
 if apt-get install -y --no-install-recommends virtualbox-guest-x11; then
