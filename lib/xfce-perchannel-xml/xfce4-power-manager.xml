@@ -13,18 +13,26 @@
          just the matching defaults for a fresh install. AC and battery are
          independent xfconf keys on this xfce4-power-manager build; both
          must be set, or the unset side silently falls back to its own
-         compiled-in 5/6min defaults regardless of what's configured here. -->
-    <property name="dpms-on-ac-sleep" type="uint" value="5"/>
-    <property name="dpms-on-ac-off" type="uint" value="6"/>
-    <property name="dpms-on-battery-sleep" type="uint" value="5"/>
-    <property name="dpms-on-battery-off" type="uint" value="6"/>
+         compiled-in 5/6min defaults regardless of what's configured here.
+         Typed "int", not "uint": xfconfd itself always persists these as
+         int (confirmed on two provisioned machines), and a later write to
+         any one property in this channel (e.g. the "Lock screen after"
+         picker's -t int write) makes xfconfd rewrite the whole channel from
+         its in-memory cache -- any property it loaded with a type mismatch
+         silently drops out of that rewrite instead of surviving. That's how
+         brightness-inactivity-on-ac/battery below went missing on a real
+         install after the picker was used, re-enabling dimming. -->
+    <property name="dpms-on-ac-sleep" type="int" value="5"/>
+    <property name="dpms-on-ac-off" type="int" value="6"/>
+    <property name="dpms-on-battery-sleep" type="int" value="5"/>
+    <property name="dpms-on-battery-off" type="int" value="6"/>
     <!-- "Reduce brightness on inactivity" (a separate feature from DPMS
          sleep/off above): explicitly disabled, rather than relying on
          whatever this xfce4-power-manager build's compiled-in default
          happens to be for an unset key -- seen enabled by default on a
          fresh install, dimming the screen ahead of the actual lock. -->
-    <property name="brightness-inactivity-on-ac" type="uint" value="0"/>
-    <property name="brightness-inactivity-on-battery" type="uint" value="0"/>
+    <property name="brightness-inactivity-on-ac" type="int" value="0"/>
+    <property name="brightness-inactivity-on-battery" type="int" value="0"/>
     <property name="dpms-enabled" type="bool" value="true"/>
     <property name="inactivity-on-ac" type="uint" value="0"/>
     <property name="inactivity-on-battery" type="uint" value="0"/>
