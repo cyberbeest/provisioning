@@ -65,6 +65,30 @@ sed "s|/home/cyberbeest/|$TARGET_HOME/|g" "$DIR/lib/cyberbeest-set-vm-solid-back
 	> "$TARGET_HOME/.config/autostart/cyberbeest-set-vm-solid-background.desktop"
 chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.config/autostart/cyberbeest-set-vm-solid-background.desktop"
 
+echo "--- Enabling LightDM autologin for $TARGET_USER ---"
+# A VM guest has no attacker-with-physical-access threat model the way the
+# host laptop does (that's the whole reason 16-power-lock-config.sh locks
+# the host down) -- sitting at a login prompt on every boot just adds
+# friction for no security benefit here. Debian's lightdm-autologin PAM
+# config (unlike e.g. Ubuntu's) doesn't require a nopasswdlogin group
+# membership, just this lightdm.conf.d key.
+install -d /etc/lightdm/lightdm.conf.d
+cat > /etc/lightdm/lightdm.conf.d/61-vm-autologin.conf <<EOF
+[Seat:*]
+autologin-user=$TARGET_USER
+autologin-user-timeout=0
+EOF
+
+echo "--- Disabling getty@tty1 (races LightDM for the console, flashing a text login prompt at boot) ---"
+# There's no Conflicts= between display-manager.service and getty@tty1 in
+# this systemd/lightdm build, so both start and briefly race for tty1,
+# showing a flash of the text console login before LightDM's greeter takes
+# over. Left enabled on real hardware (16-power-lock-config.sh's threat
+# model, and it's a legitimate fallback if X ever fails to start there) --
+# a VM guest doesn't need that fallback, and autologin above means the
+# text prompt would never actually get used for logging in anyway.
+systemctl disable getty@tty1.service || true
+
 echo "--- Softening UPower's low-battery PowerOff to Ignore (VM sees the host's battery) ---"
 UPOWER_CONF=/etc/UPower/UPower.conf
 if [ -e "$UPOWER_CONF" ]; then
