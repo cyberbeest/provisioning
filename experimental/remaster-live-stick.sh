@@ -61,7 +61,7 @@ echo "--- Clearing any leftover build state from a previous run ---"
 # wiped the real /dev on a build host and broke sshd). Unmount anything
 # still mounted under $CHROOT first, every time, before removing it.
 for sub in dev proc sys; do
-	mountpoint -q "$CHROOT/$sub" 2>/dev/null && umount "$CHROOT/$sub"
+	mountpoint -q "$CHROOT/$sub" 2>/dev/null && umount -R "$CHROOT/$sub"
 done
 rm -rf --one-file-system "$WORK"
 
@@ -262,8 +262,12 @@ mount --bind /sys "$CHROOT/sys"
 # Guarantee these come back off even if a later command in this script
 # fails (set -e exits immediately) -- otherwise the next run's cleanup has
 # to deal with a live bind mount to the real host directories instead of
-# an ordinary leftover directory.
-trap 'umount "$CHROOT/dev" "$CHROOT/proc" "$CHROOT/sys" 2>/dev/null' EXIT
+# an ordinary leftover directory. -R (recursive): update-initramfs below
+# runs live-boot's initramfs hooks inside the chroot, which mount efivarfs
+# under $CHROOT/sys/firmware/efi/efivars on EFI hardware -- a plain umount
+# of $CHROOT/sys then fails with "target is busy" (found 2026-09-08),
+# aborting the script here under set -e and leaving all three still mounted.
+trap 'umount -R "$CHROOT/dev" "$CHROOT/proc" "$CHROOT/sys" 2>/dev/null' EXIT
 cp /etc/resolv.conf "$CHROOT/etc/resolv.conf"
 chroot "$CHROOT" apt-get -o DPkg::Lock::Timeout=60 update
 chroot "$CHROOT" apt-get -o DPkg::Lock::Timeout=60 install -y \
@@ -296,7 +300,7 @@ echo "--- Regenerating initramfs (with crypttab cleared, live-boot hooks added) 
 # picks up both fixes in one pass.
 chroot "$CHROOT" update-initramfs -u -k all
 
-umount "$CHROOT/dev" "$CHROOT/proc" "$CHROOT/sys"
+umount -R "$CHROOT/dev" "$CHROOT/proc" "$CHROOT/sys"
 
 echo "--- Marking chroot-population stages as already done ---"
 # We populated chroot/ ourselves instead of letting live-build debootstrap
