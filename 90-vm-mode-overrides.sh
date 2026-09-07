@@ -79,6 +79,20 @@ autologin-user=$TARGET_USER
 autologin-user-timeout=0
 EOF
 
+echo "--- Making sudo passwordless for $TARGET_USER ---"
+# Combined with autologin above and the disabled lock screen further down,
+# this means the account's password is never actually asked for anywhere
+# in normal use -- the password still exists (a Linux account can't
+# meaningfully have none at all without touching nullok PAM behavior,
+# which is a much bigger and unrelated change), it's just never prompted
+# for. Scoped to this one user via a dedicated sudoers.d file rather than
+# touching the group-wide sudo config.
+cat > /etc/sudoers.d/90-vm-nopasswd <<EOF
+$TARGET_USER ALL=(ALL) NOPASSWD:ALL
+EOF
+chmod 440 /etc/sudoers.d/90-vm-nopasswd
+visudo -cf /etc/sudoers.d/90-vm-nopasswd
+
 echo "--- Disabling getty@tty1 (races LightDM for the console, flashing a text login prompt at boot) ---"
 # There's no Conflicts= between display-manager.service and getty@tty1 in
 # this systemd/lightdm build, so both start and briefly race for tty1,
