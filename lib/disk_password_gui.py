@@ -710,6 +710,7 @@ class PasswordWindow(Gtk.Window):
         self.set_position(Gtk.WindowPosition.CENTER)
 
         self.active_type = PASSWORD_ORDER[0]
+        self._progress_dialog = None
 
         outer_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=20)
         self.add(outer_box)
@@ -1051,6 +1052,7 @@ class PasswordWindow(Gtk.Window):
 
         self.change_button.set_sensitive(False)
         self.set_status(t("pw.waiting_auth"), is_error=False)
+        self._show_progress_dialog(t("pw.progress_message"))
 
         # Run on a background thread so the pkexec prompt doesn't freeze the window.
         threading.Thread(
@@ -1058,6 +1060,21 @@ class PasswordWindow(Gtk.Window):
             args=(info["change"], current, new, self.active_type, self.mark_temp_checkbox.get_active()),
             daemon=True,
         ).start()
+
+    def _show_progress_dialog(self, message):
+        dialog = Gtk.Dialog(title=t("pw.progress_title"), transient_for=self, modal=True)
+        dialog.set_deletable(False)
+        box = dialog.get_content_area()
+        box.set_border_width(20)
+        box.set_spacing(12)
+        hbox = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        spinner = Gtk.Spinner()
+        spinner.start()
+        hbox.pack_start(spinner, False, False, 0)
+        hbox.pack_start(Gtk.Label(label=message), False, False, 0)
+        box.pack_start(hbox, True, True, 0)
+        dialog.show_all()
+        self._progress_dialog = dialog
 
     def _confirm_written_down(self, title, new_password):
         dialog = Gtk.MessageDialog(
@@ -1083,6 +1100,9 @@ class PasswordWindow(Gtk.Window):
         GLib.idle_add(self._on_change_done, success, message)
 
     def _on_change_done(self, success, message):
+        if self._progress_dialog is not None:
+            self._progress_dialog.destroy()
+            self._progress_dialog = None
         self.set_status(message, is_error=not success)
         self.change_button.set_sensitive(True)
         return False

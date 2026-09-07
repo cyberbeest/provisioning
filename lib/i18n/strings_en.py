@@ -90,6 +90,8 @@ STRINGS = {
     "pw.mismatch": "The new password and confirmation do not match.",
     "pw.too_short": "The new password should be at least {min_length} characters long.",
     "pw.waiting_auth": "Waiting for authentication...",
+    "pw.progress_title": "Password change in progress",
+    "pw.progress_message": "Changing password, please wait...",
     "pw.confirm_written_title": "DID YOU REALLY WRITE THIS DOWN OR MEMORIZE IT?",
     "pw.confirm_written_secondary": "My Cyberbeest {title} is: {password}",
     "pw.success": "The password was changed successfully.",

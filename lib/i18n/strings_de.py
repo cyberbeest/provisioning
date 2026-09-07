@@ -95,6 +95,8 @@ STRINGS = {
     "pw.mismatch": "Das neue Passwort und die Bestätigung stimmen nicht überein.",
     "pw.too_short": "Das neue Passwort sollte mindestens {min_length} Zeichen lang sein.",
     "pw.waiting_auth": "Warte auf Authentifizierung…",
+    "pw.progress_title": "Passwortänderung läuft",
+    "pw.progress_message": "Passwort wird geändert, bitte warten…",
     "pw.confirm_written_title": "HAST DU ES WIRKLICH AUFGESCHRIEBEN ODER DIR GEMERKT?",
     "pw.confirm_written_secondary": "Dein Cyberbeest-{title} lautet: {password}",
     "pw.success": "Das Passwort wurde erfolgreich geändert.",
