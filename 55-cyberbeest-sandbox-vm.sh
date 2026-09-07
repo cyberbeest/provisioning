@@ -32,9 +32,9 @@ fi
 
 TARGET_USER="${SUDO_USER:-cyberbeest}"
 
-echo "--- Installing libguestfs-tools (needed for the offline locale-sync step) ---"
+echo "--- Installing libguestfs-tools (offline locale-sync) and pv (download progress) ---"
 apt-get -o DPkg::Lock::Timeout=60 update -qq
-apt-get -o DPkg::Lock::Timeout=60 install -y libguestfs-tools
+apt-get -o DPkg::Lock::Timeout=60 install -y libguestfs-tools pv
 
 echo "--- Downloading and creating the sandbox VM as $TARGET_USER ---"
 sudo -u "$TARGET_USER" bash "$DIR/lib/download-and-create-sandbox-vm.sh"

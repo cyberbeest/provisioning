@@ -37,8 +37,18 @@ cleanup_on_failure() {
 }
 trap cleanup_on_failure ERR
 
-echo "--- Downloading $IMAGE_URL ---"
-curl -fL --progress-bar "$IMAGE_URL" | gunzip > "$DISK_PATH"
+echo "--- Downloading $IMAGE_URL (several GB, this takes a while) ---"
+# curl's own --progress-bar updates via \r on a real terminal; piped into
+# run-gui.py's log widget those all land as separate lines (Python's text
+# mode translates \r to \n), spamming the log. pv reports on the same pipe
+# at a controlled interval (-i 10) instead, with one real newline-
+# terminated line per update -- verified against a real subprocess.Popen
+# pipe, not just a terminal. Needs -f/--force: pv detects a non-terminal
+# stderr (exactly this case) and silently disables itself by default. -fsS
+# on curl itself drops its own noise entirely, keeping real errors only.
+IMAGE_SIZE="$(curl -fsSI "$IMAGE_URL" | tr -d '\r' | sed -n 's/^[Cc]ontent-[Ll]ength: *//Ip' | tail -1)"
+curl -fsSL "$IMAGE_URL" | pv -f -i 10 ${IMAGE_SIZE:+-s "$IMAGE_SIZE"} | gunzip > "$DISK_PATH"
+echo "--- Download complete ---"
 
 echo "--- Matching guest locale/keyboard to the host ---"
 bash "$DIR/set-vm-guest-locale.sh" "$DISK_PATH"
