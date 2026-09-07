@@ -1,0 +1,10 @@
+{
+	"policies": {
+		"Preferences": {
+			"security.sandbox.warn_unprivileged_namespaces": {
+				"Value": false,
+				"Status": "default"
+			}
+		}
+	}
+}

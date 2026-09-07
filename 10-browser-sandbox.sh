@@ -21,6 +21,17 @@ apt-get -o DPkg::Lock::Timeout=60 install -y firejail firejail-profiles firefox-
 echo "--- Allowing pulseaudio/dbus through the sandbox (firefox-esr.local override) ---"
 install -m 644 "$DIR/lib/firefox-esr.local" /etc/firejail/firefox-esr.local
 
+echo "--- Suppressing the 'security features may offer less protection' nag ---"
+# Firefox's own content-process sandbox wants an unprivileged user namespace
+# per process; firejail's default seccomp filter (firefox-common.profile's
+# `seccomp !chroot`) blocks nested namespace creation as sandbox-escape
+# hardening, so Firefox can't get that extra layer and warns about it. The
+# warning is a false negative here -- firejail already privatizes $HOME,
+# drops all caps, and applies its own seccomp/network isolation around the
+# whole browser, so nothing is actually less protected.
+install -d -m 755 /usr/lib/firefox-esr/distribution
+install -m 644 "$DIR/lib/firefox-policies.json" /usr/lib/firefox-esr/distribution/policies.json
+
 echo "--- Installing firefox-drm.profile (DRM/Widevine seccomp override) to $TARGET_HOME/.config/firejail/ ---"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.config/firejail"
 install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 \
