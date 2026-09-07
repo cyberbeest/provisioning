@@ -356,6 +356,21 @@ def script_is_done(script):
     return os.path.exists(log) and os.path.getmtime(log) > os.path.getmtime(script_path)
 
 
+def locale_dependent_scripts():
+    # Mirrors 00-locale-keyboard-timezone.sh's own `grep -lZ
+    # '^# LOCALE_DEPENDENT:'` -- used to tell whether its "Run changed" TODO
+    # is already satisfied by the rest of the current batch.
+    result = set()
+    for script in list_scripts():
+        try:
+            with open(os.path.join(DIR, script), encoding="utf-8") as f:
+                if any(line.startswith("# LOCALE_DEPENDENT:") for line in f):
+                    result.add(script)
+        except OSError:
+            pass
+    return result
+
+
 def format_duration(seconds):
     seconds = round(seconds)
     if seconds < 60:
@@ -618,6 +633,7 @@ class RunGuiWindow(Gtk.Window):
         # it hasn't been shown yet (or was cancelled) -- see _ensure_profile.
         self.profile_env = None
         self.current_run_is_batch = False
+        self.batch_scripts = set()
         self.queue_total = 0
         self.queue_done = 0
         # Sum of individual script durations run in this session -- not
@@ -1067,6 +1083,7 @@ class RunGuiWindow(Gtk.Window):
         if not self._ensure_profile(scripts):
             return
         self.current_run_is_batch = batch
+        self.batch_scripts = set(scripts)
         self.stop_requested = False
         self.follow_live = True
         self.logs[""] = ""
@@ -1317,6 +1334,17 @@ class RunGuiWindow(Gtk.Window):
                         t("run_gui.todo_reboot_text"),
                         action=(t("run_gui.todo_reboot_action"), self._do_reboot),
                     )
+                # 00-locale-keyboard-timezone.sh always asks for a follow-up
+                # "Run changed" to re-apply GRUB/LUKS/lock-screen text to the
+                # scripts it just invalidated -- but if this same batch
+                # already reached those scripts afterward (true for any "Run
+                # all", and for "Run changed"/"Run selected" runs that happen
+                # to include them), they're already re-applied and the
+                # follow-up would be a no-op. Drop it in that case instead of
+                # leaving a stale nag.
+                locale_todo_key = "00-locale-keyboard-timezone.sh"
+                if locale_todo_key in self.todos and locale_dependent_scripts() <= self.batch_scripts:
+                    self._dismiss_todo(locale_todo_key)
 
     def on_disable_autostart(self, _menuitem):
         pending = [s for s in list_scripts() if not script_is_done(s)]
