@@ -295,7 +295,7 @@ PASSWORD_TYPES = {
         "requires_current": True,
         "change": change_user_password,
         "word_count": 2,
-        "min_length": 8,
+        "min_length": 5,
     },
 }
 
@@ -765,6 +765,8 @@ class PasswordWindow(Gtk.Window):
         self.new_entry = self._last_entry
         self._add_row_widgets(grid, 2, t("pw.confirm_password"))
         self.confirm_entry = self._last_entry
+        self._set_entry_visibility(self.new_entry, True)
+        self._set_entry_visibility(self.confirm_entry, True)
 
         self.generate_button = Gtk.Button(label=t("pw.generate"))
         self.generate_button.connect("clicked", self.on_generate_clicked)
@@ -1005,8 +1007,8 @@ class PasswordWindow(Gtk.Window):
         self.current_entry.set_text("")
         self.new_entry.set_text("")
         self.confirm_entry.set_text("")
-        self._set_entry_visibility(self.new_entry, False)
-        self._set_entry_visibility(self.confirm_entry, False)
+        self._set_entry_visibility(self.new_entry, True)
+        self._set_entry_visibility(self.confirm_entry, True)
         self.status_label.set_no_show_all(True)
         self.status_label.hide()
         self.mark_temp_checkbox.set_active(False)
