@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Set Cyberbeest VM background
+Comment=Forces a flat solid-color desktop background instead of the wallpaper photo, since this session is running inside a VM
+Exec=/home/cyberbeest/.local/bin/set-vm-solid-background.sh
+NoDisplay=true
+OnlyShowIn=XFCE;
+X-XFCE-Autostart-Phase=Application

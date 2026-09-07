@@ -108,6 +108,8 @@ typedef struct {
     gdouble warn_level;    /* smoothed towards warn_target; always MemAvailable-based, ignores CountMapped */
     gdouble warn_target;
     gdouble swap_frac;     /* most recent swap-used fraction, 0..1 (0 if no swap) */
+    gulong swap_total_kib;
+    gulong swap_used_kib;
     gulong mem_total_kib;
     gulong mem_used_kib;
 
@@ -239,6 +241,9 @@ sample_memory(MemPlugin *mp)
     mp->warn_target = CLAMP((gdouble) warn_used / (gdouble) mi.total_kib, 0.0, 1.0);
     mp->swap_frac = mi.swap_total_kib > 0
         ? CLAMP(1.0 - (gdouble) mi.swap_free_kib / (gdouble) mi.swap_total_kib, 0.0, 1.0) : 0.0;
+    mp->swap_total_kib = mi.swap_total_kib;
+    mp->swap_used_kib = mi.swap_total_kib > mi.swap_free_kib
+        ? mi.swap_total_kib - mi.swap_free_kib : 0;
     return TRUE;
 }
 
@@ -432,13 +437,16 @@ on_query_tooltip(GtkWidget *widget, gint x, gint y, gboolean keyboard_mode,
     gchar buf[640];
     gdouble used_gib = mp->mem_used_kib / 1048576.0;
     gdouble total_gib = mp->mem_total_kib / 1048576.0;
+    gdouble swap_used_gib = mp->swap_used_kib / 1048576.0;
+    gdouble swap_total_gib = mp->swap_total_kib / 1048576.0;
     gdouble disk_used_gib = mp->disk_used_bytes / 1073741824.0;
     gdouble disk_total_gib = mp->disk_total_bytes / 1073741824.0;
 
     gint n = g_snprintf(buf, sizeof(buf), _("RAM: %.0f%% used (%.1f / %.1f GiB)"),
                          mp->target_level * 100.0, used_gib, total_gib);
-    if (mp->swap_frac > 0.005)
-        n += g_snprintf(buf + n, sizeof(buf) - n, _("\nSwap: %.0f%% used"), mp->swap_frac * 100.0);
+    if (mp->swap_total_kib > 0)
+        n += g_snprintf(buf + n, sizeof(buf) - n, _("\nSwap: %.0f%% used (%.1f / %.1f GiB)"),
+                         mp->swap_frac * 100.0, swap_used_gib, swap_total_gib);
     if (mp->disk_total_bytes > 0)
         n += g_snprintf(buf + n, sizeof(buf) - n, _("\nDisk: %.0f%% used (%.1f / %.1f GiB)"),
                          mp->disk_frac * 100.0, disk_used_gib, disk_total_gib);

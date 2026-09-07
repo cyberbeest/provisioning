@@ -1,0 +1,136 @@
+#!/bin/bash
+# VM-only overrides layered on top of the normal desktop provisioning.
+# Running inside a VM (VirtualBox "Fresh VM" test rig, or any other
+# hypervisor) doesn't need the same visual polish or power-saving
+# automation as real hardware:
+#   - Solid-color background instead of the wallpaper photo -- cheaper to
+#     render, and an instant visual tell that this session is the VM
+#     guest, not the host (see lib/set-vm-solid-background.sh).
+#   - Screensaver/DPMS dimming/auto-lock disabled outright: a disposable
+#     test VM has no reason to defend itself against someone stepping away.
+#   - lock-shutdown-watcher's auto-shutdown-while-locked disabled too
+#     (belt and suspenders now that locking itself is off).
+#   - UPower's low-battery PowerOff (19-low-battery-shutdown.sh) softened
+#     to Ignore: VirtualBox passes the *host's* battery state through to
+#     the guest, so without this a draining host battery could power off
+#     the VM on its own.
+#   - Battery/wattage/CPU-meter panel plugins removed: battery and wattage
+#     readings are the host's, not the VM's, and the CPU meter is a
+#     redundant second copy of what the host's own panel already shows
+#     right next to this window. mem-liquid is left in place -- guest RAM
+#     pressure is real and worth seeing.
+#   - The genmon widget's auto-lock half (the "Lock screen after" preset
+#     control) dropped, keeping only its security-update-status half --
+#     see lib/panel-status-genmon-vm.sh. A control for tuning a delay that
+#     no longer does anything (auto-lock is off) is just confusing.
+# The panel work runs before the live xfconf overrides below, not after:
+# xfce_panel_kill (in lib/xfce-panel-reload.sh) SIGKILLs xfconfd to force
+# it to re-read xfce4-panel.xml, which also discards *any* channel's
+# in-memory changes xfconfd hadn't yet flushed to its on-disk cache --
+# including the screensaver/power-manager overrides, if they'd been made
+# moments earlier. Confirmed 2026-09-07: running the panel step last
+# silently reverted the screensaver/power-manager writes back to their
+# pre-override (16-power-lock-config.sh default) values.
+# Skips everything (no-op, exit 0) when systemd-detect-virt reports bare
+# metal.
+# Depends on: 11-xfce-panel-plugins.sh, 12-xfce-panel-layout.sh,
+# 13-lock-shutdown-watcher.sh, 16-power-lock-config.sh,
+# 18-desktop-background.sh, 19-low-battery-shutdown.sh.
+# Idempotent: safe to re-run.
+set -euo pipefail
+DIR="$(cd "$(dirname "$0")" && pwd)"
+LOG="$DIR/90-vm-mode-overrides.log"
+exec > >(tee -a "$LOG") 2>&1
+
+echo "=== $(date) : VM-mode overrides ==="
+
+VIRT="$(systemd-detect-virt || true)"
+if [ "$VIRT" = "none" ]; then
+	echo "not running in a VM (systemd-detect-virt: none) -- nothing to do"
+	echo "=== $(date) : done (skipped) ==="
+	exit 0
+fi
+echo "--- detected virtualization: $VIRT ---"
+
+TARGET_USER="${SUDO_USER:-cyberbeest}"
+TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
+TARGET_UID="$(id -u "$TARGET_USER")"
+
+echo "--- Installing set-vm-solid-background.sh + autostart entry ---"
+install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.local/bin"
+install -o "$TARGET_USER" -g "$TARGET_USER" -m 755 \
+	"$DIR/lib/set-vm-solid-background.sh" "$TARGET_HOME/.local/bin/set-vm-solid-background.sh"
+install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.config/autostart"
+sed "s|/home/cyberbeest/|$TARGET_HOME/|g" "$DIR/lib/cyberbeest-set-vm-solid-background.desktop" \
+	> "$TARGET_HOME/.config/autostart/cyberbeest-set-vm-solid-background.desktop"
+chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.config/autostart/cyberbeest-set-vm-solid-background.desktop"
+
+echo "--- Softening UPower's low-battery PowerOff to Ignore (VM sees the host's battery) ---"
+UPOWER_CONF=/etc/UPower/UPower.conf
+if [ -e "$UPOWER_CONF" ]; then
+	sed -i -e 's/^CriticalPowerAction=.*/CriticalPowerAction=Ignore/' "$UPOWER_CONF"
+	systemctl restart upower.service || true
+fi
+
+echo "--- Installing the security-status-only genmon (dropping the auto-lock control) ---"
+install -o "$TARGET_USER" -g "$TARGET_USER" -m 755 \
+	"$DIR/lib/panel-status-genmon-vm.sh" "$TARGET_HOME/.local/bin/panel-status-genmon.sh"
+
+echo "--- Removing battery/wattage/CPU-meter plugins from the panel ---"
+PANEL_XML="$TARGET_HOME/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml"
+if [ -e "$PANEL_XML" ]; then
+	sed -i \
+		-e '\|<value type="int" value="12"/>|d' \
+		-e '\|<value type="int" value="13"/>|d' \
+		-e '\|<value type="int" value="14"/>|d' \
+		-e '\|<property name="plugin-12" type="string" value="power-manager-plugin"/>|d' \
+		-e '\|<property name="plugin-13" type="string" value="wattage-panel"/>|d' \
+		-e '\|<property name="plugin-14" type="string" value="kitt-scanner"/>|d' \
+		"$PANEL_XML"
+
+	. "$DIR/lib/xfce-panel-reload.sh"
+	if xfce_panel_dbus_addr; then
+		xfce_panel_kill
+		xfce_panel_launch
+	fi
+else
+	echo "no xfce4-panel.xml yet (12-xfce-panel-layout.sh hasn't run) -- skipping panel edit"
+fi
+
+TARGET_UID_RUNTIME="/run/user/$TARGET_UID"
+if [ -d "$TARGET_UID_RUNTIME" ]; then
+	SESSION_PID="$(pgrep -u "$TARGET_USER" -x xfce4-session | head -1)"
+	DBUS_ADDR=""
+	if [ -n "$SESSION_PID" ]; then
+		DBUS_ADDR="$(cat "/proc/$SESSION_PID/environ" 2>/dev/null | tr '\0' '\n' | sed -n 's/^DBUS_SESSION_BUS_ADDRESS=//p')" || true
+	fi
+	DBUS_ADDR="${DBUS_ADDR:-unix:path=$TARGET_UID_RUNTIME/bus}"
+
+	echo "--- Applying the solid background now ---"
+	su - "$TARGET_USER" -c "DISPLAY='${DISPLAY:-:0}' DBUS_SESSION_BUS_ADDRESS='$DBUS_ADDR' $TARGET_HOME/.local/bin/set-vm-solid-background.sh" || true
+
+	# Verified-retry (not a plain one-shot xfconf-query -s): a freshly
+	# (re)started xfconfd -- the normal state right after login here, since
+	# VM mode is applied at the end of a provisioning run or right after a
+	# reboot -- has silently no-op'd some of these writes in testing, with
+	# no error and the property left unset. See lib/xfconf-set-retry.sh.
+	echo "--- Disabling screensaver/lock/DPMS dimming live ---"
+	su - "$TARGET_USER" -c "
+		DISPLAY='${DISPLAY:-:0}' DBUS_SESSION_BUS_ADDRESS='$DBUS_ADDR'
+		export DISPLAY DBUS_SESSION_BUS_ADDRESS
+		. '$DIR/lib/xfconf-set-retry.sh'
+		xfconf_set_retry xfce4-screensaver /lock/enabled false -- -n -t bool -s false
+		xfconf_set_retry xfce4-screensaver /saver/idle-activation/enabled false -- -n -t bool -s false
+		xfconf_set_retry xfce4-power-manager /xfce4-power-manager/dpms-enabled false -- -n -t bool -s false
+		xfconf_set_retry xfce4-power-manager /xfce4-power-manager/brightness-inactivity-on-ac 0 -- -n -t uint -s 0
+		xfconf_set_retry xfce4-power-manager /xfce4-power-manager/brightness-inactivity-on-battery 0 -- -n -t uint -s 0
+	"
+
+	echo "--- Disabling lock-shutdown-watcher ---"
+	rm -f "$TARGET_HOME/.config/systemd/user/default.target.wants/lock-shutdown-watcher.service"
+	su - "$TARGET_USER" -c "XDG_RUNTIME_DIR='$TARGET_UID_RUNTIME' DBUS_SESSION_BUS_ADDRESS='$DBUS_ADDR' systemctl --user stop lock-shutdown-watcher.service" || true
+else
+	echo "no active session for $TARGET_USER -- background/screensaver/panel changes will need a login to apply"
+fi
+
+echo "=== $(date) : done ==="
