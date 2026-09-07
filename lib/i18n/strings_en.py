@@ -55,6 +55,7 @@ STRINGS = {
         "and the browser's CPU use is capped, to save power. Downloads and "
         "notification sounds keep working, just slower."
     ),
+    "lockpower.curtain_enabled": "Cover screen instantly on lock (recommended)",
     "lockpower.minimize_after": "Minimize windows after (minutes):",
     "lockpower.limit_cpu": "Limit browser CPU to (%):",
     "lockpower.never": "Never",

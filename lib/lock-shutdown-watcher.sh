@@ -7,7 +7,7 @@
 # for that removed code.
 
 DEFAULT_SHUTDOWN_MIN=60  # default minutes locked before shutdown
-DEFAULT_MINIMIZE_MIN=10  # default minutes locked before minimizing windows (power saving: minimized windows stop repainting)
+DEFAULT_MINIMIZE_MIN=1  # default minutes locked before minimizing windows (power saving: minimized windows stop repainting)
 DEFAULT_THROTTLE_PERCENT=10  # default CPU cap (% of one core, per process) applied to the browser while locked; 0 disables
 POLL_INTERVAL=15         # how often to check lock state
 MINIMIZED_STATE_FILE="$HOME/.cache/cyberbeest/lock-minimized-windows.list"

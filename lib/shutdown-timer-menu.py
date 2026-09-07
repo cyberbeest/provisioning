@@ -33,8 +33,9 @@ DEFAULTS = {
     # Not surfaced in this menu (see lock-power-saving-dialog.py instead) --
     # kept here anyway so this menu's own write_settings() calls don't drop
     # them from the config file when saving an unrelated setting.
-    "MINIMIZE_MINUTES": "10",
+    "MINIMIZE_MINUTES": "1",
     "BROWSER_THROTTLE_PERCENT": "10",
+    "CURTAIN_ENABLED": "true",
 }
 LEGACY_SHUTDOWN_KEY = "SHUTDOWN_MINUTES"
 

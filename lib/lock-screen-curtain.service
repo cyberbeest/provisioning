@@ -1,0 +1,10 @@
+[Unit]
+Description=Cover the screen instantly on lock, before the real lock dialog paints
+
+[Service]
+Type=simple
+ExecStart=%h/bin/lock-screen-curtain.sh
+Restart=on-failure
+
+[Install]
+WantedBy=default.target

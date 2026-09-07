@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
-"""Cyberbeest Extended Power Options: a standalone dialog for the two
+"""Cyberbeest Extended Power Options: a standalone dialog for the
 power-saving-while-locked settings (window minimizing + browser CPU
-throttling) used by lock-shutdown-watcher.sh. Has its own Whisker menu
-entry (Cyberbeest category), and is also launched as a separate process from
-shutdown-timer-menu.py's "Power saving while locked..." item, rather than
-opened as a Gtk.Dialog inside the menu's own process -- see the comment on
+throttling) used by lock-shutdown-watcher.sh, plus the instant-cover
+curtain toggle (see lock-screen-curtain.sh) -- not a power-saving feature
+itself, but lives here since it's the one other lock-related on/off
+switch users have. Has its own Whisker menu entry (Cyberbeest category),
+and is also launched as a separate process from shutdown-timer-menu.py's
+"Power saving while locked..." item, rather than opened as a Gtk.Dialog
+inside the menu's own process -- see the comment on
 open_power_saving_dialog() there for why.
 
 Reads/writes the same config file as lock-shutdown-watcher.sh and
@@ -35,8 +38,9 @@ DEFAULTS = {
     "AC_SHUTDOWN_MINUTES": "60",
     "BATTERY_SHUTDOWN_MINUTES": "60",
     "LINK_AC_BATTERY": "true",
-    "MINIMIZE_MINUTES": "10",
+    "MINIMIZE_MINUTES": "1",
     "BROWSER_THROTTLE_PERCENT": "10",
+    "CURTAIN_ENABLED": "true",
 }
 
 
@@ -98,6 +102,11 @@ class PowerSavingDialog(Gtk.Window):
         )
         box.pack_start(info, False, False, 0)
 
+        self.curtain_check = Gtk.CheckButton(label=t("lockpower.curtain_enabled"))
+        self.curtain_check.set_active(settings["CURTAIN_ENABLED"] == "true")
+        self.curtain_check.connect("toggled", self.on_curtain_toggled)
+        box.pack_start(self.curtain_check, False, False, 0)
+
         grid = Gtk.Grid(column_spacing=10, row_spacing=10)
         box.pack_start(grid, False, False, 0)
 
@@ -126,6 +135,9 @@ class PowerSavingDialog(Gtk.Window):
 
     def on_throttle_changed(self, spin):
         write_setting("BROWSER_THROTTLE_PERCENT", spin.get_value_as_int())
+
+    def on_curtain_toggled(self, check):
+        write_setting("CURTAIN_ENABLED", "true" if check.get_active() else "false")
 
 
 def main():

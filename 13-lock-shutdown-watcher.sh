@@ -3,7 +3,7 @@
 # after the screen has stayed continuously locked for SHUTDOWN_MINUTES
 # (default 60), and along the way minimizes windows and throttles the
 # browser's CPU usage (MINIMIZE_MINUTES / BROWSER_THROTTLE_PERCENT, default
-# 10min / 10%) to save power -- reading all of this from
+# 1min / 10%) to save power -- reading all of this from
 # ~/.config/cyberbeest/power-settings.conf, the file the shutdown-timer panel
 # icon's menu edits (see 12-xfce-panel-layout.sh, lib/shutdown-timer-menu.py).
 # See lib/lock-shutdown-watcher.sh.

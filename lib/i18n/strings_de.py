@@ -60,6 +60,7 @@ STRINGS = {
         "zu sparen. Downloads und Benachrichtigungstöne funktionieren "
         "weiterhin, nur langsamer."
     ),
+    "lockpower.curtain_enabled": "Bildschirm beim Sperren sofort abdecken (empfohlen)",
     "lockpower.minimize_after": "Fenster minimieren nach (Minuten):",
     "lockpower.limit_cpu": "Browser-CPU begrenzen auf (%):",
     "lockpower.never": "Nie",
