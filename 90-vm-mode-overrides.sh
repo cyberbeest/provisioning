@@ -89,6 +89,69 @@ echo "--- Disabling getty@tty1 (races LightDM for the console, flashing a text l
 # text prompt would never actually get used for logging in anyway.
 systemctl disable getty@tty1.service || true
 
+echo "--- Switching GRUB/Plymouth's boot resolution to 800x600 (avoids a scrollbar in the VBox window) ---"
+# 15-grub-plymouth-theme.sh hardcodes GRUB_GFXMODE=1366x768 to match the
+# real laptop panel. Tried "auto" first, expecting it to pick whatever
+# mode matches the current VirtualBox window -- it doesn't: "auto" (and
+# the hardcoded 1366x768) both resolve to a standard VBE mode from
+# VirtualBox's virtual video BIOS's fixed advertised list (1024x768),
+# which is *taller* than a typical VBox window's content area (~655px in
+# testing), so GRUB/Plymouth still render with a vertical scrollbar until
+# X starts and vmwgfx takes over at whatever custom size the window
+# actually is -- that custom-size negotiation is an OS-level (Guest
+# Additions) feature GRUB's own video driver doesn't have access to.
+# There's also no single "right" answer here anyway: the real deployment
+# target is an arbitrary end-user's VirtualBox window at an arbitrary
+# size, not this dev VM's current one. 800x600 is a safe floor -- short
+# enough to fit inside essentially any reasonably-sized window without
+# scrolling, at the cost of some crispness on a larger one.
+# Fixed at image-build/first-boot time, same as GRUB_GFXMODE always was.
+GRUB_DEFAULTS_FILE=/etc/default/grub
+if [ -e "$GRUB_DEFAULTS_FILE" ]; then
+	sed -i -e 's/^GRUB_GFXMODE=.*/GRUB_GFXMODE=800x600/' "$GRUB_DEFAULTS_FILE"
+	update-grub
+fi
+
+echo "--- Dropping the GRUB background image (redundant with the Plymouth splash right after it) ---"
+# 15-grub-plymouth-theme.sh sets GRUB_BACKGROUND so the "Das Biest erwacht"
+# artwork shows during GRUB itself, before Plymouth's own splash (a
+# separate, differently-styled screen) takes over moments later -- on real
+# hardware that gives continuous branding from power-on through the LUKS
+# prompt. In a VM, GRUB's own boot phase is just an instant flash before
+# Plymouth's screen anyway, so it's redundant rather than additive.
+# Just commenting out/removing the variable doesn't work: /etc/grub.d/
+# 05_debian_theme's set_background_image fallback chain, when
+# GRUB_BACKGROUND is unset, still finds /boot/grub/cyberbeest-bg.png on
+# its own (a *second*, independent fallback tier that scans /boot/grub/
+# for any image file) and uses that anyway. Setting GRUB_BACKGROUND to an
+# empty string (present but empty, not unset) instead makes that same
+# script take its "explicit background requested but invalid" path,
+# which calls set_default_theme (plain color scheme, no image) and exits
+# immediately -- skipping every fallback search, deliberately.
+if [ -e "$GRUB_DEFAULTS_FILE" ]; then
+	sed -i -e 's/^#\?GRUB_BACKGROUND=.*/GRUB_BACKGROUND=""/' "$GRUB_DEFAULTS_FILE"
+	update-grub
+fi
+
+echo "--- Swapping the bright-mode boot logo for the VM-specific one ---"
+# cyberbeest-for-print.png is what the Plymouth theme shows on its
+# near-white "bright mode" background (see cyberbeest.script) -- bright
+# mode exists so a real LUKS unlock prompt doubles as a flashlight for
+# typing in the dark, and ships on by default. A VM guest has no LUKS
+# prompt to light up (see 90-vm-mode-overrides.sh's autologin section --
+# it's a non-interactive splash here), so swap in a VM-specific logo
+# instead of the marketing/print artwork. Pre-scaled to 322x322 (Lanczos)
+# same as watermark.png/watermark-shutdown.png, to avoid Plymouth's own
+# low-quality bilinear scaling -- see lib/plymouth-theme/ for the source.
+THEME_DIR=/usr/share/plymouth/themes/cyberbeest
+if [ -d "$THEME_DIR" ]; then
+	install -m 644 "$DIR/lib/plymouth-theme/cyberbeest-for-print-vm.png" \
+		"$THEME_DIR/cyberbeest-for-print.png"
+	plymouth-set-default-theme -R cyberbeest
+else
+	echo "no $THEME_DIR yet (15-grub-plymouth-theme.sh hasn't run) -- skipping logo swap"
+fi
+
 echo "--- Softening UPower's low-battery PowerOff to Ignore (VM sees the host's battery) ---"
 UPOWER_CONF=/etc/UPower/UPower.conf
 if [ -e "$UPOWER_CONF" ]; then
