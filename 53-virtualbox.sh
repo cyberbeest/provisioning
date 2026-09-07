@@ -41,4 +41,25 @@ apt-get -o DPkg::Lock::Timeout=60 install -y virtualbox-7.2
 echo "--- Adding $TARGET_USER to the vboxusers group ---"
 usermod -aG vboxusers "$TARGET_USER"
 
+echo "--- Blacklisting KVM (conflicts with VirtualBox's use of VT-x/AMD-V) ---"
+# KVM and VirtualBox can't both hold hardware virtualization at once -- if
+# kvm_intel/kvm_amd/kvm are loaded (common: many kernels auto-load them on
+# any VT-x/AMD-V-capable CPU regardless of whether anything's actually
+# using KVM), VirtualBox's own VMs fail to start with
+# VERR_VMX_IN_VMX_ROOT_MODE. Confirmed hitting this on the dev machine and
+# on a real test machine after this exact provisioning step. Unloaded
+# immediately below, and blacklisted so it doesn't come back on the next
+# boot (or after a kernel update re-triggers the autoload).
+for mod in kvm_intel kvm_amd kvm; do
+	modprobe -r "$mod" 2>/dev/null || true
+done
+cat > /etc/modprobe.d/blacklist-kvm.conf <<'EOF'
+# Disabled permanently: conflicts with VirtualBox's use of VT-x/AMD-V
+# (VirtualBox can't run VMX/SVM root mode while KVM holds it).
+blacklist kvm_intel
+blacklist kvm_amd
+blacklist kvm
+EOF
+update-initramfs -u
+
 echo "=== $(date) : done ==="
