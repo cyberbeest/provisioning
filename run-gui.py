@@ -666,6 +666,20 @@ class RunGuiWindow(Gtk.Window):
         self.stop_button.connect("clicked", self.on_stop)
         button_box.pack_start(self.stop_button, False, False, 0)
 
+        # Separate from Stop above: that one waits for the current script to
+        # finish on its own, which is fine for a normal script but not for
+        # one that's mid-way through a multi-gigabyte download (see
+        # 55-cyberbeest-sandbox-vm.sh). This kills only network-fetch
+        # processes (curl/wget) among the running script's descendants,
+        # rather than the whole root-owned process tree -- the script's own
+        # set -euo pipefail then fails and exits cleanly on its own once the
+        # download dies, instead of risking an abrupt kill mid-apt-install
+        # or mid-file-write in some other script.
+        self.abort_download_button = Gtk.Button(label=t("run_gui.button_abort_download"))
+        self.abort_download_button.set_sensitive(False)
+        self.abort_download_button.connect("clicked", self.on_abort_download)
+        button_box.pack_start(self.abort_download_button, False, False, 0)
+
         # A small drop-down (just the triangle, no label) rather than another
         # full-size button -- this is a rare, one-off action, not something
         # that deserves the same visual weight as Run all/Run selected/Stop.
@@ -967,6 +981,7 @@ class RunGuiWindow(Gtk.Window):
         self.run_all_button.set_sensitive(not busy)
         self.run_selected_button.set_sensitive(not busy)
         self.stop_button.set_sensitive(busy)
+        self.abort_download_button.set_sensitive(busy)
         # Existing todo entries' action/dismiss buttons are things-to-do-once
         # provisioning is done -- re-lock/unlock them for the busy state that
         # just changed, since _rebuild_todo_pane only sets sensitivity at the
@@ -1375,6 +1390,54 @@ class RunGuiWindow(Gtk.Window):
             return
         self.disable_autostart_item.set_sensitive(False)
         self.status_label.set_text(t("run_gui.status_autostart_disabled"))
+
+    NETWORK_FETCH_COMMANDS = {"curl", "wget"}
+
+    def _find_descendant_pids(self, root_pid):
+        # Build the whole system's pid->(ppid, comm) map from /proc in one
+        # pass, then walk down from root_pid -- cheaper than repeatedly
+        # shelling out to pgrep/ps, and doesn't depend on either being
+        # installed.
+        children = {}
+        for entry in os.listdir("/proc"):
+            if not entry.isdigit():
+                continue
+            try:
+                with open(f"/proc/{entry}/stat") as f:
+                    stat_line = f.read()
+                # "pid (comm) state ppid ...": comm can itself contain
+                # spaces/parens, so split on the *last* ')' rather than the
+                # first, then take the fields after it.
+                rparen = stat_line.rindex(")")
+                comm = stat_line[stat_line.index("(") + 1 : rparen]
+                ppid = int(stat_line[rparen + 2 :].split()[1])
+            except (OSError, ValueError, IndexError):
+                continue
+            children.setdefault(ppid, []).append((int(entry), comm))
+
+        found = []
+        stack = [root_pid]
+        while stack:
+            for pid, comm in children.get(stack.pop(), []):
+                found.append((pid, comm))
+                stack.append(pid)
+        return found
+
+    def on_abort_download(self, _button):
+        if self.proc is None or self.proc.poll() is not None:
+            return
+        targets = [
+            pid for pid, comm in self._find_descendant_pids(self.proc.pid)
+            if comm in self.NETWORK_FETCH_COMMANDS
+        ]
+        if not targets:
+            self.status_label.set_text(t("run_gui.status_abort_download_none"))
+            return
+        subprocess.run(
+            ["sudo", "-A", "-p", "", "kill", "-TERM", *(str(p) for p in targets)],
+            env=self._sudo_env(),
+        )
+        self.status_label.set_text(t("run_gui.status_abort_download_killed"))
 
     def on_stop(self, _button):
         if not self.busy:
