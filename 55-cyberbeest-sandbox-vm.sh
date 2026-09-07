@@ -13,9 +13,9 @@
 # script" should be able to interrupt it immediately rather than waiting
 # for the download to finish on its own.
 # Depends on: 53-virtualbox.sh.
-# Idempotent: safe to re-run (download-and-create-sandbox-vm.sh refuses to
-# clobber an existing VM of the same name rather than silently
-# re-downloading over it).
+# Idempotent: safe to re-run (download-and-create-sandbox-vm.sh detects an
+# existing VM of the same name and skips cleanly rather than re-downloading
+# several GB over it).
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG="$DIR/55-cyberbeest-sandbox-vm.log"

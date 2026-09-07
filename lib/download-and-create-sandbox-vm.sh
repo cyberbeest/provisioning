@@ -20,8 +20,9 @@ IMAGE_URL="https://cyberbeest.com/vm-images/cyberbeest-donor.vdi.gz"
 VM_NAME="${1:-Cyberbeest Sandbox}"
 
 if VBoxManage list vms 2>/dev/null | grep -qF "\"$VM_NAME\""; then
-	echo "A VM named \"$VM_NAME\" already exists -- pick a different name or remove it first." >&2
-	exit 1
+	echo "A VM named \"$VM_NAME\" already exists -- assuming a prior run already set it up, skipping."
+	echo "(To rebuild it from scratch: remove it in VirtualBox Manager first, then re-run this.)"
+	exit 0
 fi
 
 echo "--- Registering the VM (so VirtualBox picks its own machine folder) ---"
