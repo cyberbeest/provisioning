@@ -28,6 +28,11 @@ DISPLAY_NAME="${1:-Cyberbeest Sandbox}"
 VM_NAME="${DISPLAY_NAME// /-}"
 CONNECT="qemu:///session"
 VM_DIR="$HOME/.local/share/cyberbeest-vms"
+# Cached separately from the per-VM disk so a later failure (e.g.
+# virt-install rejecting the name, as happened once already) doesn't cost
+# a re-download of several GB just to retry that step -- only the
+# extracted, VM-specific disk is cleaned up on failure, never this cache.
+CACHE_PATH="$VM_DIR/cyberbeest-donor.qcow2.gz"
 DISK_PATH="$VM_DIR/$VM_NAME.qcow2"
 SHARED_DIR="$HOME/Cyberbeest-Sandbox-Shared"
 
@@ -40,20 +45,33 @@ fi
 mkdir -p "$VM_DIR" "$SHARED_DIR"
 
 cleanup_on_failure() {
-	echo "--- Failed -- removing the partially-created VM and disk ---" >&2
+	echo "--- Failed -- removing the partially-created VM and disk (keeping the cached download at $CACHE_PATH) ---" >&2
 	rm -f "$DISK_PATH"
 	virsh --connect "$CONNECT" undefine "$VM_NAME" --nvram 2>/dev/null || true
 }
 trap cleanup_on_failure ERR
 
-echo "--- Downloading $IMAGE_URL (several GB, this takes a while) ---"
-# See lib/download-and-create-sandbox-vm.sh's own comment for why pv (-i 10,
-# -f) rather than curl's own \r-based progress bar: piped into run-gui.py's
-# log widget, \r becomes spammy separate lines; pv's periodic real newlines
-# don't.
 IMAGE_SIZE="$(curl -fsSI "$IMAGE_URL" | tr -d '\r' | sed -n 's/^[Cc]ontent-[Ll]ength: *//Ip' | tail -1)"
-curl -fsSL "$IMAGE_URL" | pv -f -i 10 ${IMAGE_SIZE:+-s "$IMAGE_SIZE"} | gunzip > "$DISK_PATH"
+
+if [ -n "$IMAGE_SIZE" ] && [ "$(stat -c%s "$CACHE_PATH" 2>/dev/null)" = "$IMAGE_SIZE" ]; then
+	echo "--- Reusing cached download at $CACHE_PATH (already complete) ---"
+else
+	echo "--- Downloading $IMAGE_URL to $CACHE_PATH (several GB, this takes a while) ---"
+	# See lib/download-and-create-sandbox-vm.sh's own comment for why pv
+	# (-i 10, -f) rather than curl's own \r-based progress bar: piped into
+	# run-gui.py's log widget, \r becomes spammy separate lines; pv's
+	# periodic real newlines don't.
+	#
+	# Downloaded to a .part sibling and renamed into place only once
+	# complete, so a crash/interrupt mid-download can't leave a truncated
+	# file that the size check above would mistake for a finished one.
+	curl -fsSL "$IMAGE_URL" | pv -f -i 10 ${IMAGE_SIZE:+-s "$IMAGE_SIZE"} > "$CACHE_PATH.part"
+	mv "$CACHE_PATH.part" "$CACHE_PATH"
+fi
 echo "--- Download complete ---"
+
+echo "--- Extracting to $DISK_PATH ---"
+gunzip -c "$CACHE_PATH" > "$DISK_PATH"
 
 echo "--- Matching guest locale/keyboard to the host ---"
 bash "$DIR/set-vm-guest-locale.sh" "$DISK_PATH"
