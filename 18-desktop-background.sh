@@ -9,6 +9,11 @@
 # similar attempt (removed in b321043) looked half-applied instead of just
 # working.
 # Idempotent: safe to re-run.
+#
+# Bumped 2026-09-11: shrank + lowercased the baked-in credit text on
+# lib/assets/desktop-base-fallback-wallpaper.png ("wallpaper by leonhard
+# niederwimmer", now a barely-legible 9px caption in the corner instead of
+# a full-size line of white text).
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG="$DIR/18-desktop-background.log"
