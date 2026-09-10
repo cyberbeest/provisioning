@@ -17,6 +17,11 @@
 # Idempotent: safe to re-run (download-and-create-sandbox-vm-kvm.sh detects
 # an existing VM of the same name and skips cleanly rather than
 # re-downloading several GB over it).
+#
+# Bumped 2026-09-10: lib/download-and-create-sandbox-vm-kvm.sh's default VM
+# name ("Cyberbeest Sandbox") has a space, which virt-install rejects
+# outright ("Guest name '...' can not contain ' ' character") -- the
+# libvirt-facing name is now sanitized separately from the display name.
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG="$DIR/56-cyberbeest-sandbox-vm-kvm.log"

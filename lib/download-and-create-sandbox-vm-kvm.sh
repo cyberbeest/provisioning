@@ -15,12 +15,17 @@
 # see their own headers for what each does) and a Whisker menu launcher,
 # so starting the VM and closing its window both behave like a normal app.
 #
-# Usage: download-and-create-sandbox-vm-kvm.sh [vm-name]
+# Usage: download-and-create-sandbox-vm-kvm.sh [display-name]
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 
 IMAGE_URL="https://cyberbeest.com/vm-images/cyberbeest-donor.qcow2.gz"
-VM_NAME="${1:-Cyberbeest Sandbox}"
+DISPLAY_NAME="${1:-Cyberbeest Sandbox}"
+# libvirt domain names can't contain spaces (virt-install rejects them
+# outright: "Guest name '...' can not contain ' ' character") -- sanitize
+# separately from the human-readable name used in notifications/the menu
+# entry, rather than making the friendly name itself space-free.
+VM_NAME="${DISPLAY_NAME// /-}"
 CONNECT="qemu:///session"
 VM_DIR="$HOME/.local/share/cyberbeest-vms"
 DISK_PATH="$VM_DIR/$VM_NAME.qcow2"
@@ -82,14 +87,14 @@ mkdir -p "$HOME/.local/share/applications"
 cat > "$HOME/.local/share/applications/cyberbeest-sandbox-vm.desktop" <<EOF
 [Desktop Entry]
 Type=Application
-Name=$VM_NAME
+Name=$DISPLAY_NAME
 Comment=Run untrusted apps in an isolated same-OS virtual machine
-Exec=$HOME/.local/bin/cyberbeest-vm-start.sh "$VM_NAME"
+Exec=$HOME/.local/bin/cyberbeest-vm-start.sh "$VM_NAME" "$DISPLAY_NAME"
 Icon=computer
 Categories=System;
 Terminal=false
 EOF
 
 trap - ERR
-echo "--- Done: \"$VM_NAME\" created at $DISK_PATH ---"
+echo "--- Done: \"$DISPLAY_NAME\" created at $DISK_PATH ---"
 echo "Start it from the Whisker menu, or: $HOME/.local/bin/cyberbeest-vm-start.sh"

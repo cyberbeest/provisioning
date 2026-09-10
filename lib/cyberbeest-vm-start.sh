@@ -6,10 +6,11 @@
 # launcher's Exec= line as $1, so a custom vm-name at install time still
 # works end-to-end).
 #
-# Usage: cyberbeest-vm-start.sh [vm-name]
+# Usage: cyberbeest-vm-start.sh [vm-name] [display-name]
 set -euo pipefail
 
-VM_NAME="${1:-Cyberbeest Sandbox}"
+VM_NAME="${1:-Cyberbeest-Sandbox}"
+DISPLAY_NAME="${2:-$VM_NAME}"
 CONNECT="qemu:///session"
 WATCHER="$HOME/.local/bin/cyberbeest-vm-watcher.sh"
 TITLE_FIX="$HOME/.local/bin/cyberbeest-vm-title-fix.sh"
@@ -23,11 +24,11 @@ state=$(virsh --connect "$CONNECT" domstate "$VM_NAME" 2>/dev/null || echo "shut
 
 case "$state" in
 	"shut off"|"crashed")
-		notify "Virtuelle Maschine wird gestartet" "$VM_NAME wird hochgefahren…"
+		notify "Virtuelle Maschine wird gestartet" "$DISPLAY_NAME wird hochgefahren…"
 		virsh --connect "$CONNECT" start "$VM_NAME"
 		;;
 	"paused")
-		notify "Virtuelle Maschine wird fortgesetzt" "$VM_NAME wird fortgesetzt…"
+		notify "Virtuelle Maschine wird fortgesetzt" "$DISPLAY_NAME wird fortgesetzt…"
 		virsh --connect "$CONNECT" resume "$VM_NAME"
 		;;
 	"running")
@@ -43,7 +44,7 @@ fi
 
 # Make sure exactly one title-fix loop is running for this VM.
 if ! pgrep -f "cyberbeest-vm-title-fix.sh $VM_NAME" >/dev/null 2>&1; then
-	nohup "$TITLE_FIX" "$VM_NAME" "$VM_NAME" >/tmp/cyberbeest-vm-title-fix.log 2>&1 &
+	nohup "$TITLE_FIX" "$VM_NAME" "$DISPLAY_NAME" >/tmp/cyberbeest-vm-title-fix.log 2>&1 &
 	disown
 fi
 
