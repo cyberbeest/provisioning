@@ -100,3 +100,10 @@ command -v update-desktop-database >/dev/null 2>&1 && \
 	su - "$TARGET_USER" -c "update-desktop-database '$TARGET_HOME/.local/share/applications' 2>/dev/null" || true
 
 echo "=== $(date) : done ==="
+echo "NOTE: Firefox has a startup race (Mozilla bug 1950333) where the very"
+echo "first window of a cold process can show the 'security features may"
+echo "offer less protection' nag once, even though policies.json above"
+echo "already overrides the pref that gates it. Manual step: open Firefox"
+echo "once and click 'Don't show again' if it appears -- every window after"
+echo "the first is already confirmed clean. See README.md's 'What's NOT"
+echo "provisioned here' section."

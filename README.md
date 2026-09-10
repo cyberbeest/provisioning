@@ -209,3 +209,11 @@ Per-user setup that only makes sense on the end-user's own device — e.g.
 pairing this laptop to *their* phone over Bluetooth — is a manual step for
 them to do via the Blueman GUI (Whisker menu → Bluetooth Manager), not
 something to bake into the image.
+
+After running `10-browser-sandbox.sh`, open Firefox once and click "Don't
+show again" if the "security features may offer less protection" nag
+appears. `10-browser-sandbox.sh` already ships a `policies.json` override
+that suppresses this permanently from the second window onward, but a
+Firefox startup race (Mozilla bug 1950333) can still show it once on the
+very first cold-started window — not reliably fixable from provisioning,
+see the note printed at the end of that script.
