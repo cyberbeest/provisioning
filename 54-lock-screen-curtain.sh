@@ -14,6 +14,12 @@
 # read` loop) that don't actually share variables -- each got its own
 # copy, so the watchdog's belief of the state could get stuck and never
 # fire. Switched to a state file so both see the same value.
+#
+# Also bumped same day: the curtain was sized via `xdotool
+# getdisplaygeometry`, which reports the primary monitor's resolution, not
+# the full virtual desktop -- on a dual-monitor setup this left the
+# secondary monitor mostly uncovered. Switched to `xwininfo -root`, which
+# reports the real root window size spanning every output.
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG="$DIR/54-lock-screen-curtain.log"

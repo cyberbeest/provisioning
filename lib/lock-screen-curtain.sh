@@ -157,11 +157,18 @@ ensure_curtain() {
     # placement, and a window a few hundred px past the screen edge on
     # each side is harmless.
     xprop -id "$id" -f _MOTIF_WM_HINTS 32c -set _MOTIF_WM_HINTS "0x2, 0x0, 0x0, 0x0, 0x0"
-    local geom
-    geom=$(xdotool getdisplaygeometry)
-    local width height margin overshoot_w overshoot_h
-    width=${geom% *}
-    height=${geom#* }
+    # `xdotool getdisplaygeometry` returns the primary monitor's resolution,
+    # NOT the full virtual desktop -- confirmed live 2026-09-10 on tower's
+    # dual-monitor setup (2560x1440 primary + 1920x1080 secondary side by
+    # side): it reported just 2560x1440 while the real root window is
+    # 4480x1440, leaving most of the second monitor uncovered. `xwininfo
+    # -root` reports the actual root window size, which spans every output
+    # in a normal side-by-side/extended arrangement -- so one oversized
+    # curtain window still covers all monitors, no need for one per output.
+    local root_geom width height margin overshoot_w overshoot_h
+    root_geom=$(xwininfo -root 2>/dev/null)
+    width=$(printf '%s\n' "$root_geom" | sed -n 's/.*Width: *//p')
+    height=$(printf '%s\n' "$root_geom" | sed -n 's/.*Height: *//p')
     margin=200
     overshoot_w=$(( width + margin * 2 ))
     overshoot_h=$(( height + margin * 2 ))
