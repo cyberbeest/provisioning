@@ -135,5 +135,19 @@ else
 	echo "WARNING: expected line not found in $GRUB_LINUX_SCRIPT, skipping this cosmetic patch." >&2
 fi
 
+echo "--- Backing up the current grub.cfg before regenerating it ---"
+# Unlike GRUB_FILE's backup above (kept once, forever, as the pristine
+# pre-cyberbeest state), this one is overwritten on every run: it's a
+# last-known-good/last-known-booting snapshot of the actual compiled config
+# GRUB boots from, not just the human-edited source update-grub generates it
+# from. Restoring it needs nothing more than a plain cp -- no re-running
+# update-grub, no chroot -- which matters if a future update-grub run ever
+# produces a config that doesn't boot (a source config problem wouldn't
+# necessarily be caught by regenerating it again). GRUB_CFG might not exist
+# yet on a machine where this is somehow the very first update-grub call
+# ever, so this is a soft skip, not fatal.
+GRUB_CFG="/boot/grub/grub.cfg"
+[ -e "$GRUB_CFG" ] && cp -p "$GRUB_CFG" "${GRUB_CFG}.bak"
+
 echo "--- Regenerating GRUB config ---"
 update-grub
