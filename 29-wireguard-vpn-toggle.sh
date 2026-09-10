@@ -18,6 +18,11 @@
 # memory notes for the design history (kill-switch teardown robustness fix,
 # why Mullvad/Proton aren't bundled here).
 # Idempotent: safe to re-run.
+#
+# Bumped 2026-09-10: lib/wireguard-vpn-toggle/vpn-panel-icon.sh's
+# reload_panel() used `xfce4-panel -r`, which can crash/revert the panel
+# (see lib/xfce-panel-reload.sh); switched to the SIGKILL+relaunch pattern
+# with a retry loop.
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG="$DIR/29-wireguard-vpn-toggle.log"

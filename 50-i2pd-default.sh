@@ -24,6 +24,10 @@
 # reliably exit it within 15s) -- touched here so run-gui.py's
 # log-newer-than-script skip check re-runs this on machines that already
 # completed it.
+#
+# Bumped 2026-09-10: i2pd-panel-icon.sh's reload_panel() used `xfce4-panel
+# -r`, which can crash/revert the panel (see lib/xfce-panel-reload.sh);
+# switched to the SIGKILL+relaunch pattern with a retry loop.
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG="$DIR/50-i2pd-default.log"

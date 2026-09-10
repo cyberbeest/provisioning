@@ -37,6 +37,11 @@
 # dnscrypt-proxy-resolvconf.service.
 #
 # Idempotent: safe to re-run.
+#
+# Bumped 2026-09-10: lib/setup_dot_toggle.py's dot-panel-icon.sh
+# reload_panel() used `xfce4-panel -r`, which can crash/revert the panel
+# (see lib/xfce-panel-reload.sh); switched to the SIGKILL+relaunch pattern
+# with a retry loop.
 set -u
 LOG="${BASH_SOURCE%.sh}.log"
 exec > "$LOG" 2>&1
