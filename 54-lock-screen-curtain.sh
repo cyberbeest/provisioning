@@ -7,6 +7,13 @@
 # checkbox in the Extended Power Options dialog (see
 # lib/lock-power-saving-dialog.py). See lib/lock-screen-curtain.sh.
 # Idempotent: safe to re-run.
+#
+# Bumped 2026-09-10: lib/lock-screen-curtain.sh's watchdog fail-safe used a
+# plain shell variable (curtain_state) shared between two subshells (the
+# backgrounded watchdog function and the dbus-monitor pipeline's `while
+# read` loop) that don't actually share variables -- each got its own
+# copy, so the watchdog's belief of the state could get stuck and never
+# fire. Switched to a state file so both see the same value.
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG="$DIR/54-lock-screen-curtain.log"

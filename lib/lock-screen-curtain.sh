@@ -237,7 +237,29 @@ curtain_down() {
 # nothing to wait on.
 ensure_curtain >/dev/null
 
-curtain_state="down"
+# curtain_state used to be a plain shell variable, but the watchdog (a
+# backgrounded function -- its own subshell) and the dbus-monitor handler
+# (the last stage of a pipeline -- also its own subshell, since this
+# script doesn't `shopt -s lastpipe`) each get an independent COPY of any
+# variable set before they forked; a write in one is invisible to the
+# other. In practice this let the watchdog's own belief of curtain_state
+# get stuck on "down" forever even after the dbus-monitor handler had
+# genuinely raised the curtain (only ITS copy flipped to "up") -- silently
+# disabling the one fail-safe this script exists to provide. Found live
+# 2026-09-10 after "Curtain mapped on lock"/"unmapped on unlock" turned up
+# logged twice per lock/unlock cycle, from two different subshells. Fixed
+# by moving the flag to a file so every subshell reads/writes the same
+# state instead of its own copy.
+CURTAIN_STATE_FILE="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/cyberbeest-lock-curtain.state"
+echo down > "$CURTAIN_STATE_FILE"
+
+get_curtain_state() {
+    cat "$CURTAIN_STATE_FILE" 2>/dev/null || echo down
+}
+
+set_curtain_state() {
+    echo "$1" > "$CURTAIN_STATE_FILE"
+}
 
 # Fail-safe: if the real lock state and our believed curtain_state ever
 # disagree for more than WATCHDOG_INTERVAL, force back in sync -- this is
@@ -247,26 +269,26 @@ watchdog() {
     while true; do
         sleep "$WATCHDOG_INTERVAL"
         if is_locked; then
-            [ "$curtain_state" = "down" ] && { curtain_up; curtain_state="up"; }
+            [ "$(get_curtain_state)" = "down" ] && { curtain_up; set_curtain_state up; }
         else
-            [ "$curtain_state" = "up" ] && { curtain_down; curtain_state="down"; }
+            [ "$(get_curtain_state)" = "up" ] && { curtain_down; set_curtain_state down; }
         fi
     done
 }
 watchdog &
 WATCHDOG_PID=$!
-trap 'kill "$WATCHDOG_PID" 2>/dev/null' EXIT
+trap 'kill "$WATCHDOG_PID" 2>/dev/null; rm -f "$CURTAIN_STATE_FILE"' EXIT
 
 dbus-monitor --session "type='signal',interface='org.xfce.ScreenSaver',member='ActiveChanged'" 2>/dev/null |
 while read -r line; do
     case "$line" in
         *"boolean true"*)
             curtain_up
-            curtain_state="up"
+            set_curtain_state up
             ;;
         *"boolean false"*)
             curtain_down
-            curtain_state="down"
+            set_curtain_state down
             ;;
     esac
 done
