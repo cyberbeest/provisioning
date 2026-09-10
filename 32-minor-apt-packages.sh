@@ -12,6 +12,10 @@
 #     text without touching the command line.
 #   - ncdu: terminal disk usage analyzer, handy for finding what's eating
 #     disk space without a GUI.
+#   - yt-dlp: command-line video downloader, just needs to be in PATH.
+#     Installed from trixie-backports (already enabled system-wide) instead
+#     of trixie main, since yt-dlp breaks against site changes often and the
+#     backports version is much newer (2026.08 vs. trixie's stale 2025.04).
 # Idempotent: safe to re-run.
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -23,6 +27,9 @@ PACKAGES=(gnome-calculator xclip kleopatra ncdu)
 echo "=== $(date) : installing minor apt packages: ${PACKAGES[*]} ==="
 apt-get -o DPkg::Lock::Timeout=60 update -qq
 apt-get -o DPkg::Lock::Timeout=60 install -y "${PACKAGES[@]}"
+
+echo "=== installing yt-dlp from trixie-backports ==="
+apt-get -o DPkg::Lock::Timeout=60 install -y -t trixie-backports yt-dlp
 
 echo "=== updating desktop menu cache ==="
 update-desktop-database /usr/share/applications || true
