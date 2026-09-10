@@ -449,12 +449,31 @@ class ProvisioningProfileDialog(Gtk.Dialog):
     PROFILE_SCRIPTS/PROFILE_COUNTRIES for the rest of this design's context.
     """
 
-    def __init__(self, parent, previous=None):
+    # Custom response ids for the two non-Cancel buttons -- Gtk.ResponseType
+    # only has generic ids like OK/APPLY, and this dialog needs to tell
+    # "just save" apart from "save and start the run that's pending",
+    # which are genuinely different actions with different buttons.
+    RESPONSE_SAVE = 1
+    RESPONSE_START = 2
+
+    def __init__(self, parent, previous=None, pending_count=None):
         super().__init__(title=t("run_gui.profile_dialog_title"), transient_for=parent, modal=True)
-        self.add_buttons(
-            Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
-            t("run_gui.profile_continue"), Gtk.ResponseType.OK,
-        )
+        self.add_button(Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL)
+        self.add_button(t("run_gui.profile_save"), self.RESPONSE_SAVE)
+        # Only offered when a run is actually pending (opened via
+        # _ensure_profile, not the standalone "Profile..." button) -- saves
+        # and immediately proceeds with it, rather than the button always
+        # existing but being a no-op/confusing when nothing is queued.
+        if pending_count is not None:
+            start_label = (
+                t("run_gui.profile_start_one_script") if pending_count == 1
+                else t("run_gui.profile_start_n_scripts").format(count=pending_count)
+            )
+            start_button = self.add_button(start_label, self.RESPONSE_START)
+            start_button.get_style_context().add_class("suggested-action")
+            self.set_default_response(self.RESPONSE_START)
+        else:
+            self.set_default_response(self.RESPONSE_SAVE)
         self.set_default_size(480, -1)
         self.answers = None
 
@@ -654,12 +673,15 @@ class ProvisioningProfileDialog(Gtk.Dialog):
             self.menu_key_remap.set_active(False)
 
     def collect(self):
-        """Runs the dialog; returns an answers dict (see PROFILE_SCRIPTS'
-        env-var contract with the two shell scripts) or None if cancelled."""
+        """Runs the dialog; returns (answers, start_requested).
+        answers is None if cancelled (start_requested then always False).
+        start_requested is True only for RESPONSE_START -- RESPONSE_SAVE
+        saves the same answers dict but the caller shouldn't proceed with
+        whatever run (if any) prompted the dialog."""
         response = self.run()
-        if response != Gtk.ResponseType.OK:
+        if response not in (self.RESPONSE_SAVE, self.RESPONSE_START):
             self.destroy()
-            return None
+            return None, False
 
         country_code = self.country_combo.get_active_id()
         row = self._country_row(country_code)
@@ -682,7 +704,7 @@ class ProvisioningProfileDialog(Gtk.Dialog):
             ),
         }
         self.destroy()
-        return answers
+        return answers, response == self.RESPONSE_START
 
 
 class RunGuiWindow(Gtk.Window):
@@ -1174,31 +1196,40 @@ class RunGuiWindow(Gtk.Window):
         # does.
         self._start_run([row.script], label=t("run_gui.label_run_single").format(script=row.script), batch=False)
 
-    def _edit_profile(self):
+    def _edit_profile(self, pending_scripts=None):
+        # pending_scripts is None for the standalone "Profile..." button
+        # (nothing is about to run -- only Cancel/Save are offered), or the
+        # actual script list when _ensure_profile calls this right before a
+        # run starts (adds a "Start N scripts" button alongside Save).
+        # Returns whether the run (if any) should actually proceed --
+        # RESPONSE_SAVE saves but says no, same as Cancel from the caller's
+        # point of view, just with the answers persisted either way.
         dialog = ProvisioningProfileDialog(
-            self, previous=self.profile_env or self.saved_profile_defaults
+            self,
+            previous=self.profile_env or self.saved_profile_defaults,
+            pending_count=len(pending_scripts) if pending_scripts else None,
         )
-        answers = dialog.collect()
+        answers, start_requested = dialog.collect()
         if answers is not None:
             self.profile_env = answers
             save_persisted_profile(answers)
             with open(PROFILE_FILE, "w") as f:
                 for key, value in answers.items():
                     f.write(f"{key}={value}\n")
+        return start_requested
 
     def _ensure_profile(self, scripts):
         # Only bother the user with the profile dialog if this run actually
         # touches one of the scripts it covers, and only once per run-gui.py
-        # session -- "Provisioning profile..." in the more-actions menu
-        # covers revisiting/editing it later.
-        # Returns False if the run should be aborted (dialog was shown and
-        # cancelled), True otherwise.
+        # session -- "Profile..." covers revisiting/editing it later.
+        # Returns False if the run should be aborted -- Cancel, or Save
+        # without Start (settings saved for next time, but this particular
+        # run doesn't proceed) -- True only for an actual Start click.
         if self.profile_env is not None:
             return True
         if not (set(scripts) & PROFILE_SCRIPTS):
             return True
-        self._edit_profile()
-        return self.profile_env is not None
+        return self._edit_profile(pending_scripts=scripts)
 
     def _start_run(self, scripts, label, batch):
         if not self._ensure_profile(scripts):
