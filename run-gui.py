@@ -565,6 +565,46 @@ class ProvisioningProfileDialog(Gtk.Dialog):
         self.touchpad_tuning.set_active(prev.get("PROVISIONING_TOUCHPAD_TUNING", "yes") != "no")
         add_row(t("run_gui.profile_touchpad_label"), self.touchpad_tuning)
 
+        # VM host feature (53-virtualbox.sh / 53a-qemu-kvm-boxes.sh /
+        # 55-/56-/57-cyberbeest-sandbox-vm*.sh): whether to install the
+        # same-OS sandbox VM at all, and if so, which hypervisor(s) --
+        # VirtualBox and KVM can't both hold VT-x/AMD-V at once (see
+        # lib/cyberbeest-hypervisor-switch.sh), so "both" also pulls in the
+        # switcher (57-hypervisor-switcher.sh) that lets the user pick which
+        # is active later; a single choice doesn't need a switcher at all.
+        self.vm_host = Gtk.CheckButton(label=t("run_gui.profile_vm_host_checkbox"))
+        self.vm_host.set_active(prev.get("PROVISIONING_VM_HOST", "yes") != "no")
+        add_row(t("run_gui.profile_vm_host_label"), self.vm_host)
+
+        self.vm_hypervisor_vbox = Gtk.RadioButton.new_with_label_from_widget(
+            None, t("run_gui.profile_vm_hypervisor_vbox")
+        )
+        self.vm_hypervisor_kvm = Gtk.RadioButton.new_with_label_from_widget(
+            self.vm_hypervisor_vbox, t("run_gui.profile_vm_hypervisor_kvm")
+        )
+        self.vm_hypervisor_both = Gtk.RadioButton.new_with_label_from_widget(
+            self.vm_hypervisor_vbox, t("run_gui.profile_vm_hypervisor_both")
+        )
+        vm_hypervisor_choice = prev.get("PROVISIONING_VM_HYPERVISOR", "both")
+        if vm_hypervisor_choice == "vbox":
+            self.vm_hypervisor_vbox.set_active(True)
+        elif vm_hypervisor_choice == "kvm":
+            self.vm_hypervisor_kvm.set_active(True)
+        else:
+            self.vm_hypervisor_both.set_active(True)
+        vm_hypervisor_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        vm_hypervisor_box.pack_start(self.vm_hypervisor_vbox, False, False, 0)
+        vm_hypervisor_box.pack_start(self.vm_hypervisor_kvm, False, False, 0)
+        vm_hypervisor_box.pack_start(self.vm_hypervisor_both, False, False, 0)
+        add_row(t("run_gui.profile_vm_hypervisor_label"), vm_hypervisor_box)
+
+        def _on_vm_host_toggled(checkbox):
+            enabled = checkbox.get_active()
+            vm_hypervisor_box.set_sensitive(enabled)
+
+        self.vm_host.connect("toggled", _on_vm_host_toggled)
+        _on_vm_host_toggled(self.vm_host)
+
         # Now that every widget exists, wire up the country "changed" signal
         # and seed language/keyboard/timezone from the previous answers if
         # there were any, else derive them from the country default like the
@@ -634,6 +674,12 @@ class ProvisioningProfileDialog(Gtk.Dialog):
             "PROVISIONING_MENU_KEY_REMAP": "yes" if self.menu_key_remap.get_active() else "no",
             "PROVISIONING_TIMEZONE": self.tz_combo.get_child().get_text().strip() or "UTC",
             "PROVISIONING_TOUCHPAD_TUNING": "yes" if self.touchpad_tuning.get_active() else "no",
+            "PROVISIONING_VM_HOST": "yes" if self.vm_host.get_active() else "no",
+            "PROVISIONING_VM_HYPERVISOR": (
+                "vbox" if self.vm_hypervisor_vbox.get_active()
+                else "kvm" if self.vm_hypervisor_kvm.get_active()
+                else "both"
+            ),
         }
         self.destroy()
         return answers

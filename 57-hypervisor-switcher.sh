@@ -7,11 +7,13 @@
 # VirtualBox" and "... to QEMU/KVM", each running the switch via pkexec's
 # graphical password prompt.
 #
-# Deliberately not gated on both 53-virtualbox.sh and 53a-qemu-kvm-boxes.sh
-# having run: installs unconditionally so the menu entries exist regardless
-# of provisioning order, and lib/cyberbeest-hypervisor-switch.sh itself
-# checks whether the target hypervisor is actually installed before trying
-# to switch to it.
+# Not gated on 53-virtualbox.sh/53a-qemu-kvm-boxes.sh having actually run
+# (installs regardless of provisioning order -- lib/cyberbeest-hypervisor-
+# switch.sh itself checks whether the target hypervisor is installed before
+# trying to switch to it), but IS gated on the provisioning profile's VM
+# hypervisor choice being "both" -- see lib/vm-profile-gate.sh. A single-
+# hypervisor choice has nothing to switch between, so the switcher (and its
+# two Whisker menu entries) would just be dead weight.
 # Idempotent: safe to re-run.
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -19,6 +21,9 @@ LOG="$DIR/57-hypervisor-switcher.log"
 exec > >(tee -a "$LOG") 2>&1
 
 echo "=== $(date) : installing the hypervisor switcher ==="
+
+# shellcheck disable=SC1091
+. "$DIR/lib/vm-profile-gate.sh" switcher
 
 TARGET_USER="${SUDO_USER:?SUDO_USER not set -- run this via sudo, not as a raw root shell}"
 TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"

@@ -23,6 +23,9 @@ exec > >(tee -a "$LOG") 2>&1
 
 echo "=== $(date) : installing the Cyberbeest sandbox VM ==="
 
+# shellcheck disable=SC1091
+. "$DIR/lib/vm-profile-gate.sh" vbox
+
 VIRT="$(systemd-detect-virt || true)"
 if [ "$VIRT" != "none" ]; then
 	echo "running inside a VM (systemd-detect-virt: $VIRT) -- skipping, no nested sandbox VM"

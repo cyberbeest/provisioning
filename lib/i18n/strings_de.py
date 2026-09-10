@@ -234,6 +234,12 @@ STRINGS = {
         "Cyberbeest-Touchpad-Feinabstimmung anwenden (Tippen zum Klicken "
         "überall, Empfindlichkeit/Scrollen abgestimmt auf Referenz-Hardware)"
     ),
+    "run_gui.profile_vm_host_label": "Sandbox-VM:",
+    "run_gui.profile_vm_host_checkbox": "Sandbox-VM-Funktion installieren",
+    "run_gui.profile_vm_hypervisor_label": "Hypervisor:",
+    "run_gui.profile_vm_hypervisor_vbox": "VirtualBox",
+    "run_gui.profile_vm_hypervisor_kvm": "QEMU/KVM (GNOME Boxes)",
+    "run_gui.profile_vm_hypervisor_both": "Beide (später auswählen, welche aktiv ist)",
     "run_gui.button_run_changed": "Nur Geändertes ausführen",
     "run_gui.button_run_all": "Alles ausführen",
     "run_gui.button_run_selected": "Auswahl ausführen",

@@ -22,6 +22,9 @@ exec > >(tee -a "$LOG") 2>&1
 
 echo "=== $(date) : installing VirtualBox ==="
 
+# shellcheck disable=SC1091
+. "$DIR/lib/vm-profile-gate.sh" vbox
+
 TARGET_USER="${SUDO_USER:?SUDO_USER not set -- run this via sudo, not as a raw root shell}"
 
 echo "--- Setting up the Oracle VirtualBox apt repo ---"

@@ -31,6 +31,9 @@ exec > >(tee -a "$LOG") 2>&1
 
 echo "=== $(date) : installing QEMU/KVM + GNOME Boxes ==="
 
+# shellcheck disable=SC1091
+. "$DIR/lib/vm-profile-gate.sh" kvm
+
 TARGET_USER="${SUDO_USER:?SUDO_USER not set -- run this via sudo, not as a raw root shell}"
 
 echo "--- apt-get update ---"
