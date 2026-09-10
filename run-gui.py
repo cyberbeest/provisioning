@@ -112,6 +112,7 @@ reboot after every script or hunt through the log for whether one is
 needed.
 """
 import glob
+import json
 import os
 import re
 import subprocess
@@ -186,6 +187,34 @@ PROFILE_SCRIPTS = {"00-locale-keyboard-timezone.sh", "00a-touchpad-tap-global.sh
 # timezone/touchpad choices), so no special permissions needed; removed on
 # exit purely for tidiness, see RunGuiWindow.on_destroy.
 PROFILE_FILE = os.path.join(DIR, ".provisioning-profile.env")
+
+# Unlike PROFILE_FILE above (deliberately wiped on exit -- it only exists to
+# pass this run's answers to the shell scripts), this is where the answers
+# themselves are remembered *across* separate run-gui.py launches, so
+# reopening the profile dialog later (a re-run after fixing something, a
+# second pass on the same machine) starts pre-filled with what was actually
+# picked last time instead of resetting to hardcoded defaults (country=US,
+# etc.). Still asked for confirmation each session (see _ensure_profile) --
+# this only changes the starting values, never skips the dialog outright.
+PERSISTED_PROFILE_FILE = os.path.expanduser("~/.config/cyberbeest/run-gui-profile.json")
+
+
+def load_persisted_profile():
+    try:
+        with open(PERSISTED_PROFILE_FILE) as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def save_persisted_profile(answers):
+    try:
+        os.makedirs(os.path.dirname(PERSISTED_PROFILE_FILE), exist_ok=True)
+        with open(PERSISTED_PROFILE_FILE, "w") as f:
+            json.dump(answers, f)
+    except OSError:
+        pass
 
 # code|Display name|default language (en/de)|en locale|de locale|keyboard layout|default IANA timezone
 # Keep in sync with 00-locale-keyboard-timezone.sh's own COUNTRIES array --
@@ -632,6 +661,10 @@ class RunGuiWindow(Gtk.Window):
         # Answers dict from ProvisioningProfileDialog.collect(), or None if
         # it hasn't been shown yet (or was cancelled) -- see _ensure_profile.
         self.profile_env = None
+        # Last-actually-picked answers, loaded from disk -- used only to
+        # pre-fill the dialog's starting values (see _edit_profile), not a
+        # substitute for self.profile_env itself.
+        self.saved_profile_defaults = load_persisted_profile()
         self.current_run_is_batch = False
         self.batch_scripts = set()
         self.queue_total = 0
@@ -1072,10 +1105,13 @@ class RunGuiWindow(Gtk.Window):
         self._start_run([row.script], label=t("run_gui.label_run_single").format(script=row.script), batch=False)
 
     def _edit_profile(self):
-        dialog = ProvisioningProfileDialog(self, previous=self.profile_env)
+        dialog = ProvisioningProfileDialog(
+            self, previous=self.profile_env or self.saved_profile_defaults
+        )
         answers = dialog.collect()
         if answers is not None:
             self.profile_env = answers
+            save_persisted_profile(answers)
             with open(PROFILE_FILE, "w") as f:
                 for key, value in answers.items():
                     f.write(f"{key}={value}\n")
