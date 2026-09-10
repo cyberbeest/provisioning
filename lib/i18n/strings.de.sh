@@ -62,6 +62,8 @@ Fahre nur fort, wenn du einen Installations-Link auf einer vertrauenswürdigen S
 	[shutdown_genmon.click_to_change]="Zum Ändern klicken"
 	[panel_status_genmon.lock_heading]="Sperre &amp; automatische Abschaltung"
 	[panel_status_genmon.security_heading]="Sicherheitsupdates"
+	[panel_status_genmon.ip_line]="IP-Adresse: ADDR"
+	[panel_status_genmon.ip_unknown]="keine Netzwerkverbindung"
 	[update.title]="Cyberbeest-Update"
 	[update.no_repo_message]="Kein Provisioning-Checkout unter ~/provisioning oder ~/provisioning-bleeding gefunden.
 

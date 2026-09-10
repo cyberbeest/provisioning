@@ -15,6 +15,11 @@ SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 security_heading="<b>$(t panel_status_genmon.security_heading)</b>"
 
+ip_addr="$(hostname -I 2>/dev/null | awk '{print $1}')"
+[ -n "$ip_addr" ] || ip_addr="$(t panel_status_genmon.ip_unknown)"
+ip_line="$(t panel_status_genmon.ip_line)"
+ip_line="${ip_line//ADDR/$ip_addr}"
+
 echo "<img>${SECURITY_STATUS_IMG}</img>"
-echo "<tool>${security_heading}&#10;${SECURITY_STATUS_TOOL}</tool>"
+echo "<tool>${ip_line}&#10;&#10;${security_heading}&#10;${SECURITY_STATUS_TOOL}</tool>"
 echo "<click>${SECURITY_STATUS_CLICK}</click>"
