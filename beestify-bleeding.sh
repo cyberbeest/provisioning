@@ -5,6 +5,16 @@ REPO_URL="https://github.com/cyberbeest/provisioning.git"
 CLONE_DIR="$HOME/provisioning-bleeding"
 BRANCH="main"
 
+# See beestify.sh for why -- same hardcoded-/home/cyberbeest risk applies here.
+if [ "$(whoami)" != "cyberbeest" ]; then
+  echo "Provisioning must run as the 'cyberbeest' user (currently: $(whoami))." >&2
+  echo "Several scripts hardcode /home/cyberbeest and will misbehave under a" >&2
+  echo "different username instead of failing cleanly. If this was a manual" >&2
+  echo "install where you picked a different username, create/rename to a" >&2
+  echo "'cyberbeest' account first." >&2
+  exit 1
+fi
+
 # Fresh installs from DVD media leave a cdrom:// source in sources.list,
 # which apt then blocks on (prompting to insert the disc) instead of just
 # skipping. Unconditional and up front, not just inside the "installing
