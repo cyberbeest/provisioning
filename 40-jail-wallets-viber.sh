@@ -25,7 +25,7 @@ exec > >(tee -a "$LOG") 2>&1
 
 echo "=== $(date) : jailing Viber, Sparrow, and Feather ==="
 
-TARGET_USER="${SUDO_USER:-cyberbeest}"
+TARGET_USER="${SUDO_USER:?SUDO_USER not set -- run this via sudo, not as a raw root shell}"
 TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
 
 echo "--- Installing firejail-profiles (in case earlier steps haven't run) ---"

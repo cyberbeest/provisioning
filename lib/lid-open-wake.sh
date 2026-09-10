@@ -6,7 +6,7 @@
 # logind (HandleLidSwitch=lock) + lid-screen-off.sh; this only handles the
 # direction logind has no hook for: waking the display the instant the lid
 # opens, instead of waiting for the first stray keypress.
-TARGET_USER="${SUDO_USER:-cyberbeest}"
+TARGET_USER="${SUDO_USER:?SUDO_USER not set -- run this via sudo, not as a raw root shell}"
 TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
 # Plain-text mirror of the logger calls below -- shared with
 # lid-screen-off.sh's own DEBUG_LOG, see that script for why (journal access

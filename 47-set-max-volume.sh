@@ -15,7 +15,7 @@ exec > >(tee -a "$LOG") 2>&1
 
 echo "=== $(date) : setting default speaker/mic volume to 100% ===" | tee -a "$LOG"
 
-TARGET_USER="${SUDO_USER:-cyberbeest}"
+TARGET_USER="${SUDO_USER:?SUDO_USER not set -- run this via sudo, not as a raw root shell}"
 TARGET_UID="$(id -u "$TARGET_USER")"
 
 if [ ! -d "/run/user/$TARGET_UID" ]; then

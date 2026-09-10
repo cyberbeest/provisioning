@@ -20,7 +20,7 @@ exec > >(tee -a "$LOG") 2>&1
 
 echo "=== $(date) : installing Cyberbeest Update ==="
 
-TARGET_USER="${SUDO_USER:-cyberbeest}"
+TARGET_USER="${SUDO_USER:?SUDO_USER not set -- run this via sudo, not as a raw root shell}"
 TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
 
 echo "--- Installing script to $TARGET_HOME/.local/bin ---"

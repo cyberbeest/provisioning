@@ -25,7 +25,7 @@ exec > >(tee -a "$LOG") 2>&1
 
 echo "=== $(date) : installing keyboard-shortcut customizations ==="
 
-TARGET_USER="${SUDO_USER:-cyberbeest}"
+TARGET_USER="${SUDO_USER:?SUDO_USER not set -- run this via sudo, not as a raw root shell}"
 TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
 XML_DIR="$TARGET_HOME/.config/xfce4/xfconf/xfce-perchannel-xml"
 DEST="$XML_DIR/xfce4-keyboard-shortcuts.xml"

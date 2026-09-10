@@ -12,7 +12,7 @@ LOG="$DIR/45-hide-redundant-terminals.log"
 exec > >(tee -a "$LOG") 2>&1
 
 echo "=== $(date) : hiding redundant terminal emulators from the app menu ==="
-TARGET_USER="${SUDO_USER:-cyberbeest}"
+TARGET_USER="${SUDO_USER:?SUDO_USER not set -- run this via sudo, not as a raw root shell}"
 TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
 
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.local/share/applications"

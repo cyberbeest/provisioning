@@ -5,14 +5,12 @@ REPO_URL="https://github.com/cyberbeest/provisioning.git"
 CLONE_DIR="$HOME/provisioning-bleeding"
 BRANCH="main"
 
-# See beestify.sh for why -- same hardcoded-/home/cyberbeest risk applies here.
+# See beestify.sh for why this is now just a note, not a gate -- the
+# scripts that used to hardcode /home/cyberbeest have been fixed.
 if [ "$(whoami)" != "cyberbeest" ]; then
-  echo "Provisioning must run as the 'cyberbeest' user (currently: $(whoami))." >&2
-  echo "Several scripts hardcode /home/cyberbeest and will misbehave under a" >&2
-  echo "different username instead of failing cleanly. If this was a manual" >&2
-  echo "install where you picked a different username, create/rename to a" >&2
-  echo "'cyberbeest' account first." >&2
-  exit 1
+  echo "Note: running as '$(whoami)', not 'cyberbeest'. Most scripts adapt to" >&2
+  echo "whatever user invokes them; if something misbehaves specifically" >&2
+  echo "because of the username, please report it." >&2
 fi
 
 # Fresh installs from DVD media leave a cdrom:// source in sources.list,

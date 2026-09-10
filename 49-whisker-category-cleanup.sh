@@ -41,7 +41,7 @@ exec > >(tee -a "$LOG") 2>&1
 
 echo "=== $(date) : cleaning up Whisker menu categories ==="
 
-TARGET_USER="${SUDO_USER:-cyberbeest}"
+TARGET_USER="${SUDO_USER:?SUDO_USER not set -- run this via sudo, not as a raw root shell}"
 TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
 APPDIR="$TARGET_HOME/.local/share/applications"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$APPDIR"

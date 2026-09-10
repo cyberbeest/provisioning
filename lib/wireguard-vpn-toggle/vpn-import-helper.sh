@@ -22,7 +22,7 @@ NAME="${2:-}"
 # own session could read, so this isn't a privilege boundary -- it just
 # stops this NOPASSWD helper from being repurposed as a generic root file
 # copier for arbitrary source paths.
-REAL_USER="${SUDO_USER:-cyberbeest}"
+REAL_USER="${SUDO_USER:?SUDO_USER not set -- run this via sudo, not as a raw root shell}"
 REAL_HOME="$(getent passwd "$REAL_USER" | cut -d: -f6)"
 SRC_REAL="$(readlink -f -- "$SRC" 2>/dev/null || true)"
 [ -n "$SRC_REAL" ] && [ -f "$SRC_REAL" ] || { echo "Source file not found: $SRC" >&2; exit 1; }

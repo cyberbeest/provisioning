@@ -5,21 +5,24 @@ REPO_URL="https://github.com/cyberbeest/provisioning.git"
 CLONE_DIR="$HOME/provisioning"
 BRANCH="stable"
 
-# A handful of NN-*.sh scripts hardcode /home/cyberbeest instead of $HOME
-# (00-locale-keyboard-timezone.sh, 18-desktop-background.sh,
-# 21-default-password-nag.sh, 90-vm-mode-overrides.sh) -- a manual install
-# with a different username won't hit an obvious error for these, it'll
-# just silently skip/misfire the part that touches the wrong home
-# directory. Fail fast and clearly here instead, at the one chokepoint
-# every provisioning run goes through, rather than someone discovering it
-# script-by-script.
+# The NN-*.sh scripts that used to hardcode /home/cyberbeest instead of
+# $HOME (00-locale-keyboard-timezone.sh, 18-desktop-background.sh,
+# 21-default-password-nag.sh, 90-vm-mode-overrides.sh) have since been
+# fixed to substitute $TARGET_HOME dynamically -- confirmed 2026-09-10, see
+# memory: cyberbeest_kvm_provisioning_track. Provisioning now runs under
+# whatever username invokes it; this used to be a hard `exit 1` gate
+# requiring the account be named "cyberbeest" specifically, back when that
+# assumption was still true.
+#
+# Not an exhaustive guarantee across all NN-*.sh scripts (164 of them,
+# not all individually re-audited for this) -- if something still
+# misbehaves under a non-"cyberbeest" username, it's a bug in that specific
+# script, not something this chokepoint should paper over by blocking a
+# legitimate different-username install.
 if [ "$(whoami)" != "cyberbeest" ]; then
-  echo "Provisioning must run as the 'cyberbeest' user (currently: $(whoami))." >&2
-  echo "Several scripts hardcode /home/cyberbeest and will misbehave under a" >&2
-  echo "different username instead of failing cleanly. If this was a manual" >&2
-  echo "install where you picked a different username, create/rename to a" >&2
-  echo "'cyberbeest' account first." >&2
-  exit 1
+  echo "Note: running as '$(whoami)', not 'cyberbeest'. Most scripts adapt to" >&2
+  echo "whatever user invokes them; if something misbehaves specifically" >&2
+  echo "because of the username, please report it." >&2
 fi
 
 # Fresh installs from DVD media leave a cdrom:// source in sources.list,

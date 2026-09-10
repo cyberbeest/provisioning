@@ -23,7 +23,7 @@ exec > >(tee -a "$LOG") 2>&1
 
 echo "=== $(date) : installing cyberbeest-power-settings ==="
 
-TARGET_USER="${SUDO_USER:-cyberbeest}"
+TARGET_USER="${SUDO_USER:?SUDO_USER not set -- run this via sudo, not as a raw root shell}"
 TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
 
 echo "--- Installing python3-gi (GTK bindings the GUI needs) ---"

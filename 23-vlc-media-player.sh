@@ -19,7 +19,7 @@ echo "--- Removing Parole (redundant with VLC, had seek bugs) ---"
 apt-get -o DPkg::Lock::Timeout=60 remove -y parole
 apt-get -o DPkg::Lock::Timeout=60 autoremove -y
 
-TARGET_USER="${SUDO_USER:-cyberbeest}"
+TARGET_USER="${SUDO_USER:?SUDO_USER not set -- run this via sudo, not as a raw root shell}"
 
 echo "--- Setting VLC as default video player for $TARGET_USER ---"
 VIDEO_MIMES="video/mp4 video/x-matroska video/x-msvideo video/quicktime video/webm video/mpeg video/x-flv video/3gpp video/x-ms-wmv video/ogg"

@@ -246,7 +246,7 @@ update-initramfs -u -k all
 
 if [ "$MENU_KEY_REMAP" = "yes" ] && [ "$KEYBOARD" = "de" ]; then
 	echo "--- Installing Menu key remap (German <>| key) ---"
-	TARGET_USER="${SUDO_USER:-cyberbeest}"
+	TARGET_USER="${SUDO_USER:?SUDO_USER not set -- run this via sudo, not as a raw root shell}"
 	TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
 	install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.local/bin"
 	install -o "$TARGET_USER" -g "$TARGET_USER" -m 755 \

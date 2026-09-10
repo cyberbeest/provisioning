@@ -330,7 +330,8 @@ if [ -z "$ISO_FILE" ]; then
 	exit 1
 fi
 mv "$ISO_FILE" "$OUT_ISO"
-chown "${SUDO_USER:-cyberbeest}:${SUDO_USER:-cyberbeest}" "$OUT_ISO"
+REAL_USER="${SUDO_USER:?SUDO_USER not set -- run this via sudo, not as a raw root shell}"
+chown "$REAL_USER:$REAL_USER" "$OUT_ISO"
 
 echo
 echo "=== $(date) : done ==="

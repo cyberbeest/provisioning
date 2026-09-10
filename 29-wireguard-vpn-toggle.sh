@@ -26,7 +26,7 @@ LIB="$DIR/lib/wireguard-vpn-toggle"
 
 echo "=== $(date) : installing WireGuard VPN toggle ==="
 
-TARGET_USER="${SUDO_USER:-cyberbeest}"
+TARGET_USER="${SUDO_USER:?SUDO_USER not set -- run this via sudo, not as a raw root shell}"
 TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
 
 echo "--- Installing wireguard-tools, iptables, openresolv (DNS-leak protection), python3-gi ---"

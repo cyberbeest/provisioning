@@ -38,7 +38,7 @@ exec > >(tee -a "$LOG") 2>&1
 echo "=== $(date '+%Y-%m-%d %H:%M:%S') install-secure-messengers.sh ==="
 HELPER="$DIR/cyberbeest-pkg-helper.sh"
 
-TARGET_USER="${SUDO_USER:-cyberbeest}"
+TARGET_USER="${SUDO_USER:?SUDO_USER not set -- run this via sudo, not as a raw root shell}"
 TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
 
 echo "--- Enabling 'contrib' component (needed for torbrowser-launcher) ---"

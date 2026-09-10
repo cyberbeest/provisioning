@@ -11,7 +11,7 @@ LOG="$DIR/24-avif-mime-default.log"
 exec > >(tee -a "$LOG") 2>&1
 
 echo "=== $(date) : setting Firefox as default AVIF viewer ==="
-TARGET_USER="${SUDO_USER:-cyberbeest}"
+TARGET_USER="${SUDO_USER:?SUDO_USER not set -- run this via sudo, not as a raw root shell}"
 
 FIREFOX_DESKTOP="firefox-esr.desktop"
 if [ -f /usr/share/applications/firefox.desktop ]; then

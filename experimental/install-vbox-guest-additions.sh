@@ -29,7 +29,7 @@ if [ "$(id -u)" -ne 0 ]; then
 	exit 1
 fi
 
-REAL_USER="${SUDO_USER:-cyberbeest}"
+REAL_USER="${SUDO_USER:?SUDO_USER not set -- run this via sudo, not as a raw root shell}"
 
 # Clean up any prior vendor VBoxLinuxAdditions.run install (e.g. a previous
 # failed attempt) so it can't leave a second, conflicting copy of the kernel

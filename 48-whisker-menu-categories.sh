@@ -32,7 +32,7 @@ exec > >(tee -a "$LOG") 2>&1
 
 echo "=== $(date) : setting up Whisker menu categories ==="
 
-TARGET_USER="${SUDO_USER:-cyberbeest}"
+TARGET_USER="${SUDO_USER:?SUDO_USER not set -- run this via sudo, not as a raw root shell}"
 TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
 
 MENU_DIR="$TARGET_HOME/.config/menus"

@@ -22,7 +22,7 @@
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 BUILD_ROOT="/tmp/cyberbeest-xfce4-screensaver-build"
-TARGET_USER="${SUDO_USER:-cyberbeest}"
+TARGET_USER="${SUDO_USER:?SUDO_USER not set -- run this via sudo, not as a raw root shell}"
 
 echo "=== $(date) : building xfce4-screensaver with shutdown button ==="
 

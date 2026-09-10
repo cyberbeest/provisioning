@@ -96,7 +96,7 @@ EOF
 echo "Wrote $CONF_FILE" | tee -a "$LOG"
 
 echo "--- Per-user touchpad tuning (xfconf) ---" | tee -a "$LOG"
-TARGET_USER="${SUDO_USER:-cyberbeest}"
+TARGET_USER="${SUDO_USER:?SUDO_USER not set -- run this via sudo, not as a raw root shell}"
 TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
 
 # The touchpad's xfconf property node is keyed off its raw input device

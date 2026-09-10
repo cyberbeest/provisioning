@@ -29,7 +29,7 @@ echo "--- Building and installing plugins ---"
 make -C "$DIR/lib/xfce-panel-plugins" clean install
 
 echo "--- Reloading xfce4-panel for the logged-in user, if one is running ---"
-TARGET_USER="${SUDO_USER:-cyberbeest}"
+TARGET_USER="${SUDO_USER:?SUDO_USER not set -- run this via sudo, not as a raw root shell}"
 . "$DIR/lib/xfce-panel-reload.sh"
 if xfce_panel_dbus_addr; then
 	xfce_panel_kill

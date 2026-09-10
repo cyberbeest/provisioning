@@ -22,7 +22,7 @@ exec > >(tee -a "$LOG") 2>&1
 
 echo "=== $(date) : installing VirtualBox ==="
 
-TARGET_USER="${SUDO_USER:-cyberbeest}"
+TARGET_USER="${SUDO_USER:?SUDO_USER not set -- run this via sudo, not as a raw root shell}"
 
 echo "--- Setting up the Oracle VirtualBox apt repo ---"
 "$DIR/lib/cyberbeest-pkg-helper.sh" setup-repo virtualbox
