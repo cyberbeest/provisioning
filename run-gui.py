@@ -725,25 +725,73 @@ class RunGuiWindow(Gtk.Window):
         root.set_border_width(12)
         self.add(root)
 
-        button_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        # Two rows: run/setup actions on top, stop/abort controls below --
+        # keeping every button in one row got cramped once Profile and
+        # Select all joined Run changed/Run all/Run selected/the more-
+        # actions dropdown.
+        button_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         root.pack_start(button_box, False, False, 0)
+
+        button_row1 = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        button_box.pack_start(button_row1, False, False, 0)
 
         self.run_changed_button = Gtk.Button(label=t("run_gui.button_run_changed"))
         self.run_changed_button.connect("clicked", lambda _b: self.start_sequence(changed_only=True))
-        button_box.pack_start(self.run_changed_button, False, False, 0)
+        button_row1.pack_start(self.run_changed_button, False, False, 0)
 
         self.run_all_button = Gtk.Button(label=t("run_gui.button_run_all"))
         self.run_all_button.connect("clicked", lambda _b: self.start_sequence(changed_only=False))
-        button_box.pack_start(self.run_all_button, False, False, 0)
+        button_row1.pack_start(self.run_all_button, False, False, 0)
 
         self.run_selected_button = Gtk.Button(label=t("run_gui.button_run_selected"))
         self.run_selected_button.connect("clicked", lambda _b: self.start_selected())
-        button_box.pack_start(self.run_selected_button, False, False, 0)
+        button_row1.pack_start(self.run_selected_button, False, False, 0)
+
+        # Opens the same dialog as the old "Provisioning profile..." menu
+        # item (now folded into this button instead -- no point keeping
+        # both) without starting anything, so settings can be reviewed or
+        # changed ahead of time, not just right before a "Run all"/"Run
+        # changed only" via _ensure_profile.
+        self.profile_button = Gtk.Button(label=t("run_gui.button_profile"))
+        self.profile_button.connect("clicked", lambda _b: self._edit_profile())
+        button_row1.pack_start(self.profile_button, False, False, 0)
+
+        # A small drop-down (just the triangle, no label) rather than another
+        # full-size button -- this is a rare, one-off action, not something
+        # that deserves the same visual weight as Run all/Run selected/Stop.
+        self.more_menu_button = Gtk.MenuButton()
+        self.more_menu_button.set_image(Gtk.Image.new_from_icon_name("pan-down-symbolic", Gtk.IconSize.BUTTON))
+        self.more_menu_button.set_tooltip_text(t("run_gui.more_actions_tooltip"))
+        more_menu = Gtk.Menu()
+        self.disable_autostart_item = Gtk.MenuItem(label=t("run_gui.menu_disable_autostart"))
+        self.disable_autostart_item.set_sensitive(os.path.exists(AUTOSTART_FILE))
+        self.disable_autostart_item.connect("activate", self.on_disable_autostart)
+        more_menu.append(self.disable_autostart_item)
+        self.select_vm_scripts_item = Gtk.MenuItem(label=t("run_gui.menu_select_vm_scripts"))
+        self.select_vm_scripts_item.connect("activate", lambda _mi: self._select_vm_scripts())
+        more_menu.append(self.select_vm_scripts_item)
+        more_menu.show_all()
+        self.more_menu_button.set_popup(more_menu)
+        button_row1.pack_start(self.more_menu_button, False, False, 0)
+
+        self.total_time_label = Gtk.Label(label=t("run_gui.total_time").format(duration=format_duration(0)), xalign=1)
+        button_row1.pack_end(self.total_time_label, False, False, 0)
+
+        button_row2 = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        button_box.pack_start(button_row2, False, False, 0)
+
+        # Directly under the more-actions dropdown above -- selecting
+        # everything is prep for "Run selected", same family as that
+        # dropdown's own one-off actions, just common enough to deserve a
+        # full button instead of being buried in the menu.
+        self.select_all_button = Gtk.Button(label=t("run_gui.button_select_all"))
+        self.select_all_button.connect("clicked", lambda _b: self.listbox.select_all())
+        button_row2.pack_start(self.select_all_button, False, False, 0)
 
         self.stop_button = Gtk.Button(label=t("run_gui.button_stop"))
         self.stop_button.set_sensitive(False)
         self.stop_button.connect("clicked", self.on_stop)
-        button_box.pack_start(self.stop_button, False, False, 0)
+        button_row2.pack_start(self.stop_button, False, False, 0)
 
         # Separate from Stop above: that one waits for the current script to
         # finish on its own, which is fine for a normal script but not for
@@ -757,31 +805,7 @@ class RunGuiWindow(Gtk.Window):
         self.abort_download_button = Gtk.Button(label=t("run_gui.button_abort_download"))
         self.abort_download_button.set_sensitive(False)
         self.abort_download_button.connect("clicked", self.on_abort_download)
-        button_box.pack_start(self.abort_download_button, False, False, 0)
-
-        # A small drop-down (just the triangle, no label) rather than another
-        # full-size button -- this is a rare, one-off action, not something
-        # that deserves the same visual weight as Run all/Run selected/Stop.
-        self.more_menu_button = Gtk.MenuButton()
-        self.more_menu_button.set_image(Gtk.Image.new_from_icon_name("pan-down-symbolic", Gtk.IconSize.BUTTON))
-        self.more_menu_button.set_tooltip_text(t("run_gui.more_actions_tooltip"))
-        more_menu = Gtk.Menu()
-        self.disable_autostart_item = Gtk.MenuItem(label=t("run_gui.menu_disable_autostart"))
-        self.disable_autostart_item.set_sensitive(os.path.exists(AUTOSTART_FILE))
-        self.disable_autostart_item.connect("activate", self.on_disable_autostart)
-        more_menu.append(self.disable_autostart_item)
-        self.edit_profile_item = Gtk.MenuItem(label=t("run_gui.menu_edit_profile"))
-        self.edit_profile_item.connect("activate", lambda _mi: self._edit_profile())
-        more_menu.append(self.edit_profile_item)
-        self.select_vm_scripts_item = Gtk.MenuItem(label=t("run_gui.menu_select_vm_scripts"))
-        self.select_vm_scripts_item.connect("activate", lambda _mi: self._select_vm_scripts())
-        more_menu.append(self.select_vm_scripts_item)
-        more_menu.show_all()
-        self.more_menu_button.set_popup(more_menu)
-        button_box.pack_start(self.more_menu_button, False, False, 0)
-
-        self.total_time_label = Gtk.Label(label=t("run_gui.total_time").format(duration=format_duration(0)), xalign=1)
-        button_box.pack_end(self.total_time_label, False, False, 0)
+        button_row2.pack_start(self.abort_download_button, False, False, 0)
 
         self.status_label = Gtk.Label(label=t("run_gui.status_idle"), xalign=0)
         status_css = Gtk.CssProvider()
