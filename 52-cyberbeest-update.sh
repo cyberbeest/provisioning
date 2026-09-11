@@ -27,14 +27,20 @@ install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.local/bin"
 install -o "$TARGET_USER" -g "$TARGET_USER" -m 755 \
 	"$DIR/lib/cyberbeest-update.sh" \
 	"$TARGET_HOME/.local/bin/cyberbeest-update.sh"
+install -o "$TARGET_USER" -g "$TARGET_USER" -m 755 \
+	"$DIR/lib/cyberbeest-update-confirm.py" \
+	"$TARGET_HOME/.local/bin/cyberbeest-update-confirm.py"
 
-# i18n.sh does `. "$DIR/i18n.sh"` relative to its own location, so this
-# script's i18n.sh (and its i18n/ catalogs) have to sit next to the
-# installed script -- see lib/i18n.sh.
+# i18n.sh does `. "$DIR/i18n.sh"` and i18n.py's `from i18n import t` resolves
+# relative to their own location, so both runtimes (and their i18n/
+# catalogs) have to sit next to the installed scripts -- see lib/i18n.sh and
+# lib/i18n.py.
 echo "--- Installing shared i18n runtime ---"
 install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 "$DIR/lib/i18n.sh" "$TARGET_HOME/.local/bin/i18n.sh"
+install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 "$DIR/lib/i18n.py" "$TARGET_HOME/.local/bin/i18n.py"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.local/bin/i18n"
 install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 "$DIR"/lib/i18n/strings.*.sh "$TARGET_HOME/.local/bin/i18n/"
+install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 "$DIR"/lib/i18n/strings_*.py "$TARGET_HOME/.local/bin/i18n/"
 
 echo "--- Installing Whisker menu entry ---"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.local/share/applications"

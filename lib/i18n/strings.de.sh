@@ -70,9 +70,6 @@ Fahre nur fort, wenn du einen Installations-Link auf einer vertrauenswürdigen S
 Führe zuerst beestify.sh aus (siehe cyberbeest.com)."
 	[update.track_beta]="Beta"
 	[update.track_stable]="Stable"
-	[update.confirm_message]="Dieser Computer wurde mit dem Cyberbeest-TRACK-Repository eingerichtet.
-
-Die neuesten Updates aus diesem Repository holen?"
 	[update.switch_confirm_message]="Diesen Computer vom Cyberbeest-CURRENT-Repository auf das OTHER-Repository umstellen?
 
 Dabei wird der CURRENT-Checkout gelöscht und OTHER neu geklont. Cyberbeest-Update kann nicht wissen, welche Skripte im neuen Track noch nötig sind -- das musst du selbst prüfen und ausführen."

@@ -68,9 +68,6 @@ Only continue if you clicked an install link on a page you trust."
 Run beestify.sh first (see cyberbeest.com)."
 	[update.track_beta]="beta"
 	[update.track_stable]="stable"
-	[update.confirm_message]="This computer was built using the Cyberbeest TRACK repository.
-
-Pull the latest updates from that repository?"
 	[update.switch_confirm_message]="Switch this computer from the Cyberbeest CURRENT repository to the OTHER repository?
 
 This deletes the CURRENT checkout and clones OTHER fresh. Cyberbeest Update can't tell which scripts the new track still needs -- that's up to you to review and run afterwards."

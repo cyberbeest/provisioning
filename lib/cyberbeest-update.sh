@@ -2,22 +2,18 @@
 # Cyberbeest Update (Whisker menu entry, installed by 52-cyberbeest-update.sh):
 # pulls the latest commits into whichever provisioning checkout this machine
 # tracks, then opens run-gui.py so the user can review and run whatever's
-# new themselves. Declining the pull offers switching tracks (beta <->
-# stable) instead -- see do_switch_track() below.
+# new themselves. The confirm dialog also offers switching tracks (beta <->
+# stable) instead, tucked into a dropdown -- see do_switch_track() below and
+# lib/cyberbeest-update-confirm.py's docstring for why that's a small GTK
+# dialog and not zenity.
 #
-# That's a second, separate dialog rather than a third button on the first
-# one: zenity's --question dialog always adds its own Yes/No first
-# internally and stacks any --extra-button above them, with no CLI way to
-# reorder that -- so a rare, destructive option like track-switching can't
-# be made to render below Yes/No in a single dialog. Offering it only after
-# a "no" to the pull keeps it out of the way of the everyday path instead.
-#
-# Confirms first via zenity: the git pull itself is harmless, but the
-# NN-*.sh scripts it may then run are not (they change system config), so
-# the user should see what's about to happen rather than have it start
-# on a stray click of the menu entry.
+# Confirms first: the git pull itself is harmless, but the NN-*.sh scripts
+# it may then run are not (they change system config), so the user should
+# see what's about to happen rather than have it start on a stray click of
+# the menu entry.
 set -euo pipefail
-. "$(cd "$(dirname "$0")" && pwd)/i18n.sh"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+. "$SCRIPT_DIR/i18n.sh"
 
 REPO_DIR=""
 for candidate in "$HOME/provisioning" "$HOME/provisioning-bleeding"; do
@@ -165,13 +161,17 @@ do_switch_track() {
 	exec python3 "$OTHER_DIR/run-gui.py"
 }
 
-confirm_msg="$(t update.confirm_message)"
-confirm_msg="${confirm_msg//TRACK/$TRACK}"
-
-# Declining doesn't just quit -- do_switch_track has its own separate
-# confirm (with the fuller warning) before it does anything, so offering it
-# here costs a "no" click and nothing else if that's not what was wanted.
-zenity --question --title="$(t update.title)" --width=380 --text="$confirm_msg" || do_switch_track
+case "$(python3 "$SCRIPT_DIR/cyberbeest-update-confirm.py" "$TRACK" "$OTHER_TRACK")" in
+	yes)
+		;;
+	switch)
+		do_switch_track
+		exit 0
+		;;
+	*)
+		exit 0
+		;;
+esac
 
 # reset --hard (not merge --ff-only): a plain fast-forward only touches
 # paths that actually changed in the new commits, so a tracked file that

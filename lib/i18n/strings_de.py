@@ -313,4 +313,14 @@ STRINGS = {
     "askpass.title": "Cyberbeest provisioning",
     "askpass.heading": "Gib dein kurzes Passwort ein, um die Provisioning-Skripte als root auszuführen:",
     "askpass.field_label": "Kurzes Passwort:",
+
+    "update.title": "Cyberbeest-Update",
+    "update.confirm_message": (
+        "Dieser Computer wurde mit dem Cyberbeest-{track}-Repository eingerichtet.\n\n"
+        "Die neuesten Updates aus diesem Repository holen?"
+    ),
+    "update.button_no": "Nein",
+    "update.button_yes": "Ja",
+    "update.switch_button": "Track wechseln",
+    "update.switch_menu_item": "Stattdessen zu {track} wechseln",
 }
