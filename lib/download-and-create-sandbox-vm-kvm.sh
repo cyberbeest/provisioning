@@ -20,7 +20,7 @@ set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 
 IMAGE_URL="https://cyberbeest.com/vm-images/cyberbeest-donor.qcow2.gz"
-DISPLAY_NAME="${1:-Cyberbeest Sandbox}"
+DISPLAY_NAME="${1:-Cyberbeest VM}"
 # libvirt domain names can't contain spaces (virt-install rejects them
 # outright: "Guest name '...' can not contain ' ' character") -- sanitize
 # separately from the human-readable name used in notifications/the menu
@@ -34,7 +34,7 @@ VM_DIR="$HOME/.local/share/cyberbeest-vms"
 # extracted, VM-specific disk is cleaned up on failure, never this cache.
 CACHE_PATH="$VM_DIR/cyberbeest-donor.qcow2.gz"
 DISK_PATH="$VM_DIR/$VM_NAME.qcow2"
-SHARED_DIR="$HOME/Cyberbeest-Sandbox-Shared"
+SHARED_DIR="$HOME/VM-Shared"
 
 if virsh --connect "$CONNECT" list --all --name 2>/dev/null | grep -qxF "$VM_NAME"; then
 	echo "A VM named \"$VM_NAME\" already exists -- assuming a prior run already set it up, skipping."

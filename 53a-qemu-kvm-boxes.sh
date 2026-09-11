@@ -1,7 +1,7 @@
 #!/bin/bash
 # Installs QEMU/KVM + libvirt + GNOME Boxes on the host, as an alternative
-# hypervisor to VirtualBox (53-virtualbox.sh) for the same-OS sandbox-VM
-# feature -- the guest VM itself is a separate, later step
+# hypervisor to VirtualBox (53-virtualbox.sh) for the same-OS VM feature --
+# the guest VM itself is a separate, later step
 # (56-cyberbeest-sandbox-vm-kvm.sh).
 #
 # Why an alternative to VirtualBox at all: VirtualBox's kernel modules are
@@ -10,18 +10,21 @@
 # setup -- unprivileged per-user `qemu:///session`, with QEMU sandboxed via
 # seccomp). See memory: cyberbeest_vbox_to_kvm_boxes_migration.
 #
-# NOT YET DECIDED whether this replaces VirtualBox outright or the two
-# stay as parallel options -- both scripts currently ship. They are
-# mutually exclusive at runtime on the same machine (VirtualBox can't hold
-# VT-x/AMD-V while KVM does, and vice versa), so:
+# Decided 2026-09-11: both stay installed unconditionally (no "pick a
+# hypervisor" profile question) -- KVM is the promoted default (it's the
+# only one provisioning auto-builds a VM disk image for, see
+# 56-cyberbeest-sandbox-vm-kvm.sh), VirtualBox stays available but
+# unpromoted for users who want it. They're mutually exclusive at runtime
+# on the same machine (VirtualBox can't hold VT-x/AMD-V while KVM does,
+# and vice versa), so:
 #   - 53-virtualbox.sh blacklists the kvm/kvm_intel/kvm_amd modules.
 #   - This script undoes that blacklist if present, and loads kvm_intel or
 #     kvm_amd itself.
-# If both scripts end up running on the same install (nothing currently
-# prevents that -- there's no "pick one hypervisor" question yet), the
-# LAST one to run wins the module-blacklist tug-of-war. Needs a real
-# selection mechanism before this ships for real; flagging rather than
-# solving here.
+# This script's the letter-suffixed one (53a runs right after 53, see
+# lib's letter-suffix scheme), so it always wins the module-blacklist
+# tug-of-war -- KVM ends up active after a fresh provisioning run, with the
+# Whisker switcher (57-hypervisor-switcher.sh) there if the user wants
+# VirtualBox active instead.
 #
 # Idempotent: safe to re-run.
 set -euo pipefail
@@ -30,9 +33,6 @@ LOG="$DIR/53a-qemu-kvm-boxes.log"
 exec > >(tee -a "$LOG") 2>&1
 
 echo "=== $(date) : installing QEMU/KVM + GNOME Boxes ==="
-
-# shellcheck disable=SC1091
-. "$DIR/lib/vm-profile-gate.sh" kvm
 
 TARGET_USER="${SUDO_USER:?SUDO_USER not set -- run this via sudo, not as a raw root shell}"
 

@@ -1,9 +1,8 @@
 #!/bin/bash
 # Cyberbeest Update (Whisker menu entry, installed by 52-cyberbeest-update.sh):
 # pulls the latest commits into whichever provisioning checkout this machine
-# tracks, then opens run-gui.py straight into "Run changed only" so anything
-# new gets applied without the user having to find and click that button
-# themselves.
+# tracks, then opens run-gui.py so the user can review and run whatever's
+# new themselves.
 #
 # Confirms first via zenity: the git pull itself is harmless, but the
 # NN-*.sh scripts it may then run are not (they change system config), so
@@ -76,4 +75,4 @@ fi
 wait_out_min_progress_time
 kill "$progress_pid" 2>/dev/null || true
 
-exec python3 "$REPO_DIR/run-gui.py" --run-changed
+exec python3 "$REPO_DIR/run-gui.py"

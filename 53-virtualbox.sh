@@ -1,9 +1,15 @@
 #!/bin/bash
 # Installs VirtualBox on the host, so every machine can run a same-OS
-# sandbox VM for extra isolation when running an untrusted app (the guest
-# VM itself -- what actually gets installed inside it, and when -- is a
+# VM for extra isolation when running an untrusted app (the guest VM
+# itself -- what actually gets installed inside it, and when -- is a
 # separate, later step; this script only gets the hypervisor itself onto
 # the machine).
+#
+# Installed unconditionally alongside 53a-qemu-kvm-boxes.sh -- there's no
+# "pick a hypervisor" profile question, both always go on. VirtualBox
+# isn't promoted (provisioning doesn't auto-build a VM disk image for it,
+# see experimental/55-cyberbeest-sandbox-vm.sh) but stays available for
+# users who want it, e.g. for its snapshot-tree UI.
 #
 # Uses Oracle's own apt repository, not a Debian package: Debian dropped
 # its own "virtualbox" package years ago (licensing/maintenance friction --
@@ -21,9 +27,6 @@ LOG="$DIR/53-virtualbox.log"
 exec > >(tee -a "$LOG") 2>&1
 
 echo "=== $(date) : installing VirtualBox ==="
-
-# shellcheck disable=SC1091
-. "$DIR/lib/vm-profile-gate.sh" vbox
 
 TARGET_USER="${SUDO_USER:?SUDO_USER not set -- run this via sudo, not as a raw root shell}"
 

@@ -3,17 +3,17 @@
 # for why one is needed: VirtualBox and KVM can't both hold VT-x/AMD-V at
 # once, so with both installed side by side -- 53-virtualbox.sh and
 # 53a-qemu-kvm-boxes.sh -- something has to let the user pick which one is
-# actually active). Adds two Whisker menu entries, "Switch Sandbox VM to
+# actually active). Adds two Whisker menu entries, "Switch VM to
 # VirtualBox" and "... to QEMU/KVM", each running the switch via pkexec's
 # graphical password prompt.
 #
-# Not gated on 53-virtualbox.sh/53a-qemu-kvm-boxes.sh having actually run
-# (installs regardless of provisioning order -- lib/cyberbeest-hypervisor-
-# switch.sh itself checks whether the target hypervisor is installed before
-# trying to switch to it), but IS gated on the provisioning profile's VM
-# hypervisor choice being "both" -- see lib/vm-profile-gate.sh. A single-
-# hypervisor choice has nothing to switch between, so the switcher (and its
-# two Whisker menu entries) would just be dead weight.
+# Installs unconditionally: both hypervisors always install
+# (53-virtualbox.sh, 53a-qemu-kvm-boxes.sh -- no "pick a hypervisor"
+# profile question), so there's always something to switch between. Not
+# gated on those two having actually run, either (installs regardless of
+# provisioning order -- lib/cyberbeest-hypervisor-switch.sh itself checks
+# whether the target hypervisor is installed before trying to switch to
+# it).
 # Idempotent: safe to re-run.
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -21,9 +21,6 @@ LOG="$DIR/57-hypervisor-switcher.log"
 exec > >(tee -a "$LOG") 2>&1
 
 echo "=== $(date) : installing the hypervisor switcher ==="
-
-# shellcheck disable=SC1091
-. "$DIR/lib/vm-profile-gate.sh" switcher
 
 TARGET_USER="${SUDO_USER:?SUDO_USER not set -- run this via sudo, not as a raw root shell}"
 TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
@@ -42,7 +39,7 @@ install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.local/share/applic
 cat > "$TARGET_HOME/.local/share/applications/cyberbeest-switch-to-vbox.desktop" <<EOF
 [Desktop Entry]
 Type=Application
-Name=Switch Sandbox VM to VirtualBox
+Name=Switch VM to VirtualBox
 Comment=Makes VirtualBox the active hypervisor (deactivates QEMU/KVM)
 Exec=$TARGET_HOME/.local/bin/cyberbeest-hypervisor-switch-ui.sh vbox
 Icon=computer
@@ -52,7 +49,7 @@ EOF
 cat > "$TARGET_HOME/.local/share/applications/cyberbeest-switch-to-kvm.desktop" <<EOF
 [Desktop Entry]
 Type=Application
-Name=Switch Sandbox VM to QEMU/KVM
+Name=Switch VM to QEMU/KVM
 Comment=Makes QEMU/KVM the active hypervisor (deactivates VirtualBox)
 Exec=$TARGET_HOME/.local/bin/cyberbeest-hypervisor-switch-ui.sh kvm
 Icon=computer

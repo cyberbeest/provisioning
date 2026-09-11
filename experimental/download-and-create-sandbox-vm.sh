@@ -8,16 +8,19 @@
 # set-vm-guest-locale.sh so the guest's language/keyboard match the host's
 # before its first boot.
 #
-# Whether this runs automatically during provisioning or only on-demand
-# (e.g. from a Whisker menu item) is not yet decided -- this script is
-# just the mechanism, callable either way.
+# Moved to experimental/ 2026-09-11: VirtualBox stays installed by default
+# (53-virtualbox.sh) so users can opt into it, but provisioning no longer
+# auto-builds a VBox disk image -- only the KVM one
+# (56-cyberbeest-sandbox-vm-kvm.sh) does that now. This script is unused by
+# the default provisioning chain; run it manually if you want a VBox VM.
 #
 # Usage: download-and-create-sandbox-vm.sh [vm-name]
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
+LIB_DIR="$(cd "$DIR/../lib" && pwd)"
 
 IMAGE_URL="https://cyberbeest.com/vm-images/cyberbeest-donor.vdi.gz"
-VM_NAME="${1:-Cyberbeest Sandbox}"
+VM_NAME="${1:-Cyberbeest VM}"
 
 if VBoxManage list vms 2>/dev/null | grep -qF "\"$VM_NAME\""; then
 	echo "A VM named \"$VM_NAME\" already exists -- assuming a prior run already set it up, skipping."
@@ -52,7 +55,7 @@ curl -fsSL "$IMAGE_URL" | pv -f -i 10 ${IMAGE_SIZE:+-s "$IMAGE_SIZE"} | gunzip >
 echo "--- Download complete ---"
 
 echo "--- Matching guest locale/keyboard to the host ---"
-bash "$DIR/set-vm-guest-locale.sh" "$DISK_PATH"
+bash "$LIB_DIR/set-vm-guest-locale.sh" "$DISK_PATH"
 
 echo "--- Configuring hardware ---"
 VBoxManage modifyvm "$VM_NAME" --memory 2048 --cpus 2 --firmware efi \

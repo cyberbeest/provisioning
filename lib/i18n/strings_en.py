@@ -225,12 +225,8 @@ STRINGS = {
         "Apply Cyberbeest touchpad tuning (tap-to-click everywhere, "
         "sensitivity/scrolling dialed in on reference hardware)"
     ),
-    "run_gui.profile_vm_host_label": "Sandbox VM:",
-    "run_gui.profile_vm_host_checkbox": "Install the sandbox VM feature",
-    "run_gui.profile_vm_hypervisor_label": "Hypervisor:",
-    "run_gui.profile_vm_hypervisor_vbox": "VirtualBox",
-    "run_gui.profile_vm_hypervisor_kvm": "QEMU/KVM (GNOME Boxes)",
-    "run_gui.profile_vm_hypervisor_both": "Both (pick which is active later)",
+    "run_gui.profile_vm_image_label": "VM image:",
+    "run_gui.profile_vm_image_checkbox": "Download the Cyberbeest VM disk image (KVM)",
     "run_gui.button_run_changed": "Run changed only",
     "run_gui.button_run_all": "Run all",
     "run_gui.button_run_selected": "Run selected",

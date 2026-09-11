@@ -3,9 +3,9 @@
 # hold hardware virtualization at once (confirmed live: VirtualBox 7.2
 # fails to start a VM with VERR_VMX_IN_VMX_ROOT_MODE the instant kvm_intel
 # is loaded, even completely idle -- a real hardware exclusion, not a
-# stale blacklist file). Both hypervisors and both sandbox VMs can be
-# installed side by side; this is what actually lets the user switch which
-# one is *active* without a reboot.
+# stale blacklist file). Both hypervisors are always installed side by
+# side; this is what actually lets the user switch which one is *active*
+# without a reboot.
 #
 # Root-only (unloading/loading kernel modules) -- invoked via pkexec from
 # lib/cyberbeest-hypervisor-switch-ui.sh, not directly by the user.

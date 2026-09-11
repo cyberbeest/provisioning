@@ -1,5 +1,5 @@
 #!/bin/bash
-# Idempotently starts (or resumes) the Cyberbeest sandbox VM and opens it
+# Idempotently starts (or resumes) the Cyberbeest VM and opens it
 # in GNOME Boxes. Also ensures the close-watcher and title-fix loop are
 # running. Installed to ~/.local/bin by lib/download-and-create-sandbox-vm-kvm.sh
 # and wired to a Whisker menu launcher (with the VM name baked into the
@@ -9,7 +9,7 @@
 # Usage: cyberbeest-vm-start.sh [vm-name] [display-name]
 set -euo pipefail
 
-VM_NAME="${1:-Cyberbeest-Sandbox}"
+VM_NAME="${1:-Cyberbeest-VM}"
 DISPLAY_NAME="${2:-$VM_NAME}"
 CONNECT="qemu:///session"
 WATCHER="$HOME/.local/bin/cyberbeest-vm-watcher.sh"
