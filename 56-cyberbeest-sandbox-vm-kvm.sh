@@ -29,6 +29,13 @@
 # name ("Cyberbeest VM") has a space, which virt-install rejects
 # outright ("Guest name '...' can not contain ' ' character") -- the
 # libvirt-facing name is now sanitized separately from the display name.
+#
+# Bumped 2026-09-11: lib/download-and-create-sandbox-vm-kvm.sh's download
+# now resumes an interrupted transfer (via curl -C -) instead of starting
+# over -- caught after a host reboot mid-download left a 243MB .part file
+# behind. Guards against resuming into a stale file if the donor image is
+# updated on the server mid-download, by comparing the remote ETag against
+# one recorded next to the .part.
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG="$DIR/56-cyberbeest-sandbox-vm-kvm.log"

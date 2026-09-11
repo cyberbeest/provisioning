@@ -51,22 +51,62 @@ cleanup_on_failure() {
 }
 trap cleanup_on_failure ERR
 
-IMAGE_SIZE="$(curl -fsSI "$IMAGE_URL" | tr -d '\r' | sed -n 's/^[Cc]ontent-[Ll]ength: *//Ip' | tail -1)"
+REMOTE_HEADERS="$(curl -fsSI "$IMAGE_URL" | tr -d '\r')"
+IMAGE_SIZE="$(printf '%s\n' "$REMOTE_HEADERS" | sed -n 's/^[Cc]ontent-[Ll]ength: *//Ip' | tail -1)"
+# Identifies which server-side version of the image a cached/partial
+# download actually is, so a resume can't silently splice bytes from two
+# different versions together if the donor image gets updated between
+# runs. ETag is the normal way to do this; Last-Modified is a fallback for
+# a server that doesn't send one. If neither is present, IMAGE_VERSION is
+# empty and every run just re-downloads from scratch (see below).
+IMAGE_VERSION="$(printf '%s\n' "$REMOTE_HEADERS" | sed -n 's/^[Ee][Tt]ag: *//p' | tail -1)"
+[ -n "$IMAGE_VERSION" ] || IMAGE_VERSION="$(printf '%s\n' "$REMOTE_HEADERS" | sed -n 's/^[Ll]ast-[Mm]odified: *//Ip' | tail -1)"
+VERSION_FILE="$CACHE_PATH.version"
 
-if [ -n "$IMAGE_SIZE" ] && [ "$(stat -c%s "$CACHE_PATH" 2>/dev/null)" = "$IMAGE_SIZE" ]; then
-	echo "--- Reusing cached download at $CACHE_PATH (already complete) ---"
+if [ -n "$IMAGE_SIZE" ] && [ "$(stat -c%s "$CACHE_PATH" 2>/dev/null)" = "$IMAGE_SIZE" ] \
+	&& [ -n "$IMAGE_VERSION" ] && [ "$(cat "$VERSION_FILE" 2>/dev/null)" = "$IMAGE_VERSION" ]; then
+	echo "--- Reusing cached download at $CACHE_PATH (already complete, same version) ---"
 else
+	# A .part left over from an interrupted download (e.g. a crash/reboot
+	# mid-transfer) can only be resumed if it's bytes of the SAME
+	# server-side version -- otherwise `curl -C -` would happily append
+	# new-version bytes onto the tail of an old-version prefix, producing
+	# a corrupt file that just happens to be the right size. Compare
+	# against the version recorded next to the .part when IT was started;
+	# discard and restart from scratch on any mismatch (including the
+	# "no version info available" case, to be safe).
+	if [ -f "$CACHE_PATH.part" ]; then
+		if [ -z "$IMAGE_VERSION" ] || [ "$(cat "$VERSION_FILE.part" 2>/dev/null)" != "$IMAGE_VERSION" ]; then
+			echo "--- Remote image version changed (or unknown) since the last partial download -- discarding it and starting over ---"
+			rm -f "$CACHE_PATH.part"
+		fi
+	fi
+	[ -n "$IMAGE_VERSION" ] && printf '%s' "$IMAGE_VERSION" > "$VERSION_FILE.part"
+
 	echo "--- Downloading $IMAGE_URL to $CACHE_PATH (several GB, this takes a while) ---"
-	# See lib/download-and-create-sandbox-vm.sh's own comment for why pv
-	# (-i 10, -f) rather than curl's own \r-based progress bar: piped into
-	# run-gui.py's log widget, \r becomes spammy separate lines; pv's
-	# periodic real newlines don't.
-	#
-	# Downloaded to a .part sibling and renamed into place only once
-	# complete, so a crash/interrupt mid-download can't leave a truncated
-	# file that the size check above would mistake for a finished one.
-	curl -fsSL "$IMAGE_URL" | pv -f -i 10 ${IMAGE_SIZE:+-s "$IMAGE_SIZE"} > "$CACHE_PATH.part"
+	# curl -C - resumes from $CACHE_PATH.part's current size via an HTTP
+	# Range request (a no-op, starting from byte 0, the first time). Can't
+	# pipe through pv here the way experimental/download-and-create-sandbox-vm.sh
+	# does (comment there explains why not curl's own \r-based bar) since
+	# -C - needs to write directly to a seekable file, not a pipe -- so
+	# progress is a periodic size poll instead, printed every 10s to match
+	# pv's non-spammy cadence in run-gui.py's log widget.
+	curl -fsSL -C - "$IMAGE_URL" -o "$CACHE_PATH.part" &
+	CURL_PID=$!
+	while kill -0 "$CURL_PID" 2>/dev/null; do
+		sleep 10
+		CUR_SIZE="$(stat -c%s "$CACHE_PATH.part" 2>/dev/null || echo 0)"
+		if [ -n "$IMAGE_SIZE" ] && [ "$IMAGE_SIZE" -gt 0 ]; then
+			echo "--- Downloaded $CUR_SIZE / $IMAGE_SIZE bytes ($(( CUR_SIZE * 100 / IMAGE_SIZE ))%) ---"
+		else
+			echo "--- Downloaded $CUR_SIZE bytes ---"
+		fi
+	done
+	wait "$CURL_PID"
+
 	mv "$CACHE_PATH.part" "$CACHE_PATH"
+	[ -n "$IMAGE_VERSION" ] && printf '%s' "$IMAGE_VERSION" > "$VERSION_FILE"
+	rm -f "$VERSION_FILE.part"
 fi
 echo "--- Download complete ---"
 
