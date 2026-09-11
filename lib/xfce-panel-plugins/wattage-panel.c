@@ -357,7 +357,7 @@ watt_update_label(WattPlugin *wp)
     gdouble power_uw = 0, energy_uwh = 0, capacity = 0;
 
     if (!wp->have_battery) {
-        gtk_label_set_text(GTK_LABEL(wp->label), _("no battery"));
+        gtk_label_set_text(GTK_LABEL(wp->label), "");
         return;
     }
 
@@ -680,7 +680,7 @@ watt_construct(XfcePanelPlugin *plugin)
     wp->have_battery = g_file_test(BAT_PATH, G_FILE_TEST_IS_DIR);
     watt_load_settings(wp);
 
-    wp->label = gtk_label_new(wp->have_battery ? "..." : _("no battery"));
+    wp->label = gtk_label_new(wp->have_battery ? "..." : "");
     gtk_container_add(GTK_CONTAINER(plugin), wp->label);
     gtk_widget_show_all(GTK_WIDGET(plugin));
     xfce_panel_plugin_add_action_widget(plugin, wp->label);

@@ -12,6 +12,8 @@
 # CountMapped "passive cache" credit (tmpfs/shared-memory pages aren't
 # reclaimable page cache), so the displayed % and the warning threshold
 # stop diverging when Shmem usage is large.
+# 2026-09-11: wattage-panel shows an empty label instead of the "no
+# battery" text on machines without a battery.
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG="$DIR/11-xfce-panel-plugins.log"
