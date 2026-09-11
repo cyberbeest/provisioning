@@ -82,6 +82,16 @@ APPS = [
         "remove_pkg": "proton-vpn-gnome-desktop",
         "repo": "protonvpn",
     },
+    {
+        "id": "chrome",
+        "name": "Google Chrome",
+        "description": "Google's own browser build -- opt-in only; Firefox is the default for privacy reasons (see cyberbeest.com). Installing this also adds Google's apt repo, which Chrome uses to auto-update itself.",
+        "category": "Web Browsers",
+        "check_pkg": "google-chrome-stable",
+        "install_pkg": "google-chrome-stable",
+        "remove_pkg": "google-chrome-stable",
+        "repo": "chrome",
+    },
 ]
 
 LIST_HEIGHT = 100

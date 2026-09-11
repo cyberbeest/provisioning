@@ -1,18 +1,20 @@
 #!/bin/bash
-# Adds the Signal, Element, and VirtualBox vendor apt repos to
-# unattended-upgrades' allowlist, so their updates install automatically
+# Adds the Signal, Element, VirtualBox, and Google Chrome vendor apt repos
+# to unattended-upgrades' allowlist, so their updates install automatically
 # like Debian's own instead of sitting there until manually clicked in
 # GNOME Software/Cyberbeest Package Manager.
 #
 # unattended-upgrades only auto-applies packages whose repo Origin/Codename
-# match Unattended-Upgrade::Origins-Pattern. Signal, Element, and VirtualBox
-# ship their own vendor repos (added by cyberbeest-pkg-helper.sh setup-repo),
-# which were never in that allowlist -- that's why their updates showed up
-# as manual-only in GNOME Software, regardless of whether they were security
-# fixes or not. VirtualBox was added to provisioning later than
-# Signal/Element and got missed here initially -- confirmed via
+# match Unattended-Upgrade::Origins-Pattern. Signal, Element, VirtualBox, and
+# Chrome ship their own vendor repos (added by cyberbeest-pkg-helper.sh
+# setup-repo), which were never in that allowlist -- that's why their
+# updates showed up as manual-only in GNOME Software, regardless of whether
+# they were security fixes or not. VirtualBox was added to provisioning
+# later than Signal/Element and got missed here initially -- confirmed via
 # download.virtualbox.org/virtualbox/debian/dists/trixie/Release:
-# "Origin: Oracle Corporation", "Codename: trixie".
+# "Origin: Oracle Corporation", "Codename: trixie". Chrome confirmed via
+# dl.google.com/linux/chrome/deb/dists/stable/Release: "Origin: Google LLC",
+# "Codename: stable".
 #
 # Written as its own fragment file rather than editing
 # /etc/apt/apt.conf.d/50unattended-upgrades directly, since that file
@@ -55,7 +57,19 @@ EOF
 
 echo "Wrote /etc/apt/apt.conf.d/53unattended-upgrades-vendor-virtualbox"
 
+cat >/etc/apt/apt.conf.d/54unattended-upgrades-vendor-chrome <<'EOF'
+// Managed by provisioning/lib/add-vendor-origins-unattended-upgrades.sh
+// Lets Google Chrome updates apply automatically, same as Debian's own
+// packages -- Google's repo isn't Debian's, so without this its updates
+// sit as manual-only.
+Unattended-Upgrade::Origins-Pattern {
+    "origin=Google LLC,codename=stable";   // Google Chrome (dl.google.com)
+};
+EOF
+
+echo "Wrote /etc/apt/apt.conf.d/54unattended-upgrades-vendor-chrome"
+
 echo "--- Dry-run test ---"
-unattended-upgrades --dry-run --debug 2>&1 | grep -iE 'signal|element|virtualbox|oracle|Origins-Pattern|Allowed origins' || true
+unattended-upgrades --dry-run --debug 2>&1 | grep -iE 'signal|element|virtualbox|oracle|chrome|google llc|Origins-Pattern|Allowed origins' || true
 
 echo "=== done ==="

@@ -7,7 +7,7 @@
 # setup-i2pd-toggle), so no pkexec/fixed-path requirement applies here.
 #
 # Usage:
-#   cyberbeest-pkg-helper.sh setup-repo <signal|element|mullvad|protonvpn|virtualbox>
+#   cyberbeest-pkg-helper.sh setup-repo <signal|element|mullvad|protonvpn|virtualbox|chrome>
 #   cyberbeest-pkg-helper.sh install <pkg>...
 #   cyberbeest-pkg-helper.sh remove <pkg>...
 #   cyberbeest-pkg-helper.sh install-deb-url <url>   (for vendors with no apt
@@ -124,6 +124,19 @@ do_setup_repo() {
             log "VirtualBox apt repository set up"
         else
             log "VirtualBox apt repository already present, skipping"
+        fi
+        ;;
+    chrome)
+        if [ ! -f /etc/apt/sources.list.d/google-chrome.list ]; then
+            log "Setting up Google Chrome apt repository"
+            curl -fsSL https://dl.google.com/linux/linux_signing_key.pub | gpg --yes --dearmor -o /usr/share/keyrings/google-chrome-keyring.gpg \
+                || { log "Google Chrome keyring fetch failed"; return 1; }
+            echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome-keyring.gpg] https://dl.google.com/linux/chrome/deb/ stable main" >/etc/apt/sources.list.d/google-chrome.list \
+                || { log "Google Chrome sources write failed"; return 1; }
+            apt-get -o DPkg::Lock::Timeout=60 update >>"$LOG" 2>&1 || { log "apt-get update failed after adding Google Chrome repo"; return 1; }
+            log "Google Chrome apt repository set up"
+        else
+            log "Google Chrome apt repository already present, skipping"
         fi
         ;;
     *)
