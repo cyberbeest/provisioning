@@ -27,6 +27,11 @@
 # VirtualBox active instead.
 #
 # Idempotent: safe to re-run.
+#
+# Bumped 2026-09-11: added the qemu.conf max_core=0 setting (see its own
+# comment below) -- without it, virt-install run via `sudo -u
+# $TARGET_USER` (as 56-cyberbeest-sandbox-vm-kvm.sh does) fails outright
+# with a core-file-size rlimit error.
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG="$DIR/53a-qemu-kvm-boxes.log"
@@ -69,6 +74,33 @@ fi
 
 echo "--- Adding $TARGET_USER to the libvirt and kvm groups ---"
 usermod -aG libvirt,kvm "$TARGET_USER"
+
+echo "--- Configuring qemu:///session to not try raising RLIMIT_CORE ---"
+# libvirt's QEMU session driver always tries to raise the guest process's
+# RLIMIT_CORE to unlimited before exec (max_core defaults to "unlimited"
+# on Linux -- see qemu.conf.in upstream). When the VM is created via
+# `sudo -u $TARGET_USER` (56-cyberbeest-sandbox-vm-kvm.sh runs the actual
+# virt-install that way, since provisioning itself runs as root), sudo's
+# PAM session caps the hard limit at 0 for that invocation (confirmed live
+# 2026-09-11: a plain SSH login shows "unlimited" for the same user, but
+# `sudo -n -u <user>` shows 0 -- a PAM/sudo interaction, root cause not
+# fully pinned down), and virt-install then fails with "cannot limit core
+# file size of process ... to 18446744073709551615: Operation not
+# permitted". Setting max_core to 0 tells libvirt not to touch the limit
+# at all, sidestepping the problem -- we don't need core dumps from
+# sandbox VM guests anyway.
+#
+# Must be a bare integer, NOT a quoted string: libvirt's config parser
+# only accepts the quoted form for the literal string "unlimited";
+# max_core = "0" throws "unsupported configuration: Unknown core size
+# '0'" and breaks the QEMU driver's init entirely (confirmed live
+# 2026-09-11 -- caught and fixed the same session).
+TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
+install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.config/libvirt"
+if ! grep -q "^max_core" "$TARGET_HOME/.config/libvirt/qemu.conf" 2>/dev/null; then
+	echo "max_core = 0" >> "$TARGET_HOME/.config/libvirt/qemu.conf"
+	chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.config/libvirt/qemu.conf"
+fi
 
 echo "--- Enabling libvirtd ---"
 systemctl enable --now libvirtd
