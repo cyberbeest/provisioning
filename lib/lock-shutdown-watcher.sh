@@ -64,9 +64,23 @@ on_battery() {
 minimize_windows() {
     mkdir -p "$(dirname "$MINIMIZED_STATE_FILE")"
     : > "$MINIMIZED_STATE_FILE"
-    local id type state
+    local id type state class
     while read -r id _; do
         [ -z "$id" ] && continue
+        # lock-screen-curtain.sh's curtain window is a normal WM-managed
+        # top-level window (deliberately not override-redirect) and shows up
+        # in `wmctrl -l` like any app window despite its skip_taskbar hint
+        # (that hint only affects taskbar UIs, not this enumeration).
+        # Sweeping it into the generic minimize/restore cycle here forces it
+        # back visible on unlock via restore_windows()'s explicit
+        # `xdotool windowmap ... windowactivate`, fighting the curtain
+        # script's own unmap-on-unlock -- confirmed live 2026-09-11 (curtain
+        # stayed mapped, in the taskbar, and maximized after unlock even
+        # though lock-screen-curtain.sh had already unmapped it correctly).
+        class=$(xprop -id "$id" WM_CLASS 2>/dev/null)
+        case "$class" in
+            *CyberbeestCurtain*) continue ;;
+        esac
         type=$(xprop -id "$id" _NET_WM_WINDOW_TYPE 2>/dev/null)
         case "$type" in
             *_NET_WM_WINDOW_TYPE_DESKTOP*|*_NET_WM_WINDOW_TYPE_DOCK*) continue ;;
@@ -189,8 +203,12 @@ while true; do
         fi
     else
         if [ "$windows_minimized" -eq 1 ]; then
-            restore_windows
+            # Unthrottle before restoring: restore_windows() retries for up
+            # to 5s per window via wmctrl/xdotool, and running those retries
+            # while the browser is still capped at throttle_browser()'s
+            # PERCENT% CPU needlessly slows that window's own restore down.
             unthrottle_browser
+            restore_windows
             windows_minimized=0
         fi
         locked_since=0
