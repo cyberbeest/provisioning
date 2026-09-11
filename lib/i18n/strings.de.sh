@@ -73,6 +73,20 @@ Führe zuerst beestify.sh aus (siehe cyberbeest.com)."
 	[update.confirm_message]="Dieser Computer wurde mit dem Cyberbeest-TRACK-Repository eingerichtet.
 
 Die neuesten Updates aus diesem Repository holen?"
+	[update.switch_button]="Stattdessen zu TRACK wechseln"
+	[update.switch_confirm_message]="Diesen Computer vom Cyberbeest-CURRENT-Repository auf das OTHER-Repository umstellen?
+
+Dabei wird der CURRENT-Checkout gelöscht und OTHER neu geklont. Cyberbeest-Update kann nicht wissen, welche Skripte im neuen Track noch nötig sind -- das musst du selbst prüfen und ausführen."
+	[update.switch_exists_message]="Es existiert bereits ein OTHER-Checkout unter PATH.
+
+Entferne ihn zuerst manuell, um die Tracks zu wechseln."
+	[update.switch_progress_message]="Wechsle zum TRACK-Repository..."
+	[update.switch_clone_failed_message]="git clone fehlgeschlagen:
+
+OUTPUT"
+	[update.switch_done_message]="Zum Cyberbeest-TRACK-Repository gewechselt.
+
+COUNT Skript(e) waren identisch zum alten Checkout und sind bereits als erledigt markiert. Prüfe den Rest und führe aus, was nötig ist."
 	[update.progress_message]="Suche nach Updates..."
 	[update.pull_failed_message]="git pull fehlgeschlagen:
 

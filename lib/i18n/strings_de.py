@@ -245,6 +245,8 @@ STRINGS = {
     "run_gui.button_select_all": "Alles auswählen",
     "run_gui.button_stop": "Nach aktuellem Skript stoppen",
     "run_gui.button_abort_download": "Download abbrechen",
+    "run_gui.button_view_source": "Quelltext ansehen",
+    "run_gui.view_source_title": "Quelltext: {script}",
     "run_gui.status_abort_download_none": "Kein laufender Download zum Abbrechen gefunden.",
     "run_gui.status_abort_download_killed": "Download abgebrochen -- das aktuelle Skript sollte in Kürze mit einem Fehler beenden.",
     "run_gui.more_actions_tooltip": "Weitere Aktionen",

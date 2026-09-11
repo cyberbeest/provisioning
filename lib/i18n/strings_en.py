@@ -234,6 +234,8 @@ STRINGS = {
     "run_gui.button_select_all": "Select all",
     "run_gui.button_stop": "Stop after current script",
     "run_gui.button_abort_download": "Abort download",
+    "run_gui.button_view_source": "View source",
+    "run_gui.view_source_title": "Source: {script}",
     "run_gui.status_abort_download_none": "No active download found to abort.",
     "run_gui.status_abort_download_killed": "Download aborted -- the current script should fail and exit shortly.",
     "run_gui.more_actions_tooltip": "More actions",

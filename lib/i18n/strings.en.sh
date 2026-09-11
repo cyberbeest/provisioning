@@ -71,6 +71,20 @@ Run beestify.sh first (see cyberbeest.com)."
 	[update.confirm_message]="This computer was built using the Cyberbeest TRACK repository.
 
 Pull the latest updates from that repository?"
+	[update.switch_button]="Switch to TRACK instead"
+	[update.switch_confirm_message]="Switch this computer from the Cyberbeest CURRENT repository to the OTHER repository?
+
+This deletes the CURRENT checkout and clones OTHER fresh. Cyberbeest Update can't tell which scripts the new track still needs -- that's up to you to review and run afterwards."
+	[update.switch_exists_message]="An OTHER checkout already exists at PATH.
+
+Remove it manually first if you want to switch tracks."
+	[update.switch_progress_message]="Switching to the TRACK repository..."
+	[update.switch_clone_failed_message]="git clone failed:
+
+OUTPUT"
+	[update.switch_done_message]="Switched to the Cyberbeest TRACK repository.
+
+COUNT script(s) were identical to the old checkout and already marked done. Review the rest and run whatever you need."
 	[update.progress_message]="Checking for updates..."
 	[update.pull_failed_message]="git pull failed:
 

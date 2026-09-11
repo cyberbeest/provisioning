@@ -840,9 +840,22 @@ class RunGuiWindow(Gtk.Window):
             self.rows[script] = row
             self.listbox.add(row)
 
+        log_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        paned.pack2(log_box, True, False)
+
+        log_header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        log_box.pack_start(log_header, False, False, 0)
+
+        # Sensitive only once a script is actually being viewed (see
+        # show_log) -- disabled at startup, when nothing is selected yet.
+        self.view_source_button = Gtk.Button(label=t("run_gui.button_view_source"))
+        self.view_source_button.set_sensitive(False)
+        self.view_source_button.connect("clicked", lambda _b: self._view_source())
+        log_header.pack_end(self.view_source_button, False, False, 0)
+
         log_scroller = Gtk.ScrolledWindow()
         log_scroller.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
-        paned.pack2(log_scroller, True, False)
+        log_box.pack_start(log_scroller, True, True, 0)
 
         self.log_view = Gtk.TextView()
         self.log_view.set_editable(False)
@@ -1004,6 +1017,40 @@ class RunGuiWindow(Gtk.Window):
             else:
                 text = t("run_gui.log_hasnt_run_yet").format(script=script)
         self.log_buffer.set_text(text)
+        self.view_source_button.set_sensitive(bool(script))
+
+    def _view_source(self):
+        script = self.displayed_script
+        if not script:
+            return
+        try:
+            with open(os.path.join(DIR, script)) as f:
+                source = f.read()
+        except OSError as e:
+            source = str(e)
+
+        dialog = Gtk.Dialog(
+            title=t("run_gui.view_source_title").format(script=script),
+            transient_for=self,
+            modal=True,
+        )
+        dialog.add_button(Gtk.STOCK_CLOSE, Gtk.ResponseType.CLOSE)
+        dialog.set_default_size(700, 600)
+
+        scroller = Gtk.ScrolledWindow()
+        scroller.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+        dialog.get_content_area().pack_start(scroller, True, True, 0)
+
+        source_view = Gtk.TextView()
+        source_view.set_editable(False)
+        source_view.set_cursor_visible(False)
+        source_view.set_monospace(True)
+        source_view.get_buffer().set_text(source)
+        scroller.add(source_view)
+
+        dialog.show_all()
+        dialog.run()
+        dialog.destroy()
 
     def on_selection_changed(self, _listbox):
         # Only treat this as "view this script's log" when exactly one row
