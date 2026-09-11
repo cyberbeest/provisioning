@@ -2,8 +2,15 @@
 # Cyberbeest Update (Whisker menu entry, installed by 52-cyberbeest-update.sh):
 # pulls the latest commits into whichever provisioning checkout this machine
 # tracks, then opens run-gui.py so the user can review and run whatever's
-# new themselves. The confirm dialog also offers an extra button to switch
-# tracks (beta <-> stable) instead -- see do_switch_track() below.
+# new themselves. Declining the pull offers switching tracks (beta <->
+# stable) instead -- see do_switch_track() below.
+#
+# That's a second, separate dialog rather than a third button on the first
+# one: zenity's --question dialog always adds its own Yes/No first
+# internally and stacks any --extra-button above them, with no CLI way to
+# reorder that -- so a rare, destructive option like track-switching can't
+# be made to render below Yes/No in a single dialog. Offering it only after
+# a "no" to the pull keeps it out of the way of the everyday path instead.
 #
 # Confirms first via zenity: the git pull itself is harmless, but the
 # NN-*.sh scripts it may then run are not (they change system config), so
@@ -160,24 +167,11 @@ do_switch_track() {
 
 confirm_msg="$(t update.confirm_message)"
 confirm_msg="${confirm_msg//TRACK/$TRACK}"
-switch_button="$(t update.switch_button)"
-switch_button="${switch_button//TRACK/$OTHER_TRACK}"
 
-set +e
-response_text="$(zenity --question --title="$(t update.title)" --width=380 --text="$confirm_msg" \
-	--extra-button="$switch_button")"
-response_rc=$?
-set -e
-
-# Yes/No both print nothing to stdout (Yes exits 0, No/Cancel exits
-# non-zero); the extra button prints its own label and its exit code isn't
-# worth relying on to tell it apart from Cancel, so check the text instead.
-if [ "$response_text" = "$switch_button" ]; then
-	do_switch_track
-	exit 0
-elif [ "$response_rc" -ne 0 ]; then
-	exit 0
-fi
+# Declining doesn't just quit -- do_switch_track has its own separate
+# confirm (with the fuller warning) before it does anything, so offering it
+# here costs a "no" click and nothing else if that's not what was wanted.
+zenity --question --title="$(t update.title)" --width=380 --text="$confirm_msg" || do_switch_track
 
 # reset --hard (not merge --ff-only): a plain fast-forward only touches
 # paths that actually changed in the new commits, so a tracked file that
