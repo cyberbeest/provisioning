@@ -68,9 +68,11 @@ Fahre nur fort, wenn du einen Installations-Link auf einer vertrauenswürdigen S
 	[update.no_repo_message]="Kein Provisioning-Checkout unter ~/provisioning oder ~/provisioning-bleeding gefunden.
 
 Führe zuerst beestify.sh aus (siehe cyberbeest.com)."
-	[update.confirm_message]="Die neuesten Cyberbeest-Provisioning-Updates holen (Branch BRANCH) und alles Neue anwenden?
+	[update.track_beta]="Beta"
+	[update.track_stable]="Stable"
+	[update.confirm_message]="Dieser Computer wurde mit dem Cyberbeest-TRACK-Repository eingerichtet.
 
-Du wirst pro geändertem Schritt einmal nach deinem Passwort gefragt, wie bei der Einrichtung."
+Die neuesten Updates aus diesem Repository holen?"
 	[update.progress_message]="Suche nach Updates..."
 	[update.pull_failed_message]="git pull fehlgeschlagen:
 

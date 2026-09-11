@@ -66,9 +66,11 @@ Only continue if you clicked an install link on a page you trust."
 	[update.no_repo_message]="No provisioning checkout found at ~/provisioning or ~/provisioning-bleeding.
 
 Run beestify.sh first (see cyberbeest.com)."
-	[update.confirm_message]="Pull the latest Cyberbeest provisioning updates (BRANCH branch) and apply anything new?
+	[update.track_beta]="beta"
+	[update.track_stable]="stable"
+	[update.confirm_message]="This computer was built using the Cyberbeest TRACK repository.
 
-You'll be asked for your password once per changed step, same as during setup."
+Pull the latest updates from that repository?"
 	[update.progress_message]="Checking for updates..."
 	[update.pull_failed_message]="git pull failed:
 

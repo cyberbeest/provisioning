@@ -28,8 +28,14 @@ fi
 # this checkout on -- reset --hard below stays correct either way.
 BRANCH="$(git -C "$REPO_DIR" rev-parse --abbrev-ref HEAD)"
 
+if [ "$BRANCH" = "stable" ]; then
+	TRACK="$(t update.track_stable)"
+else
+	TRACK="$(t update.track_beta)"
+fi
+
 confirm_msg="$(t update.confirm_message)"
-confirm_msg="${confirm_msg//BRANCH/$BRANCH}"
+confirm_msg="${confirm_msg//TRACK/$TRACK}"
 zenity --question --title="$(t update.title)" --width=380 --text="$confirm_msg" || exit 0
 
 # reset --hard (not merge --ff-only): a plain fast-forward only touches
