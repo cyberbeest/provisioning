@@ -12,6 +12,11 @@
 # install step failing on a machine mid-provisioning.
 #
 # Idempotent: safe to re-run.
+#
+# run-gui.py's "changed" tracking is per-script mtime only, not lib/ deps --
+# bump this file (even just this comment) whenever lib/cyberbeest-update.sh,
+# lib/cyberbeest-update-confirm.py, or lib/i18n/strings_*.{sh,py} change, or
+# "Run changed only" won't pick up the reinstall.
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG="$DIR/52-cyberbeest-update.log"
