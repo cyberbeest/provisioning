@@ -317,7 +317,7 @@ STRINGS = {
 
     "update.title": "Cyberbeest-Update",
     "update.confirm_message": (
-        "Dieser Computer wurde mit dem Cyberbeest-{track}-Repository eingerichtet.\n\n"
+        "Dieser Computer wurde mit dem Cyberbeest-<b>{track}</b>-Repository eingerichtet.\n\n"
         "Die neuesten Updates aus diesem Repository holen?"
     ),
     "update.button_no": "Nein",

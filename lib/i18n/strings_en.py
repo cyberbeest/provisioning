@@ -301,7 +301,7 @@ STRINGS = {
 
     "update.title": "Cyberbeest Update",
     "update.confirm_message": (
-        "This computer was built using the Cyberbeest {track} repository.\n\n"
+        "This computer was built using the Cyberbeest <b>{track}</b> repository.\n\n"
         "Pull the latest updates from that repository?"
     ),
     "update.button_no": "No",
