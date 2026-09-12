@@ -32,7 +32,10 @@
 # pre-existing xfce4-panel.xml the first time). Also removes any other panel
 # (e.g. Debian's stock second panel) so only this one is left, since a live
 # xfconfd won't drop a panel it already has in memory just because the file
-# on disk changed underneath it.
+# on disk changed underneath it. Any plugin id this script doesn't itself
+# manage (a hand-added launcher, or one of the optional toggle scripts'
+# icons) is preserved across re-runs -- see the "Writing xfce4-panel.xml"
+# step and lib/merge-xfce-panel-plugins.py below.
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG="$DIR/12-xfce-panel-layout.log"
@@ -141,15 +144,6 @@ sed "s|__HOME__|$TARGET_HOME|g" "$LAYOUT/genmon.rc.template" > "$TARGET_HOME/.co
 install -m 644 "$LAYOUT/kitt-scanner.rc" "$TARGET_HOME/.config/xfce4/panel/kitt-scanner-14.rc"
 install -m 644 "$LAYOUT/mem-liquid.rc" "$TARGET_HOME/.config/xfce4/panel/mem-liquid-15.rc"
 
-# Cleanup for machines provisioned before the terminal launcher was dropped
-# from the panel -- overwriting xfce4-panel.xml below removes plugin-9 from
-# the layout, but doesn't touch this now-orphaned launcher config dir.
-rm -rf "$TARGET_HOME/.config/xfce4/panel/launcher-9"
-# Cleanup for machines provisioned before the two genmon widgets (security
-# status + shutdown timer) were merged into one -- see panel-status-genmon.sh.
-rm -rf "$TARGET_HOME/.config/xfce4/panel/genmon-16"
-rm -f "$TARGET_HOME/.config/xfce4/panel/genmon-16.rc"
-
 echo "--- Writing launcher-18 (file manager) ---"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.config/xfce4/panel/launcher-18"
 install -m 644 "$LAYOUT/file-manager.desktop" \
@@ -161,8 +155,21 @@ PANEL_XML="$TARGET_HOME/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml
 if [ -e "$PANEL_XML" ] && [ ! -e "$PANEL_XML.pre-cyberbeest" ]; then
 	cp "$PANEL_XML" "$PANEL_XML.pre-cyberbeest"
 fi
+# Rendered to a temp file first, then merged with whatever panel-1 already
+# has on disk -- any plugin id outside the fixed list below (a hand-added
+# launcher, or one of the optional toggle scripts' own icon --
+# lib/wireguard-vpn-toggle/vpn-panel-icon.sh, lib/setup_i2p_extras.py) is
+# carried over instead of being wiped by a flat overwrite. Ids can't be
+# matched by identity across runs beyond this, since xfce4-panel's own
+# unique-id counter resets on every panel restart and hands freed ids back
+# out -- see lib/merge-xfce-panel-plugins.py's docstring.
+PANEL_XML_TMP="$(mktemp)"
 sed -e "s|__HOME__|$TARGET_HOME|g" -e "s|__ICONS_DIR__|$ICONS_DIR|g" \
-	"$LAYOUT/xfce4-panel.xml.template" > "$PANEL_XML"
+	"$LAYOUT/xfce4-panel.xml.template" > "$PANEL_XML_TMP"
+python3 "$DIR/lib/merge-xfce-panel-plugins.py" "$PANEL_XML" "$PANEL_XML_TMP" \
+	1 2 3 4 5 6 7 8 11 12 13 14 15 17 18
+install -m 644 "$PANEL_XML_TMP" "$PANEL_XML"
+rm -f "$PANEL_XML_TMP"
 
 echo "--- Fixing ownership ---"
 chown -R "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.config/xfce4"
