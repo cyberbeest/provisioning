@@ -11,6 +11,12 @@ carried over, appended after the template's own ids in their prior relative
 order. See 12-xfce-panel-layout.sh's comment on why ids can't be matched by
 number alone across runs (xfce4-panel recycles freed ids on panel restart).
 
+Also carries the whiskermenu plugin's "recent" property (its recently-used
+apps list, which the template doesn't set at all) over from any provisioning
+id it existed on in the old file onto the same id in the new one -- otherwise
+every re-run silently erases the user's actual usage history, since that
+plugin id itself is always regenerated fresh from the template above.
+
 Usage: merge-xfce-panel-plugins.py OLD_XML NEW_XML PROVISIONING_ID...
 Writes the merged result to NEW_XML in place. If OLD_XML doesn't exist yet
 (first-ever run), NEW_XML is left untouched.
@@ -65,6 +71,24 @@ def main():
         ET.SubElement(new_ids_prop, "value", {"type": "int", "value": str(plugin_id)})
 
     new_plugins = find_property(new_root, "plugins")
+
+    # Carry over any whiskermenu "recent" list from the old file onto the
+    # matching id in the new one (both provisioning-owned and extra ids --
+    # a hand-moved whiskermenu could sit on either).
+    for plugin_id in old_ids:
+        old_elem = find_property(old_plugins, f"plugin-{plugin_id}")
+        if old_elem is None or old_elem.get("value") != "whiskermenu":
+            continue
+        old_recent = find_property(old_elem, "recent")
+        if old_recent is None:
+            continue
+        new_elem = find_property(new_plugins, f"plugin-{plugin_id}")
+        if new_elem is None or new_elem.get("value") != "whiskermenu":
+            continue
+        existing_recent = find_property(new_elem, "recent")
+        if existing_recent is not None:
+            new_elem.remove(existing_recent)
+        new_elem.append(old_recent)
     notes = find_property(new_plugins, "notes")
     insert_at = list(new_plugins).index(notes) if notes is not None else len(new_plugins)
     for offset, elem in enumerate(extra_plugin_elements):
