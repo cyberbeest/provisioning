@@ -111,7 +111,8 @@ phase=""
 reboot_pending=false
 overdue=false
 
-if systemctl is-active --quiet security-update-check.service; then
+unit_state="$(systemctl show -p ActiveState --value security-update-check.service 2>/dev/null)"
+if [ "$unit_state" = active ] || [ "$unit_state" = activating ]; then
     phase="$(cat "$PHASE_FILE" 2>/dev/null)"
     [ -n "$phase" ] || phase="checking"
 elif [ "$awaiting_first_check" = true ]; then
