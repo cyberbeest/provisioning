@@ -839,6 +839,8 @@ class RunGuiWindow(Gtk.Window):
             row = ScriptRow(script)
             self.rows[script] = row
             self.listbox.add(row)
+        self._update_run_changed_label()
+        self._update_run_selected_sensitivity()
 
         log_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
         paned.pack2(log_box, True, False)
@@ -1058,6 +1060,7 @@ class RunGuiWindow(Gtk.Window):
         # multi-selection back down to one) -- a multi-row selection being
         # built up for "Run selected" shouldn't fight over which one log to
         # show, so it's left alone in that case.
+        self._update_run_selected_sensitivity()
         selected = self.listbox.get_selected_rows()
         if len(selected) != 1:
             return
@@ -1096,6 +1099,21 @@ class RunGuiWindow(Gtk.Window):
 
     def set_row_status(self, script, state, duration=None, estimate=None):
         self.rows[script].set_status(state, duration, estimate)
+        # A script just flipped done/pending -- the "Run changed only" count
+        # is stale the moment any row's status changes, not just at the end
+        # of a batch.
+        self._update_run_changed_label()
+
+    def _update_run_changed_label(self):
+        changed_count = sum(1 for s in list_scripts() if not script_is_done(s))
+        self.run_changed_button.set_label(
+            t("run_gui.button_run_changed_count").format(count=changed_count)
+        )
+        self.run_changed_button.set_sensitive(not self.busy and changed_count > 0)
+
+    def _update_run_selected_sensitivity(self):
+        has_selection = bool(self.listbox.get_selected_rows())
+        self.run_selected_button.set_sensitive(not self.busy and has_selection)
 
     def _add_session_runtime(self, seconds):
         self.session_total_seconds += seconds
@@ -1105,9 +1123,9 @@ class RunGuiWindow(Gtk.Window):
 
     def _set_controls_busy(self, busy):
         self.busy = busy
-        self.run_changed_button.set_sensitive(not busy)
+        self._update_run_changed_label()
+        self._update_run_selected_sensitivity()
         self.run_all_button.set_sensitive(not busy)
-        self.run_selected_button.set_sensitive(not busy)
         self.stop_button.set_sensitive(busy)
         self.abort_download_button.set_sensitive(busy)
         # Existing todo entries' action/dismiss buttons are things-to-do-once

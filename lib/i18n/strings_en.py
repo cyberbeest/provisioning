@@ -228,6 +228,7 @@ STRINGS = {
     "run_gui.profile_vm_image_label": "VM image:",
     "run_gui.profile_vm_image_checkbox": "Download the Cyberbeest VM disk image (KVM)",
     "run_gui.button_run_changed": "Run changed only",
+    "run_gui.button_run_changed_count": "Run changed only ({count})",
     "run_gui.button_run_all": "Run all",
     "run_gui.button_run_selected": "Run selected",
     "run_gui.button_profile": "Profile...",
