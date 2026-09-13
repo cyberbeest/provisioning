@@ -112,7 +112,26 @@ find_curtain_id() {
     xdotool search --class "$CURTAIN_CLASS" 2>/dev/null | head -n1
 }
 
+# ensure_curtain() itself is guarded by flock below -- without it, two
+# concurrent callers (the dbus-monitor handler and the watchdog, which run
+# in independent subshells and can both observe curtain_state=down at once
+# right as a lock happens) can each pass the find_curtain_id() check before
+# either has created a window, spawning two xterms. Whichever one
+# find_curtain_id() happens to return afterwards gets resized/hidden by
+# ensure_curtain's own caller; the other sits there as a leftover raw
+# xterm at its default size, fully mapped and never touched again --
+# confirmed live 2026-09-13 as a small blue-bordered stray window still
+# visible after unlock.
+CURTAIN_LOCK_FILE="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/cyberbeest-lock-curtain.lock"
+
 ensure_curtain() {
+    (
+        flock -x 200
+        ensure_curtain_impl
+    ) 200>"$CURTAIN_LOCK_FILE"
+}
+
+ensure_curtain_impl() {
     local id
     id=$(find_curtain_id)
     if [ -n "$id" ]; then

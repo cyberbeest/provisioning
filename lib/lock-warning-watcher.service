@@ -1,0 +1,10 @@
+[Unit]
+Description=Warn a few seconds before screen auto-lock
+
+[Service]
+Type=simple
+ExecStart=%h/bin/lock-warning-watcher.sh
+Restart=on-failure
+
+[Install]
+WantedBy=default.target

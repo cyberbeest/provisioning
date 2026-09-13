@@ -85,4 +85,6 @@ COUNT script(s) were identical to the old checkout and already marked done. Revi
 	[update.pull_failed_message]="git pull failed:
 
 OUTPUT"
+	[lockwarning.title]="Screen locking soon"
+	[lockwarning.body]="Move the mouse or press a key to stay unlocked."
 )

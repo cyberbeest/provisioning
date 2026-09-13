@@ -58,6 +58,8 @@ STRINGS = {
     "lockpower.curtain_enabled": "Cover screen instantly on lock (recommended)",
     "lockpower.minimize_after": "Minimize windows after (minutes):",
     "lockpower.limit_cpu": "Limit browser CPU to (%):",
+    "lockpower.warn_enabled": "Warn before auto-lock",
+    "lockpower.warn_seconds": "Warn this many seconds ahead:",
     "lockpower.never": "Never",
     "lockpower.off": "Off",
     "lockpower.close": "Close",

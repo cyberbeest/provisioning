@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Cyberbeest Extended Power Options: a standalone dialog for the
 power-saving-while-locked settings (window minimizing + browser CPU
-throttling) used by lock-shutdown-watcher.sh, plus the instant-cover
-curtain toggle (see lock-screen-curtain.sh) -- not a power-saving feature
-itself, but lives here since it's the one other lock-related on/off
-switch users have. Has its own Whisker menu entry (Cyberbeest category),
-and is also launched as a separate process from shutdown-timer-menu.py's
-"Power saving while locked..." item, rather than opened as a Gtk.Dialog
-inside the menu's own process -- see the comment on
+throttling) used by lock-shutdown-watcher.sh, the instant-cover curtain
+toggle (see lock-screen-curtain.sh), and the pre-lock warning notification
+(see lock-warning-watcher.sh) -- none of these are surfaced anywhere else,
+so they all live in this one dialog. Has its own Whisker menu entry
+(Cyberbeest category), and is also launched as a separate process from
+shutdown-timer-menu.py's "Power saving while locked..." item, rather than
+opened as a Gtk.Dialog inside the menu's own process -- see the comment on
 open_power_saving_dialog() there for why.
 
 Reads/writes the same config file as lock-shutdown-watcher.sh and
@@ -41,6 +41,8 @@ DEFAULTS = {
     "MINIMIZE_MINUTES": "1",
     "BROWSER_THROTTLE_PERCENT": "10",
     "CURTAIN_ENABLED": "true",
+    "WARN_BEFORE_LOCK_ENABLED": "true",
+    "WARN_SECONDS_BEFORE_LOCK": "10",
 }
 
 
@@ -107,6 +109,11 @@ class PowerSavingDialog(Gtk.Window):
         self.curtain_check.connect("toggled", self.on_curtain_toggled)
         box.pack_start(self.curtain_check, False, False, 0)
 
+        self.warn_check = Gtk.CheckButton(label=t("lockpower.warn_enabled"))
+        self.warn_check.set_active(settings["WARN_BEFORE_LOCK_ENABLED"] == "true")
+        self.warn_check.connect("toggled", self.on_warn_toggled)
+        box.pack_start(self.warn_check, False, False, 0)
+
         grid = Gtk.Grid(column_spacing=10, row_spacing=10)
         box.pack_start(grid, False, False, 0)
 
@@ -124,6 +131,15 @@ class PowerSavingDialog(Gtk.Window):
         self.throttle_spin.connect("value-changed", self.on_throttle_changed)
         grid.attach(self.throttle_spin, 1, 1, 1, 1)
 
+        self.warn_seconds_label = Gtk.Label(label=t("lockpower.warn_seconds"), xalign=0)
+        grid.attach(self.warn_seconds_label, 0, 2, 1, 1)
+        self.warn_spin = Gtk.SpinButton.new_with_range(1, 60, 1)
+        self.warn_spin.set_value(int(settings["WARN_SECONDS_BEFORE_LOCK"]))
+        self.warn_spin.connect("value-changed", self.on_warn_seconds_changed)
+        grid.attach(self.warn_spin, 1, 2, 1, 1)
+        self.warn_seconds_label.set_sensitive(self.warn_check.get_active())
+        self.warn_spin.set_sensitive(self.warn_check.get_active())
+
         button_box = Gtk.ButtonBox(layout_style=Gtk.ButtonBoxStyle.END)
         box.pack_start(button_box, False, False, 0)
         close_button = Gtk.Button(label=t("lockpower.close"))
@@ -138,6 +154,15 @@ class PowerSavingDialog(Gtk.Window):
 
     def on_curtain_toggled(self, check):
         write_setting("CURTAIN_ENABLED", "true" if check.get_active() else "false")
+
+    def on_warn_toggled(self, check):
+        enabled = check.get_active()
+        write_setting("WARN_BEFORE_LOCK_ENABLED", "true" if enabled else "false")
+        self.warn_seconds_label.set_sensitive(enabled)
+        self.warn_spin.set_sensitive(enabled)
+
+    def on_warn_seconds_changed(self, spin):
+        write_setting("WARN_SECONDS_BEFORE_LOCK", spin.get_value_as_int())
 
 
 def main():

@@ -87,4 +87,6 @@ COUNT Skript(e) waren identisch zum alten Checkout und sind bereits als erledigt
 	[update.pull_failed_message]="git pull fehlgeschlagen:
 
 OUTPUT"
+	[lockwarning.title]="Bildschirm sperrt gleich"
+	[lockwarning.body]="Bewege die Maus oder drücke eine Taste, um entsperrt zu bleiben."
 )

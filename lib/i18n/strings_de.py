@@ -63,6 +63,8 @@ STRINGS = {
     "lockpower.curtain_enabled": "Bildschirm beim Sperren sofort abdecken (empfohlen)",
     "lockpower.minimize_after": "Fenster minimieren nach (Minuten):",
     "lockpower.limit_cpu": "Browser-CPU begrenzen auf (%):",
+    "lockpower.warn_enabled": "Vor dem automatischen Sperren warnen",
+    "lockpower.warn_seconds": "So viele Sekunden vorher warnen:",
     "lockpower.never": "Nie",
     "lockpower.off": "Aus",
     "lockpower.close": "Schließen",
