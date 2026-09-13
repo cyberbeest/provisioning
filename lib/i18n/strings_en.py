@@ -306,6 +306,20 @@ STRINGS = {
         "This computer was built using the Cyberbeest <b>{track}</b> repository.\n\n"
         "Pull the latest updates from that repository?"
     ),
+    "update.last_pull_message": "Last updated: {when} ({relative})",
+    "update.last_pull_never": "Never updated before.",
+
+    "relative.just_now": "just now",
+    "relative.minute_ago": "{n} minute ago",
+    "relative.minutes_ago": "{n} minutes ago",
+    "relative.hour_ago": "{n} hour ago",
+    "relative.hours_ago": "{n} hours ago",
+    "relative.day_ago": "{n} day ago",
+    "relative.days_ago": "{n} days ago",
+    "relative.month_ago": "{n} month ago",
+    "relative.months_ago": "{n} months ago",
+    "relative.year_ago": "{n} year ago",
+    "relative.years_ago": "{n} years ago",
     "update.button_no": "No",
     "update.button_yes": "Yes",
     "update.switch_button": "Switch track",

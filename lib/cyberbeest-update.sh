@@ -161,7 +161,7 @@ do_switch_track() {
 	exec python3 "$OTHER_DIR/run-gui.py"
 }
 
-case "$(python3 "$SCRIPT_DIR/cyberbeest-update-confirm.py" "$TRACK" "$OTHER_TRACK")" in
+case "$(python3 "$SCRIPT_DIR/cyberbeest-update-confirm.py" "$TRACK" "$OTHER_TRACK" "$REPO_DIR")" in
 	yes)
 		;;
 	switch)

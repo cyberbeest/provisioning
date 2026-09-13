@@ -322,6 +322,20 @@ STRINGS = {
         "Dieser Computer wurde mit dem Cyberbeest-<b>{track}</b>-Repository eingerichtet.\n\n"
         "Die neuesten Updates aus diesem Repository holen?"
     ),
+    "update.last_pull_message": "Zuletzt aktualisiert: {when} ({relative})",
+    "update.last_pull_never": "Noch nie aktualisiert.",
+
+    "relative.just_now": "gerade eben",
+    "relative.minute_ago": "vor {n} Minute",
+    "relative.minutes_ago": "vor {n} Minuten",
+    "relative.hour_ago": "vor {n} Stunde",
+    "relative.hours_ago": "vor {n} Stunden",
+    "relative.day_ago": "vor {n} Tag",
+    "relative.days_ago": "vor {n} Tagen",
+    "relative.month_ago": "vor {n} Monat",
+    "relative.months_ago": "vor {n} Monaten",
+    "relative.year_ago": "vor {n} Jahr",
+    "relative.years_ago": "vor {n} Jahren",
     "update.button_no": "Nein",
     "update.button_yes": "Ja",
     "update.switch_button": "Track wechseln",

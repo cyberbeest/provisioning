@@ -11,6 +11,7 @@ there on request, but not competing for attention.
 
 Prints exactly one of "yes", "no" or "switch" to stdout and exits 0.
 """
+import datetime
 import os
 import sys
 
@@ -25,8 +26,38 @@ from gi.repository import Gtk
 RESPONSE_SWITCH = 100
 
 
+_RELATIVE_UNITS = (
+    ("year", 31536000), ("month", 2592000), ("day", 86400),
+    ("hour", 3600), ("minute", 60),
+)
+
+
+def relative_time(when):
+    seconds = (datetime.datetime.now() - when).total_seconds()
+    for unit, unit_seconds in _RELATIVE_UNITS:
+        n = int(seconds // unit_seconds)
+        if n >= 1:
+            key = f"relative.{unit}_ago" if n == 1 else f"relative.{unit}s_ago"
+            return t(key).format(n=n)
+    return t("relative.just_now")
+
+
+def last_pull_text(repo_dir):
+    # git touches .git/FETCH_HEAD on every fetch (including the fetch this
+    # tool's own "Yes" does), so its mtime is a reliable "last pull" marker
+    # without needing a separate state file.
+    fetch_head = os.path.join(repo_dir, ".git", "FETCH_HEAD")
+    try:
+        when = datetime.datetime.fromtimestamp(os.path.getmtime(fetch_head))
+    except OSError:
+        return t("update.last_pull_never")
+    return t("update.last_pull_message").format(
+        when=when.strftime("%Y-%m-%d %H:%M"), relative=relative_time(when)
+    )
+
+
 def main():
-    track, other_track = sys.argv[1], sys.argv[2]
+    track, other_track, repo_dir = sys.argv[1], sys.argv[2], sys.argv[3]
 
     dialog = Gtk.Dialog(title=t("update.title"))
     dialog.set_default_size(420, -1)
@@ -51,6 +82,10 @@ def main():
     label.set_line_wrap(True)
     row.pack_start(label, True, True, 0)
     box.pack_start(row, True, True, 0)
+
+    last_pull_label = Gtk.Label(xalign=0)
+    last_pull_label.set_markup(f"<small>{last_pull_text(repo_dir)}</small>")
+    box.pack_start(last_pull_label, False, False, 0)
 
     # A MenuButton (same pattern as run-gui.py's "more actions" dropdown)
     # rather than a plain button, so picking "switch" is a deliberate
