@@ -181,8 +181,8 @@ def load_frames(path):
         return frames, img.size
 
     img = ImageOps.exif_transpose(img)
-    if img.mode != "RGBA":
-        img = img.convert("RGBA")
+    if img.mode not in ("RGB", "RGBA"):
+        img = img.convert("RGBA" if "transparency" in img.info or "A" in img.mode else "RGB")
     return [(img, 0)], img.size
 
 
@@ -363,6 +363,10 @@ _BLACK_BG_CSS = Gtk.CssProvider()
 _BLACK_BG_CSS.load_from_data(b"window { background-color: black; }")
 
 
+ZOOM_STEP = 1.25
+MIN_ZOOM_PX = 64
+
+
 class ImageViewerWindow(Gtk.Window):
     def __init__(self, path):
         super().__init__()
@@ -379,6 +383,8 @@ class ImageViewerWindow(Gtk.Window):
         self.connect("destroy", Gtk.main_quit)
 
         self.image_widget = None
+        self.native_size = None
+        self.is_fullscreen = False
         self.load_image(path, set_initial_size=True)
 
     def load_image(self, path, set_initial_size=False):
@@ -388,6 +394,7 @@ class ImageViewerWindow(Gtk.Window):
         frames, native_size = load_frames(path)
         target_w, target_h = target_display_size(native_size)
         native_w, native_h = native_size
+        self.native_size = native_size
         tooltip = f"{path}\n{native_w} × {native_h}\n{human_file_size(os.path.getsize(path))}"
 
         if self.image_widget is not None:
@@ -400,6 +407,8 @@ class ImageViewerWindow(Gtk.Window):
             animate_cpu_image(image_widget, frames, target_w, target_h)
 
         image_widget.set_tooltip_text(tooltip)
+        image_widget.add_events(Gdk.EventMask.BUTTON_PRESS_MASK)
+        image_widget.connect("button-press-event", self.on_image_button_press)
         self.image_widget = image_widget
         self.add(image_widget)
         image_widget.show()
@@ -415,6 +424,52 @@ class ImageViewerWindow(Gtk.Window):
             return
         self.index = (self.index + offset) % len(self.folder_images)
         self.load_image(self.folder_images[self.index])
+
+    def toggle_fullscreen(self):
+        if self.is_fullscreen:
+            self.unfullscreen()
+        else:
+            self.fullscreen()
+        self.is_fullscreen = not self.is_fullscreen
+
+    def zoom_by(self, factor):
+        cur_w, cur_h = self.get_size()
+        self.resize(max(MIN_ZOOM_PX, round(cur_w * factor)), max(MIN_ZOOM_PX, round(cur_h * factor)))
+
+    def zoom_to_native(self):
+        if self.native_size is None:
+            return
+        w, h = self.native_size
+        self.resize(max(1, w), max(1, h))
+
+    def zoom_to_fit(self):
+        if self.native_size is None:
+            return
+        w, h = target_display_size(self.native_size)
+        self.resize(w, h)
+
+    def show_context_menu(self, event):
+        menu = Gtk.Menu()
+        for label, handler in (
+            ("Zoom In", lambda _i: self.zoom_by(ZOOM_STEP)),
+            ("Zoom Out", lambda _i: self.zoom_by(1 / ZOOM_STEP)),
+            ("Zoom 1:1", lambda _i: self.zoom_to_native()),
+            ("Zoom Fit", lambda _i: self.zoom_to_fit()),
+        ):
+            item = Gtk.MenuItem(label=label)
+            item.connect("activate", handler)
+            menu.append(item)
+        menu.show_all()
+        menu.popup_at_pointer(event)
+
+    def on_image_button_press(self, widget, event):
+        if event.button == 1 and event.type == Gdk.EventType._2BUTTON_PRESS:
+            self.toggle_fullscreen()
+            return True
+        if event.button == 3:
+            self.show_context_menu(event)
+            return True
+        return False
 
     def on_key_press(self, widget, event):
         if event.keyval in (Gdk.KEY_Escape, Gdk.KEY_q):
