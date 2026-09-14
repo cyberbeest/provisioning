@@ -544,6 +544,18 @@ class ImageViewerWindow(Gtk.Window):
         if event.keyval == Gdk.KEY_Right:
             self.show_offset(1)
             return True
+        if event.keyval in (Gdk.KEY_plus, Gdk.KEY_KP_Add):
+            self.zoom_by(ZOOM_STEP)
+            return True
+        if event.keyval in (Gdk.KEY_minus, Gdk.KEY_KP_Subtract):
+            self.zoom_by(1 / ZOOM_STEP)
+            return True
+        if event.keyval in (Gdk.KEY_0, Gdk.KEY_KP_0):
+            self.zoom_to_native()
+            return True
+        if event.keyval in (Gdk.KEY_f, Gdk.KEY_F):
+            self.zoom_to_fit()
+            return True
         return False
 
 
