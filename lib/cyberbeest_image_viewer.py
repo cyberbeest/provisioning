@@ -181,8 +181,8 @@ def load_frames(path):
         return frames, img.size
 
     img = ImageOps.exif_transpose(img)
-    if img.mode not in ("RGB", "RGBA"):
-        img = img.convert("RGBA" if "transparency" in img.info or "A" in img.mode else "RGB")
+    if img.mode != "RGBA":
+        img = img.convert("RGBA")
     return [(img, 0)], img.size
 
 
