@@ -60,6 +60,8 @@ Fahre nur fort, wenn du einen Installations-Link auf einer vertrauenswürdigen S
 	[shutdown_genmon.ac_label]="Netzbetrieb: DURATION"
 	[shutdown_genmon.battery_label]="Akku: DURATION"
 	[shutdown_genmon.click_to_change]="Zum Ändern klicken"
+	[shutdown_genmon.blocked_suffix]=" (derzeit BLOCKIERT)"
+	[shutdown_genmon.inhibited_warning]="WICHTIG: Automatische Sperre wird von APPNAME blockiert -- Bildschirm wird NICHT gesperrt"
 	[panel_status_genmon.lock_heading]="Sperre &amp; automatische Abschaltung"
 	[panel_status_genmon.security_heading]="Sicherheitsupdates"
 	[panel_status_genmon.ip_line]="IP-Adresse: ADDR"
