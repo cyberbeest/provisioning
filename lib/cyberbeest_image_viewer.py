@@ -279,9 +279,24 @@ class GLImageArea(Gtk.GLArea):
 
     def on_render(self, area, ctx):
         scale = area.get_scale_factor()
-        GL.glViewport(0, 0, area.get_allocated_width() * scale, area.get_allocated_height() * scale)
+        area_w = area.get_allocated_width() * scale
+        area_h = area.get_allocated_height() * scale
+        GL.glViewport(0, 0, area_w, area_h)
         GL.glClearColor(0.0, 0.0, 0.0, 1.0)
         GL.glClear(GL.GL_COLOR_BUFFER_BIT)
+
+        # Letterbox: fit the image into the window's current size while
+        # keeping its aspect ratio, rather than stretching it -- the
+        # texture itself never changes, only the viewport rectangle we
+        # draw it into, so resizing the window is just a per-frame
+        # viewport recompute with no re-upload.
+        native_w, native_h = self.frames[0][0].size
+        if native_w and native_h and area_w and area_h:
+            fit_scale = min(area_w / native_w, area_h / native_h)
+            draw_w = max(1, round(native_w * fit_scale))
+            draw_h = max(1, round(native_h * fit_scale))
+            GL.glViewport((area_w - draw_w) // 2, (area_h - draw_h) // 2, draw_w, draw_h)
+
         GL.glUseProgram(self.program)
         GL.glBindVertexArray(self.vao)
         GL.glActiveTexture(GL.GL_TEXTURE0)
@@ -290,32 +305,68 @@ class GLImageArea(Gtk.GLArea):
         return True
 
 
+RESIZE_DEBOUNCE_MS = 150
+
+
 def animate_cpu_image(image_widget, frames, target_w, target_h):
     """Drives a Gtk.Image through an animated GIF's frames, resizing each
-    (gamma-correctly, if downscale is needed) up front."""
-    pixbufs = []
-    for frame, duration in frames:
-        if (target_w, target_h) != frame.size:
-            frame = resize_gamma_correct(frame, target_w, target_h)
-        pixbufs.append((pil_to_pixbuf(frame), duration))
+    (gamma-correctly, if downscale is needed) up front, and re-resizing
+    all frames (debounced) whenever the widget's allocation changes so
+    window resizes scale the content -- there's no live GPU viewport
+    trick available here, so a resize means redoing the CPU resample."""
+    state = {"idx": 0, "size": (target_w, target_h), "pixbufs": [], "resize_src": None}
 
-    state = {"idx": 0}
-    image_widget.set_from_pixbuf(pixbufs[0][0])
+    def render_at(w, h):
+        pixbufs = []
+        for frame, duration in frames:
+            if (w, h) != frame.size:
+                frame = resize_gamma_correct(frame, w, h)
+            pixbufs.append((pil_to_pixbuf(frame), duration))
+        state["pixbufs"] = pixbufs
+        state["size"] = (w, h)
+        image_widget.set_from_pixbuf(pixbufs[state["idx"] % len(pixbufs)][0])
 
     def advance():
+        pixbufs = state["pixbufs"]
         state["idx"] = (state["idx"] + 1) % len(pixbufs)
         pixbuf, duration = pixbufs[state["idx"]]
         image_widget.set_from_pixbuf(pixbuf)
         GLib.timeout_add(duration, advance)
         return False
 
-    if len(pixbufs) > 1:
-        GLib.timeout_add(pixbufs[0][1], advance)
+    def do_resize():
+        state["resize_src"] = None
+        alloc = image_widget.get_allocation()
+        aw, ah = max(alloc.width, 1), max(alloc.height, 1)
+        native_w, native_h = frames[0][0].size
+        fit_scale = min(aw / native_w, ah / native_h)
+        w, h = max(1, round(native_w * fit_scale)), max(1, round(native_h * fit_scale))
+        if (w, h) != state["size"]:
+            render_at(w, h)
+        return False
+
+    def on_allocate(_widget, _allocation):
+        if state["resize_src"] is not None:
+            GLib.source_remove(state["resize_src"])
+        state["resize_src"] = GLib.timeout_add(RESIZE_DEBOUNCE_MS, do_resize)
+
+    render_at(target_w, target_h)
+    image_widget.set_halign(Gtk.Align.CENTER)
+    image_widget.set_valign(Gtk.Align.CENTER)
+    image_widget.connect("size-allocate", on_allocate)
+
+    if len(frames) > 1:
+        GLib.timeout_add(frames[0][1], advance)
+
+
+_BLACK_BG_CSS = Gtk.CssProvider()
+_BLACK_BG_CSS.load_from_data(b"window { background-color: black; }")
 
 
 class ImageViewerWindow(Gtk.Window):
     def __init__(self, path):
         super().__init__()
+        self.get_style_context().add_provider(_BLACK_BG_CSS, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
         self.folder_images = folder_images_by_date(path)
         path = os.path.abspath(path)
         try:
@@ -328,9 +379,9 @@ class ImageViewerWindow(Gtk.Window):
         self.connect("destroy", Gtk.main_quit)
 
         self.image_widget = None
-        self.load_image(path)
+        self.load_image(path, set_initial_size=True)
 
-    def load_image(self, path):
+    def load_image(self, path, set_initial_size=False):
         filename = path.rsplit("/", 1)[-1]
         title_stem = filename.rsplit(".", 1)[0] if "." in filename else filename
         self.set_title(f"{title_stem} - Cyberbeest Images")
@@ -344,7 +395,6 @@ class ImageViewerWindow(Gtk.Window):
 
         if HAVE_GL:
             image_widget = GLImageArea(frames)
-            image_widget.set_size_request(target_w, target_h)
         else:
             image_widget = Gtk.Image()
             animate_cpu_image(image_widget, frames, target_w, target_h)
@@ -352,9 +402,13 @@ class ImageViewerWindow(Gtk.Window):
         image_widget.set_tooltip_text(tooltip)
         self.image_widget = image_widget
         self.add(image_widget)
-        self.set_resizable(False)
         image_widget.show()
-        self.resize(1, 1)
+        # Only the initial open sizes the window to fit the image/screen;
+        # after that the window keeps whatever size the user picked, and
+        # switching images (arrow keys) or resizing just rescales the
+        # content into it.
+        if set_initial_size:
+            self.set_default_size(target_w, target_h)
 
     def show_offset(self, offset):
         if not self.folder_images:
