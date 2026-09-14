@@ -236,6 +236,8 @@ class GLImageArea(Gtk.GLArea):
         super().__init__()
         self.frames = frames
         self.frame_idx = 0
+        self.generation = 0
+        self.texture = None
         self.set_required_version(3, 2)
         self.set_halign(Gtk.Align.CENTER)
         self.set_valign(Gtk.Align.CENTER)
@@ -248,21 +250,41 @@ class GLImageArea(Gtk.GLArea):
         # exactly what makes scrollbars appear for zoomed-in content.
         self.set_size_request(w, h)
 
+    def set_frames(self, frames):
+        # Reuse this widget/GL context for a new image instead of tearing
+        # down and recreating one on every navigation -- destroying and
+        # realizing a fresh GLArea (new context, new window) on every
+        # image switch left a multi-frame window where the compositor
+        # could still be showing the old widget's last frame while the
+        # new one was realizing, which looked like the old and new image
+        # flickering back and forth.
+        self.frames = frames
+        self.frame_idx = 0
+        self.generation += 1
+        if self.get_realized():
+            self._upload_full(frames[0][0])
+        if len(frames) > 1:
+            GLib.timeout_add(frames[0][1], self._advance_frame, self.generation)
+
     def on_realize(self, area):
         area.make_current()
-        w, h = self.frames[0][0].size
         self.program = _build_program()
         self.vao = GL.glGenVertexArrays(1)
         self.texture = GL.glGenTextures(1)
+        self._upload_full(self.frames[0][0])
+        if len(self.frames) > 1:
+            GLib.timeout_add(self.frames[0][1], self._advance_frame, self.generation)
+
+    def _upload_full(self, img):
         GL.glBindTexture(GL.GL_TEXTURE_2D, self.texture)
         GL.glPixelStorei(GL.GL_UNPACK_ALIGNMENT, 1)
+        w, h = img.size
         GL.glTexImage2D(
             GL.GL_TEXTURE_2D, 0, GL.GL_SRGB8_ALPHA8, w, h, 0,
-            GL.GL_RGBA, GL.GL_UNSIGNED_BYTE, self.frames[0][0].tobytes(),
+            GL.GL_RGBA, GL.GL_UNSIGNED_BYTE, img.tobytes(),
         )
         self._set_filter_params()
-        if len(self.frames) > 1:
-            GLib.timeout_add(self.frames[0][1], self._advance_frame)
+        self.queue_render()
 
     def _set_filter_params(self):
         GL.glGenerateMipmap(GL.GL_TEXTURE_2D)
@@ -271,7 +293,12 @@ class GLImageArea(Gtk.GLArea):
         GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_WRAP_S, GL.GL_CLAMP_TO_EDGE)
         GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_WRAP_T, GL.GL_CLAMP_TO_EDGE)
 
-    def _advance_frame(self):
+    def _advance_frame(self, generation):
+        # A stale timer chain from an image that's since been swapped out
+        # via set_frames() stops rescheduling itself here instead of
+        # animating over whatever image is now showing.
+        if generation != self.generation:
+            return False
         self.frame_idx = (self.frame_idx + 1) % len(self.frames)
         frame, duration = self.frames[self.frame_idx]
         self.make_current()
@@ -282,7 +309,7 @@ class GLImageArea(Gtk.GLArea):
         )
         self._set_filter_params()
         self.queue_render()
-        GLib.timeout_add(duration, self._advance_frame)
+        GLib.timeout_add(duration, self._advance_frame, generation)
         return False
 
     def on_render(self, area, ctx):
@@ -307,18 +334,19 @@ class GLImageArea(Gtk.GLArea):
 def make_cpu_image_widget(frames):
     """CPU (Pillow/numpy) fallback when PyOpenGL isn't available: a
     Gtk.Image driven through an animated GIF's frames, resized
-    gamma-correctly on demand. Returns (widget, set_zoom_size) -- the
-    caller drives the displayed size the same way it drives
+    gamma-correctly on demand. Returns (widget, set_zoom_size, set_frames)
+    -- the caller drives the displayed size the same way it drives
     GLImageArea.set_zoom_size(), there's just a CPU resample behind it
-    instead of a live GPU viewport."""
+    instead of a live GPU viewport. set_frames() swaps in a new image
+    without recreating the widget, mirroring GLImageArea.set_frames()."""
     image_widget = Gtk.Image()
     image_widget.set_halign(Gtk.Align.CENTER)
     image_widget.set_valign(Gtk.Align.CENTER)
-    state = {"idx": 0, "size": None, "pixbufs": []}
+    state = {"idx": 0, "size": None, "pixbufs": [], "frames": frames, "generation": 0}
 
     def render_at(w, h):
         pixbufs = []
-        for frame, duration in frames:
+        for frame, duration in state["frames"]:
             if (w, h) != frame.size:
                 frame = resize_gamma_correct(frame, w, h)
             pixbufs.append((pil_to_pixbuf(frame), duration))
@@ -327,26 +355,36 @@ def make_cpu_image_widget(frames):
         image_widget.set_size_request(w, h)
         image_widget.set_from_pixbuf(pixbufs[state["idx"] % len(pixbufs)][0])
 
-    def advance():
+    def advance(generation):
+        if generation != state["generation"]:
+            return False
         pixbufs = state["pixbufs"]
         if not pixbufs:
             return False
         state["idx"] = (state["idx"] + 1) % len(pixbufs)
         pixbuf, duration = pixbufs[state["idx"]]
         image_widget.set_from_pixbuf(pixbuf)
-        GLib.timeout_add(duration, advance)
+        GLib.timeout_add(duration, advance, generation)
         return False
 
     def set_zoom_size(w, h):
         if (w, h) != state["size"]:
             render_at(w, h)
 
+    def set_frames(new_frames):
+        state["frames"] = new_frames
+        state["idx"] = 0
+        state["size"] = None
+        state["generation"] += 1
+        if len(new_frames) > 1:
+            GLib.timeout_add(new_frames[0][1], advance, state["generation"])
+
     native_w, native_h = frames[0][0].size
     render_at(native_w, native_h)
     if len(frames) > 1:
-        GLib.timeout_add(frames[0][1], advance)
+        GLib.timeout_add(frames[0][1], advance, state["generation"])
 
-    return image_widget, set_zoom_size
+    return image_widget, set_zoom_size, set_frames
 
 
 _BLACK_BG_CSS = Gtk.CssProvider()
@@ -382,6 +420,7 @@ class ImageViewerWindow(Gtk.Window):
 
         self.image_widget = None
         self.set_zoom_size = None
+        self.set_frames = None
         self.native_size = None
         self.is_fullscreen = False
         self.zoom_mode = "fit"  # "fit" tracks the viewport; "manual" holds zoom_scale
@@ -403,27 +442,37 @@ class ImageViewerWindow(Gtk.Window):
         tooltip = f"{path}\n{native_w} × {native_h}\n{human_file_size(os.path.getsize(path))}"
 
         if self.image_widget is not None:
-            self.scroller.remove(self.image_widget)
-
-        if HAVE_GL:
-            image_widget = GLImageArea(frames)
-            set_zoom_size = image_widget.set_zoom_size
+            # Reuse the existing widget (and its GL context, for the GL
+            # path) rather than destroying and recreating one -- doing a
+            # full teardown/rebuild on every navigation left a window
+            # where the compositor could still be showing the old
+            # widget's last frame while the new one was realizing, which
+            # looked like the old and new image flickering back and
+            # forth a few times before settling.
+            self.set_frames(frames)
         else:
-            image_widget, set_zoom_size = make_cpu_image_widget(frames)
+            if HAVE_GL:
+                image_widget = GLImageArea(frames)
+                set_zoom_size = image_widget.set_zoom_size
+                set_frames = image_widget.set_frames
+            else:
+                image_widget, set_zoom_size, set_frames = make_cpu_image_widget(frames)
 
-        image_widget.set_tooltip_text(tooltip)
-        image_widget.add_events(
-            Gdk.EventMask.BUTTON_PRESS_MASK
-            | Gdk.EventMask.BUTTON_RELEASE_MASK
-            | Gdk.EventMask.POINTER_MOTION_MASK
-        )
-        image_widget.connect("button-press-event", self.on_image_button_press)
-        image_widget.connect("button-release-event", self.on_image_button_release)
-        image_widget.connect("motion-notify-event", self.on_image_motion)
-        self.image_widget = image_widget
-        self.set_zoom_size = set_zoom_size
-        self.scroller.add(image_widget)
-        image_widget.show()
+            image_widget.add_events(
+                Gdk.EventMask.BUTTON_PRESS_MASK
+                | Gdk.EventMask.BUTTON_RELEASE_MASK
+                | Gdk.EventMask.POINTER_MOTION_MASK
+            )
+            image_widget.connect("button-press-event", self.on_image_button_press)
+            image_widget.connect("button-release-event", self.on_image_button_release)
+            image_widget.connect("motion-notify-event", self.on_image_motion)
+            self.image_widget = image_widget
+            self.set_zoom_size = set_zoom_size
+            self.set_frames = set_frames
+            self.scroller.add(image_widget)
+            image_widget.show()
+
+        self.image_widget.set_tooltip_text(tooltip)
         # Only the initial open sizes the window to fit the image/screen;
         # after that the window keeps whatever size the user picked.
         if set_initial_size:
