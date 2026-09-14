@@ -475,8 +475,9 @@ class ImageViewerWindow(Gtk.Window):
         return min(alloc.width / nw, alloc.height / nh)
 
     def zoom_by(self, factor):
+        base_scale = self._current_scale()
         self.zoom_mode = "manual"
-        self.zoom_scale = max(MIN_ZOOM_SCALE, self._current_scale() * factor)
+        self.zoom_scale = max(MIN_ZOOM_SCALE, base_scale * factor)
         self._apply_manual_zoom()
 
     def zoom_to_native(self):
