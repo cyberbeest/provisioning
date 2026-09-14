@@ -16,13 +16,15 @@
 #     Installed from trixie-backports (already enabled system-wide) instead
 #     of trixie main, since yt-dlp breaks against site changes often and the
 #     backports version is much newer (2026.08 vs. trixie's stale 2025.04).
+#   - gh: GitHub CLI, for users who want to work with GitHub repos/PRs/issues
+#     from the command line.
 # Idempotent: safe to re-run.
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG="$DIR/32-minor-apt-packages.log"
 exec > >(tee -a "$LOG") 2>&1
 
-PACKAGES=(gnome-calculator xclip kleopatra ncdu)
+PACKAGES=(gnome-calculator xclip kleopatra ncdu gh)
 
 echo "=== $(date) : installing minor apt packages: ${PACKAGES[*]} ==="
 apt-get -o DPkg::Lock::Timeout=60 update -qq
