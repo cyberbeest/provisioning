@@ -150,7 +150,13 @@ def load_frames(path):
         frames = []
         for i in range(img.n_frames):
             img.seek(i)
-            duration = max(20, img.info.get("duration", 100) or 100)
+            # Many old GIF tools write a delay of 0 or 1 centisecond to
+            # mean "just use the default speed" rather than literally
+            # zero -- browsers bump anything <= 10ms up to 100ms, so we
+            # match that instead of taking the file's value at face value.
+            duration = img.info.get("duration", 100)
+            if not duration or duration <= 10:
+                duration = 100
             frames.append((img.convert("RGBA"), duration))
         return frames, img.size
 
