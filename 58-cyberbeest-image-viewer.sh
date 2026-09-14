@@ -35,6 +35,15 @@ install -o "$TARGET_USER" -g "$TARGET_USER" -m 755 \
     "$DIR/lib/cyberbeest_image_viewer.py" \
     "$TARGET_HOME/.local/bin/cyberbeest_image_viewer.py"
 
+echo "--- Installing 'civ' command-line launcher ---"
+cat > "$TARGET_HOME/.local/bin/civ" <<EOF
+#!/bin/bash
+# Short launcher for Cyberbeest Image Viewer, e.g. \`civ photo.png\`.
+exec python3 "\$HOME/.local/bin/cyberbeest_image_viewer.py" "\$@"
+EOF
+chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.local/bin/civ"
+chmod 755 "$TARGET_HOME/.local/bin/civ"
+
 echo "--- Installing .desktop entry (handler only, not menu-launchable) ---"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.local/share/applications"
 cat > "$TARGET_HOME/.local/share/applications/cyberbeest-image-viewer.desktop" <<EOF
