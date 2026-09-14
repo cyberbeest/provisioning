@@ -237,8 +237,16 @@ class GLImageArea(Gtk.GLArea):
         self.frames = frames
         self.frame_idx = 0
         self.set_required_version(3, 2)
+        self.set_halign(Gtk.Align.CENTER)
+        self.set_valign(Gtk.Align.CENTER)
         self.connect("realize", self.on_realize)
         self.connect("render", self.on_render)
+
+    def set_zoom_size(self, w, h):
+        # The widget's own size *is* the zoom level -- inside a
+        # GtkScrolledWindow this can exceed the visible viewport, which is
+        # exactly what makes scrollbars appear for zoomed-in content.
+        self.set_size_request(w, h)
 
     def on_realize(self, area):
         area.make_current()
@@ -285,18 +293,9 @@ class GLImageArea(Gtk.GLArea):
         GL.glClearColor(0.0, 0.0, 0.0, 1.0)
         GL.glClear(GL.GL_COLOR_BUFFER_BIT)
 
-        # Letterbox: fit the image into the window's current size while
-        # keeping its aspect ratio, rather than stretching it -- the
-        # texture itself never changes, only the viewport rectangle we
-        # draw it into, so resizing the window is just a per-frame
-        # viewport recompute with no re-upload.
-        native_w, native_h = self.frames[0][0].size
-        if native_w and native_h and area_w and area_h:
-            fit_scale = min(area_w / native_w, area_h / native_h)
-            draw_w = max(1, round(native_w * fit_scale))
-            draw_h = max(1, round(native_h * fit_scale))
-            GL.glViewport((area_w - draw_w) // 2, (area_h - draw_h) // 2, draw_w, draw_h)
-
+        # No aspect-ratio math needed here: set_zoom_size() always sets
+        # this widget's own size to the exact w/h the caller wants drawn
+        # (already aspect-correct), so the viewport just fills it.
         GL.glUseProgram(self.program)
         GL.glBindVertexArray(self.vao)
         GL.glActiveTexture(GL.GL_TEXTURE0)
@@ -305,16 +304,17 @@ class GLImageArea(Gtk.GLArea):
         return True
 
 
-RESIZE_DEBOUNCE_MS = 150
-
-
-def animate_cpu_image(image_widget, frames, target_w, target_h):
-    """Drives a Gtk.Image through an animated GIF's frames, resizing each
-    (gamma-correctly, if downscale is needed) up front, and re-resizing
-    all frames (debounced) whenever the widget's allocation changes so
-    window resizes scale the content -- there's no live GPU viewport
-    trick available here, so a resize means redoing the CPU resample."""
-    state = {"idx": 0, "size": (target_w, target_h), "pixbufs": [], "resize_src": None}
+def make_cpu_image_widget(frames):
+    """CPU (Pillow/numpy) fallback when PyOpenGL isn't available: a
+    Gtk.Image driven through an animated GIF's frames, resized
+    gamma-correctly on demand. Returns (widget, set_zoom_size) -- the
+    caller drives the displayed size the same way it drives
+    GLImageArea.set_zoom_size(), there's just a CPU resample behind it
+    instead of a live GPU viewport."""
+    image_widget = Gtk.Image()
+    image_widget.set_halign(Gtk.Align.CENTER)
+    image_widget.set_valign(Gtk.Align.CENTER)
+    state = {"idx": 0, "size": None, "pixbufs": []}
 
     def render_at(w, h):
         pixbufs = []
@@ -324,39 +324,29 @@ def animate_cpu_image(image_widget, frames, target_w, target_h):
             pixbufs.append((pil_to_pixbuf(frame), duration))
         state["pixbufs"] = pixbufs
         state["size"] = (w, h)
+        image_widget.set_size_request(w, h)
         image_widget.set_from_pixbuf(pixbufs[state["idx"] % len(pixbufs)][0])
 
     def advance():
         pixbufs = state["pixbufs"]
+        if not pixbufs:
+            return False
         state["idx"] = (state["idx"] + 1) % len(pixbufs)
         pixbuf, duration = pixbufs[state["idx"]]
         image_widget.set_from_pixbuf(pixbuf)
         GLib.timeout_add(duration, advance)
         return False
 
-    def do_resize():
-        state["resize_src"] = None
-        alloc = image_widget.get_allocation()
-        aw, ah = max(alloc.width, 1), max(alloc.height, 1)
-        native_w, native_h = frames[0][0].size
-        fit_scale = min(aw / native_w, ah / native_h)
-        w, h = max(1, round(native_w * fit_scale)), max(1, round(native_h * fit_scale))
+    def set_zoom_size(w, h):
         if (w, h) != state["size"]:
             render_at(w, h)
-        return False
 
-    def on_allocate(_widget, _allocation):
-        if state["resize_src"] is not None:
-            GLib.source_remove(state["resize_src"])
-        state["resize_src"] = GLib.timeout_add(RESIZE_DEBOUNCE_MS, do_resize)
-
-    render_at(target_w, target_h)
-    image_widget.set_halign(Gtk.Align.CENTER)
-    image_widget.set_valign(Gtk.Align.CENTER)
-    image_widget.connect("size-allocate", on_allocate)
-
+    native_w, native_h = frames[0][0].size
+    render_at(native_w, native_h)
     if len(frames) > 1:
         GLib.timeout_add(frames[0][1], advance)
+
+    return image_widget, set_zoom_size
 
 
 _BLACK_BG_CSS = Gtk.CssProvider()
@@ -364,7 +354,8 @@ _BLACK_BG_CSS.load_from_data(b"window { background-color: black; }")
 
 
 ZOOM_STEP = 1.25
-MIN_ZOOM_PX = 64
+MIN_ZOOM_SCALE = 0.02
+SELF_CHECK_INTERVAL_S = 2
 
 
 class ImageViewerWindow(Gtk.Window):
@@ -382,9 +373,20 @@ class ImageViewerWindow(Gtk.Window):
         self.connect("key-press-event", self.on_key_press)
         self.connect("destroy", Gtk.main_quit)
 
+        self.scroller = Gtk.ScrolledWindow()
+        self.scroller.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+        self.scroller.connect("size-allocate", self.on_viewport_allocate)
+        self.add(self.scroller)
+        self.scroller.show()
+
         self.image_widget = None
+        self.set_zoom_size = None
         self.native_size = None
         self.is_fullscreen = False
+        self.zoom_mode = "fit"  # "fit" tracks the viewport; "manual" holds zoom_scale
+        self.zoom_scale = 1.0
+        self._last_fit_size = None
+        self.drag_state = None
         self.load_image(path, set_initial_size=True)
 
     def load_image(self, path, set_initial_size=False):
@@ -395,29 +397,39 @@ class ImageViewerWindow(Gtk.Window):
         target_w, target_h = target_display_size(native_size)
         native_w, native_h = native_size
         self.native_size = native_size
+        self._last_fit_size = None
         tooltip = f"{path}\n{native_w} × {native_h}\n{human_file_size(os.path.getsize(path))}"
 
         if self.image_widget is not None:
-            self.remove(self.image_widget)
+            self.scroller.remove(self.image_widget)
 
         if HAVE_GL:
             image_widget = GLImageArea(frames)
+            set_zoom_size = image_widget.set_zoom_size
         else:
-            image_widget = Gtk.Image()
-            animate_cpu_image(image_widget, frames, target_w, target_h)
+            image_widget, set_zoom_size = make_cpu_image_widget(frames)
 
         image_widget.set_tooltip_text(tooltip)
-        image_widget.add_events(Gdk.EventMask.BUTTON_PRESS_MASK)
+        image_widget.add_events(
+            Gdk.EventMask.BUTTON_PRESS_MASK
+            | Gdk.EventMask.BUTTON_RELEASE_MASK
+            | Gdk.EventMask.POINTER_MOTION_MASK
+        )
         image_widget.connect("button-press-event", self.on_image_button_press)
+        image_widget.connect("button-release-event", self.on_image_button_release)
+        image_widget.connect("motion-notify-event", self.on_image_motion)
         self.image_widget = image_widget
-        self.add(image_widget)
+        self.set_zoom_size = set_zoom_size
+        self.scroller.add(image_widget)
         image_widget.show()
         # Only the initial open sizes the window to fit the image/screen;
-        # after that the window keeps whatever size the user picked, and
-        # switching images (arrow keys) or resizing just rescales the
-        # content into it.
+        # after that the window keeps whatever size the user picked.
         if set_initial_size:
             self.set_default_size(target_w, target_h)
+        if self.zoom_mode == "fit":
+            self._apply_fit(self.scroller.get_allocation())
+        else:
+            self._apply_manual_zoom()
 
     def show_offset(self, offset):
         if not self.folder_images:
@@ -432,21 +444,50 @@ class ImageViewerWindow(Gtk.Window):
             self.fullscreen()
         self.is_fullscreen = not self.is_fullscreen
 
+    def on_viewport_allocate(self, _widget, allocation):
+        if self.zoom_mode == "fit":
+            self._apply_fit(allocation)
+
+    def _apply_fit(self, allocation):
+        if self.native_size is None or self.set_zoom_size is None:
+            return
+        aw, ah = max(allocation.width, 1), max(allocation.height, 1)
+        nw, nh = self.native_size
+        scale = min(aw / nw, ah / nh)
+        w, h = max(1, round(nw * scale)), max(1, round(nh * scale))
+        if (w, h) != self._last_fit_size:
+            self._last_fit_size = (w, h)
+            self.set_zoom_size(w, h)
+
+    def _apply_manual_zoom(self):
+        if self.native_size is None or self.set_zoom_size is None:
+            return
+        nw, nh = self.native_size
+        self.set_zoom_size(max(1, round(nw * self.zoom_scale)), max(1, round(nh * self.zoom_scale)))
+
+    def _current_scale(self):
+        if self.zoom_mode == "manual" or self.native_size is None:
+            return self.zoom_scale
+        alloc = self.scroller.get_allocation()
+        nw, nh = self.native_size
+        if alloc.width <= 0 or alloc.height <= 0:
+            return 1.0
+        return min(alloc.width / nw, alloc.height / nh)
+
     def zoom_by(self, factor):
-        cur_w, cur_h = self.get_size()
-        self.resize(max(MIN_ZOOM_PX, round(cur_w * factor)), max(MIN_ZOOM_PX, round(cur_h * factor)))
+        self.zoom_mode = "manual"
+        self.zoom_scale = max(MIN_ZOOM_SCALE, self._current_scale() * factor)
+        self._apply_manual_zoom()
 
     def zoom_to_native(self):
-        if self.native_size is None:
-            return
-        w, h = self.native_size
-        self.resize(max(1, w), max(1, h))
+        self.zoom_mode = "manual"
+        self.zoom_scale = 1.0
+        self._apply_manual_zoom()
 
     def zoom_to_fit(self):
-        if self.native_size is None:
-            return
-        w, h = target_display_size(self.native_size)
-        self.resize(w, h)
+        self.zoom_mode = "fit"
+        self._last_fit_size = None
+        self._apply_fit(self.scroller.get_allocation())
 
     def show_context_menu(self, event):
         menu = Gtk.Menu()
@@ -463,11 +504,33 @@ class ImageViewerWindow(Gtk.Window):
         menu.popup_at_pointer(event)
 
     def on_image_button_press(self, widget, event):
-        if event.button == 1 and event.type == Gdk.EventType._2BUTTON_PRESS:
-            self.toggle_fullscreen()
+        if event.button == 1:
+            if event.type == Gdk.EventType._2BUTTON_PRESS:
+                self.toggle_fullscreen()
+                return True
+            self.drag_state = (
+                event.x_root,
+                event.y_root,
+                self.scroller.get_hadjustment().get_value(),
+                self.scroller.get_vadjustment().get_value(),
+            )
             return True
         if event.button == 3:
             self.show_context_menu(event)
+            return True
+        return False
+
+    def on_image_motion(self, widget, event):
+        if self.drag_state is None:
+            return False
+        start_x, start_y, h0, v0 = self.drag_state
+        self.scroller.get_hadjustment().set_value(h0 - (event.x_root - start_x))
+        self.scroller.get_vadjustment().set_value(v0 - (event.y_root - start_y))
+        return True
+
+    def on_image_button_release(self, widget, event):
+        if event.button == 1:
+            self.drag_state = None
             return True
         return False
 
@@ -484,10 +547,29 @@ class ImageViewerWindow(Gtk.Window):
         return False
 
 
+def _check_self_modified(self_path, initial_mtime):
+    """Re-exec the running process if its own script file changed on disk
+    (e.g. a git pull + reinstall while it's open), so the user doesn't
+    have to notice and manually restart to pick up a fix."""
+    try:
+        if os.path.getmtime(self_path) != initial_mtime:
+            os.execv(sys.executable, [sys.executable, self_path] + sys.argv[1:])
+    except OSError:
+        pass
+    return True
+
+
 def main():
     if len(sys.argv) != 2:
         print(f"usage: {sys.argv[0]} <image path>", file=sys.stderr)
         sys.exit(1)
+
+    self_path = os.path.abspath(sys.argv[0])
+    try:
+        initial_mtime = os.path.getmtime(self_path)
+        GLib.timeout_add_seconds(SELF_CHECK_INTERVAL_S, _check_self_modified, self_path, initial_mtime)
+    except OSError:
+        pass
 
     win = ImageViewerWindow(sys.argv[1])
     win.show_all()
