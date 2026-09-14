@@ -138,23 +138,36 @@ def human_file_size(num_bytes):
         size /= 1024
 
 
-def load_source_image(path):
-    """Load the image at full resolution, no resampling yet."""
+def load_frames(path):
+    """Load every frame of the image at full resolution, no resampling yet.
+
+    Returns (frames, native_size) where frames is a list of
+    (RGBA PIL.Image, duration_ms) -- a single entry for a still image, one
+    per frame for an animated GIF.
+    """
     img = Image.open(path)
+    if img.format == "GIF" and getattr(img, "n_frames", 1) > 1:
+        frames = []
+        for i in range(img.n_frames):
+            img.seek(i)
+            duration = max(20, img.info.get("duration", 100) or 100)
+            frames.append((img.convert("RGBA"), duration))
+        return frames, img.size
+
     img = ImageOps.exif_transpose(img)
     if img.mode not in ("RGB", "RGBA"):
         img = img.convert("RGBA" if "transparency" in img.info or "A" in img.mode else "RGB")
-    return img
+    return [(img, 0)], img.size
 
 
-def target_display_size(img):
+def target_display_size(native_size):
     display = Gdk.Display.get_default()
     monitor = display.get_monitor_at_point(0, 0)
     geom = monitor.get_geometry()
     max_w = max(geom.width - SCREEN_MARGIN_PX, 100)
     max_h = max(geom.height - SCREEN_MARGIN_PX, 100)
 
-    w, h = img.size
+    w, h = native_size
     if w > max_w or h > max_h:
         scale = min(max_w / w, max_h / h)
         return max(1, round(w * scale)), max(1, round(h * scale))
@@ -187,18 +200,23 @@ def _build_program():
 class GLImageArea(Gtk.GLArea):
     """Renders the image at native resolution; the GPU's sRGB texture
     unit does the gamma-correct downscale (decode -> mipmap/bilinear
-    filter in linear light), the fragment shader re-encodes to sRGB."""
+    filter in linear light), the fragment shader re-encodes to sRGB.
 
-    def __init__(self, img):
+    frames is a list of (RGBA PIL.Image, duration_ms); more than one
+    entry means an animated GIF, stepped via a self-rescheduling
+    GLib.timeout (frame durations vary frame to frame)."""
+
+    def __init__(self, frames):
         super().__init__()
-        self.img = img.convert("RGBA")
+        self.frames = frames
+        self.frame_idx = 0
         self.set_required_version(3, 2)
         self.connect("realize", self.on_realize)
         self.connect("render", self.on_render)
 
     def on_realize(self, area):
         area.make_current()
-        w, h = self.img.size
+        w, h = self.frames[0][0].size
         self.program = _build_program()
         self.vao = GL.glGenVertexArrays(1)
         self.texture = GL.glGenTextures(1)
@@ -206,13 +224,32 @@ class GLImageArea(Gtk.GLArea):
         GL.glPixelStorei(GL.GL_UNPACK_ALIGNMENT, 1)
         GL.glTexImage2D(
             GL.GL_TEXTURE_2D, 0, GL.GL_SRGB8_ALPHA8, w, h, 0,
-            GL.GL_RGBA, GL.GL_UNSIGNED_BYTE, self.img.tobytes(),
+            GL.GL_RGBA, GL.GL_UNSIGNED_BYTE, self.frames[0][0].tobytes(),
         )
+        self._set_filter_params()
+        if len(self.frames) > 1:
+            GLib.timeout_add(self.frames[0][1], self._advance_frame)
+
+    def _set_filter_params(self):
         GL.glGenerateMipmap(GL.GL_TEXTURE_2D)
         GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MIN_FILTER, GL.GL_LINEAR_MIPMAP_LINEAR)
         GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MAG_FILTER, GL.GL_LINEAR)
         GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_WRAP_S, GL.GL_CLAMP_TO_EDGE)
         GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_WRAP_T, GL.GL_CLAMP_TO_EDGE)
+
+    def _advance_frame(self):
+        self.frame_idx = (self.frame_idx + 1) % len(self.frames)
+        frame, duration = self.frames[self.frame_idx]
+        self.make_current()
+        GL.glBindTexture(GL.GL_TEXTURE_2D, self.texture)
+        GL.glTexSubImage2D(
+            GL.GL_TEXTURE_2D, 0, 0, 0, frame.width, frame.height,
+            GL.GL_RGBA, GL.GL_UNSIGNED_BYTE, frame.tobytes(),
+        )
+        self._set_filter_params()
+        self.queue_render()
+        GLib.timeout_add(duration, self._advance_frame)
+        return False
 
     def on_render(self, area, ctx):
         scale = area.get_scale_factor()
@@ -227,26 +264,48 @@ class GLImageArea(Gtk.GLArea):
         return True
 
 
+def animate_cpu_image(image_widget, frames, target_w, target_h):
+    """Drives a Gtk.Image through an animated GIF's frames, resizing each
+    (gamma-correctly, if downscale is needed) up front."""
+    pixbufs = []
+    for frame, duration in frames:
+        if (target_w, target_h) != frame.size:
+            frame = resize_gamma_correct(frame, target_w, target_h)
+        pixbufs.append((pil_to_pixbuf(frame), duration))
+
+    state = {"idx": 0}
+    image_widget.set_from_pixbuf(pixbufs[0][0])
+
+    def advance():
+        state["idx"] = (state["idx"] + 1) % len(pixbufs)
+        pixbuf, duration = pixbufs[state["idx"]]
+        image_widget.set_from_pixbuf(pixbuf)
+        GLib.timeout_add(duration, advance)
+        return False
+
+    if len(pixbufs) > 1:
+        GLib.timeout_add(pixbufs[0][1], advance)
+
+
 class ImageViewerWindow(Gtk.Window):
     def __init__(self, path):
         filename = path.rsplit("/", 1)[-1]
         title_stem = filename.rsplit(".", 1)[0] if "." in filename else filename
         super().__init__(title=f"{title_stem} - Cyberbeest Images")
-        img = load_source_image(path)
-        target_w, target_h = target_display_size(img)
-        native_w, native_h = img.size
+        frames, native_size = load_frames(path)
+        target_w, target_h = target_display_size(native_size)
+        native_w, native_h = native_size
         tooltip = f"{filename}\n{native_w} × {native_h}\n{human_file_size(os.path.getsize(path))}"
 
         self.connect("key-press-event", self.on_key_press)
         self.connect("destroy", Gtk.main_quit)
 
         if HAVE_GL:
-            image_widget = GLImageArea(img)
+            image_widget = GLImageArea(frames)
             image_widget.set_size_request(target_w, target_h)
         else:
-            if (target_w, target_h) != img.size:
-                img = resize_gamma_correct(img, target_w, target_h)
-            image_widget = Gtk.Image.new_from_pixbuf(pil_to_pixbuf(img))
+            image_widget = Gtk.Image()
+            animate_cpu_image(image_widget, frames, target_w, target_h)
 
         image_widget.set_tooltip_text(tooltip)
         self.add(image_widget)
