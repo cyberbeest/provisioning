@@ -2,8 +2,9 @@
 """GUI front-end for the NN-*.sh provisioning scripts.
 
 It lists every NN-*.sh script in a sidebar (with a status:
-pending/done/running/failed, "done" meaning its .log is newer than the
-script itself), and runs each one directly as its
+pending/done/running/failed, "done" meaning its .log is newer than both
+the script itself and every lib/ file the script's body references --
+see script_lib_dependencies()), and runs each one directly as its
 own `sudo -A bash NN-*.sh` subprocess, streaming its output into the shared
 log view on the right and updating that script's sidebar status as it goes.
 
@@ -373,10 +374,36 @@ def log_path_for(script):
     return os.path.join(DIR, script[:-3] + ".log")
 
 
+def script_lib_dependencies(script):
+    # Best-effort static scan for lib/ paths a script's body references
+    # (including glob patterns like "lib/i18n/strings.*.sh"), so editing a
+    # shared lib/ file marks every script that installs it as pending
+    # without each of them needing a manual "bump this file" comment (the
+    # old approach -- see 52-cyberbeest-update.sh's history).
+    deps = set()
+    try:
+        with open(os.path.join(DIR, script), encoding="utf-8") as f:
+            text = f.read()
+    except OSError:
+        return deps
+    for match in re.finditer(r'lib/[^\s"\'`)]+', text):
+        full = os.path.join(DIR, match.group(0).rstrip(".,;:"))
+        if "*" in full or "?" in full:
+            deps.update(glob.glob(full))
+        elif os.path.exists(full):
+            deps.add(full)
+    return deps
+
+
 def script_is_done(script):
     log = log_path_for(script)
+    if not os.path.exists(log):
+        return False
+    log_mtime = os.path.getmtime(log)
     script_path = os.path.join(DIR, script)
-    return os.path.exists(log) and os.path.getmtime(log) > os.path.getmtime(script_path)
+    if log_mtime <= os.path.getmtime(script_path):
+        return False
+    return all(log_mtime > os.path.getmtime(dep) for dep in script_lib_dependencies(script))
 
 
 def locale_dependent_scripts():

@@ -13,10 +13,11 @@
 #
 # Idempotent: safe to re-run.
 #
-# run-gui.py's "changed" tracking is per-script mtime only, not lib/ deps --
-# bump this file (even just this comment) whenever lib/cyberbeest-update.sh,
-# lib/cyberbeest-update-confirm.py, or lib/i18n/strings_*.{sh,py} change, or
-# "Run changed only" won't pick up the reinstall.
+# run-gui.py's "changed" tracking follows this script's lib/ references
+# (lib/cyberbeest-update.sh, lib/cyberbeest-update-confirm.py,
+# lib/i18n/strings_*.{sh,py}) automatically, so editing any of them alone
+# is enough to mark this script pending again -- no need to bump this
+# file itself just to poke the mtime.
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG="$DIR/52-cyberbeest-update.log"
