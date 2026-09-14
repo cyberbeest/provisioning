@@ -130,6 +130,26 @@ def pil_to_pixbuf(img):
     )
 
 
+IMAGE_EXTS = (
+    ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".tif", ".tiff", ".ico",
+)
+
+
+def folder_images_by_date(path):
+    """Sibling image files in path's folder, sorted by mtime (oldest first)."""
+    folder = os.path.dirname(os.path.abspath(path)) or "."
+    entries = []
+    for name in os.listdir(folder):
+        if name.lower().endswith(IMAGE_EXTS):
+            full = os.path.join(folder, name)
+            try:
+                entries.append((os.path.getmtime(full), full))
+            except OSError:
+                continue
+    entries.sort(key=lambda e: e[0])
+    return [full for _, full in entries]
+
+
 def human_file_size(num_bytes):
     size = float(num_bytes)
     for unit in ("bytes", "KB", "MB", "GB"):
@@ -295,16 +315,32 @@ def animate_cpu_image(image_widget, frames, target_w, target_h):
 
 class ImageViewerWindow(Gtk.Window):
     def __init__(self, path):
-        filename = path.rsplit("/", 1)[-1]
-        title_stem = filename.rsplit(".", 1)[0] if "." in filename else filename
-        super().__init__(title=f"{title_stem} - Cyberbeest Images")
-        frames, native_size = load_frames(path)
-        target_w, target_h = target_display_size(native_size)
-        native_w, native_h = native_size
-        tooltip = f"{filename}\n{native_w} × {native_h}\n{human_file_size(os.path.getsize(path))}"
+        super().__init__()
+        self.folder_images = folder_images_by_date(path)
+        path = os.path.abspath(path)
+        try:
+            self.index = self.folder_images.index(path)
+        except ValueError:
+            self.folder_images = [path]
+            self.index = 0
 
         self.connect("key-press-event", self.on_key_press)
         self.connect("destroy", Gtk.main_quit)
+
+        self.image_widget = None
+        self.load_image(path)
+
+    def load_image(self, path):
+        filename = path.rsplit("/", 1)[-1]
+        title_stem = filename.rsplit(".", 1)[0] if "." in filename else filename
+        self.set_title(f"{title_stem} - Cyberbeest Images")
+        frames, native_size = load_frames(path)
+        target_w, target_h = target_display_size(native_size)
+        native_w, native_h = native_size
+        tooltip = f"{path}\n{native_w} × {native_h}\n{human_file_size(os.path.getsize(path))}"
+
+        if self.image_widget is not None:
+            self.remove(self.image_widget)
 
         if HAVE_GL:
             image_widget = GLImageArea(frames)
@@ -314,12 +350,27 @@ class ImageViewerWindow(Gtk.Window):
             animate_cpu_image(image_widget, frames, target_w, target_h)
 
         image_widget.set_tooltip_text(tooltip)
+        self.image_widget = image_widget
         self.add(image_widget)
         self.set_resizable(False)
+        image_widget.show()
+        self.resize(1, 1)
+
+    def show_offset(self, offset):
+        if not self.folder_images:
+            return
+        self.index = (self.index + offset) % len(self.folder_images)
+        self.load_image(self.folder_images[self.index])
 
     def on_key_press(self, widget, event):
         if event.keyval in (Gdk.KEY_Escape, Gdk.KEY_q):
             self.destroy()
+            return True
+        if event.keyval == Gdk.KEY_Left:
+            self.show_offset(-1)
+            return True
+        if event.keyval == Gdk.KEY_Right:
+            self.show_offset(1)
             return True
         return False
 
