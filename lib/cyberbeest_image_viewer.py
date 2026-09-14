@@ -356,6 +356,7 @@ _BLACK_BG_CSS.load_from_data(b"window { background-color: black; }")
 ZOOM_STEP = 1.25
 MIN_ZOOM_SCALE = 0.02
 SELF_CHECK_INTERVAL_S = 2
+NAV_DEBOUNCE_MS = 200
 
 
 class ImageViewerWindow(Gtk.Window):
@@ -387,6 +388,7 @@ class ImageViewerWindow(Gtk.Window):
         self.zoom_scale = 1.0
         self._last_fit_size = None
         self.drag_state = None
+        self._last_nav_time = 0
         self.load_image(path, set_initial_size=True)
 
     def load_image(self, path, set_initial_size=False):
@@ -426,16 +428,26 @@ class ImageViewerWindow(Gtk.Window):
         # after that the window keeps whatever size the user picked.
         if set_initial_size:
             self.set_default_size(target_w, target_h)
-        if self.zoom_mode == "fit":
-            self._apply_fit(self.scroller.get_allocation())
-        else:
-            self._apply_manual_zoom()
+        # Every newly shown image starts back at fit, regardless of
+        # whatever zoom level was left over from the previous one.
+        self.zoom_mode = "fit"
+        self._apply_fit(self.scroller.get_allocation())
 
     def show_offset(self, offset):
         if not self.folder_images:
             return
         self.index = (self.index + offset) % len(self.folder_images)
         self.load_image(self.folder_images[self.index])
+
+    def _debounce_nav(self, event_time):
+        # X11 key-autorepeat fires Left/Right press events roughly every
+        # 50ms while held -- without this, a small folder cycles fast
+        # enough while a key is held (or even briefly stutters) to look
+        # like the viewer is flickering between two images.
+        if event_time - self._last_nav_time < NAV_DEBOUNCE_MS:
+            return False
+        self._last_nav_time = event_time
+        return True
 
     def toggle_fullscreen(self):
         if self.is_fullscreen:
@@ -492,13 +504,17 @@ class ImageViewerWindow(Gtk.Window):
 
     def show_context_menu(self, event):
         menu = Gtk.Menu()
-        for label, handler in (
-            ("Zoom In", lambda _i: self.zoom_by(ZOOM_STEP)),
-            ("Zoom Out", lambda _i: self.zoom_by(1 / ZOOM_STEP)),
-            ("Zoom 1:1", lambda _i: self.zoom_to_native()),
-            ("Zoom Fit", lambda _i: self.zoom_to_fit()),
+        for label, hotkey, handler in (
+            ("Zoom In", "+", lambda _i: self.zoom_by(ZOOM_STEP)),
+            ("Zoom Out", "-", lambda _i: self.zoom_by(1 / ZOOM_STEP)),
+            ("Zoom 1:1", "0", lambda _i: self.zoom_to_native()),
+            ("Zoom Fit", "f", lambda _i: self.zoom_to_fit()),
         ):
-            item = Gtk.MenuItem(label=label)
+            item = Gtk.MenuItem()
+            row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=20)
+            row.pack_start(Gtk.Label(label=label, xalign=0), True, True, 0)
+            row.pack_start(Gtk.Label(label=hotkey, xalign=1), False, False, 0)
+            item.add(row)
             item.connect("activate", handler)
             menu.append(item)
         menu.show_all()
@@ -540,10 +556,12 @@ class ImageViewerWindow(Gtk.Window):
             self.destroy()
             return True
         if event.keyval == Gdk.KEY_Left:
-            self.show_offset(-1)
+            if self._debounce_nav(event.time):
+                self.show_offset(-1)
             return True
         if event.keyval == Gdk.KEY_Right:
-            self.show_offset(1)
+            if self._debounce_nav(event.time):
+                self.show_offset(1)
             return True
         if event.keyval in (Gdk.KEY_plus, Gdk.KEY_KP_Add):
             self.zoom_by(ZOOM_STEP)
