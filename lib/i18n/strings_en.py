@@ -62,6 +62,12 @@ STRINGS = {
     "lockpower.warn_seconds": "Warn this many seconds ahead:",
     "lockpower.never": "Never",
     "lockpower.off": "Off",
+    "lockpower.no_mercy_enabled": "No mercy: force-lock even if an app requests to stay awake",
+    "lockpower.no_mercy_info": (
+        "Ignores video playback, presentations, and any other app's request "
+        "to delay the lock -- the screen locks on schedule no matter what. "
+        "May interrupt something you're watching."
+    ),
     "lockpower.close": "Close",
 
     "pw.window_title": "Cyberbeest Passwords & Boot",

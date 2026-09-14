@@ -2,19 +2,25 @@
 # Pops a desktop notification a few seconds before xfce4-screensaver's own
 # idle timer locks the screen, so a user who's still there (just not
 # touching the mouse/keyboard) gets a chance to wiggle the mouse and reset
-# the idle clock instead of being locked out. Purely a warning -- it never
-# touches the lock timer itself, which xfce4-screensaver owns via its own
-# xfconf channel (see 16-power-lock-config.sh).
+# the idle clock instead of being locked out. Normally just a warning -- it
+# doesn't touch the lock timer itself, which xfce4-screensaver owns via its
+# own xfconf channel (see 16-power-lock-config.sh) -- except when "no mercy"
+# mode (NO_MERCY_LOCK_ENABLED) is on, in which case this script also forces
+# the lock through via `xfce4-screensaver-command --lock` once the idle
+# delay is reached and xfce4-screensaver is being inhibited, since an
+# inhibit (video playback, a presentation, or a stuck/orphaned one) would
+# otherwise silently defeat xfce4-screensaver's own idle timer.
 #
 # Reads the same config file as lock-shutdown-watcher.sh and
-# shutdown-timer-menu.py (WARN_BEFORE_LOCK_ENABLED / WARN_SECONDS_BEFORE_LOCK,
-# set from lock-power-saving-dialog.py's "Extended Power Options" window).
-# Polls xprintidle every second -- cheap enough for second-level precision,
-# unlike the 15s poll lock-shutdown-watcher.sh uses for its much coarser
-# post-lock deadlines.
+# shutdown-timer-menu.py (WARN_BEFORE_LOCK_ENABLED / WARN_SECONDS_BEFORE_LOCK /
+# NO_MERCY_LOCK_ENABLED, set from lock-power-saving-dialog.py's "Extended
+# Power Options" window). Polls xprintidle every second -- cheap enough for
+# second-level precision, unlike the 15s poll lock-shutdown-watcher.sh uses
+# for its much coarser post-lock deadlines.
 
 DEFAULT_WARN_ENABLED=true
 DEFAULT_WARN_SECONDS=10
+DEFAULT_NO_MERCY_ENABLED=false
 POLL_INTERVAL=1
 POWER_SETTINGS="$HOME/.config/cyberbeest/power-settings.conf"
 export DISPLAY=:0
@@ -38,6 +44,10 @@ is_locked() {
     dbus-send --session --dest=org.xfce.ScreenSaver --type=method_call \
         --print-reply /org/xfce/ScreenSaver org.xfce.ScreenSaver.GetActive \
         2>/dev/null | grep -q "boolean true"
+}
+
+is_inhibited() {
+    xfce4-screensaver-command -q 2>/dev/null | grep -q "is being inhibited"
 }
 
 # Closes the still-open warning notification, if any. Needed for two
@@ -75,10 +85,7 @@ idle_delay_seconds() {
 warned=0
 
 while true; do
-    warn_enabled=$(read_setting WARN_BEFORE_LOCK_ENABLED "$DEFAULT_WARN_ENABLED")
-    warn_seconds=$(read_setting WARN_SECONDS_BEFORE_LOCK "$DEFAULT_WARN_SECONDS")
-
-    if [ "$warn_enabled" != "true" ] || [ "$warn_seconds" -le 0 ] || is_locked; then
+    if is_locked; then
         warned=0
         close_notification
         sleep 2
@@ -98,17 +105,32 @@ while true; do
     fi
     remaining=$(( delay_seconds - idle_ms / 1000 ))
 
-    if [ "$remaining" -gt 0 ] && [ "$remaining" -le "$warn_seconds" ]; then
-        if [ "$warned" -eq 0 ]; then
-            last_notif_id=$(notify-send -p \
-                -t $(( (remaining + 1) * 1000 )) \
-                "$(t lockwarning.title)" \
-                "$(t lockwarning.body)")
-            warned=1
+    # No-mercy: force the lock through even though an app is inhibiting
+    # xfce4-screensaver's own idle timer (video playback, a presentation,
+    # or a stuck/orphaned inhibit -- see the 2026-09-14 postmortem where an
+    # orphaned inhibit silently defeated auto-lock for hours). Opt-in via
+    # lock-power-saving-dialog.py's "Extended Power Options" window;
+    # deliberately no extra warning beyond the notification below.
+    no_mercy=$(read_setting NO_MERCY_LOCK_ENABLED "$DEFAULT_NO_MERCY_ENABLED")
+    if [ "$no_mercy" = "true" ] && [ "$remaining" -le 0 ] && is_inhibited; then
+        xfce4-screensaver-command --lock >/dev/null 2>&1
+    fi
+
+    warn_enabled=$(read_setting WARN_BEFORE_LOCK_ENABLED "$DEFAULT_WARN_ENABLED")
+    warn_seconds=$(read_setting WARN_SECONDS_BEFORE_LOCK "$DEFAULT_WARN_SECONDS")
+    if [ "$warn_enabled" = "true" ] && [ "$warn_seconds" -gt 0 ]; then
+        if [ "$remaining" -gt 0 ] && [ "$remaining" -le "$warn_seconds" ]; then
+            if [ "$warned" -eq 0 ]; then
+                last_notif_id=$(notify-send -p \
+                    -t $(( (remaining + 1) * 1000 )) \
+                    "$(t lockwarning.title)" \
+                    "$(t lockwarning.body)")
+                warned=1
+            fi
+        elif [ "$remaining" -gt "$warn_seconds" ]; then
+            warned=0
+            close_notification
         fi
-    elif [ "$remaining" -gt "$warn_seconds" ]; then
-        warned=0
-        close_notification
     fi
 
     sleep "$POLL_INTERVAL"

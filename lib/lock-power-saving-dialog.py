@@ -43,6 +43,7 @@ DEFAULTS = {
     "CURTAIN_ENABLED": "true",
     "WARN_BEFORE_LOCK_ENABLED": "true",
     "WARN_SECONDS_BEFORE_LOCK": "10",
+    "NO_MERCY_LOCK_ENABLED": "false",
 }
 
 
@@ -140,6 +141,20 @@ class PowerSavingDialog(Gtk.Window):
         self.warn_seconds_label.set_sensitive(self.warn_check.get_active())
         self.warn_spin.set_sensitive(self.warn_check.get_active())
 
+        self.no_mercy_check = Gtk.CheckButton(label=t("lockpower.no_mercy_enabled"))
+        self.no_mercy_check.set_active(settings["NO_MERCY_LOCK_ENABLED"] == "true")
+        self.no_mercy_check.connect("toggled", self.on_no_mercy_toggled)
+        box.pack_start(self.no_mercy_check, False, False, 0)
+
+        no_mercy_info = Gtk.Label(
+            wrap=True,
+            max_width_chars=44,
+            xalign=0,
+            label=t("lockpower.no_mercy_info"),
+        )
+        no_mercy_info.get_style_context().add_class("dim-label")
+        box.pack_start(no_mercy_info, False, False, 0)
+
         button_box = Gtk.ButtonBox(layout_style=Gtk.ButtonBoxStyle.END)
         box.pack_start(button_box, False, False, 0)
         close_button = Gtk.Button(label=t("lockpower.close"))
@@ -163,6 +178,9 @@ class PowerSavingDialog(Gtk.Window):
 
     def on_warn_seconds_changed(self, spin):
         write_setting("WARN_SECONDS_BEFORE_LOCK", spin.get_value_as_int())
+
+    def on_no_mercy_toggled(self, check):
+        write_setting("NO_MERCY_LOCK_ENABLED", "true" if check.get_active() else "false")
 
 
 def main():

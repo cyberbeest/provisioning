@@ -67,6 +67,13 @@ STRINGS = {
     "lockpower.warn_seconds": "So viele Sekunden vorher warnen:",
     "lockpower.never": "Nie",
     "lockpower.off": "Aus",
+    "lockpower.no_mercy_enabled": "Keine Gnade: Sperre erzwingen, auch wenn eine App wach bleiben möchte",
+    "lockpower.no_mercy_info": (
+        "Ignoriert Videowiedergabe, Präsentationen und jede andere "
+        "Anfrage einer App, die Sperre zu verzögern -- der Bildschirm "
+        "sperrt sich planmäßig, egal was läuft. Kann etwas unterbrechen, "
+        "das gerade angeschaut wird."
+    ),
     "lockpower.close": "Schließen",
 
     "pw.window_title": "Cyberbeest-Passwörter & Start",
