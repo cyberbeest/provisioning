@@ -82,7 +82,11 @@ OUTPUT"
 
 COUNT script(s) were identical to the old checkout and already marked done. Review the rest and run whatever you need."
 	[update.progress_message]="Checking for updates..."
-	[update.pull_failed_message]="git pull failed:
+	[update.check_failed_message]="Checking for updates failed:
+
+OUTPUT"
+	[update.apply_message]="Applying update..."
+	[update.apply_failed_message]="Applying the update failed:
 
 OUTPUT"
 	[lockwarning.title]="Screen locking soon"

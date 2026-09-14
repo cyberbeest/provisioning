@@ -9,10 +9,15 @@ and the rest of Cyberbeest's own dialogs) instead packs it as a secondary
 button-box widget, which GTK renders on the opposite side from Yes/No --
 there on request, but not competing for attention.
 
+Reads the list of files the pull would change from stdin, as
+`git diff --name-status` lines (possibly empty, if the checkout is
+already up to date).
+
 Prints exactly one of "yes", "no" or "switch" to stdout and exits 0.
 """
 import datetime
 import os
+import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
@@ -21,9 +26,48 @@ from i18n import t
 import gi
 
 gi.require_version("Gtk", "3.0")
-from gi.repository import Gtk
+from gi.repository import Gtk, Pango
 
 RESPONSE_SWITCH = 100
+
+_STATUS_LABELS = {
+    "A": "update.status_added",
+    "M": "update.status_modified",
+    "D": "update.status_deleted",
+    "R": "update.status_renamed",
+    "C": "update.status_copied",
+}
+
+
+def parse_changed_files(raw):
+    """Turns cyberbeest-update.sh's enriched `git diff --name-status` lines
+    into (status, display_path, date, lookup_paths) rows.
+
+    Rename/copy lines carry a similarity percentage after the letter
+    (e.g. "R100") and two paths (old, new); every other status is a
+    single letter and one path. cyberbeest-update.sh appends the date of
+    the newest incoming commit touching that path as a trailing field.
+    lookup_paths is what a per-file `git diff -- <paths>` needs: both
+    paths for a rename/copy (the old one only exists in HEAD's tree, the
+    new one only in the incoming tree), one path otherwise.
+    """
+    rows = []
+    for line in raw.splitlines():
+        if not line.strip():
+            continue
+        fields = line.split("\t")
+        date = fields[-1]
+        fields = fields[:-1]
+        code = fields[0][0]
+        label = t(_STATUS_LABELS.get(code, "update.status_other")).format(code=fields[0])
+        if code in ("R", "C") and len(fields) >= 3:
+            path = f"{fields[1]} → {fields[2]}"
+            lookup_paths = [fields[1], fields[2]]
+        else:
+            path = fields[-1]
+            lookup_paths = [fields[-1]]
+        rows.append((label, path, date, lookup_paths))
+    return rows
 
 
 _RELATIVE_UNITS = (
@@ -56,8 +100,136 @@ def last_pull_text(repo_dir):
     )
 
 
+def build_diff_rows(diff_text):
+    """Turns a unified diff into (left, right, left_kind, right_kind) rows
+    for side-by-side display.
+
+    Consecutive removed/added lines within a hunk are paired up in order
+    (line N removed with line N added) -- a naive alignment, not a real
+    word-level diff, but it's what most side-by-side diff views do and it's
+    enough to see what changed without reading +/- prefixes.
+    """
+    rows = []
+    pending_removed = []
+    pending_added = []
+
+    def flush():
+        n = max(len(pending_removed), len(pending_added))
+        for i in range(n):
+            left = pending_removed[i] if i < len(pending_removed) else None
+            right = pending_added[i] if i < len(pending_added) else None
+            rows.append((
+                left or "", right or "",
+                "change" if left is not None else "empty",
+                "change" if right is not None else "empty",
+            ))
+        pending_removed.clear()
+        pending_added.clear()
+
+    in_hunk = False
+    for line in diff_text.splitlines():
+        if line.startswith("@@"):
+            flush()
+            if rows:
+                rows.append(("⋯", "⋯", "sep", "sep"))
+            in_hunk = True
+        elif not in_hunk:
+            continue  # skip "diff --git" / "index" / "---" / "+++" headers
+        elif line.startswith(" "):
+            flush()
+            rows.append((line[1:], line[1:], "context", "context"))
+        elif line.startswith("-"):
+            if pending_added:
+                # A second removed/added block right after the first (no
+                # context line between them) -- flush so the two blocks
+                # don't get paired against each other.
+                flush()
+            pending_removed.append(line[1:])
+        elif line.startswith("+"):
+            pending_added.append(line[1:])
+        elif not line.startswith("\\"):  # "\ No newline at end of file"
+            flush()
+    flush()
+    return rows
+
+
+def _diff_cell_data_func(is_left):
+    kind_col = 2 if is_left else 3
+
+    def cell_data_func(_column, cell, model, tree_iter, _data):
+        kind = model[tree_iter][kind_col]
+        if kind == "sep":
+            cell.set_property("cell-background-set", False)
+            cell.set_property("foreground", "#888888")
+            cell.set_property("style", Pango.Style.ITALIC)
+            cell.set_property("xalign", 0.5)
+        elif kind == "change":
+            cell.set_property("style", Pango.Style.NORMAL)
+            cell.set_property("xalign", 0.0)
+            if is_left:
+                cell.set_property("cell-background", "#5c1a1a")
+                cell.set_property("foreground", "#ffcccc")
+            else:
+                cell.set_property("cell-background", "#1a5c1a")
+                cell.set_property("foreground", "#ccffcc")
+        else:  # context or empty
+            cell.set_property("cell-background-set", False)
+            cell.set_property("foreground-set", False)
+            cell.set_property("style", Pango.Style.NORMAL)
+            cell.set_property("xalign", 0.0)
+
+    return cell_data_func
+
+
+def show_diff_dialog(parent, repo_dir, revision, lookup_paths, display_path, date):
+    result = subprocess.run(
+        ["git", "-C", repo_dir, "diff", "HEAD", revision, "--", *lookup_paths],
+        capture_output=True, text=True, check=False,
+    )
+    rows_data = build_diff_rows(result.stdout)
+
+    diff_dialog = Gtk.Dialog(
+        title=t("update.diff_dialog_title").format(path=display_path, date=date),
+        transient_for=parent, modal=True,
+    )
+    diff_dialog.set_default_size(900, 560)
+    diff_dialog.add_button(t("update.close_button"), Gtk.ResponseType.CLOSE)
+
+    store = Gtk.ListStore(str, str, str, str)
+    for left, right, left_kind, right_kind in rows_data:
+        store.append([left, right, left_kind, right_kind])
+
+    tree = Gtk.TreeView(model=store)
+    tree.set_grid_lines(Gtk.TreeViewGridLines.VERTICAL)
+
+    for title, text_col, is_left in (
+        (t("update.diff_column_before"), 0, True),
+        (t("update.diff_column_after"), 1, False),
+    ):
+        renderer = Gtk.CellRendererText()
+        renderer.set_property("family", "monospace")
+        column = Gtk.TreeViewColumn(title, renderer, text=text_col)
+        column.set_cell_data_func(renderer, _diff_cell_data_func(is_left))
+        column.set_resizable(True)
+        tree.append_column(column)
+
+    scroller = Gtk.ScrolledWindow()
+    scroller.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.ALWAYS)
+    scroller.add(tree)
+
+    content = diff_dialog.get_content_area()
+    content.set_border_width(6)
+    content.pack_start(scroller, True, True, 0)
+
+    diff_dialog.show_all()
+    diff_dialog.run()
+    diff_dialog.destroy()
+
+
 def main():
     track, other_track, repo_dir = sys.argv[1], sys.argv[2], sys.argv[3]
+    revision = sys.argv[4] if len(sys.argv) > 4 else None
+    changed_files = parse_changed_files(sys.stdin.read())
 
     dialog = Gtk.Dialog(title=t("update.title"))
     dialog.set_default_size(420, -1)
@@ -86,6 +258,70 @@ def main():
     last_pull_label = Gtk.Label(xalign=0)
     last_pull_label.set_markup(f"<small>{last_pull_text(repo_dir)}</small>")
     box.pack_start(last_pull_label, False, False, 0)
+
+    files_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+    files_heading = Gtk.Label(xalign=0)
+    files_heading.set_markup(f"<b>{t('update.files_heading')}</b>")
+    files_row.pack_start(files_heading, True, True, 0)
+
+    diff_button = None
+    if changed_files and revision:
+        # Select-then-click rather than a per-row action: GTK3's TreeView has
+        # no real embeddable per-row button, and a single button that acts on
+        # the current selection is the standard GTK pattern for this anyway.
+        diff_button = Gtk.Button(label=t("update.diff_row_button"))
+        diff_button.set_sensitive(False)
+        files_row.pack_start(diff_button, False, False, 0)
+
+    box.pack_start(files_row, False, False, 0)
+
+    if changed_files:
+        # A ScrolledWindow with a capped height, not an ever-growing list --
+        # a big pull (e.g. switching after months away) can easily touch
+        # dozens of files, which would otherwise blow the dialog off-screen.
+        store = Gtk.ListStore(str, str, str)
+        for status, path, date, _lookup_paths in changed_files:
+            store.append([status, path, date])
+
+        tree = Gtk.TreeView(model=store)
+        tree.append_column(Gtk.TreeViewColumn("", Gtk.CellRendererText(), text=0))
+        path_renderer = Gtk.CellRendererText()
+        path_renderer.set_property("family", "monospace")
+        path_renderer.set_property("ellipsize", Pango.EllipsizeMode.MIDDLE)
+        path_column = Gtk.TreeViewColumn(t("update.column_file"), path_renderer, text=1)
+        path_column.set_expand(True)
+        tree.append_column(path_column)
+        date_renderer = Gtk.CellRendererText()
+        date_renderer.set_property("family", "monospace")
+        tree.append_column(Gtk.TreeViewColumn(t("update.column_date"), date_renderer, text=2))
+
+        if diff_button is not None:
+            selection = tree.get_selection()
+            selection.set_mode(Gtk.SelectionMode.SINGLE)
+            selection.connect(
+                "changed", lambda sel: diff_button.set_sensitive(sel.count_selected_rows() > 0)
+            )
+
+            def on_diff_clicked(_button):
+                model, tree_iter = selection.get_selected()
+                if tree_iter is None:
+                    return
+                idx = model.get_path(tree_iter).get_indices()[0]
+                _status, path, date, lookup_paths = changed_files[idx]
+                show_diff_dialog(dialog, repo_dir, revision, lookup_paths, path, date)
+
+            diff_button.connect("clicked", on_diff_clicked)
+
+        scroller = Gtk.ScrolledWindow()
+        scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        scroller.set_min_content_height(min(28 * len(changed_files) + 28, 240))
+        scroller.set_shadow_type(Gtk.ShadowType.IN)
+        scroller.add(tree)
+        box.pack_start(scroller, True, True, 0)
+    else:
+        no_changes_label = Gtk.Label(xalign=0, label=t("update.no_changes_message"))
+        no_changes_label.get_style_context().add_class("dim-label")
+        box.pack_start(no_changes_label, False, False, 0)
 
     # A MenuButton (same pattern as run-gui.py's "more actions" dropdown)
     # rather than a plain button, so picking "switch" is a deliberate

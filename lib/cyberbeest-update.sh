@@ -161,7 +161,34 @@ do_switch_track() {
 	exec python3 "$OTHER_DIR/run-gui.py"
 }
 
-case "$(python3 "$SCRIPT_DIR/cyberbeest-update-confirm.py" "$TRACK" "$OTHER_TRACK" "$REPO_DIR")" in
+# Fetched up front (before the confirm dialog even shows) so that dialog
+# can list exactly which files the pull would touch -- git diff against
+# origin/$BRANCH below needs the fetch to have already happened.
+if ! run_git_with_progress "$(t update.progress_message)" \
+	git -C "$REPO_DIR" fetch origin "$BRANCH"; then
+	failed_msg="$(t update.check_failed_message)"
+	zenity --error --title="$(t update.title)" --width=460 --text="${failed_msg//OUTPUT/$GIT_CMD_OUTPUT}"
+	exit 1
+fi
+
+# Appends the date of the newest incoming commit touching each path, as an
+# extra tab-separated field -- cyberbeest-update-confirm.py's date column.
+# For a rename/copy line, $path is the new path (last name-status field);
+# looking that up still finds the rename commit since it touches the new
+# path too.
+CHANGED_FILES=""
+while IFS=$'\t' read -r -a fields; do
+	[ "${#fields[@]}" -eq 0 ] && continue
+	path="${fields[-1]}"
+	date="$(git -C "$REPO_DIR" log -1 --format=%ad --date=short "HEAD..origin/$BRANCH" -- "$path")"
+	line="$(IFS=$'\t'; echo "${fields[*]}")"
+	CHANGED_FILES+="$line"$'\t'"$date"$'\n'
+done <<<"$(git -C "$REPO_DIR" diff --name-status HEAD "origin/$BRANCH")"
+
+# Passed as "origin/$BRANCH" (not a precomputed diff) so the confirm dialog
+# can run `git diff` per file on demand, only for whichever row the user
+# double-clicks -- most users never open one.
+case "$(printf '%s' "$CHANGED_FILES" | python3 "$SCRIPT_DIR/cyberbeest-update-confirm.py" "$TRACK" "$OTHER_TRACK" "$REPO_DIR" "origin/$BRANCH")" in
 	yes)
 		;;
 	switch)
@@ -180,10 +207,10 @@ esac
 # This is meant to make the checkout match upstream exactly, the same as a
 # fresh clone would, so hard-reset it instead. No local commits or edits
 # are expected on an end-user checkout, so there's nothing legitimate this
-# could discard.
-if ! run_git_with_progress "$(t update.progress_message)" \
-	bash -c 'git -C "$1" fetch origin "$2" && git -C "$1" reset --hard "origin/$2"' _ "$REPO_DIR" "$BRANCH"; then
-	failed_msg="$(t update.pull_failed_message)"
+# could discard. origin/$BRANCH is already up to date from the fetch above.
+if ! run_git_with_progress "$(t update.apply_message)" \
+	git -C "$REPO_DIR" reset --hard "origin/$BRANCH"; then
+	failed_msg="$(t update.apply_failed_message)"
 	zenity --error --title="$(t update.title)" --width=460 --text="${failed_msg//OUTPUT/$GIT_CMD_OUTPUT}"
 	exit 1
 fi

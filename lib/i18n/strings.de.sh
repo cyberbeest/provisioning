@@ -84,7 +84,11 @@ OUTPUT"
 
 COUNT Skript(e) waren identisch zum alten Checkout und sind bereits als erledigt markiert. Prüfe den Rest und führe aus, was nötig ist."
 	[update.progress_message]="Suche nach Updates..."
-	[update.pull_failed_message]="git pull fehlgeschlagen:
+	[update.check_failed_message]="Suche nach Updates fehlgeschlagen:
+
+OUTPUT"
+	[update.apply_message]="Update wird angewendet..."
+	[update.apply_failed_message]="Anwenden des Updates fehlgeschlagen:
 
 OUTPUT"
 	[lockwarning.title]="Bildschirm sperrt gleich"
