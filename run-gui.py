@@ -109,6 +109,7 @@ needed.
 import glob
 import json
 import os
+import pwd
 import re
 import subprocess
 import sys
@@ -276,6 +277,37 @@ def load_keyboard_layouts():
 # right before they run, even inside a "Run all"/"Run changed only" batch.
 NEEDS_CONFIRMATION = {
     "99-remove-openssh-server.sh": t("run_gui.confirm_remove_openssh"),
+}
+
+
+def openssh_removal_has_work():
+    # Mirrors 99-remove-openssh-server.sh's own idempotency checks -- if
+    # none of these are true, the script is a guaranteed no-op, so the
+    # "this will cut off SSH access" confirmation dialog would just be
+    # noise (and actively misleading, warning about a disconnect that
+    # isn't going to happen).
+    for pkg in ("openssh-server", "fail2ban"):
+        if subprocess.run(
+            ["dpkg", "-s", pkg], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        ).returncode == 0:
+            return True
+    homes = {"/root"}
+    try:
+        homes.update(u.pw_dir for u in pwd.getpwall() if 1000 <= u.pw_uid < 60000)
+    except OSError:
+        pass
+    for home in homes:
+        for name in ("authorized_keys", "authorized_keys2"):
+            if os.path.exists(os.path.join(home, ".ssh", name)):
+                return True
+    return False
+
+
+# Optional per-script predicate: if present and it returns False, the
+# script's NEEDS_CONFIRMATION dialog is skipped entirely (straight to
+# running it) instead of asking about an action that would be a no-op.
+CONFIRMATION_SKIP_IF_NOOP = {
+    "99-remove-openssh-server.sh": openssh_removal_has_work,
 }
 
 # Must match cyberbeest-bootstrap.sh's own AUTOSTART_FILE -- that's the
@@ -1441,6 +1473,9 @@ class RunGuiWindow(Gtk.Window):
             script = remaining.pop(0)
 
             confirm_message = NEEDS_CONFIRMATION.get(script)
+            has_work_check = CONFIRMATION_SKIP_IF_NOOP.get(script)
+            if has_work_check is not None and not has_work_check():
+                confirm_message = None
             if confirm_message and not self._confirm(script, confirm_message):
                 GLib.idle_add(self.append_log, script, t("run_gui.log_skipped").format(script=script))
                 GLib.idle_add(self.set_row_status, script, "skipped")
