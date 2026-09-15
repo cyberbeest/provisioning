@@ -197,7 +197,7 @@ if xfce_panel_dbus_addr; then
 	done || true
 	su - "$TARGET_USER" -c "DISPLAY='${DISPLAY:-:0}' DBUS_SESSION_BUS_ADDRESS='$XFCE_PANEL_DBUS_ADDR' xfconf-query -c xfce4-panel -p /panels -t int -s 1 --force-array" || true
 
-	xfce_panel_launch
+	xfce_panel_launch || echo "--- warning: panel reload didn't take live effect ---" >&2
 fi
 
 echo "=== $(date) : done ==="

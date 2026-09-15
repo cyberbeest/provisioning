@@ -171,17 +171,65 @@ panel_dbus_addr() {
 
 reload_panel() {
     # No panel running (no graphical session) -- nothing to reload.
+    local old_pid
+    old_pid="$(pgrep -x xfce4-panel | head -n1)"
     panel_dbus_addr || return 0
 
     pkill -9 -x xfconfd 2>/dev/null || true
     pkill -9 -x xfce4-panel 2>/dev/null || true
-    sleep 1
+
+    # Wait for the old process to actually be gone instead of trusting a
+    # flat sleep -- a lingering old process (SIGKILL raced, or something
+    # respawned it instantly) would otherwise go unnoticed, and the
+    # pid-exists check below can't tell that apart from a genuinely fresh
+    # launch.
+    local waited=0
+    while pgrep -x xfce4-panel >/dev/null 2>&1; do
+        sleep 0.5
+        waited=$((waited + 1))
+        if [ "$waited" -ge 10 ]; then
+            echo "warning: xfce4-panel still running 5s after SIGKILL" >&2
+            break
+        fi
+    done
 
     DISPLAY="${DISPLAY:-:0}" DBUS_SESSION_BUS_ADDRESS="$PANEL_DBUS_ADDR" \\
         setsid xfce4-panel >/dev/null 2>&1 </dev/null &
     disown
-    sleep 1
-    pgrep -x xfce4-panel >/dev/null || echo "warning: xfce4-panel did not come back up" >&2
+
+    # Poll for a new, different pid -- "a process exists" alone can't tell
+    # a genuinely fresh launch apart from the old one never having died.
+    # Caught 2026-09-14: this exact script's xfconf write succeeded but
+    # the live panel silently never picked up the new icon.
+    local new_pid=""
+    waited=0
+    while [ "$waited" -lt 10 ]; do
+        new_pid="$(pgrep -x xfce4-panel | head -n1)"
+        if [ -n "$new_pid" ] && [ "$new_pid" != "$old_pid" ]; then
+            break
+        fi
+        sleep 0.5
+        waited=$((waited + 1))
+    done
+    if [ -z "$new_pid" ]; then
+        echo "warning: xfce4-panel did not come back up" >&2
+        return 1
+    fi
+    if [ "$new_pid" = "$old_pid" ]; then
+        echo "warning: xfce4-panel pid unchanged after launch (old process never died?)" >&2
+        return 1
+    fi
+
+    # xfce4-session sometimes respawns a just-killed panel from its own
+    # cached state a moment later, replacing the fresh one we just
+    # launched -- re-check after a short settle so that's caught too.
+    sleep 1.5
+    local settled_pid
+    settled_pid="$(pgrep -x xfce4-panel | head -n1)"
+    if [ "$settled_pid" != "$new_pid" ]; then
+        echo "warning: xfce4-panel pid changed again during settle (pid $new_pid -> ${settled_pid:-gone})" >&2
+        return 1
+    fi
 }
 
 # xfconf-query prints a "Value is an array with N items:" header plus a
@@ -279,16 +327,21 @@ add | remove)
     fi
 
     apply_"$ACTION"
-    reload_panel
-    # xfce4-session sometimes auto-respawns a just-killed panel from its own
-    # cached client-side state before our relaunch lands, re-persisting the
-    # pre-change plugin list over the write above. Re-apply and re-check a
-    # few times so the change actually sticks once things settle.
+    # reload_panel itself now detects a reload that didn't genuinely take
+    # live effect (old process never died, or something respawned over our
+    # fresh launch) -- retry the whole apply+reload cycle on that, not just
+    # on the xfconf state check, since a bad reload can also mean stale
+    # cached state got re-persisted over our write.
+    reload_ok=0
     for _ in 1 2 3; do
-        is_applied && break
+        if reload_panel; then
+            reload_ok=1
+            break
+        fi
         sleep 1
         apply_"$ACTION"
     done
+    [ "$reload_ok" -eq 1 ] || echo "warning: panel reload didn't take live effect after retries" >&2
     is_applied || echo "warning: plugin-${PLUGIN_ID} state didn't stick after retries" >&2
     ;;
 *)

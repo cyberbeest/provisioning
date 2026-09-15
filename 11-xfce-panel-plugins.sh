@@ -35,7 +35,7 @@ TARGET_USER="${SUDO_USER:?SUDO_USER not set -- run this via sudo, not as a raw r
 . "$DIR/lib/xfce-panel-reload.sh"
 if xfce_panel_dbus_addr; then
 	xfce_panel_kill
-	xfce_panel_launch
+	xfce_panel_launch || echo "--- warning: panel reload didn't take live effect ---" >&2
 fi
 
 echo "=== $(date) : done ==="

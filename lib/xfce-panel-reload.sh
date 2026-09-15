@@ -19,13 +19,22 @@
 #   if xfce_panel_dbus_addr; then
 #       xfce_panel_kill
 #       ...anything that needs xfconfd freshly restarted first...
-#       xfce_panel_launch
+#       xfce_panel_launch || echo "panel reload didn't stick" >&2
 #   fi
 #
 # xfce_panel_dbus_addr must be called first (while the old panel process is
 # still alive, to read its environ) and is also the "is a panel even running
 # for this user" guard -- it returns 1 and does nothing else if not, so
 # callers can skip the whole reload on a machine with no graphical session.
+#
+# xfce_panel_kill waits (up to 5s) for the old process to actually be gone,
+# and xfce_panel_launch waits (up to 5s) for a *new*, different pid to
+# appear and then re-checks it after a short settle -- both print a
+# "warning:" line on stderr and xfce_panel_launch returns 1 if the reload
+# didn't genuinely take live effect. Before this, a write to xfconf could
+# succeed while the running panel silently never picked it up (caught
+# 2026-09-14 with the i2pd toggle's panel icon) -- callers should check
+# xfce_panel_launch's exit status rather than assume success.
 
 xfce_panel_dbus_addr() {
 	command -v xfce4-panel >/dev/null 2>&1 || return 1
@@ -50,13 +59,64 @@ xfce_panel_kill() {
 	# exiting.
 	pkill -9 -u "$TARGET_USER" -x xfconfd || true
 	pkill -9 -u "$TARGET_USER" -x xfce4-panel || true
-	sleep 1
+
+	# Wait for the old process to actually be gone rather than trusting a
+	# flat `sleep 1` -- a lingering old process (SIGKILL raced with the
+	# process being in an uninterruptible state, or a supervisor instantly
+	# respawning it) would otherwise go unnoticed, and xfce_panel_launch's
+	# own "a process exists" check can't tell that lingering old process
+	# apart from a genuinely fresh one. Caught 2026-09-14: an i2pd panel
+	# icon add wrote xfconf correctly but the live panel never picked it
+	# up, with nothing in any log -- the reload silently never happened
+	# and nothing along the way was in a position to say so.
+	local waited=0
+	while pgrep -u "$TARGET_USER" -x xfce4-panel >/dev/null 2>&1; do
+		sleep 0.5
+		waited=$((waited + 1))
+		if [ "$waited" -ge 10 ]; then
+			echo "--- warning: xfce4-panel still running 5s after SIGKILL ---" >&2
+			break
+		fi
+	done
 }
 
 xfce_panel_launch() {
+	local old_pid="${XFCE_PANEL_PID:-}"
 	su - "$TARGET_USER" -c "DISPLAY='${DISPLAY:-:0}' DBUS_SESSION_BUS_ADDRESS='$XFCE_PANEL_DBUS_ADDR' setsid xfce4-panel >/dev/null 2>&1 < /dev/null &"
-	sleep 1
-	if ! pgrep -u "$TARGET_USER" -x xfce4-panel >/dev/null; then
-		echo "--- Panel process didn't come up after launch ---"
+
+	# Poll for a new pid rather than a flat sleep -- and require it to
+	# differ from the pid we killed, since "a process exists" alone can't
+	# distinguish a genuinely fresh launch from the old one never having
+	# died (see xfce_panel_kill).
+	local new_pid=""
+	local waited=0
+	while [ "$waited" -lt 10 ]; do
+		new_pid="$(pgrep -u "$TARGET_USER" -x xfce4-panel | head -1)"
+		if [ -n "$new_pid" ] && [ "$new_pid" != "$old_pid" ]; then
+			break
+		fi
+		sleep 0.5
+		waited=$((waited + 1))
+	done
+	if [ -z "$new_pid" ]; then
+		echo "--- warning: xfce4-panel did not come up after launch ---" >&2
+		return 1
+	fi
+	if [ "$new_pid" = "$old_pid" ]; then
+		echo "--- warning: xfce4-panel pid unchanged after launch (old process never died?) ---" >&2
+		return 1
+	fi
+
+	# Something else (xfce4-session's own respawn-on-crash logic, most
+	# likely) can replace our freshly launched panel with another one a
+	# moment later, e.g. restored from its own cached session state --
+	# re-check after a short settle so that gets caught too instead of
+	# reporting success on a pid that's about to be replaced.
+	sleep 1.5
+	local settled_pid
+	settled_pid="$(pgrep -u "$TARGET_USER" -x xfce4-panel | head -1)"
+	if [ "$settled_pid" != "$new_pid" ]; then
+		echo "--- warning: xfce4-panel pid changed again during settle (pid $new_pid -> ${settled_pid:-gone}) -- something else respawned it ---" >&2
+		return 1
 	fi
 }
