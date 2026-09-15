@@ -7,8 +7,9 @@
  * context. If RAM itself is full, the tank reads 100% regardless of how
  * much swap is left. Root filesystem usage is surfaced in the tooltip
  * too (the panel is too crowded for a second tank), and the exclamation
- * mark also fires when disk usage crosses DISK_WARNING_LEVEL, not just
- * on RAM contention.
+ * mark also fires when disk usage crosses the configurable disk warning
+ * threshold (disk_warning_percent, DEFAULT_DISK_WARNING_PERCENT by
+ * default), not just on RAM contention.
  *
  * Built as an "external" plugin (X-XFCE-Internal=FALSE in the .desktop
  * file), same convention as kitt-scanner and wattage-panel, so a crash
@@ -68,7 +69,9 @@
 #define WARNING_PULSE_SPEED 4.2 /* rad/s -- a slow, deliberate blink, not a strobe */
 
 #define DISK_PATH "/"
-#define DISK_WARNING_LEVEL 0.80 /* disk fraction at/above which we flag low free space */
+#define DEFAULT_DISK_WARNING_PERCENT 80 /* disk-used percent at/above which we flag low free space */
+#define MIN_DISK_WARNING_PERCENT 50
+#define MAX_DISK_WARNING_PERCENT 99
 
 #define TOP_PROC_COUNT 3            /* how many processes to list in the tooltip */
 #define TOP_PROC_MIN_KIB 1024       /* hide processes using less PSS than this */
@@ -116,6 +119,7 @@ typedef struct {
     gdouble disk_frac;     /* most recent disk-used fraction of DISK_PATH, 0..1 */
     guint64 disk_total_bytes;
     guint64 disk_used_bytes;
+    gint disk_warning_percent; /* user-configurable, DEFAULT_DISK_WARNING_PERCENT by default */
 
     gdouble wave_phase1;
     gdouble wave_phase2;
@@ -452,7 +456,7 @@ on_query_tooltip(GtkWidget *widget, gint x, gint y, gboolean keyboard_mode,
                          mp->disk_frac * 100.0, disk_used_gib, disk_total_gib);
 
     gboolean mem_warning = mp->warn_target >= WARNING_LEVEL;
-    gboolean disk_warning = mp->disk_frac >= DISK_WARNING_LEVEL;
+    gboolean disk_warning = mp->disk_frac >= mp->disk_warning_percent / 100.0;
     if (mem_warning && disk_warning)
         n += g_snprintf(buf + n, sizeof(buf) - n,
                    _("\n\xE2\x9A\xA0 Memory contention and disk space are both tight"));
@@ -682,7 +686,7 @@ on_draw(GtkWidget *widget, cairo_t *cr, gpointer user_data)
     cairo_set_line_width(cr, MAX(1.0, lay.h * 0.02));
     cairo_stroke(cr);
 
-    gboolean warning = mp->warn_level >= WARNING_LEVEL || mp->disk_frac >= DISK_WARNING_LEVEL;
+    gboolean warning = mp->warn_level >= WARNING_LEVEL || mp->disk_frac >= mp->disk_warning_percent / 100.0;
 
     cairo_save(cr);
     rounded_rect(cr, lay.x, lay.y, lay.w, lay.h, lay.r);
@@ -758,6 +762,7 @@ mem_load_settings(MemPlugin *mp)
     mp->enabled = TRUE;
     mp->count_mapped = TRUE;
     mp->friendly_names = TRUE;
+    mp->disk_warning_percent = DEFAULT_DISK_WARNING_PERCENT;
     memcpy(mp->margin_rgb, DEFAULT_MARGIN_RGB, sizeof(mp->margin_rgb));
 
     gchar *file = xfce_panel_plugin_save_location(mp->plugin, FALSE);
@@ -776,6 +781,8 @@ mem_load_settings(MemPlugin *mp)
     mp->enabled = xfce_rc_read_bool_entry(rc, "Enabled", TRUE);
     mp->count_mapped = xfce_rc_read_bool_entry(rc, "CountMapped", TRUE);
     mp->friendly_names = xfce_rc_read_bool_entry(rc, "FriendlyNames", TRUE);
+    mp->disk_warning_percent = xfce_rc_read_int_entry(rc, "DiskWarningPercent", DEFAULT_DISK_WARNING_PERCENT);
+    mp->disk_warning_percent = CLAMP(mp->disk_warning_percent, MIN_DISK_WARNING_PERCENT, MAX_DISK_WARNING_PERCENT);
 
     const gchar *color_str = xfce_rc_read_entry(rc, "MarginColor", NULL);
     if (color_str) {
@@ -810,6 +817,7 @@ mem_save_settings(MemPlugin *mp)
     xfce_rc_write_bool_entry(rc, "Enabled", mp->enabled);
     xfce_rc_write_bool_entry(rc, "CountMapped", mp->count_mapped);
     xfce_rc_write_bool_entry(rc, "FriendlyNames", mp->friendly_names);
+    xfce_rc_write_int_entry(rc, "DiskWarningPercent", mp->disk_warning_percent);
     xfce_rc_write_entry(rc, "MarginColor", color_str);
     g_free(color_str);
     xfce_rc_close(rc);
@@ -951,6 +959,14 @@ on_friendly_names_toggled(GtkToggleButton *toggle, MemPlugin *mp)
 }
 
 static void
+on_disk_warning_changed(GtkSpinButton *spin, MemPlugin *mp)
+{
+    mp->disk_warning_percent = gtk_spin_button_get_value_as_int(spin);
+    gtk_widget_queue_draw(mp->area);
+    mem_save_settings(mp);
+}
+
+static void
 on_margin_color_set(GtkColorButton *button, MemPlugin *mp)
 {
     GdkRGBA rgba;
@@ -1015,14 +1031,23 @@ on_configure_plugin(XfcePanelPlugin *plugin, MemPlugin *mp)
     g_signal_connect(friendly_check, "toggled", G_CALLBACK(on_friendly_names_toggled), mp);
     gtk_grid_attach(GTK_GRID(grid), friendly_check, 0, 4, 2, 1);
 
+    GtkWidget *disk_warning_label = gtk_label_new(_("Warn when disk usage reaches, %:"));
+    gtk_widget_set_halign(disk_warning_label, GTK_ALIGN_START);
+    GtkWidget *disk_warning_spin = gtk_spin_button_new_with_range(
+        MIN_DISK_WARNING_PERCENT, MAX_DISK_WARNING_PERCENT, 1);
+    gtk_spin_button_set_value(GTK_SPIN_BUTTON(disk_warning_spin), mp->disk_warning_percent);
+    g_signal_connect(disk_warning_spin, "value-changed", G_CALLBACK(on_disk_warning_changed), mp);
+    gtk_grid_attach(GTK_GRID(grid), disk_warning_label, 0, 5, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), disk_warning_spin, 1, 5, 1, 1);
+
     GtkWidget *margin_label = gtk_label_new(_("Margin color:"));
     gtk_widget_set_halign(margin_label, GTK_ALIGN_START);
     GdkRGBA margin_rgba = { mp->margin_rgb[0], mp->margin_rgb[1], mp->margin_rgb[2], 1.0 };
     GtkWidget *margin_button = gtk_color_button_new_with_rgba(&margin_rgba);
     gtk_color_chooser_set_use_alpha(GTK_COLOR_CHOOSER(margin_button), FALSE);
     g_signal_connect(margin_button, "color-set", G_CALLBACK(on_margin_color_set), mp);
-    gtk_grid_attach(GTK_GRID(grid), margin_label, 0, 5, 1, 1);
-    gtk_grid_attach(GTK_GRID(grid), margin_button, 1, 5, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), margin_label, 0, 6, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), margin_button, 1, 6, 1, 1);
 
     gtk_container_add(GTK_CONTAINER(gtk_dialog_get_content_area(GTK_DIALOG(dialog))), grid);
     gtk_widget_show_all(dialog);

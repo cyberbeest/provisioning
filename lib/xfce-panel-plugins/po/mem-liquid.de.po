@@ -60,5 +60,8 @@ msgstr "Ein (Standard): zählt aktuell geladene mmap-Seiten als belegt, obwohl s
 msgid "Use plain-English names in the Top RAM tooltip list (e.g. \"window drawing\" for Xorg)"
 msgstr "Verständliche Namen in der Top-RAM-Liste im Tooltip verwenden (z. B. „Fensterdarstellung“ für Xorg)"
 
+msgid "Warn when disk usage reaches, %:"
+msgstr "Warnen ab Festplattenbelegung, %:"
+
 msgid "Margin color:"
 msgstr "Randfarbe:"
