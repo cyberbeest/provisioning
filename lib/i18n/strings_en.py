@@ -341,6 +341,8 @@ STRINGS = {
     "update.column_file": "File",
     "update.column_date": "Date",
     "update.diff_row_button": "Show file differences",
+    "update.recheck_button_tooltip": "Check GitHub again",
+    "update.recheck_failed_tooltip": "Couldn't reach GitHub -- try again in a moment.",
     "update.diff_dialog_title": "Differences: {path} ({date})",
     "update.diff_column_before": "Before",
     "update.diff_column_after": "After",

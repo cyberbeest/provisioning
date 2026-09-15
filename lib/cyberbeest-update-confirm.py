@@ -181,6 +181,44 @@ def _diff_cell_data_func(is_left):
     return cell_data_func
 
 
+def fetch_changed_files(repo_dir, revision):
+    """Re-fetches origin and recomputes the (label, path, date, lookup_paths)
+    rows against `revision` (e.g. "origin/main"), for the reload button.
+
+    Mirrors cyberbeest-update.sh's own fetch + `git diff --name-status` +
+    per-path newest-commit-date enrichment, so a manual recheck from inside
+    the dialog sees exactly what a fresh run of the whole script would have.
+    Returns None if the fetch itself fails (network hiccup, GitHub
+    unreachable) -- the caller keeps showing the previous rows in that case.
+    """
+    remote = revision.split("/", 1)[0]
+    fetch = subprocess.run(
+        ["git", "-C", repo_dir, "fetch", remote], capture_output=True, text=True, check=False
+    )
+    if fetch.returncode != 0:
+        return None
+
+    diff_text = subprocess.run(
+        ["git", "-C", repo_dir, "diff", "--name-status", "HEAD", revision],
+        capture_output=True, text=True, check=False,
+    ).stdout
+
+    raw_lines = []
+    for line in diff_text.splitlines():
+        if not line.strip():
+            continue
+        fields = line.split("\t")
+        path = fields[-1]
+        date = subprocess.run(
+            ["git", "-C", repo_dir, "log", "-1", "--format=%ad", "--date=short",
+             f"HEAD..{revision}", "--", path],
+            capture_output=True, text=True, check=False,
+        ).stdout.strip()
+        raw_lines.append("\t".join(fields) + "\t" + date)
+
+    return parse_changed_files("\n".join(raw_lines))
+
+
 def show_diff_dialog(parent, repo_dir, revision, lookup_paths, display_path, date):
     result = subprocess.run(
         ["git", "-C", repo_dir, "diff", "HEAD", revision, "--", *lookup_paths],
@@ -259,13 +297,14 @@ def main():
     last_pull_label.set_markup(f"<small>{last_pull_text(repo_dir)}</small>")
     box.pack_start(last_pull_label, False, False, 0)
 
-    files_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+    files_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
     files_heading = Gtk.Label(xalign=0)
     files_heading.set_markup(f"<b>{t('update.files_heading')}</b>")
     files_row.pack_start(files_heading, True, True, 0)
 
     diff_button = None
-    if changed_files and revision:
+    reload_button = None
+    if revision:
         # Select-then-click rather than a per-row action: GTK3's TreeView has
         # no real embeddable per-row button, and a single button that acts on
         # the current selection is the standard GTK pattern for this anyway.
@@ -273,55 +312,93 @@ def main():
         diff_button.set_sensitive(False)
         files_row.pack_start(diff_button, False, False, 0)
 
+        # Icon-only, right of the diff button: cyberbeest-update.sh's own
+        # fetch (before this dialog even opened) can be seconds or minutes
+        # stale by the time the user actually looks at this list, so a quick
+        # manual recheck beats having to cancel and relaunch the whole thing.
+        reload_button = Gtk.Button.new_from_icon_name("view-refresh-symbolic", Gtk.IconSize.BUTTON)
+        reload_button.set_tooltip_text(t("update.recheck_button_tooltip"))
+        files_row.pack_start(reload_button, False, False, 0)
+
     box.pack_start(files_row, False, False, 0)
 
-    if changed_files:
-        # A ScrolledWindow with a capped height, not an ever-growing list --
-        # a big pull (e.g. switching after months away) can easily touch
-        # dozens of files, which would otherwise blow the dialog off-screen.
-        store = Gtk.ListStore(str, str, str)
-        for status, path, date, _lookup_paths in changed_files:
+    # Both the table and the "no changes" label are always built, and
+    # visibility toggled between them, rather than only building whichever
+    # applies at start -- the reload button can turn an empty list into a
+    # non-empty one (or vice versa) without rebuilding the dialog's layout.
+    store = Gtk.ListStore(str, str, str)
+    tree = Gtk.TreeView(model=store)
+    tree.append_column(Gtk.TreeViewColumn("", Gtk.CellRendererText(), text=0))
+    path_renderer = Gtk.CellRendererText()
+    path_renderer.set_property("family", "monospace")
+    path_renderer.set_property("ellipsize", Pango.EllipsizeMode.MIDDLE)
+    path_column = Gtk.TreeViewColumn(t("update.column_file"), path_renderer, text=1)
+    path_column.set_expand(True)
+    tree.append_column(path_column)
+    date_renderer = Gtk.CellRendererText()
+    date_renderer.set_property("family", "monospace")
+    tree.append_column(Gtk.TreeViewColumn(t("update.column_date"), date_renderer, text=2))
+
+    # A ScrolledWindow with a capped height, not an ever-growing list -- a
+    # big pull (e.g. switching after months away) can easily touch dozens of
+    # files, which would otherwise blow the dialog off-screen.
+    scroller = Gtk.ScrolledWindow()
+    scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+    scroller.set_shadow_type(Gtk.ShadowType.IN)
+    scroller.add(tree)
+    box.pack_start(scroller, True, True, 0)
+
+    no_changes_label = Gtk.Label(xalign=0, label=t("update.no_changes_message"))
+    no_changes_label.get_style_context().add_class("dim-label")
+    box.pack_start(no_changes_label, False, False, 0)
+
+    def populate(rows):
+        store.clear()
+        for status, path, date, _lookup_paths in rows:
             store.append([status, path, date])
-
-        tree = Gtk.TreeView(model=store)
-        tree.append_column(Gtk.TreeViewColumn("", Gtk.CellRendererText(), text=0))
-        path_renderer = Gtk.CellRendererText()
-        path_renderer.set_property("family", "monospace")
-        path_renderer.set_property("ellipsize", Pango.EllipsizeMode.MIDDLE)
-        path_column = Gtk.TreeViewColumn(t("update.column_file"), path_renderer, text=1)
-        path_column.set_expand(True)
-        tree.append_column(path_column)
-        date_renderer = Gtk.CellRendererText()
-        date_renderer.set_property("family", "monospace")
-        tree.append_column(Gtk.TreeViewColumn(t("update.column_date"), date_renderer, text=2))
-
+        scroller.set_visible(bool(rows))
+        scroller.set_min_content_height(min(28 * len(rows) + 28, 240))
+        no_changes_label.set_visible(not rows)
         if diff_button is not None:
-            selection = tree.get_selection()
-            selection.set_mode(Gtk.SelectionMode.SINGLE)
-            selection.connect(
-                "changed", lambda sel: diff_button.set_sensitive(sel.count_selected_rows() > 0)
-            )
+            diff_button.set_sensitive(False)
 
-            def on_diff_clicked(_button):
-                model, tree_iter = selection.get_selected()
-                if tree_iter is None:
-                    return
-                idx = model.get_path(tree_iter).get_indices()[0]
-                _status, path, date, lookup_paths = changed_files[idx]
-                show_diff_dialog(dialog, repo_dir, revision, lookup_paths, path, date)
+    if diff_button is not None:
+        selection = tree.get_selection()
+        selection.set_mode(Gtk.SelectionMode.SINGLE)
+        selection.connect(
+            "changed", lambda sel: diff_button.set_sensitive(sel.count_selected_rows() > 0)
+        )
 
-            diff_button.connect("clicked", on_diff_clicked)
+        def on_diff_clicked(_button):
+            model, tree_iter = selection.get_selected()
+            if tree_iter is None:
+                return
+            idx = model.get_path(tree_iter).get_indices()[0]
+            _status, path, date, lookup_paths = changed_files[idx]
+            show_diff_dialog(dialog, repo_dir, revision, lookup_paths, path, date)
 
-        scroller = Gtk.ScrolledWindow()
-        scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
-        scroller.set_min_content_height(min(28 * len(changed_files) + 28, 240))
-        scroller.set_shadow_type(Gtk.ShadowType.IN)
-        scroller.add(tree)
-        box.pack_start(scroller, True, True, 0)
-    else:
-        no_changes_label = Gtk.Label(xalign=0, label=t("update.no_changes_message"))
-        no_changes_label.get_style_context().add_class("dim-label")
-        box.pack_start(no_changes_label, False, False, 0)
+        diff_button.connect("clicked", on_diff_clicked)
+
+    if reload_button is not None:
+
+        def on_reload_clicked(_button):
+            reload_button.set_sensitive(False)
+            reload_button.set_tooltip_text(t("update.recheck_button_tooltip"))
+            # Pump the queued redraw before the blocking fetch below so the
+            # disabled state is actually visible, not just set in memory.
+            while Gtk.events_pending():
+                Gtk.main_iteration()
+
+            new_rows = fetch_changed_files(repo_dir, revision)
+            if new_rows is None:
+                reload_button.set_tooltip_text(t("update.recheck_failed_tooltip"))
+            else:
+                changed_files[:] = new_rows
+                populate(changed_files)
+                last_pull_label.set_markup(f"<small>{last_pull_text(repo_dir)}</small>")
+            reload_button.set_sensitive(True)
+
+        reload_button.connect("clicked", on_reload_clicked)
 
     # A MenuButton (same pattern as run-gui.py's "more actions" dropdown)
     # rather than a plain button, so picking "switch" is a deliberate
@@ -343,6 +420,10 @@ def main():
     action_area.set_child_secondary(switch_button, True)
 
     dialog.show_all()
+    # Must run after show_all(): it shows every child regardless of prior
+    # set_visible() calls, which would otherwise re-reveal whichever of
+    # scroller/no_changes_label populate() had just hidden.
+    populate(changed_files)
     response = dialog.run()
     dialog.destroy()
 

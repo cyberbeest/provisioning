@@ -358,6 +358,8 @@ STRINGS = {
     "update.column_file": "Datei",
     "update.column_date": "Datum",
     "update.diff_row_button": "Dateiunterschiede anzeigen",
+    "update.recheck_button_tooltip": "Erneut bei GitHub nachsehen",
+    "update.recheck_failed_tooltip": "GitHub nicht erreichbar -- gleich noch einmal versuchen.",
     "update.diff_dialog_title": "Unterschiede: {path} ({date})",
     "update.diff_column_before": "Vorher",
     "update.diff_column_after": "Nachher",
