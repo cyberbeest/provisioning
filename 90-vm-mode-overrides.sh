@@ -24,13 +24,16 @@
 #     see lib/panel-status-genmon-vm.sh. A control for tuning a delay that
 #     no longer does anything (auto-lock is off) is just confusing.
 # The panel work runs before the live xfconf overrides below, not after:
-# xfce_panel_kill (in lib/xfce-panel-reload.sh) SIGKILLs xfconfd to force
-# it to re-read xfce4-panel.xml, which also discards *any* channel's
-# in-memory changes xfconfd hadn't yet flushed to its on-disk cache --
-# including the screensaver/power-manager overrides, if they'd been made
-# moments earlier. Confirmed 2026-09-07: running the panel step last
-# silently reverted the screensaver/power-manager writes back to their
-# pre-override (16-power-lock-config.sh default) values.
+# confirmed 2026-09-07 that running the panel step last silently reverted
+# the screensaver/power-manager writes back to their pre-override
+# (16-power-lock-config.sh default) values, because xfce_panel_kill (in
+# lib/xfce-panel-reload.sh) used to SIGKILL xfconfd as part of the panel
+# reload, discarding *any* channel's in-memory changes it hadn't yet
+# flushed to disk -- including screensaver/power-manager overrides made
+# moments earlier. xfce_panel_kill no longer touches xfconfd at all
+# (2026-09-16 fix, see lib/xfce-panel-reload.sh), so this specific race is
+# gone, but the panel step is kept first anyway since nothing depends on
+# the other ordering.
 # Skips everything (no-op, exit 0) when systemd-detect-virt reports bare
 # metal.
 # Depends on: 11-xfce-panel-plugins.sh, 12-xfce-panel-layout.sh,

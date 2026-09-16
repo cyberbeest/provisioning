@@ -57,7 +57,18 @@ xfce_panel_kill() {
 	# step ran cleanly, but the plugin-11 rc and the plugin-ids array both
 	# reverted to their pre-merge contents once the killed panel finished
 	# exiting.
-	pkill -9 -u "$TARGET_USER" -x xfconfd || true
+	#
+	# Deliberately does NOT touch xfconfd. xfconfd is already the source of
+	# truth for the write a caller just made -- it has no stale client-side
+	# cache to drop the way the panel does, so there was never a reason to
+	# kill it too. Doing so anyway used to race xfconfd's own async disk
+	# flush: SIGKILLing it right after a write could lose that write
+	# entirely, and the freshly (auto-)respawned xfconfd would then reload
+	# the stale on-disk XML, silently reverting the change. Caught
+	# 2026-09-16 on tower: an i2pd panel-icon removal wrote plugin-ids
+	# correctly, xfconfd was killed a moment later before it flushed, and
+	# the icon came back on every subsequent panel restart because the
+	# on-disk xfce4-panel.xml still had the old value.
 	pkill -9 -u "$TARGET_USER" -x xfce4-panel || true
 
 	# Wait for the old process to actually be gone rather than trusting a

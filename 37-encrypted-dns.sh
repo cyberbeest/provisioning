@@ -42,6 +42,12 @@
 # reload_panel() used `xfce4-panel -r`, which can crash/revert the panel
 # (see lib/xfce-panel-reload.sh); switched to the SIGKILL+relaunch pattern
 # with a retry loop.
+#
+# Bumped 2026-09-16: dot-panel-icon.sh's reload_panel() also SIGKILLed
+# xfconfd right after writing plugin-ids, racing xfconfd's async disk
+# flush -- the write could be lost and the respawned xfconfd would reload
+# the stale on-disk value, leaving a zombie icon (seen with the i2pd
+# variant on tower). No longer touches xfconfd, only the panel.
 set -u
 LOG="${BASH_SOURCE%.sh}.log"
 exec > "$LOG" 2>&1

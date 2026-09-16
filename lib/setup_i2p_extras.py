@@ -158,9 +158,16 @@ ACTION="${1:-}"
 # persists that stale state back to xfconfd -- silently clobbering the
 # xfconf write this script just made. A graceful kill has the same problem
 # (exiting also re-persists in-memory config). See provisioning-bleeding's
-# lib/xfce-panel-reload.sh, which this is ported from: SIGKILL xfconfd and
-# xfce4-panel outright, then launch a completely fresh panel process so it
-# has no cached state to fall back on.
+# lib/xfce-panel-reload.sh, which this is ported from: SIGKILL xfce4-panel
+# outright, then launch a completely fresh panel process so it has no
+# cached state to fall back on.
+#
+# Deliberately does NOT kill xfconfd. xfconfd already holds the correct,
+# just-written value -- it has no stale cache to drop -- so SIGKILLing it
+# only risked losing its own async disk flush and reviving the stale
+# on-disk config on respawn. Caught 2026-09-16 on tower: an i2pd icon
+# removal kept coming back because xfconfd was killed before it had
+# flushed the plugin-ids write to xfce4-panel.xml.
 panel_dbus_addr() {
     local panel_pid
     panel_pid="$(pgrep -x xfce4-panel | head -n1)"
@@ -175,7 +182,6 @@ reload_panel() {
     old_pid="$(pgrep -x xfce4-panel | head -n1)"
     panel_dbus_addr || return 0
 
-    pkill -9 -x xfconfd 2>/dev/null || true
     pkill -9 -x xfce4-panel 2>/dev/null || true
 
     # Wait for the old process to actually be gone instead of trusting a

@@ -36,6 +36,10 @@
 # manage (a hand-added launcher, or one of the optional toggle scripts'
 # icons) is preserved across re-runs -- see the "Writing xfce4-panel.xml"
 # step and lib/merge-xfce-panel-plugins.py below.
+#
+# Bumped 2026-09-16: lib/xfce-panel-reload.sh no longer SIGKILLs xfconfd
+# during reload -- that raced xfconfd's async disk flush and could revert
+# a just-written xfconf change (zombie panel icon seen on tower).
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG="$DIR/12-xfce-panel-layout.log"

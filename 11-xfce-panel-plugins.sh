@@ -14,6 +14,10 @@
 # stop diverging when Shmem usage is large.
 # 2026-09-11: wattage-panel shows an empty label instead of the "no
 # battery" text on machines without a battery.
+# 2026-09-16: lib/xfce-panel-reload.sh no longer SIGKILLs xfconfd during
+# reload -- that raced xfconfd's async disk flush and could revert a
+# just-written xfconf change (zombie panel icon seen on tower). Bumped
+# so run-gui re-applies this lib-only fix.
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG="$DIR/11-xfce-panel-plugins.log"
