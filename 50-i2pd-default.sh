@@ -34,6 +34,13 @@
 # flush -- the write could be lost and the respawned xfconfd would reload
 # the stale on-disk value, leaving a zombie icon (seen on tower). No
 # longer touches xfconfd, only the panel.
+#
+# Bumped 2026-09-17: i2pd-menu.py's "Start qBittorrent" item did nothing
+# when qBittorrent wasn't installed (it's opt-in, see
+# 22-i2p-package-manager.sh). It now checks shutil.which() and, if missing,
+# shows "Install qBittorrent..." which launches the Cyberbeest Package
+# Manager instead. Requires 22-i2p-package-manager.sh to have run too, so
+# that GUI is actually present.
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG="$DIR/50-i2pd-default.log"

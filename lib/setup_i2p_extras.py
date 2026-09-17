@@ -385,6 +385,7 @@ are the things you'd actually want once i2pd is up.
 """
 
 import os
+import shutil
 import subprocess
 
 import gi
@@ -414,6 +415,14 @@ def start_qbittorrent(_item):
     Gtk.main_quit()
 
 
+def install_qbittorrent(_item):
+    # qBittorrent is opt-in (see 22-i2p-package-manager.sh), so it may not
+    # be installed yet -- send the user to the package manager instead of
+    # silently doing nothing.
+    launch(f"{HOME_BIN}/cyberbeest-package-manager")
+    Gtk.main_quit()
+
+
 def build_menu():
     menu = Gtk.Menu()
 
@@ -421,8 +430,12 @@ def build_menu():
     firefox_item.connect("activate", start_firefox)
     menu.append(firefox_item)
 
-    qbt_item = Gtk.MenuItem(label="Start qBittorrent")
-    qbt_item.connect("activate", start_qbittorrent)
+    if shutil.which("qbittorrent"):
+        qbt_item = Gtk.MenuItem(label="Start qBittorrent")
+        qbt_item.connect("activate", start_qbittorrent)
+    else:
+        qbt_item = Gtk.MenuItem(label="Install qBittorrent…")
+        qbt_item.connect("activate", install_qbittorrent)
     menu.append(qbt_item)
 
     menu.append(Gtk.SeparatorMenuItem())
