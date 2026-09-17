@@ -1,10 +1,16 @@
 #!/bin/bash
 # Builds and installs the custom xfce4-panel plugins (cpuload-color,
-# kitt-scanner, wattage-panel, mem-liquid) from source -- see
+# kitt-scanner, wattage-panel, mem-liquid, io-scanner) from source -- see
 # lib/xfce-panel-plugins/. Built on the target rather than shipped as
 # prebuilt .so files, since the panel plugin ABI is tied to the exact
 # xfce4-panel/gtk3 versions installed, which a binary can't guarantee.
 # Idempotent: safe to re-run (make install just overwrites).
+# 2026-09-17: adds io-scanner, a green vertical KITT-style sweep whose
+# speed tracks disk I/O (MB/s summed across all physical disks, immune to
+# multi-disk/dm-crypt double-counting -- see the file's header comment).
+# Installed like the others but deliberately NOT added to 12-xfce-panel-
+# layout.sh's default layout -- available for a user to add by hand via
+# the panel's own "add new item" dialog, not shown out of the box.
 # 2026-08-28: kitt-scanner/mem-liquid top-3 dedup fix (coalesce on the
 # aliased name, not the raw comm) -- bumps this script so run-gui's
 # change-detection re-runs it after a lib/ dep-only edit.

@@ -6,12 +6,16 @@ PLUGIN_DIR = $(shell pkg-config --variable=libdir libxfce4panel-2.0)/xfce4/panel
 DESKTOP_DIR = $(shell pkg-config --variable=datarootdir libxfce4panel-2.0)/xfce4/panel/plugins
 LOCALE_DIR = /usr/share/locale
 
-SOS = libcpuload-color.so libkitt-scanner.so libwattage-panel.so libmem-liquid.so
-DESKTOPS = cpuload-color.desktop kitt-scanner.desktop wattage-panel.desktop mem-liquid.desktop
+SOS = libcpuload-color.so libkitt-scanner.so libwattage-panel.so libmem-liquid.so libio-scanner.so
+DESKTOPS = cpuload-color.desktop kitt-scanner.desktop wattage-panel.desktop mem-liquid.desktop io-scanner.desktop
 
 # gettext domains translated via po/<domain>.de.po -- see i18n comment at the
 # top of kitt-scanner.c. cpuload-color isn't in this list: it's unused dead
 # code (not referenced by any panel layout), so not worth translating.
+# io-scanner isn't in this list either: its .desktop has a Name[de]/Comment[de]
+# (so it's still labeled in German in the panel's "add new item" dialog), but
+# its in-widget strings (tooltip, config dialog) aren't wired up for gettext
+# yet -- not worth the machinery for a plugin nobody's panel shows by default.
 I18N_DOMAINS = kitt-scanner mem-liquid wattage-panel
 MOS = $(addsuffix .mo,$(I18N_DOMAINS))
 
@@ -28,6 +32,9 @@ libwattage-panel.so: wattage-panel.c
 
 libmem-liquid.so: mem-liquid.c
 	$(CC) -shared $(CFLAGS) -DLOCALE_DIR='"$(LOCALE_DIR)"' -o $@ $< $(LIBS)
+
+libio-scanner.so: io-scanner.c
+	$(CC) -shared $(CFLAGS) -o $@ $< $(LIBS)
 
 %.mo: po/%.de.po
 	msgfmt -o $@ $<
