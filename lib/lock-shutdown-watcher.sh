@@ -101,28 +101,45 @@ is_hidden() {
 
 restore_windows() {
     [ -s "$MINIMIZED_STATE_FILE" ] || { rm -f "$MINIMIZED_STATE_FILE"; return; }
-    local id restored=0 failed=0
+    local count
+    count=$(wc -l < "$MINIMIZED_STATE_FILE")
+    notify-send --urgency=low --app-name="Cyberbeest" "Restoring ${count} window(s)..." 2>/dev/null || true
+    # Each window's retry loop runs in its own background job (result written
+    # to a per-id file) so a slow/stubborn window doesn't hold up the others --
+    # previously these ran one after another, so N windows each needing the
+    # full 5s worst case took up to 5*N seconds instead of ~5s total.
+    local tmpdir
+    tmpdir=$(mktemp -d)
+    local id
     while read -r id; do
         [ -z "$id" ] && continue
-        # Right after unlock, xfwm4/the screensaver's own teardown can briefly
-        # re-assert a window's prior (hidden) state a moment after our own
-        # unhide lands -- a race a single immediate check won't catch. Keep
-        # reasserting for a few seconds so it settles into the visible state.
-        local attempt
-        for attempt in 1 2 3 4 5; do
-            if is_hidden "$id"; then
-                wmctrl -ir "$id" -b remove,hidden
-                xdotool windowmap "$id" windowactivate "$id" 2>/dev/null
-            fi
-            sleep 1
-            is_hidden "$id" || break
-        done
-        if is_hidden "$id"; then
-            failed=$(( failed + 1 ))
-        else
-            restored=$(( restored + 1 ))
-        fi
+        (
+            # Right after unlock, xfwm4/the screensaver's own teardown can briefly
+            # re-assert a window's prior (hidden) state a moment after our own
+            # unhide lands -- a race a single immediate check won't catch. Keep
+            # reasserting for a few seconds so it settles into the visible state.
+            local attempt
+            for attempt in 1 2 3 4 5; do
+                if is_hidden "$id"; then
+                    wmctrl -ir "$id" -b remove,hidden
+                    xdotool windowmap "$id" windowactivate "$id" 2>/dev/null
+                fi
+                sleep 1
+                is_hidden "$id" || break
+            done
+            is_hidden "$id" && echo failed > "$tmpdir/$id" || echo restored > "$tmpdir/$id"
+        ) &
     done < "$MINIMIZED_STATE_FILE"
+    wait
+    local restored=0 failed=0 resultfile
+    for resultfile in "$tmpdir"/*; do
+        [ -f "$resultfile" ] || continue
+        case "$(cat "$resultfile")" in
+            restored) restored=$(( restored + 1 )) ;;
+            failed) failed=$(( failed + 1 )) ;;
+        esac
+    done
+    rm -rf "$tmpdir"
     local msg="Restored ${restored} window(s) after unlock"
     [ "$failed" -gt 0 ] && msg="${msg}, ${failed} failed to restore"
     logger -t lock-shutdown-watcher "$msg"
