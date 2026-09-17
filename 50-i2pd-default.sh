@@ -44,11 +44,22 @@
 #
 # Bumped 2026-09-17 (again): i2pd-menu.py's toggle item was hardcoded to
 # "Stop i2pd" regardless of i2pd's actual state -- seen live on tower
-# where i2pd died on its own (cause not yet root-caused) leaving a stale
-# icon whose genmon tooltip correctly said "stopped" but whose menu still
-# only offered "Stop i2pd" (a no-op on an already-stopped unit). Menu now
-# checks `systemctl is-active i2pd` and shows "Start i2pd" / "Stop i2pd"
-# accordingly.
+# where i2pd got stopped out from under a running session (root cause
+# below), leaving a stale icon whose genmon tooltip correctly said
+# "stopped" but whose menu still only offered "Stop i2pd" (a no-op on an
+# already-stopped unit). Menu now checks `systemctl is-active i2pd` and
+# shows "Start i2pd" / "Stop i2pd" accordingly.
+#
+# Bumped 2026-09-17 (root cause of the above): the `systemctl stop i2pd`
+# below, meant only to counteract Debian's postinst auto-starting i2pd on
+# a *fresh* install, ran unconditionally on every re-run of this
+# idempotent script -- including a Cyberbeest Update on an
+# already-provisioned machine. That force-stopped i2pd out from under a
+# user who'd deliberately started it (confirmed on tower: qBittorrent had
+# live I2P tunnels open, so the stop couldn't finish within systemd's
+# graceful-shutdown timeout and got SIGKILLed 30s later). Now only runs
+# the stop when i2pd wasn't already installed (i.e. an actual fresh
+# install), never on a re-run.
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG="$DIR/50-i2pd-default.log"
@@ -58,6 +69,9 @@ echo "=== $(date) : installing i2pd (default, off until started) ==="
 
 TARGET_USER="${SUDO_USER:?SUDO_USER not set -- run this via sudo, not as a raw root shell}"
 TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
+
+ALREADY_INSTALLED=0
+dpkg -s i2pd >/dev/null 2>&1 && ALREADY_INSTALLED=1
 
 echo "--- Installing i2pd ---"
 apt-get -o DPkg::Lock::Timeout=60 update -qq
@@ -69,8 +83,15 @@ echo "--- Setting up the on-demand toggle (sudoers rule, disables boot-autostart
 # Debian's i2pd postinst starts the service immediately on a fresh install
 # (before the disable above takes effect on the *next* boot) -- stop it now
 # so a freshly provisioned machine doesn't have it running until the user
-# actually asks for it.
-systemctl stop i2pd 2>/dev/null || true
+# actually asks for it. Only do this on an actual fresh install: this
+# script is idempotent and re-runs on every Cyberbeest Update, and an
+# unconditional stop here was killing i2pd out from under a user who'd
+# deliberately started it (SIGKILLed after a 30s timeout since live
+# tunnels -- e.g. qBittorrent traffic -- don't shut down cleanly), seen
+# live on tower 2026-09-17.
+if [ "$ALREADY_INSTALLED" -eq 0 ]; then
+	systemctl stop i2pd 2>/dev/null || true
+fi
 
 echo "--- Installing the eepsite Firefox profile + toggle scripts/launchers as $TARGET_USER ---"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.local/bin"
