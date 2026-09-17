@@ -1,1 +1,2 @@
 whitelist ${HOME}/Downloads
+whitelist ${HOME}/Pictures

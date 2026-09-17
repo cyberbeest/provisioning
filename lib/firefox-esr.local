@@ -1,3 +1,4 @@
 whitelist ${HOME}/.config/pulse
 whitelist /run/pulse-shared
+whitelist ${PICTURES}
 dbus-user filter
