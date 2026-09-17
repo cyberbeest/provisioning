@@ -41,6 +41,14 @@
 # shows "Install qBittorrent..." which launches the Cyberbeest Package
 # Manager instead. Requires 22-i2p-package-manager.sh to have run too, so
 # that GUI is actually present.
+#
+# Bumped 2026-09-17 (again): i2pd-menu.py's toggle item was hardcoded to
+# "Stop i2pd" regardless of i2pd's actual state -- seen live on tower
+# where i2pd died on its own (cause not yet root-caused) leaving a stale
+# icon whose genmon tooltip correctly said "stopped" but whose menu still
+# only offered "Stop i2pd" (a no-op on an already-stopped unit). Menu now
+# checks `systemctl is-active i2pd` and shows "Start i2pd" / "Stop i2pd"
+# accordingly.
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG="$DIR/50-i2pd-default.log"

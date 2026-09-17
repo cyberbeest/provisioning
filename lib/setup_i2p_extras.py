@@ -400,6 +400,22 @@ def launch(*args):
     subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
+def i2pd_is_running():
+    return (
+        subprocess.run(
+            ["systemctl", "is-active", "--quiet", "i2pd"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        ).returncode
+        == 0
+    )
+
+
+def start_i2pd(_item):
+    launch(f"{HOME_BIN}/i2pd-start.sh")
+    Gtk.main_quit()
+
+
 def stop_i2pd(_item):
     launch(f"{HOME_BIN}/i2pd-stop.sh")
     Gtk.main_quit()
@@ -440,9 +456,20 @@ def build_menu():
 
     menu.append(Gtk.SeparatorMenuItem())
 
-    stop_item = Gtk.MenuItem(label="Stop i2pd")
-    stop_item.connect("activate", stop_i2pd)
-    menu.append(stop_item)
+    # The icon is only ever meant to be on the panel while i2pd is running
+    # (added by i2pd-start.sh, removed by i2pd-stop.sh) -- but if the
+    # service dies on its own (crash, being killed, etc.) instead of via
+    # i2pd-stop.sh, the icon is left behind still assuming it's running.
+    # Check the live state here rather than hardcoding "Stop i2pd", so a
+    # stale icon shows an accurate, actionable item instead of one that
+    # does nothing (systemctl stop on an already-stopped unit is a no-op).
+    if i2pd_is_running():
+        toggle_item = Gtk.MenuItem(label="Stop i2pd")
+        toggle_item.connect("activate", stop_i2pd)
+    else:
+        toggle_item = Gtk.MenuItem(label="Start i2pd")
+        toggle_item.connect("activate", start_i2pd)
+    menu.append(toggle_item)
 
     menu.show_all()
     return menu
