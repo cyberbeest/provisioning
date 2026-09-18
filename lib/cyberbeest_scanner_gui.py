@@ -33,10 +33,10 @@ REPORT_NAME_RE = re.compile(r"scan-(\d{8})-(\d{6})\.log$")
 # field (not by index -- with phase checkboxes, index n now means "the nth
 # stage actually run", which stage that is depends on what was selected).
 PHASES = [
-    ("debsums", "Checking base-system files (debsums)"),
-    ("clamscan", "Scanning for known malware (ClamAV)"),
-    ("rkhunter", "Checking for rootkits (rkhunter)"),
-    ("chkrootkit", "Checking for rootkits (chkrootkit)"),
+    ("debsums", "Check base-system files (debsums)"),
+    ("clamscan", "Scan for known malware (ClamAV)"),
+    ("rkhunter", "Check for rootkits (rkhunter)"),
+    ("chkrootkit", "Check for rootkits (chkrootkit)"),
 ]
 STAGE_NAMES = dict(PHASES)
 
