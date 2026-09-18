@@ -228,14 +228,25 @@ class ScannerWindow(Gtk.Window):
         self.log_buffer.set_text("\n".join(visible_lines))
 
     def on_destroy(self, _widget):
-        # pkexec forwards SIGTERM to what it launched (the helper script),
-        # which has its own trap to stop clamd and save incremental-scan
-        # progress before it actually exits -- see cyberbeest-scanner-
-        # helper.sh. Without this, closing the window mid-scan orphaned the
-        # whole thing: it kept running in the background, indefinitely,
-        # with nothing left to show for it.
+        # The helper script runs as root (via pkexec) while this process
+        # stays unprivileged -- os.kill() on a root-owned PID from here
+        # raises PermissionError (confirmed live: closing the window left
+        # both this process AND the scan running indefinitely, since the
+        # exception aborted this handler before it reached Gtk.main_quit()).
+        # .terminate() is still attempted since it's a harmless no-op if it
+        # fails, but it can't be relied on to actually stop anything, and
+        # a failure here must never block the rest of this handler.
+        #
+        # The helper script itself now watches this process's PID (passed
+        # as its own $PPID -- pkexec execs in place rather than forking, so
+        # that's stable) and stops clamd/saves progress on its own once
+        # this process is gone, whether from a clean close or a crash --
+        # see cyberbeest-scanner-helper.sh.
         if self.scan_proc and self.scan_proc.poll() is None:
-            self.scan_proc.terminate()
+            try:
+                self.scan_proc.terminate()
+            except OSError:
+                pass
         if self.timer_source is not None:
             GLib.source_remove(self.timer_source)
             self.timer_source = None

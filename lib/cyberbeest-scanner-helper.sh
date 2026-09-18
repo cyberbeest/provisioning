@@ -83,6 +83,25 @@ cleanup() {
 trap cleanup EXIT
 trap 'cleanup; exit 143' INT TERM
 
+# The GUI can't signal this script back to stop it -- it runs unprivileged
+# while this runs as root (via pkexec), and an unprivileged process can't
+# kill() a root-owned PID (confirmed live: closing the GUI window left a
+# scan running for 13+ minutes with clamd still resident, since the
+# permission failure on its side happened before it could do anything
+# else). Watching the GUI's own PID instead works regardless of privilege:
+# pkexec execs its target in place rather than forking, so $PPID here is
+# stable and IS the GUI process for this script's whole lifetime. If it
+# disappears -- clean close or a crash -- stop everything the same way an
+# INT/TERM would. pkill -P $$ in cleanup() already tears this loop down
+# along with everything else on any exit path.
+GUI_PID=$PPID
+(
+  while kill -0 "$GUI_PID" 2>/dev/null; do
+    sleep 2
+  done
+  kill -TERM $$ 2>/dev/null
+) &
+
 section() {
   echo "===$1===" >> "$REPORT"
   echo "=== $2 ===" | tee -a "$REPORT"
