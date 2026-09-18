@@ -29,12 +29,25 @@ import interpret_results  # noqa: E402
 HELPER = "/usr/local/lib/cyberbeest/cyberbeest-scanner-helper.sh"
 REPORTS_DIR = os.path.expanduser("~/.local/share/cyberbeest/scanner/reports")
 REPORT_NAME_RE = re.compile(r"scan-(\d{8})-(\d{6})\.log$")
-STAGE_NAMES = {1: "Checking base-system files (debsums)",
-               2: "Scanning for known malware (ClamAV)",
-               3: "Checking for rootkits (rkhunter)",
-               4: "Checking for rootkits (chkrootkit)"}
+# Keyed by the short stage name the helper script sends as @@STAGE@@'s 4th
+# field (not by index -- with phase checkboxes, index n now means "the nth
+# stage actually run", which stage that is depends on what was selected).
+PHASES = [
+    ("debsums", "Checking base-system files (debsums)"),
+    ("clamscan", "Scanning for known malware (ClamAV)"),
+    ("rkhunter", "Checking for rootkits (rkhunter)"),
+    ("chkrootkit", "Checking for rootkits (chkrootkit)"),
+]
+STAGE_NAMES = dict(PHASES)
 
 LEVEL_COLORS = {"GREEN": "#2e7d32", "YELLOW": "#e6a700", "RED": "#c62828"}
+PHASE_STATUS_STYLE = {
+    "pending": ("Pending", "#8a8a8a"),
+    "skipped": ("Skipped", "#8a8a8a"),
+    "running": ("Running…", "#2b78e4"),
+    "done": ("Done", "#2a9d3f"),
+    "failed": ("Failed", "#c62828"),
+}
 
 
 def format_duration(seconds):
@@ -65,6 +78,39 @@ def parse_report_start_time(path):
     return datetime.datetime.strptime(m.group(1) + m.group(2), "%Y%m%d%H%M%S")
 
 
+class PhaseRow(Gtk.ListBoxRow):
+    """One checkbox + status label for a scan phase. Simpler than run-gui.py's
+    ScriptRow -- no per-row run button, since the single Scan Now button runs
+    whatever's checked."""
+
+    def __init__(self, key, label):
+        super().__init__()
+        self.key = key
+        self.set_selectable(False)
+        self.set_activatable(False)
+
+        box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        box.set_border_width(4)
+        self.add(box)
+
+        self.check = Gtk.CheckButton(label=label)
+        self.check.set_active(True)
+        box.pack_start(self.check, True, True, 0)
+
+        self.status_label = Gtk.Label(label="", xalign=1)
+        box.pack_start(self.status_label, False, False, 0)
+
+        self.set_status("pending")
+
+    @property
+    def selected(self):
+        return self.check.get_active()
+
+    def set_status(self, state):
+        text, color = PHASE_STATUS_STYLE[state]
+        self.status_label.set_markup(f'<span foreground="{color}">{GLib.markup_escape_text(text)}</span>')
+
+
 class ScannerWindow(Gtk.Window):
     def __init__(self):
         super().__init__(title="Cyberbeest Malware Scanner")
@@ -88,6 +134,20 @@ class ScannerWindow(Gtk.Window):
 
         self.timer_label = Gtk.Label(label="")
         top.pack_start(self.timer_label, False, False, 0)
+
+        phases_label = Gtk.Label(label="Checks to run:")
+        phases_label.set_xalign(0)
+        root.pack_start(phases_label, False, False, 0)
+
+        self.phase_listbox = Gtk.ListBox()
+        self.phase_listbox.set_selection_mode(Gtk.SelectionMode.NONE)
+        self.phase_rows = {}
+        for key, label in PHASES:
+            row = PhaseRow(key, label)
+            row.check.connect("toggled", self.on_phase_toggled)
+            self.phase_rows[key] = row
+            self.phase_listbox.add(row)
+        root.pack_start(self.phase_listbox, False, False, 0)
 
         self.verdict_label = Gtk.Label(label="")
         self.verdict_label.set_xalign(0)
@@ -124,12 +184,21 @@ class ScannerWindow(Gtk.Window):
         self.stage_index = 0
         self.stage_total = 1
         self.stage_label = ""
+        self.current_stage_key = None
         self.clam_total = None
         self.scan_proc = None
         self.scan_start_time = None
         self.timer_source = None
 
+        self._update_scan_button_sensitivity()
         self._show_last_scan_summary()
+
+    def on_phase_toggled(self, _check):
+        self._update_scan_button_sensitivity()
+
+    def _update_scan_button_sensitivity(self):
+        scanning = self.scan_proc is not None and self.scan_proc.poll() is None
+        self.scan_button.set_sensitive(not scanning and any(row.selected for row in self.phase_rows.values()))
 
     def _show_last_scan_summary(self):
         path = find_last_report()
@@ -173,6 +242,10 @@ class ScannerWindow(Gtk.Window):
         Gtk.main_quit()
 
     def on_scan_clicked(self, _button):
+        self.selected_phases = [key for key, _ in PHASES if self.phase_rows[key].selected]
+        for key, row in self.phase_rows.items():
+            row.set_status("pending" if key in self.selected_phases else "skipped")
+        self.phase_listbox.set_sensitive(False)
         self.scan_button.set_sensitive(False)
         self.log_buffer.set_text("")
         self.verdict_buffer.set_text("")
@@ -180,6 +253,7 @@ class ScannerWindow(Gtk.Window):
         self.progress.set_fraction(0.0)
         self.progress.set_text("Starting...")
         self.clam_total = None
+        self.current_stage_key = None
         self.scan_start_time = time.monotonic()
         self.timer_label.set_text("0:00")
         self.timer_source = GLib.timeout_add(1000, self._tick_timer)
@@ -208,9 +282,15 @@ class ScannerWindow(Gtk.Window):
         return False
 
     def _set_progress(self, index, total, name):
+        if self.current_stage_key in self.phase_rows:
+            self.phase_rows[self.current_stage_key].set_status("done")
+        self.current_stage_key = name
+        if name in self.phase_rows:
+            self.phase_rows[name].set_status("running")
+
         self.stage_index = index
         self.stage_total = total
-        self.stage_label = STAGE_NAMES.get(index, name)
+        self.stage_label = STAGE_NAMES.get(name, name)
         self.clam_total = None
         self.progress.set_fraction((index - 1) / total)
         self.progress.set_text(f"{index}/{total}: {self.stage_label}")
@@ -232,7 +312,7 @@ class ScannerWindow(Gtk.Window):
     def _run_scan(self):
         try:
             proc = subprocess.Popen(
-                ["pkexec", HELPER],
+                ["pkexec", HELPER, ",".join(self.selected_phases)],
                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
         except Exception as e:
             GLib.idle_add(self._on_scan_failed, f"Could not start pkexec: {e}")
@@ -269,14 +349,21 @@ class ScannerWindow(Gtk.Window):
 
     def _on_scan_failed(self, message):
         self._stop_timer()
+        if self.current_stage_key in self.phase_rows:
+            self.phase_rows[self.current_stage_key].set_status("failed")
+        self.current_stage_key = None
         self.progress.set_fraction(0.0)
         self.progress.set_text("Failed")
         self.verdict_label.set_markup(f"<b><span foreground='#c62828'>{GLib.markup_escape_text(message)}</span></b>")
-        self.scan_button.set_sensitive(True)
+        self.phase_listbox.set_sensitive(True)
+        self._update_scan_button_sensitivity()
         return False
 
     def _on_scan_done(self, report_path):
         self._stop_timer()
+        if self.current_stage_key in self.phase_rows:
+            self.phase_rows[self.current_stage_key].set_status("done")
+        self.current_stage_key = None
         self.progress.set_fraction(1.0)
         self.progress.set_text("Done")
         with open(report_path) as f:
@@ -287,7 +374,8 @@ class ScannerWindow(Gtk.Window):
             f"<b><span foreground='{color}'>{GLib.markup_escape_text(verdict['headline'])}</span></b>"
             f"  (full report: {GLib.markup_escape_text(report_path)})")
         self.verdict_buffer.set_text(interpret_results.render_text(verdict))
-        self.scan_button.set_sensitive(True)
+        self.phase_listbox.set_sensitive(True)
+        self._update_scan_button_sensitivity()
         return False
 
 

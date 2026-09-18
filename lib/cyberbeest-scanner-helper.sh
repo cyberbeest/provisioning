@@ -88,6 +88,24 @@ section() {
   echo "=== $2 ===" | tee -a "$REPORT"
 }
 
+# $1 is a comma-separated subset of debsums,clamscan,rkhunter,chkrootkit
+# from the GUI's checkboxes (all four if unset/empty, e.g. run manually).
+# TOTAL_STAGES/STAGE_IDX drive the @@STAGE@@ n-of-m marker off however many
+# stages were actually picked, not a hardcoded 4, so the GUI's progress bar
+# and phase-row highlighting stay in sync with a partial run.
+IFS=',' read -r -a REQUESTED_STAGES <<< "${1:-debsums,clamscan,rkhunter,chkrootkit}"
+declare -A STAGE_SELECTED=()
+for s in "${REQUESTED_STAGES[@]}"; do STAGE_SELECTED["$s"]=1; done
+TOTAL_STAGES=0
+for s in debsums clamscan rkhunter chkrootkit; do
+  [ -n "${STAGE_SELECTED[$s]:-}" ] && TOTAL_STAGES=$((TOTAL_STAGES + 1))
+done
+STAGE_IDX=0
+next_stage() {
+  STAGE_IDX=$((STAGE_IDX + 1))
+  echo "@@STAGE@@ $STAGE_IDX $TOTAL_STAGES $1"
+}
+
 # clamdscan -v only emits ONE verbose line per argument -- for a bare
 # directory path that's a single "<dir>: OK" line for the whole tree, not
 # one per file inside it. Per-file granularity only happens via
@@ -147,57 +165,65 @@ run_clamdscan_with_progress() {
   rm -rf "$chunkdir" "$counter_file" "$counter_lock"
 }
 
-echo "@@STAGE@@ 1 4 debsums"
-section debsums "Checking base-system files (debsums)"
-debsums -c 2>&1 | tee -a "$REPORT"
-
-echo "@@STAGE@@ 2 4 clamscan"
-section clamscan "Scanning for known malware (ClamAV)"
-CLAM_STAGE_ACTIVE=1
-echo "starting clamd (not left running otherwise, to save battery)..." | tee -a "$REPORT"
-systemctl start clamav-daemon
-CLAMD_STARTED=1
-for _ in $(seq 1 30); do
-  [ -S /var/run/clamav/clamd.ctl ] && break
-  sleep 1
-done
-
-NEW_MANIFEST="$(mktemp)"
-CONFIRMED="$(mktemp)"
-echo "building file manifest (size/mtime/header-hash) to find what changed..." | tee -a "$REPORT"
-python3 "$LIBDIR/manifest_diff.py" build / "$MANIFEST_EXCLUDE_RE" "$NEW_MANIFEST"
-if [ -s "$MANIFEST" ]; then
-  echo "incremental scan: comparing against the last manifest..." | tee -a "$REPORT"
-  CHANGED="$(mktemp)"
-  CHANGED_FOR_CLEANUP="$CHANGED"
-  python3 "$LIBDIR/manifest_diff.py" diff "$MANIFEST" "$NEW_MANIFEST" "$CHANGED" 2>&1 | tee -a "$REPORT"
-  if [ -s "$CHANGED" ]; then
-    run_clamdscan_with_progress "$(wc -l < "$CHANGED")" "$CONFIRMED" "$CHANGED" --fdpass | tee -a "$REPORT"
-  else
-    echo "no changed files, nothing to scan" | tee -a "$REPORT"
-  fi
-else
-  echo "no prior manifest found, running a full scan" | tee -a "$REPORT"
-  FULL_LIST="$(mktemp)"
-  CHANGED_FOR_CLEANUP="$FULL_LIST"
-  cut -f1 "$NEW_MANIFEST" > "$FULL_LIST"
-  run_clamdscan_with_progress "$(wc -l < "$FULL_LIST")" "$CONFIRMED" "$FULL_LIST" --fdpass | tee -a "$REPORT"
+if [ -n "${STAGE_SELECTED[debsums]:-}" ]; then
+  next_stage debsums
+  section debsums "Checking base-system files (debsums)"
+  debsums -c 2>&1 | tee -a "$REPORT"
 fi
-mv "$NEW_MANIFEST" "$MANIFEST"
-chown "$TARGET_USER:$TARGET_USER" "$MANIFEST"
-rm -f "$CHANGED_FOR_CLEANUP" "$CONFIRMED"
-CLAM_STAGE_ACTIVE=0
 
-systemctl stop clamav-daemon
-CLAMD_STARTED=0
+if [ -n "${STAGE_SELECTED[clamscan]:-}" ]; then
+  next_stage clamscan
+  section clamscan "Scanning for known malware (ClamAV)"
+  CLAM_STAGE_ACTIVE=1
+  echo "starting clamd (not left running otherwise, to save battery)..." | tee -a "$REPORT"
+  systemctl start clamav-daemon
+  CLAMD_STARTED=1
+  for _ in $(seq 1 30); do
+    [ -S /var/run/clamav/clamd.ctl ] && break
+    sleep 1
+  done
 
-echo "@@STAGE@@ 3 4 rkhunter"
-section rkhunter "Checking for rootkits (rkhunter)"
-rkhunter --check --sk --nocolors 2>&1 | tee -a "$REPORT"
+  NEW_MANIFEST="$(mktemp)"
+  CONFIRMED="$(mktemp)"
+  echo "building file manifest (size/mtime/header-hash) to find what changed..." | tee -a "$REPORT"
+  python3 "$LIBDIR/manifest_diff.py" build / "$MANIFEST_EXCLUDE_RE" "$NEW_MANIFEST"
+  if [ -s "$MANIFEST" ]; then
+    echo "incremental scan: comparing against the last manifest..." | tee -a "$REPORT"
+    CHANGED="$(mktemp)"
+    CHANGED_FOR_CLEANUP="$CHANGED"
+    python3 "$LIBDIR/manifest_diff.py" diff "$MANIFEST" "$NEW_MANIFEST" "$CHANGED" 2>&1 | tee -a "$REPORT"
+    if [ -s "$CHANGED" ]; then
+      run_clamdscan_with_progress "$(wc -l < "$CHANGED")" "$CONFIRMED" "$CHANGED" --fdpass | tee -a "$REPORT"
+    else
+      echo "no changed files, nothing to scan" | tee -a "$REPORT"
+    fi
+  else
+    echo "no prior manifest found, running a full scan" | tee -a "$REPORT"
+    FULL_LIST="$(mktemp)"
+    CHANGED_FOR_CLEANUP="$FULL_LIST"
+    cut -f1 "$NEW_MANIFEST" > "$FULL_LIST"
+    run_clamdscan_with_progress "$(wc -l < "$FULL_LIST")" "$CONFIRMED" "$FULL_LIST" --fdpass | tee -a "$REPORT"
+  fi
+  mv "$NEW_MANIFEST" "$MANIFEST"
+  chown "$TARGET_USER:$TARGET_USER" "$MANIFEST"
+  rm -f "$CHANGED_FOR_CLEANUP" "$CONFIRMED"
+  CLAM_STAGE_ACTIVE=0
 
-echo "@@STAGE@@ 4 4 chkrootkit"
-section chkrootkit "Checking for rootkits (chkrootkit)"
-chkrootkit 2>&1 | tee -a "$REPORT"
+  systemctl stop clamav-daemon
+  CLAMD_STARTED=0
+fi
+
+if [ -n "${STAGE_SELECTED[rkhunter]:-}" ]; then
+  next_stage rkhunter
+  section rkhunter "Checking for rootkits (rkhunter)"
+  rkhunter --check --sk --nocolors 2>&1 | tee -a "$REPORT"
+fi
+
+if [ -n "${STAGE_SELECTED[chkrootkit]:-}" ]; then
+  next_stage chkrootkit
+  section chkrootkit "Checking for rootkits (chkrootkit)"
+  chkrootkit 2>&1 | tee -a "$REPORT"
+fi
 
 chown "$TARGET_USER:$TARGET_USER" "$REPORT"
 FINISHED=1
