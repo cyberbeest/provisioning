@@ -102,15 +102,49 @@ section() {
 # still pass through untouched. stdbuf forces line buffering so progress
 # arrives live instead of waiting on a pipe's default block buffering.
 run_clamdscan_with_progress() {
-  local total="$1" confirmed_file="$2"; shift 2
+  local total="$1" confirmed_file="$2" file_list="$3"; shift 3
   echo "@@CLAMTOTAL@@ $total"
-  stdbuf -oL clamdscan -v "$@" 2>&1 | stdbuf -oL awk -v total="$total" -v confirmed="$confirmed_file" '
-    /: OK$/     { n++; path=$0; sub(/: OK$/, "", path); print path >> confirmed; fflush(confirmed)
-                  if (n % 25 == 0 || n == total) { print "@@CLAMPROGRESS@@ " n; fflush() } next }
-    /FOUND$/    { n++; path=$0; sub(/: .*/, "", path); print path >> confirmed; fflush(confirmed)
-                  print; print "@@CLAMPROGRESS@@ " n; fflush(); next }
-    { print; fflush() }
-  '
+
+  local nworkers chunkdir counter_file counter_lock
+  nworkers="$(nproc)"
+  chunkdir="$(mktemp -d)"
+  split -n "l/$nworkers" -d -a3 "$file_list" "$chunkdir/chunk_"
+  counter_file="$(mktemp)"
+  echo 0 > "$counter_file"
+  counter_lock="$(mktemp)"
+
+  local pids=()
+  for chunk in "$chunkdir"/chunk_*; do
+    [ -s "$chunk" ] || continue
+    (
+      stdbuf -oL clamdscan -v "$@" --file-list="$chunk" 2>&1 | while IFS= read -r line; do
+        case "$line" in
+          *": OK")
+            echo "${line%: OK}" >> "$confirmed_file"
+            n="$(flock "$counter_lock" bash -c '
+              read -r c < "'"$counter_file"'"; c=$((c+1))
+              echo "$c" > "'"$counter_file"'"; echo "$c"')"
+            [ $((n % 25)) -eq 0 ] || [ "$n" -eq "$total" ] && echo "@@CLAMPROGRESS@@ $n"
+            ;;
+          *FOUND)
+            echo "${line%%: *}" >> "$confirmed_file"
+            n="$(flock "$counter_lock" bash -c '
+              read -r c < "'"$counter_file"'"; c=$((c+1))
+              echo "$c" > "'"$counter_file"'"; echo "$c"')"
+            echo "$line"
+            echo "@@CLAMPROGRESS@@ $n"
+            ;;
+          *)
+            echo "$line"
+            ;;
+        esac
+      done
+    ) &
+    pids+=($!)
+  done
+  wait "${pids[@]}" 2>/dev/null
+
+  rm -rf "$chunkdir" "$counter_file" "$counter_lock"
 }
 
 echo "@@STAGE@@ 1 4 debsums"
@@ -138,7 +172,7 @@ if [ -s "$MANIFEST" ]; then
   CHANGED_FOR_CLEANUP="$CHANGED"
   python3 "$LIBDIR/manifest_diff.py" diff "$MANIFEST" "$NEW_MANIFEST" "$CHANGED" 2>&1 | tee -a "$REPORT"
   if [ -s "$CHANGED" ]; then
-    run_clamdscan_with_progress "$(wc -l < "$CHANGED")" "$CONFIRMED" --fdpass --multiscan --file-list="$CHANGED" | tee -a "$REPORT"
+    run_clamdscan_with_progress "$(wc -l < "$CHANGED")" "$CONFIRMED" "$CHANGED" --fdpass | tee -a "$REPORT"
   else
     echo "no changed files, nothing to scan" | tee -a "$REPORT"
   fi
@@ -147,7 +181,7 @@ else
   FULL_LIST="$(mktemp)"
   CHANGED_FOR_CLEANUP="$FULL_LIST"
   cut -f1 "$NEW_MANIFEST" > "$FULL_LIST"
-  run_clamdscan_with_progress "$(wc -l < "$FULL_LIST")" "$CONFIRMED" --fdpass --multiscan --file-list="$FULL_LIST" | tee -a "$REPORT"
+  run_clamdscan_with_progress "$(wc -l < "$FULL_LIST")" "$CONFIRMED" "$FULL_LIST" --fdpass | tee -a "$REPORT"
 fi
 mv "$NEW_MANIFEST" "$MANIFEST"
 chown "$TARGET_USER:$TARGET_USER" "$MANIFEST"
