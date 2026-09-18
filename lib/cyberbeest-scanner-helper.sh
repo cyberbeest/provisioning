@@ -7,10 +7,9 @@
 # under /usr/local/lib rather than under /home).
 #
 # clamd is started here, right before the scan, and stopped right after --
-# NOT left running as a resident daemon -- since an always-on clamd (DB
-# resident in RAM) would work against the notification-mode/34h-battery
-# pitch. See 51-fail2ban.sh for the same "install but don't run unless
-# actually needed" pattern applied to a different daemon.
+# NOT left running as a resident daemon (its DB is ~1GB resident in RAM).
+# See 51-fail2ban.sh for the same "install but don't run unless actually
+# needed" pattern applied to a different daemon.
 #
 # Protocol on stdout: lines starting with "@@STAGE@@ " are progress markers
 # for the GUI (index total name); a "=== <human label> ===" line announces
@@ -20,12 +19,12 @@
 # it back into sections. During the clamscan stage, "@@CLAMTOTAL@@ <n>" (once)
 # and "@@CLAMPROGRESS@@ <n>" (periodically) give per-file progress within
 # that stage. A final "@@DONE@@ <report path>" line marks completion, or
-# "@@INTERRUPTED@@" if the GUI was closed / pkexec's process was killed
-# mid-scan (pkexec forwards SIGTERM/INT/HUP to what it launches).
+# "@@INTERRUPTED@@" on an INT/TERM (a real signal, e.g. from a terminal --
+# the GUI itself can't send us one, see the GUI-PID watchdog below).
 #
 # Getting killed mid-scan must not leave clamd running (defeats the whole
-# "not resident, to save battery" point) or lose all incremental-cache
-# progress -- see the cleanup() trap below.
+# "not resident" point) or lose all incremental-cache progress -- see the
+# cleanup() trap below.
 set -uo pipefail
 
 TARGET_USER="__TARGET_USER__"
@@ -194,7 +193,7 @@ if [ -n "${STAGE_SELECTED[clamscan]:-}" ]; then
   next_stage clamscan
   section clamscan "Scanning for known malware (ClamAV)"
   CLAM_STAGE_ACTIVE=1
-  echo "starting clamd (not left running otherwise, to save battery)..." | tee -a "$REPORT"
+  echo "starting clamd (not left running otherwise)..." | tee -a "$REPORT"
   systemctl start clamav-daemon
   CLAMD_STARTED=1
   for _ in $(seq 1 30); do
