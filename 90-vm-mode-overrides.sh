@@ -1,8 +1,22 @@
 #!/bin/bash
 # VM-only overrides layered on top of the normal desktop provisioning.
-# Running inside a VM (VirtualBox "Fresh VM" test rig, or any other
-# hypervisor) doesn't need the same visual polish or power-saving
-# automation as real hardware:
+# Running inside a VM (the "Fresh VM" KVM/GNOME Boxes test rig, or any
+# other hypervisor) doesn't need the same visual polish or power-saving
+# automation as real hardware. This is for the disposable internal
+# dev/test rig ONLY -- explicitly NOT for the real shipped VM product
+# (cyberbeest-vm.qcow2, a paying customer's actual daily-driver OS, which
+# should keep full security posture: lock screen, no autologin, real
+# wallpaper -- matching the "security defaults wired in" positioning, see
+# cyberbeest_nonnerd_linux_framing memory). Gated on PROVISIONING_DEV_TEST_VM
+# (below), not just systemd-detect-virt, precisely because both the
+# release-build pipeline's live-stick builds AND the real VM product build
+# run provisioning inside a nested KVM guest too -- systemd-detect-virt
+# alone can't tell "this VM IS the shipped product/host" apart from "the
+# build tooling happens to run inside one". Real incident 2026-09-19: this
+# false-positive baked dev-rig overrides (autologin, no lock screen, the
+# "Virtual machine starting" logo) into a live-stick build. Set
+# PROVISIONING_DEV_TEST_VM=yes only when provisioning the actual disposable
+# Fresh VM rig, e.g. via .provisioning-profile.env there.
 #   - Solid-color background instead of the wallpaper photo -- cheaper to
 #     render, and an instant visual tell that this session is the VM
 #     guest, not the host (see lib/set-vm-solid-background.sh).
@@ -34,8 +48,11 @@
 # (2026-09-16 fix, see lib/xfce-panel-reload.sh), so this specific race is
 # gone, but the panel step is kept first anyway since nothing depends on
 # the other ordering.
-# Skips everything (no-op, exit 0) when systemd-detect-virt reports bare
-# metal.
+# Skips everything (no-op, exit 0) unless PROVISIONING_DEV_TEST_VM=yes is
+# set -- systemd-detect-virt reporting a hypervisor is necessary but not
+# sufficient (see the incident note above): it's also checked as a sanity
+# bail-out so this can never fire on genuine bare metal even if
+# PROVISIONING_DEV_TEST_VM is set by mistake.
 # Depends on: 11-xfce-panel-plugins.sh, 12-xfce-panel-layout.sh,
 # 13-lock-shutdown-watcher.sh, 16-power-lock-config.sh,
 # 18-desktop-background.sh, 19-low-battery-shutdown.sh.
@@ -47,9 +64,15 @@ exec > >(tee -a "$LOG") 2>&1
 
 echo "=== $(date) : VM-mode overrides ==="
 
+if [ "${PROVISIONING_DEV_TEST_VM:-no}" != "yes" ]; then
+	echo "PROVISIONING_DEV_TEST_VM not set to yes -- this isn't the disposable dev/test rig, nothing to do"
+	echo "=== $(date) : done (skipped) ==="
+	exit 0
+fi
+
 VIRT="$(systemd-detect-virt || true)"
 if [ "$VIRT" = "none" ]; then
-	echo "not running in a VM (systemd-detect-virt: none) -- nothing to do"
+	echo "PROVISIONING_DEV_TEST_VM=yes but systemd-detect-virt reports bare metal -- refusing as a sanity check, nothing to do"
 	echo "=== $(date) : done (skipped) ==="
 	exit 0
 fi

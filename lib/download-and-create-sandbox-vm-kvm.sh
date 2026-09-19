@@ -1,8 +1,9 @@
 #!/bin/bash
 # Downloads the Cyberbeest sandbox-VM donor disk image and registers it as
 # a libvirt/QEMU-KVM domain, so the user can run untrusted apps in a
-# same-OS guest for extra isolation -- the QEMU/KVM + GNOME Boxes
-# equivalent of lib/download-and-create-sandbox-vm.sh (VirtualBox).
+# same-OS guest for extra isolation. KVM is the only hypervisor
+# provisioning ships now -- the VirtualBox equivalent of this script was
+# removed 2026-09-19, see memory: cyberbeest_vbox_to_kvm_boxes_migration.
 #
 # Runs under the unprivileged qemu:///session connection (no root daemon
 # per VM -- see memory: cyberbeest_vbox_to_kvm_boxes_migration for why).

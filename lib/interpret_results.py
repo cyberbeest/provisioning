@@ -43,7 +43,7 @@ CHKROOTKIT_KNOWN_BENIGN = [
 # chkrootkit already tells us which Debian package owns a flagged dotfile;
 # these are packages whose test-fixture/registry dotfiles are known-benign.
 CHKROOTKIT_TRUSTED_OWNERS = {
-    "libreoffice-common", "ruby-rubygems", "fail2ban", "virtualbox-7.2",
+    "libreoffice-common", "ruby-rubygems", "fail2ban",
 }
 
 # Pure announcement lines chkrootkit prints before the actual finding (which
