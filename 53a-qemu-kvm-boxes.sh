@@ -81,6 +81,20 @@ if ! grep -q "^max_core" "$TARGET_HOME/.config/libvirt/qemu.conf" 2>/dev/null; t
 	chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.config/libvirt/qemu.conf"
 fi
 
+echo "--- Disabling GNOME Boxes' first-run welcome tutorial/carousel ---"
+# Boxes shows a first-run onboarding carousel (view stack in
+# src/welcome-tutorial.vala upstream, gated by the org.gnome.boxes
+# "first-run" gsettings key, default true) the first time it's opened.
+# End users should never see dev/onboarding chrome, so ship the schema
+# default as already-seen. Same technique as 02-gnome-software-store.sh's
+# gschema.override for org.gnome.software's Explore carousel.
+cat >/usr/share/glib-2.0/schemas/95-cyberbeest-gnome-boxes.gschema.override <<'EOF'
+[org.gnome.boxes]
+first-run=false
+EOF
+glib-compile-schemas /usr/share/glib-2.0/schemas/
+echo "Disabled GNOME Boxes' first-run tutorial (first-run=false)."
+
 echo "--- Enabling libvirtd ---"
 systemctl enable --now libvirtd
 
