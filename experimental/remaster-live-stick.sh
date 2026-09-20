@@ -65,6 +65,22 @@ for sub in dev proc sys; do
 done
 rm -rf --one-file-system "$WORK"
 
+# A plain `rm` only unlinks -- it doesn't punch holes in the underlying
+# disk image, so a virtual-disk backend (qcow2 with discard=unmap, as the
+# release-build pipeline always uses) keeps counting those blocks as
+# allocated until something issues an actual TRIM. Real incident
+# 2026-09-19: three retried runs on the same guest, each writing and then
+# `rm`-ing tens of GB, left the HOST'S disk-image file 101GB allocated
+# (should have been ~40GB) and eventually ran the host partition
+# completely out of space mid-build, crashing the guest with a virtio-disk
+# "No space left on device" I/O error. fstrim is cheap (no scratch space
+# needed, unlike virt-sparsify) and self-heals this on every run instead of
+# needing a manual host-side rescue.
+if command -v fstrim >/dev/null 2>&1; then
+	echo "--- Trimming freed blocks back to the host (fstrim) ---"
+	fstrim -av || true
+fi
+
 echo "--- Installing live-build host toolchain ---"
 # Same list build-live-stick.sh needed on the dev machine, discovered one
 # failure at a time during that bring-up: --build-with-chroot false (used
@@ -79,6 +95,18 @@ apt-get -o DPkg::Lock::Timeout=60 install -y \
 	xorriso rsync
 
 echo "--- Configuring live-build ---"
+# --cache false + --cache-stages "": without BOTH, lb build's
+# bootstrap_cache save step tries to save a SECOND full copy of chroot/
+# into cache/bootstrap (meant to speed up repeated future builds on a
+# persistent machine) -- pointless overhead here since we're a one-shot run
+# on a disposable build guest that never gets reused, and it doubles peak
+# disk usage on top of the rsync copy below. Real incident 2026-09-19: this
+# filled a build guest's disk to 100% and failed the build outright.
+# --cache false alone is NOT enough -- --cache-stages is a genuinely
+# separate setting (defaults to "bootstrap" regardless of --cache) that has
+# to be cleared too, discovered when the 28GB cache/bootstrap dir still
+# showed up despite --cache false and caused a second, narrower failure
+# (xorriso running out of room for the final ISO by about 1.5GB).
 mkdir -p "$WORK"
 cd "$WORK"
 lb config \
@@ -91,6 +119,8 @@ lb config \
 	--iso-volume "Cyberbeest Live" \
 	--chroot-squashfs-compression-type zstd \
 	--build-with-chroot false \
+	--cache false \
+	--cache-stages "" \
 	--bootappend-live "boot=live components persistence persistence-label=persistence"
 
 echo "--- Adding a 'Boot from hard disk' boot-menu entry ---"
@@ -200,6 +230,15 @@ echo "--- Copying this machine's root filesystem into $CHROOT ---"
 echo "(this reads from / but writes only under $WORK -- nothing on the"
 echo "source system is modified)"
 mkdir -p "$CHROOT"
+# rsync exit code 24 ("some files vanished before they could be
+# transferred") is expected, not a failure: this is a live, running system
+# -- browsers/messengers/logs can rewrite or delete their own files during
+# the copy. `|| [ "$?" -eq 24 ]` tolerates exactly that one code and
+# nothing else, so a real rsync failure still aborts the script under
+# set -e. Found 2026-09-19 after a real rsync exit-24 (a live Telegram log)
+# silently killed the whole remaster run -- silently, because a separate
+# bug in rb_ga_exec (the release-build pipeline's caller) was masking any
+# nonzero exit code from this script entirely; both are now fixed.
 rsync -aAX --numeric-ids \
 	--exclude="/dev/*" \
 	--exclude="/proc/*" \
@@ -213,7 +252,7 @@ rsync -aAX --numeric-ids \
 	--exclude="/swap.img" \
 	--exclude="$WORK" \
 	--exclude="/var/cache/apt/archives/*.deb" \
-	/ "$CHROOT"/
+	/ "$CHROOT"/ || [ "$?" -eq 24 ]
 
 echo "--- Sanitizing the copy (machine identity, credentials) ---"
 # Machine identity -- regenerated fresh by systemd/dbus on first boot of the
