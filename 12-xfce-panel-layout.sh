@@ -20,7 +20,13 @@
 # so there's no separate standalone Power launcher pinned to the panel) --
 # clock, last so any dynamically-added icons (e.g. the optional i2pd toggle
 # from 22-i2p-package-manager.sh) can always insert themselves right before
-# it.
+# it -- except genmon-19 (clipboard status), which this template reserves a
+# slot for right before the clock but whose script/rc/systemd-service
+# installation is 12a-clipboard-status.sh's job, not this script's. Expect
+# a placeholder "(genmon)" icon there for the brief window between this
+# script finishing and 12a completing, in a from-scratch provisioning run.
+#
+# Bumped 2026-09-20: reserves plugin-19 (genmon) for 12a-clipboard-status.sh.
 # Also installs Cyberbeest Extended Power Options (lib/lock-power-saving-dialog.py):
 # a small Whisker-menu app (Cyberbeest category) for the window-minimize-delay
 # and browser-CPU-throttle settings lock-shutdown-watcher.sh applies while
@@ -171,7 +177,7 @@ PANEL_XML_TMP="$(mktemp)"
 sed -e "s|__HOME__|$TARGET_HOME|g" -e "s|__ICONS_DIR__|$ICONS_DIR|g" \
 	"$LAYOUT/xfce4-panel.xml.template" > "$PANEL_XML_TMP"
 python3 "$DIR/lib/merge-xfce-panel-plugins.py" "$PANEL_XML" "$PANEL_XML_TMP" \
-	1 2 3 4 5 6 7 8 11 12 13 14 15 17 18
+	1 2 3 4 5 6 7 8 11 12 13 14 15 17 18 19
 install -m 644 "$PANEL_XML_TMP" "$PANEL_XML"
 rm -f "$PANEL_XML_TMP"
 
