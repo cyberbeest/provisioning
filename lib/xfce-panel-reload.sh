@@ -125,6 +125,49 @@ xfce_panel_kill() {
 	done
 }
 
+xfce_panel_kill_xfconfd() {
+	# For a caller that overwrites a channel's xfce-perchannel-xml file
+	# directly on disk (xfce4-panel.xml via `install`/`sed -i`, bypassing
+	# xfconf-query entirely) rather than going through xfconfd. xfconfd
+	# loads a channel into memory once (at its own startup, or the first
+	# time something asks for that channel) and has no file-watch on
+	# external edits to the XML -- it's the normal sole writer, so nothing
+	# tells it to notice a change made behind its back. A periodic flush of
+	# its own still-stale in-memory state back to disk can then silently
+	# clobber the fresh write moments later, even though a subsequent panel
+	# reload looks completely clean (xfce_panel_launch's checks are
+	# liveness-only: they confirm a new xfce4-panel process came up and
+	# stayed up, not that xfconfd actually served it the values from the
+	# file just written rather than its stale cache).
+	#
+	# This is the opposite caution from xfce_panel_kill's own "deliberately
+	# does NOT touch xfconfd" -- that one is about not racing an in-flight
+	# WRITE going *through* the daemon (xfconf-query), which could be lost
+	# if xfconfd dies before its async disk flush. This is about a write
+	# that goes *around* the daemon, where xfconfd has to be forced to
+	# re-read the file instead of serving whatever it already has cached.
+	# Confirmed 2026-09-20: reproduced the exact missing-plugin-ids symptom
+	# already on file in xfce_panel_kill's own history (12/13/14/19 -- see
+	# its comment), traced it to this, and confirmed the fix: kill xfconfd
+	# too, right alongside the panel, whenever the caller wrote the XML
+	# file directly. D-Bus activation respawns xfconfd automatically the
+	# next time something asks for a channel, reading the current file at
+	# that fresh startup -- callers should do this before the "remove stray
+	# panels" xfconf-query calls and the final xfce_panel_launch, so both
+	# see the freshly-written file, not a stale cache.
+	pkill -9 -u "$TARGET_USER" -x xfconfd || true
+
+	local waited=0
+	while pgrep -u "$TARGET_USER" -x xfconfd >/dev/null 2>&1; do
+		if [ "$waited" -ge 20 ]; then
+			echo "--- error: xfconfd still running 10s after SIGKILL -- refusing to proceed, since it could still serve stale cached values to whatever asks next ---" >&2
+			return 1
+		fi
+		sleep 0.5
+		waited=$((waited + 1))
+	done
+}
+
 xfce_panel_launch() {
 	local old_pid="${XFCE_PANEL_PID:-}"
 	su - "$TARGET_USER" -c "DISPLAY='${DISPLAY:-:0}' DBUS_SESSION_BUS_ADDRESS='$XFCE_PANEL_DBUS_ADDR' setsid xfce4-panel >/dev/null 2>&1 < /dev/null &"

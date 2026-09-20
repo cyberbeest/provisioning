@@ -274,6 +274,15 @@ rm -f "$CHROOT"/etc/NetworkManager/system-connections/*
 # naming scheme survived the *.nmconnection-only glob and shipped a real
 # wifi PSK on a remastered stick)
 
+# Build-network apt proxy (d-i's `mirror/http/proxy` preseed value gets
+# written into /etc/apt/apt.conf by debian-installer and persists into the
+# installed system permanently -- it's not something any provisioning
+# script adds). Found 2026-09-20: every apt operation on a real customer
+# machine booted from this stick would try to reach the build network's
+# apt-cacher-ng proxy and fail, since that address is unreachable from
+# outside it.
+sed -i '/Acquire::http::Proxy/d' "$CHROOT/etc/apt/apt.conf" 2>/dev/null || true
+
 # Disk-specific config that doesn't apply to a squashfs+overlay live root
 # and would otherwise make the live initramfs try to unlock/mount devices
 # that don't exist on whatever machine the stick boots on.

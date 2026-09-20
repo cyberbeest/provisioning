@@ -62,7 +62,11 @@
 # moments earlier. xfce_panel_kill no longer touches xfconfd at all
 # (2026-09-16 fix, see lib/xfce-panel-reload.sh), so this specific race is
 # gone, but the panel step is kept first anyway since nothing depends on
-# the other ordering.
+# the other ordering. (2026-09-20: the panel step does now call the
+# separate xfce_panel_kill_xfconfd, needed because its own sed edit writes
+# xfce4-panel.xml directly -- still safe against this particular race since
+# it happens well before the screensaver/power-manager writes below, not
+# concurrently with them.)
 # Skips everything (no-op, exit 0) unless the marker file exists or
 # PROVISIONING_DEV_TEST_VM=yes is set -- systemd-detect-virt reporting a
 # hypervisor is necessary but not sufficient (see the incident note
@@ -236,6 +240,14 @@ if [ -e "$PANEL_XML" ]; then
 	. "$DIR/lib/xfce-panel-reload.sh"
 	if xfce_panel_dbus_addr; then
 		xfce_panel_kill
+		# The sed edit above writes xfce4-panel.xml directly, bypassing
+		# xfconfd -- same gap as 12-xfce-panel-layout.sh's own write, fixed
+		# there 2026-09-20 (see xfce_panel_kill_xfconfd's comment). Safe to
+		# do here too: this runs before the screensaver/power-manager
+		# xfconf-query writes further down, not concurrently with them, so
+		# it doesn't reintroduce the 2026-09-07 race this script's header
+		# comment describes.
+		xfce_panel_kill_xfconfd
 		xfce_panel_launch
 	fi
 else

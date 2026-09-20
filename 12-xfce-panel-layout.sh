@@ -44,9 +44,18 @@
 # icons) is preserved across re-runs -- see the "Writing xfce4-panel.xml"
 # step and lib/merge-xfce-panel-plugins.py below.
 #
-# Bumped 2026-09-16: lib/xfce-panel-reload.sh no longer SIGKILLs xfconfd
-# during reload -- that raced xfconfd's async disk flush and could revert
-# a just-written xfconf change (zombie panel icon seen on tower).
+# Bumped 2026-09-16: lib/xfce-panel-reload.sh's generic xfce_panel_kill no
+# longer SIGKILLs xfconfd during reload -- that raced xfconfd's async disk
+# flush and could revert a just-written xfconf change (zombie panel icon
+# seen on tower).
+# Bumped 2026-09-20: this script's own xfce4-panel.xml write goes around
+# xfconfd entirely (a direct file overwrite, not xfconf-query), so it calls
+# the dedicated xfce_panel_kill_xfconfd too -- a live xfconfd can otherwise
+# flush its own stale in-memory cache back over this write a few seconds
+# later, reverting it in a way that looks identical to a clean write (see
+# lib/xfce-panel-reload.sh's xfce_panel_kill_xfconfd for the full story;
+# this is the fix for the missing-plugin-ids incident already noted in
+# xfce_panel_kill's own history).
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG="$DIR/12-xfce-panel-layout.log"
@@ -194,6 +203,12 @@ if xfce_panel_dbus_addr; then
 	# it from a *live* xfconfd's in-memory state -- kill xfconfd so it
 	# comes back reading only our file, before restarting the panel.
 	xfce_panel_kill
+	# xfconfd itself, not just the panel client: this script writes
+	# xfce4-panel.xml directly rather than through xfconf-query, which
+	# xfconfd's own in-memory cache (if it was already running, e.g. from
+	# the very first pre-provisioning login) has no way to notice -- see
+	# xfce_panel_kill_xfconfd's own comment.
+	xfce_panel_kill_xfconfd
 
 	# grep/while both legitimately exit non-zero when there are no stray
 	# panels to remove (the normal case) -- under pipefail+set -e that
