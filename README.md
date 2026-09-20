@@ -86,6 +86,19 @@ the latest fixes before they're promoted to `stable`:
 curl -fsSL https://cyberbeest.com/beestify-bleeding.sh | bash
 ```
 
+## QA flows (qa-flows/)
+
+Not part of the install — this is manufacturing/QA tooling, published for
+transparency rather than run on a shipped machine. It drives the real
+desktop (whisker menu, mouse, keyboard) through everyday flows on a
+provisioned unit and OCR-verifies (via `tesseract`) that the expected result
+actually rendered on screen, instead of just asserting that a command
+returned success. `qa-runner-gui.py` lists every `flow-*.sh` with live PASS/
+FAIL status and a streaming log; `lib/qa-lib.sh` has the shared helpers
+(launch-via-whisker, OCR-poll-until-text-appears, OCR-find-and-click,
+auto-close of anything a flow opened). Flows that need a manual step to
+resume (e.g. anything behind the lock screen) are out of scope by design.
+
 ## Default-password nag (21-default-password-nag.sh)
 
 Installs the change-password GUI and a login-time nag that checks whether
