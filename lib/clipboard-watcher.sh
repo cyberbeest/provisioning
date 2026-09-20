@@ -27,7 +27,7 @@ AUTO_CLEAR_PID_FILE="$HOME/.config/cyberbeest/clipboard-auto-clear.pid"
 CLIPNOTIFY="$HOME/.local/bin/clipnotify"
 FALLBACK_POLL_SECS=60
 DEFAULT_AUTO_CLEAR_SECS=900
-# Substituted at install time by 12a-clipboard-status.sh to match the
+# Substituted at install time by 11a-clipboard-status.sh to match the
 # panel's genmon rc filename for this widget -- see xfce4-panel.xml.template.
 GENMON_WIDGET_NAME=__GENMON_WIDGET__
 

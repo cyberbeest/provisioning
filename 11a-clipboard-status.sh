@@ -1,15 +1,24 @@
 #!/bin/bash
 # Installs the clipboard-status panel icon: a genmon widget (plugin-19,
-# reserved by 12-xfce-panel-layout.sh's template right before the clock)
-# that shows what type of content currently sits in the X11 clipboard
-# (text/image/files/empty), with a click-menu to view/edit/clear it and an
-# auto-clear timer that wipes the clipboard after a configurable delay
-# (default 15 minutes). Security rationale: any app can read the clipboard,
-# so a breached app is an instant leak of whatever's sitting there -- this
-# makes that exposure visible instead of invisible, and bounds how long it
-# lasts. See lib/clipboard-watcher.sh, lib/clipboard-status-genmon.sh,
-# lib/clipboard-status-menu.py, lib/clipboard-status-viewer.py,
-# lib/clipboard-show-image.py, lib/clipboard-auto-clear-settings.py.
+# which 12-xfce-panel-layout.sh's template wires into the panel right
+# before the clock) that shows what type of content currently sits in the
+# X11 clipboard (text/image/files/empty), with a click-menu to view/edit/
+# clear it and an auto-clear timer that wipes the clipboard after a
+# configurable delay (default 15 minutes). Security rationale: any app can
+# read the clipboard, so a breached app is an instant leak of whatever's
+# sitting there -- this makes that exposure visible instead of invisible,
+# and bounds how long it lasts. See lib/clipboard-watcher.sh,
+# lib/clipboard-status-genmon.sh, lib/clipboard-status-menu.py,
+# lib/clipboard-status-viewer.py, lib/clipboard-show-image.py,
+# lib/clipboard-auto-clear-settings.py.
+#
+# Runs as 11a (right after 11-xfce-panel-plugins.sh, before 12-xfce-panel-
+# layout.sh) rather than after 12, on the same principle 11 itself follows:
+# a plugin's script/binary needs to already exist on disk before the
+# layout script wires it into the panel's xfconf and reloads, or the first
+# reload shows an empty placeholder "(genmon)" icon until something reloads
+# the panel again later. 12-xfce-panel-layout.sh depends on this script
+# having already run, not the other way around.
 #
 # Event-driven, not polled: lib/clipnotify.c is a small XFixes-based
 # selection-change listener (the real `clipnotify` tool isn't packaged for
@@ -18,12 +27,10 @@
 # on the target. clipboard-watcher.sh loops it with a 60s timeout as a slow
 # poll fallback in case an event is ever missed.
 #
-# Depends on: 12-xfce-panel-layout.sh (reserves plugin-19 in the panel
-# template and this script's own merge-plugins fixed-id list).
 # Idempotent: safe to re-run.
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
-LOG="$DIR/12a-clipboard-status.log"
+LOG="$DIR/11a-clipboard-status.log"
 exec > >(tee -a "$LOG") 2>&1
 
 echo "=== $(date) : installing clipboard-status panel icon ==="
@@ -105,6 +112,12 @@ else
 	echo "no active session for $TARGET_USER -- it'll start at next login"
 fi
 
+# plugin-19 isn't in the panel's plugin-ids yet at this point (12-xfce-
+# panel-layout.sh hasn't run), so this reload won't show the icon -- kept
+# anyway for the same reason 11-xfce-panel-plugins.sh's own end-of-script
+# reload is harmless-but-early for its plugins too: consistent habit,
+# and it means a fresh xfce4-panel process has nothing stale cached from
+# before rc/systemd-unit files existed once 12 does its own reload.
 echo "--- Reloading xfce4-panel for the logged-in user, if one is running ---"
 . "$DIR/lib/xfce-panel-reload.sh"
 if xfce_panel_dbus_addr; then

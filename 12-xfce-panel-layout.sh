@@ -19,22 +19,22 @@
 # Shut Down actions from 09-cyberbeest-logout-dialog.sh's cyberbeest-logout,
 # so there's no separate standalone Power launcher pinned to the panel) --
 # Clipboard status (genmon-19: shows what type of content is currently in
-# the X11 clipboard, with a click-menu to view/edit/clear it; this template
-# only reserves the slot, the script/rc/systemd-service installation is
-# 12a-clipboard-status.sh's job, not this script's -- expect a placeholder
-# "(genmon)" icon there for the brief window between this script finishing
-# and 12a completing, in a from-scratch provisioning run) -- clock, last so
-# any dynamically-added icons (e.g. the optional i2pd toggle from
-# 22-i2p-package-manager.sh) can always insert themselves right before it.
+# the X11 clipboard, with a click-menu to view/edit/clear it -- installed
+# by 11a-clipboard-status.sh, which runs before this script for the same
+# reason 11-xfce-panel-plugins.sh does: this script just wires an
+# already-installed widget into the panel and reloads it, rather than the
+# other way around) -- clock, last so any dynamically-added icons (e.g. the
+# optional i2pd toggle from 22-i2p-package-manager.sh) can always insert
+# themselves right before it.
 #
-# Bumped 2026-09-20: reserves plugin-19 (genmon) for 12a-clipboard-status.sh.
+# Bumped 2026-09-20: reserves plugin-19 (genmon) for 11a-clipboard-status.sh.
 # Also installs Cyberbeest Extended Power Options (lib/lock-power-saving-dialog.py):
 # a small Whisker-menu app (Cyberbeest category) for the window-minimize-delay
 # and browser-CPU-throttle settings lock-shutdown-watcher.sh applies while
 # locked. shutdown-timer-menu.py's "Power saving while locked..." item opens
 # the same script as a shortcut.
 # Depends on: 07-security-update-timer.sh, 09-cyberbeest-logout-dialog.sh,
-# 10-browser-sandbox.sh, 11-xfce-panel-plugins.sh.
+# 10-browser-sandbox.sh, 11-xfce-panel-plugins.sh, 11a-clipboard-status.sh.
 # Idempotent: safe to re-run (overwrites its own config files; backs up any
 # pre-existing xfce4-panel.xml the first time). Also removes any other panel
 # (e.g. Debian's stock second panel) so only this one is left, since a live
