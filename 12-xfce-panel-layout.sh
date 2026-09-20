@@ -18,13 +18,14 @@
 # its own genmon process; shutdown-timer-menu.py also has the Lock/Restart/
 # Shut Down actions from 09-cyberbeest-logout-dialog.sh's cyberbeest-logout,
 # so there's no separate standalone Power launcher pinned to the panel) --
-# clock, last so any dynamically-added icons (e.g. the optional i2pd toggle
-# from 22-i2p-package-manager.sh) can always insert themselves right before
-# it -- except genmon-19 (clipboard status), which this template reserves a
-# slot for right before the clock but whose script/rc/systemd-service
-# installation is 12a-clipboard-status.sh's job, not this script's. Expect
-# a placeholder "(genmon)" icon there for the brief window between this
-# script finishing and 12a completing, in a from-scratch provisioning run.
+# Clipboard status (genmon-19: shows what type of content is currently in
+# the X11 clipboard, with a click-menu to view/edit/clear it; this template
+# only reserves the slot, the script/rc/systemd-service installation is
+# 12a-clipboard-status.sh's job, not this script's -- expect a placeholder
+# "(genmon)" icon there for the brief window between this script finishing
+# and 12a completing, in a from-scratch provisioning run) -- clock, last so
+# any dynamically-added icons (e.g. the optional i2pd toggle from
+# 22-i2p-package-manager.sh) can always insert themselves right before it.
 #
 # Bumped 2026-09-20: reserves plugin-19 (genmon) for 12a-clipboard-status.sh.
 # Also installs Cyberbeest Extended Power Options (lib/lock-power-saving-dialog.py):
