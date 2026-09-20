@@ -137,8 +137,25 @@ classify_and_write() {
     # it, genmon would only reflect a clipboard change up to one poll
     # interval late, and the state file has no other way to signal the
     # already-idle panel that something changed.
-    xfce4-panel "--plugin-event=${GENMON_WIDGET_NAME}:refresh:bool:true" >/dev/null 2>&1 &
-    disown
+    #
+    # Only fire this when xfce4-panel is actually confirmed running.
+    # `xfce4-panel --plugin-event=...` is itself a full xfce4-panel
+    # process: when it can't find an already-running instance to relay
+    # the command to over D-Bus, it doesn't just fail on stderr (which
+    # `>/dev/null 2>&1` would have silenced) -- being a GTK app with a
+    # display, it pops its own native error dialog ("GDBus.Error:...
+    # org.xfce.Panel was not provided by any .service files") instead.
+    # This call runs on every clipboard change, including the very first
+    # one right when the systemd --user service starts, which can easily
+    # race the real panel's own startup right after boot/login -- unlike
+    # shutdown-timer-menu.py's/lock-power-saving-dialog.py's use of the
+    # same pattern, which only ever fires from a menu click, i.e. only
+    # when a panel is already known to be up. Caught on a fresh
+    # provisioning run + reboot, both hitting this exact race.
+    if pgrep -x xfce4-panel >/dev/null 2>&1; then
+        xfce4-panel "--plugin-event=${GENMON_WIDGET_NAME}:refresh:bool:true" >/dev/null 2>&1 &
+        disown
+    fi
 
     schedule_auto_clear "$type" "$now"
 }
