@@ -18,13 +18,16 @@
 #     backports version is much newer (2026.08 vs. trixie's stale 2025.04).
 #   - gh: GitHub CLI, for users who want to work with GitHub repos/PRs/issues
 #     from the command line.
+#   - gnome-disk-utility: GUI for viewing/formatting/benchmarking disks and
+#     managing LUKS volumes (change passphrase, add/remove key slots) --
+#     gives users a graphical way to do that without a terminal.
 # Idempotent: safe to re-run.
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG="$DIR/32-minor-apt-packages.log"
 exec > >(tee -a "$LOG") 2>&1
 
-PACKAGES=(gnome-calculator xclip kleopatra ncdu gh)
+PACKAGES=(gnome-calculator xclip kleopatra ncdu gh gnome-disk-utility)
 
 echo "=== $(date) : installing minor apt packages: ${PACKAGES[*]} ==="
 apt-get -o DPkg::Lock::Timeout=60 update -qq

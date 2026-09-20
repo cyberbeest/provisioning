@@ -1,0 +1,10 @@
+[Unit]
+Description=Watch clipboard changes for the clipboard-status panel icon
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/clipboard-watcher.sh
+Restart=on-failure
+
+[Install]
+WantedBy=default.target

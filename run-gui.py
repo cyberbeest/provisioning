@@ -142,11 +142,10 @@ NEEDS_TERMINAL = {"00-locale-keyboard-timezone.sh", "00a-touchpad-tap-global.sh"
 # need its own lock screen), background daemons with nothing to watch or
 # warm up in a VM (boot/shutdown chimes, fail2ban with no sshd exposed --
 # see 99-remove-openssh-server.sh), and encrypted DNS -- assumes the VM
-# stays on VirtualBox's default NAT networking with natdnshostresolver
-# (not natdnsproxy) enabled, which is itself the default: the guest's DNS
-# queries then get resolved by the host's own resolver process, riding
-# through the host's dnscrypt-proxy transparently with nothing needed
-# guest-side. Everything else, including the apps (messengers/wallets/
+# stays on libvirt's default NAT network, whose dnsmasq forwards guest DNS
+# queries to the host's own resolver, riding through the host's
+# dnscrypt-proxy transparently with nothing needed guest-side. Everything
+# else, including the apps (messengers/wallets/
 # browser sandbox/VPN/i2pd toggles), stays selected -- the point of this
 # profile is "all our apps, none of the automatic background stuff that
 # assumes real hardware or its own network path."
@@ -637,15 +636,11 @@ class ProvisioningProfileDialog(Gtk.Dialog):
         self.touchpad_tuning.set_active(prev.get("PROVISIONING_TOUCHPAD_TUNING", "yes") != "no")
         add_row(t("run_gui.profile_touchpad_label"), self.touchpad_tuning)
 
-        # VM image download (56-cyberbeest-sandbox-vm-kvm.sh): both
-        # hypervisors (53-virtualbox.sh, 53a-qemu-kvm-boxes.sh) and the
-        # switcher between them (57-hypervisor-switcher.sh, since
-        # VirtualBox and KVM can't both hold VT-x/AMD-V at once -- see
-        # lib/cyberbeest-hypervisor-switch.sh) always install regardless of
-        # this choice. This checkbox only controls the multi-GB KVM VM
-        # disk-image download -- VirtualBox stays available but unpromoted,
-        # with no disk image auto-built for it (see
-        # experimental/55-cyberbeest-sandbox-vm.sh for a manual build).
+        # VM image download (56-cyberbeest-sandbox-vm-kvm.sh): the
+        # hypervisor itself (53a-qemu-kvm-boxes.sh, KVM -- the only one
+        # provisioning ships, VirtualBox was dropped entirely 2026-09-19)
+        # always installs regardless of this choice. This checkbox only
+        # controls the multi-GB KVM VM disk-image download.
         self.vm_image = Gtk.CheckButton(label=t("run_gui.profile_vm_image_checkbox"))
         self.vm_image.set_active(prev.get("PROVISIONING_VM_IMAGE", "yes") != "no")
         add_row(t("run_gui.profile_vm_image_label"), self.vm_image)

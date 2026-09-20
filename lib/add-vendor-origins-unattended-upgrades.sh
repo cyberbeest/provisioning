@@ -1,18 +1,15 @@
 #!/bin/bash
-# Adds the Signal, Element, VirtualBox, and Google Chrome vendor apt repos
-# to unattended-upgrades' allowlist, so their updates install automatically
+# Adds the Signal, Element, and Google Chrome vendor apt repos to
+# unattended-upgrades' allowlist, so their updates install automatically
 # like Debian's own instead of sitting there until manually clicked in
 # GNOME Software/Cyberbeest Package Manager.
 #
 # unattended-upgrades only auto-applies packages whose repo Origin/Codename
-# match Unattended-Upgrade::Origins-Pattern. Signal, Element, VirtualBox, and
-# Chrome ship their own vendor repos (added by cyberbeest-pkg-helper.sh
+# match Unattended-Upgrade::Origins-Pattern. Signal, Element, and Chrome
+# ship their own vendor repos (added by cyberbeest-pkg-helper.sh
 # setup-repo), which were never in that allowlist -- that's why their
 # updates showed up as manual-only in GNOME Software, regardless of whether
-# they were security fixes or not. VirtualBox was added to provisioning
-# later than Signal/Element and got missed here initially -- confirmed via
-# download.virtualbox.org/virtualbox/debian/dists/trixie/Release:
-# "Origin: Oracle Corporation", "Codename: trixie". Chrome confirmed via
+# they were security fixes or not. Chrome confirmed via
 # dl.google.com/linux/chrome/deb/dists/stable/Release: "Origin: Google LLC",
 # "Codename: stable".
 #
@@ -45,17 +42,10 @@ EOF
 
 echo "Wrote /etc/apt/apt.conf.d/52unattended-upgrades-vendor-messengers"
 
-cat >/etc/apt/apt.conf.d/53unattended-upgrades-vendor-virtualbox <<'EOF'
-// Managed by provisioning/lib/add-vendor-origins-unattended-upgrades.sh
-// Lets VirtualBox updates apply automatically, same as Debian's own
-// packages -- Oracle's repo isn't Debian's, so without this its updates
-// sit as manual-only, which matters for timely security patches.
-Unattended-Upgrade::Origins-Pattern {
-    "origin=Oracle Corporation,codename=trixie";   // VirtualBox (download.virtualbox.org)
-};
-EOF
-
-echo "Wrote /etc/apt/apt.conf.d/53unattended-upgrades-vendor-virtualbox"
+# VirtualBox was dropped from provisioning entirely 2026-09-19 -- clean up
+# its allowlist fragment on machines that were provisioned before that and
+# are now fast-forwarding to this update.
+rm -f /etc/apt/apt.conf.d/53unattended-upgrades-vendor-virtualbox
 
 cat >/etc/apt/apt.conf.d/54unattended-upgrades-vendor-chrome <<'EOF'
 // Managed by provisioning/lib/add-vendor-origins-unattended-upgrades.sh
@@ -70,6 +60,6 @@ EOF
 echo "Wrote /etc/apt/apt.conf.d/54unattended-upgrades-vendor-chrome"
 
 echo "--- Dry-run test ---"
-unattended-upgrades --dry-run --debug 2>&1 | grep -iE 'signal|element|virtualbox|oracle|chrome|google llc|Origins-Pattern|Allowed origins' || true
+unattended-upgrades --dry-run --debug 2>&1 | grep -iE 'signal|element|chrome|google llc|Origins-Pattern|Allowed origins' || true
 
 echo "=== done ==="

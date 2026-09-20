@@ -28,6 +28,14 @@ PIDFILE="$HOME/.cache/cyberbeest-lid-dpms-off.pid"
 
 screen_off() {
     mkdir -p "$(dirname "$PIDFILE")"
+    # logind's HandleLidSwitch=lock only broadcasts this Lock signal -- it
+    # does not itself invoke a screen locker. Nothing else here was
+    # listening for it to actually lock the session, so lid close was only
+    # ever blanking the display via DPMS below, leaving the desktop
+    # unlocked underneath. xflock4 is idempotent against an already-locked
+    # session, so calling it on every duplicate signal is harmless.
+    log "Lock signal: invoking xflock4 to actually lock the session"
+    xflock4 &
     # logind's "lock" action sends this Lock signal once per session the
     # user has (several, in practice -- not just the graphical one), so a
     # single lid-close event shows up here as several near-simultaneous
@@ -45,9 +53,20 @@ screen_off() {
     log "Lock signal: forcing DPMS off"
     # Retried over ~10s, same as lock-shutdown-watcher.sh's screen_off():
     # xfce4-power-manager can re-assert display-on shortly after the lock
-    # signal, so a single one-shot call can silently lose that race.
+    # signal, so a single one-shot call can silently lose that race. But if
+    # the lid gets reopened partway through this window, something (power
+    # manager/screensaver reacting to the lid switch) tries to turn the
+    # display back on right away, and this loop kept fighting it once a
+    # second for whatever was left of the 10s -- a multi-second black/on
+    # flicker before the loop finally exhausted and let "on" win. Checking
+    # the actual lid state each tick and bailing out as soon as it reads
+    # open stops the loop from fighting that reopen at all.
     (
         for _ in $(seq 1 10); do
+            if grep -q open /proc/acpi/button/lid/*/state 2>/dev/null; then
+                log "Lock signal: lid reopened, stopping DPMS-off retries early"
+                break
+            fi
             xset dpms force off 2>/dev/null
             sleep 1
         done

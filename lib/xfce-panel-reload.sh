@@ -27,14 +27,18 @@
 # for this user" guard -- it returns 1 and does nothing else if not, so
 # callers can skip the whole reload on a machine with no graphical session.
 #
-# xfce_panel_kill waits (up to 5s) for the old process to actually be gone,
-# and xfce_panel_launch waits (up to 5s) for a *new*, different pid to
-# appear and then re-checks it after a short settle -- both print a
-# "warning:" line on stderr and xfce_panel_launch returns 1 if the reload
-# didn't genuinely take live effect. Before this, a write to xfconf could
-# succeed while the running panel silently never picked it up (caught
-# 2026-09-14 with the i2pd toggle's panel icon) -- callers should check
-# xfce_panel_launch's exit status rather than assume success.
+# xfce_panel_kill waits (up to 30s) for the old process to be *confirmed*
+# gone -- and now returns 1, not just a warning, if it never is -- and
+# xfce_panel_launch waits (up to 5s) for a *new*, different pid to appear
+# and then re-checks it after a short settle, also returning 1 on failure.
+# Every caller so far calls xfce_panel_kill bare (no `||`) under `set -e`,
+# so a real failure there now halts the script instead of silently
+# continuing to write/relaunch on top of an unconfirmed kill -- see
+# xfce_panel_kill's own comment for why that used to be dangerous. Before
+# xfce_panel_launch existed, a write to xfconf could succeed while the
+# running panel silently never picked it up (caught 2026-09-14 with the
+# i2pd toggle's panel icon) -- callers should check its exit status rather
+# than assume success.
 
 xfce_panel_dbus_addr() {
 	command -v xfce4-panel >/dev/null 2>&1 || return 1
@@ -80,14 +84,44 @@ xfce_panel_kill() {
 	# icon add wrote xfconf correctly but the live panel never picked it
 	# up, with nothing in any log -- the reload silently never happened
 	# and nothing along the way was in a position to say so.
-	local waited=0
-	while pgrep -u "$TARGET_USER" -x xfce4-panel >/dev/null 2>&1; do
+	#
+	# 30s, not the original 5s: a loaded/nested-virtualized host can leave
+	# a SIGKILLed process in an uninterruptible wait noticeably longer than
+	# that, and the old behavior here (warn and return 0 anyway once the
+	# timeout hit) is exactly how that became dangerous rather than just
+	# slow -- a caller that proceeds to overwrite xfce4-panel.xml and
+	# launch a new panel while the old one is *actually* still alive is
+	# racing that old process's own eventual, arbitrarily-delayed exit,
+	# which can re-persist its stale in-memory plugin config back over the
+	# fresh write once it does finally die (same class of clobber as the
+	# `-r` flag and the graceful-exit case above, just via a slower fuse).
+	# Caught 2026-09-20 on tower's Cyberbeest-VM: both
+	# 11a-clipboard-status.sh's and 12-xfce-panel-layout.sh's reloads hit
+	# the old 5s ceiling on the same run (visible in their logs), and the
+	# panel's on-disk config ended up missing several plugin ids (12, 13,
+	# 14, and the new 19) that the freshly-written file and the template
+	# both had -- consistent with exactly this delayed stale write-back,
+	# not a bug in the write itself. Also re-asserts SIGKILL each loop
+	# iteration (cheap, and covers a process that appeared between the
+	# initial pkill and this loop, e.g. a respawn racing the kill) rather
+	# than trusting the single initial signal was enough.
+	#
+	# Returns 1 instead of warning-and-returning-0 if still not confirmed
+	# gone after the full wait -- every caller runs under `set -e` and
+	# calls this bare (no `||`), so that now actually stops the script
+	# instead of letting it continue on top of an unconfirmed kill.
+	local waited=0 pids
+	while true; do
+		pids="$(pgrep -u "$TARGET_USER" -x xfce4-panel)" || true
+		[ -z "$pids" ] && return 0
+		if [ "$waited" -ge 60 ]; then
+			echo "--- error: xfce4-panel (pid(s): $pids) still running 30s after SIGKILL -- refusing to proceed, since it could still overwrite fresh config whenever it does eventually die ---" >&2
+			return 1
+		fi
+		# shellcheck disable=SC2086
+		kill -9 $pids 2>/dev/null || true
 		sleep 0.5
 		waited=$((waited + 1))
-		if [ "$waited" -ge 10 ]; then
-			echo "--- warning: xfce4-panel still running 5s after SIGKILL ---" >&2
-			break
-		fi
 	done
 }
 

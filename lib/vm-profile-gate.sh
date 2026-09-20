@@ -4,12 +4,11 @@
 # sourced into the same shell, not run as a subprocess -- if the user
 # opted out of the multi-GB KVM disk-image download.
 #
-# 53-virtualbox.sh, 53a-qemu-kvm-boxes.sh, and 57-hypervisor-switcher.sh no
-# longer source this: both hypervisors install unconditionally now (no
-# "pick a hypervisor" profile question), only the VM disk-image download
-# is optional. See memory: cyberbeest_kvm_provisioning_track for the
-# 2026-09-11 decision to drop VirtualBox's own disk-image build entirely
-# (experimental/55-cyberbeest-sandbox-vm.sh) rather than gate it.
+# 53a-qemu-kvm-boxes.sh doesn't source this: KVM installs unconditionally
+# (no "pick a hypervisor" profile question -- it's the only hypervisor
+# provisioning ships, VirtualBox was dropped entirely 2026-09-19), only the
+# VM disk-image download is optional. See memory:
+# cyberbeest_kvm_provisioning_track, cyberbeest_drop_virtualbox_discussion.
 #
 # Missing profile file, or the var unset within it (a standalone/manual
 # run outside run-gui.py, or a run-gui.py session where the profile dialog

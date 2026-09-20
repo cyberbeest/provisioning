@@ -1,30 +1,16 @@
 #!/bin/bash
-# Installs QEMU/KVM + libvirt + GNOME Boxes on the host, as an alternative
-# hypervisor to VirtualBox (53-virtualbox.sh) for the same-OS VM feature --
-# the guest VM itself is a separate, later step
+# Installs QEMU/KVM + libvirt + GNOME Boxes on the host for the same-OS VM
+# feature -- the guest VM itself is a separate, later step
 # (56-cyberbeest-sandbox-vm-kvm.sh).
 #
-# Why an alternative to VirtualBox at all: VirtualBox's kernel modules are
-# unsigned and out-of-tree, and it has a materially worse VM-escape CVE
-# track record than KVM (in-tree, hardware-accelerated, and -- via this
-# setup -- unprivileged per-user `qemu:///session`, with QEMU sandboxed via
-# seccomp). See memory: cyberbeest_vbox_to_kvm_boxes_migration.
-#
-# Decided 2026-09-11: both stay installed unconditionally (no "pick a
-# hypervisor" profile question) -- KVM is the promoted default (it's the
-# only one provisioning auto-builds a VM disk image for, see
-# 56-cyberbeest-sandbox-vm-kvm.sh), VirtualBox stays available but
-# unpromoted for users who want it. They're mutually exclusive at runtime
-# on the same machine (VirtualBox can't hold VT-x/AMD-V while KVM does,
-# and vice versa), so:
-#   - 53-virtualbox.sh blacklists the kvm/kvm_intel/kvm_amd modules.
-#   - This script undoes that blacklist if present, and loads kvm_intel or
-#     kvm_amd itself.
-# This script's the letter-suffixed one (53a runs right after 53, see
-# lib's letter-suffix scheme), so it always wins the module-blacklist
-# tug-of-war -- KVM ends up active after a fresh provisioning run, with the
-# Whisker switcher (57-hypervisor-switcher.sh) there if the user wants
-# VirtualBox active instead.
+# KVM is the only hypervisor provisioning installs: in-tree,
+# hardware-accelerated, and -- via this setup -- unprivileged per-user
+# `qemu:///session`, with QEMU sandboxed via seccomp. VirtualBox was
+# dropped entirely 2026-09-19 (its kernel modules are unsigned and
+# out-of-tree, and it has a materially worse VM-escape CVE track record)
+# rather than kept side by side -- no reason to ship a slower, less secure
+# tool for a job KVM already covers. See memory:
+# cyberbeest_vbox_to_kvm_boxes_migration, cyberbeest_drop_virtualbox_discussion.
 #
 # Idempotent: safe to re-run.
 #
@@ -55,13 +41,6 @@ apt-get -o DPkg::Lock::Timeout=60 install -y \
 	ovmf \
 	virtiofsd \
 	passt
-
-echo "--- Removing VirtualBox's kvm blacklist, if present ---"
-if [ -f /etc/modprobe.d/blacklist-kvm.conf ]; then
-	rm -f /etc/modprobe.d/blacklist-kvm.conf
-	update-initramfs -u
-	echo "removed -- was blocking kvm/kvm_intel/kvm_amd from loading"
-fi
 
 echo "--- Loading the KVM module ---"
 if grep -q vmx /proc/cpuinfo; then
@@ -102,7 +81,36 @@ if ! grep -q "^max_core" "$TARGET_HOME/.config/libvirt/qemu.conf" 2>/dev/null; t
 	chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.config/libvirt/qemu.conf"
 fi
 
+echo "--- Disabling GNOME Boxes' first-run welcome tutorial/carousel ---"
+# Boxes shows a first-run onboarding carousel (view stack in
+# src/welcome-tutorial.vala upstream, gated by the org.gnome.boxes
+# "first-run" gsettings key, default true) the first time it's opened.
+# End users should never see dev/onboarding chrome, so ship the schema
+# default as already-seen. Same technique as 02-gnome-software-store.sh's
+# gschema.override for org.gnome.software's Explore carousel.
+cat >/usr/share/glib-2.0/schemas/95-cyberbeest-gnome-boxes.gschema.override <<'EOF'
+[org.gnome.boxes]
+first-run=false
+EOF
+glib-compile-schemas /usr/share/glib-2.0/schemas/
+echo "Disabled GNOME Boxes' first-run tutorial (first-run=false)."
+
 echo "--- Enabling libvirtd ---"
 systemctl enable --now libvirtd
+
+echo "--- Removing VirtualBox, if a previous provisioning run installed it ---"
+# Cleanup for machines provisioned before 2026-09-19, when 53-virtualbox.sh
+# (and the hypervisor switcher, 57-hypervisor-switcher.sh) still installed
+# it side by side with KVM. Both scripts are gone now, so nothing else in
+# provisioning removes this on an update -- has to happen here.
+if dpkg -l virtualbox-7.2 2>/dev/null | grep -q '^ii'; then
+	apt-get -o DPkg::Lock::Timeout=60 purge -y virtualbox-7.2
+fi
+rm -f /etc/apt/sources.list.d/virtualbox.list /usr/share/keyrings/oracle-virtualbox-2016.gpg
+gpasswd -d "$TARGET_USER" vboxusers 2>/dev/null || true
+rm -f "$TARGET_HOME/.local/share/applications/cyberbeest-switch-to-vbox.desktop" \
+	"$TARGET_HOME/.local/share/applications/cyberbeest-switch-to-kvm.desktop" \
+	"$TARGET_HOME/.local/bin/cyberbeest-hypervisor-switch-ui.sh" \
+	"$TARGET_HOME/.local/bin/cyberbeest-hypervisor-switch.sh"
 
 echo "=== $(date) : done ==="
