@@ -54,6 +54,29 @@ is_locked() {
         2>/dev/null | grep -q "boolean true"
 }
 
+# One long-lived dbus-monitor for org.xfce.ScreenSaver's ActiveChanged
+# signal (fired the moment the screensaver un/locks), read from fd 3 below.
+# A first version spawned a fresh dbus-monitor on every wait call instead --
+# each one takes a moment to connect and register its match rule, and a
+# signal that fired inside that startup gap was simply missed, silently
+# falling through to the full POLL_INTERVAL wait. That's exactly why restore
+# was landing anywhere from ~5s to ~16s late instead of consistently fast.
+# One persistent listener removes the race: nothing is ever not-yet-listening.
+exec 3< <(dbus-monitor --session \
+    "type='signal',interface='org.xfce.ScreenSaver',member='ActiveChanged'" 2>/dev/null)
+
+# Blocks up to TIMEOUT_S reading a line from the persistent monitor above,
+# returning the instant a signal produces one instead of waiting out the
+# full interval. Used in place of a plain `sleep` while locked so
+# restore_windows()/unthrottle_browser() run right after the password is
+# entered. Each ActiveChanged event prints two lines (a header, then the
+# "boolean ..." arg), so this can wake twice per real event -- harmless,
+# the next is_locked() check just confirms nothing changed on the spurious
+# wake and the loop waits again.
+wait_for_active_changed() {
+    read -r -t "$1" -u 3 _
+}
+
 on_battery() {
     [ "$(cat "$AC_ONLINE" 2>/dev/null)" = "0" ]
 }
@@ -93,6 +116,12 @@ minimize_windows() {
         echo "$id" >> "$MINIMIZED_STATE_FILE"
     done < <(wmctrl -l 2>/dev/null)
     logger -t lock-shutdown-watcher "Minimized $(wc -l < "$MINIMIZED_STATE_FILE") window(s) after prolonged lock"
+    # No desktop notification here -- tried a persistent (-t 0) one plus a
+    # replace-on-restore, but xfce4-notifyd was flaky about actually taking
+    # the bubble down (lingered well past its intended lifetime). Restore is
+    # now near-instant on unlock (see wait_for_active_changed), so the
+    # windows reappearing is feedback enough; the logger line above/below
+    # still covers debugging.
 }
 
 is_hidden() {
@@ -103,7 +132,6 @@ restore_windows() {
     [ -s "$MINIMIZED_STATE_FILE" ] || { rm -f "$MINIMIZED_STATE_FILE"; return; }
     local count
     count=$(wc -l < "$MINIMIZED_STATE_FILE")
-    notify-send --urgency=low --app-name="Cyberbeest" "Restoring ${count} window(s)..." 2>/dev/null || true
     # Each window's retry loop runs in its own background job (result written
     # to a per-id file) so a slow/stubborn window doesn't hold up the others --
     # previously these ran one after another, so N windows each needing the
@@ -206,7 +234,7 @@ while true; do
 
         if [ "$shutdown_min" -eq 0 ]; then
             # 0 == "Never" for this power source: skip the shutdown deadline entirely, just poll.
-            sleep "$POLL_INTERVAL"
+            wait_for_active_changed "$POLL_INTERVAL"
         else
             SHUTDOWN_AFTER=$(( shutdown_min * 60 ))
 
@@ -216,7 +244,7 @@ while true; do
                 exit 0
             fi
 
-            sleep "$POLL_INTERVAL"
+            wait_for_active_changed "$POLL_INTERVAL"
         fi
     else
         if [ "$windows_minimized" -eq 1 ]; then
