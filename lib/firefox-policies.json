@@ -8,6 +8,10 @@
 			"browser.tabs.inTitlebar": {
 				"Value": 0,
 				"Status": "default"
+			},
+			"browser.uidensity": {
+				"Value": 1,
+				"Status": "default"
 			}
 		}
 	}

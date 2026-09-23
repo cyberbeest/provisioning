@@ -34,7 +34,10 @@ echo "--- Suppressing the 'security features may offer less protection' nag ---"
 # under firejail --x11=xorg Firefox is an untrusted X client, so its GTK
 # client-side decorations get no working alpha -- the shadow margin renders
 # as a solid black border and CSD resize/move requests don't reach xfwm4.
-# Letting xfwm4 draw the frame fixes both.
+# Letting xfwm4 draw the frame fixes both. browser.uidensity=1 (compact
+# toolbars) wins back some of the height the titlebar costs; Mozilla labels
+# it "not supported" (unmaintained, may be dropped -> falls back to normal),
+# so browser.compactmode.show stays off to keep that label out of the UI.
 install -d -m 755 /usr/lib/firefox-esr/distribution
 install -m 644 "$DIR/lib/firefox-policies.json" /usr/lib/firefox-esr/distribution/policies.json
 
