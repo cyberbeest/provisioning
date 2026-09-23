@@ -556,6 +556,62 @@ SELF_CHECK_INTERVAL_S = 2
 NAV_DEBOUNCE_MS = 200
 
 
+class ClipboardOwner:
+    """Serves a copied image on the CLIPBOARD selection in several formats
+    at once. Gtk.Clipboard.set_with_data() isn't usable from Python, so
+    this goes through the lower-level selection API on an invisible
+    widget instead."""
+
+    INFO_IMAGE, INFO_URIS, INFO_GNOME_FILES = range(3)
+
+    def __init__(self):
+        self.widget = Gtk.Invisible()
+        self.widget.connect("selection-get", self.on_selection_get)
+        self.widget.connect("selection-clear-event", self.on_selection_clear)
+        self.pixbuf = None
+        self.uri = None
+
+    def offer(self, pixbuf, path):
+        self.pixbuf = pixbuf
+        self.uri = GLib.filename_to_uri(os.path.abspath(path))
+        # Built by hand: Gtk.target_table_new_from_list() segfaults under
+        # PyGObject. PNG first, as the lossless default.
+        targets = [
+            Gtk.TargetEntry.new(mime, 0, self.INFO_IMAGE)
+            for mime in ("image/png", "image/bmp", "image/tiff", "image/jpeg")
+        ] + [
+            Gtk.TargetEntry.new("text/uri-list", 0, self.INFO_URIS),
+            Gtk.TargetEntry.new("x-special/gnome-copied-files", 0, self.INFO_GNOME_FILES),
+        ]
+        Gtk.selection_clear_targets(self.widget, Gdk.SELECTION_CLIPBOARD)
+        Gtk.selection_add_targets(self.widget, Gdk.SELECTION_CLIPBOARD, targets)
+        Gtk.selection_owner_set(self.widget, Gdk.SELECTION_CLIPBOARD, Gdk.CURRENT_TIME)
+
+    def owns_clipboard(self):
+        return self.pixbuf is not None
+
+    def on_selection_get(self, _widget, data, info, _time):
+        if self.pixbuf is None:
+            return
+        if info == self.INFO_IMAGE:
+            data.set_pixbuf(self.pixbuf)
+        elif info == self.INFO_URIS:
+            data.set_uris([self.uri])
+        elif info == self.INFO_GNOME_FILES:
+            data.set(data.get_target(), 8, f"copy\n{self.uri}".encode())
+
+    def on_selection_clear(self, _widget, _event):
+        self.pixbuf = None
+        self.uri = None
+        # All viewer windows closed and only the clipboard kept us alive.
+        if not any(isinstance(w, ImageViewerWindow) and w.get_visible() for w in Gtk.Window.list_toplevels()):
+            Gtk.main_quit()
+        return False
+
+
+_clipboard_owner = None
+
+
 class ImageViewerWindow(Gtk.Window):
     def __init__(self, path):
         super().__init__()
@@ -569,7 +625,7 @@ class ImageViewerWindow(Gtk.Window):
             self.index = 0
 
         self.connect("key-press-event", self.on_key_press)
-        self.connect("destroy", Gtk.main_quit)
+        self.connect("destroy", self.on_destroy)
 
         vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         self.add(vbox)
@@ -699,13 +755,25 @@ class ImageViewerWindow(Gtk.Window):
     def copy_image(self):
         if not self.frames:
             return
-        # The frame currently on screen (first frame for an animated GIF),
-        # already EXIF-rotated the way it's displayed.
-        clipboard = Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD)
-        clipboard.set_image(pil_to_pixbuf(self.frames[0][0]))
-        # Hand the data to the clipboard manager so it survives this
-        # viewer being closed.
-        clipboard.store()
+        # Offered as both pixels and a file reference; each app pastes
+        # whichever it understands (Files makes an exact copy of the file,
+        # image editors take the pixels). The pixels are the frame on
+        # screen (first frame for an animated GIF), EXIF-rotated as shown.
+        global _clipboard_owner
+        if _clipboard_owner is None:
+            _clipboard_owner = ClipboardOwner()
+        _clipboard_owner.offer(pil_to_pixbuf(self.frames[0][0]), self.current_path())
+
+    def on_destroy(self, _window):
+        if isinstance(self.image_widget, GLImageArea):
+            # Stop a GIF's frame timer from touching the dead GL context.
+            self.image_widget.generation += 1
+        self.frames = None
+        # No clipboard manager runs on Cyberbeest, so a copy only lives as
+        # long as this process does: keep running windowless until
+        # something else takes over the clipboard.
+        if _clipboard_owner is None or not _clipboard_owner.owns_clipboard():
+            Gtk.main_quit()
 
     def _set_title_and_tooltip(self, path):
         filename = path.rsplit("/", 1)[-1]
@@ -951,6 +1019,10 @@ def _check_self_modified(self_path, initial_mtime):
     """Re-exec the running process if its own script file changed on disk
     (e.g. a git pull + reinstall while it's open), so the user doesn't
     have to notice and manually restart to pick up a fix."""
+    # Re-exec'ing would reopen a window the user already closed while
+    # this process only lingers to serve the clipboard.
+    if not any(isinstance(w, ImageViewerWindow) for w in Gtk.Window.list_toplevels()):
+        return True
     try:
         if os.path.getmtime(self_path) != initial_mtime:
             os.execv(sys.executable, [sys.executable, self_path] + sys.argv[1:])
