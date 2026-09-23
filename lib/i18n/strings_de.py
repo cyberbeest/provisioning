@@ -262,6 +262,7 @@ STRINGS = {
     "run_gui.button_run_selected": "Auswahl ausführen",
     "run_gui.button_profile": "Profil...",
     "run_gui.button_select_all": "Alles auswählen",
+    "run_gui.filter_placeholder": "Skripte filtern…",
     "run_gui.button_stop": "Nach aktuellem Skript stoppen",
     "run_gui.button_abort_download": "Download abbrechen",
     "run_gui.button_view_source": "Quelltext ansehen",

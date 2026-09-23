@@ -122,7 +122,8 @@ import zoneinfo
 import gi
 
 gi.require_version("Gtk", "3.0")
-from gi.repository import GLib, Gtk, Pango
+gi.require_version("Gdk", "3.0")
+from gi.repository import Gdk, GLib, Gtk, Pango
 
 DIR = os.path.dirname(os.path.realpath(__file__))
 ASKPASS = os.path.join(DIR, "lib", "cyberbeest-askpass.py")
@@ -1014,10 +1015,22 @@ class RunGuiWindow(Gtk.Window):
         paned.set_position(300)
         root.pack_start(paned, True, True, 0)
 
+        sidebar = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        paned.pack1(sidebar, False, False)
+
+        # Filters the list by file name. Typing anywhere in the window
+        # lands here (see on_window_key_press), Escape clears it.
+        self.filter_entry = Gtk.SearchEntry()
+        self.filter_entry.set_placeholder_text(t("run_gui.filter_placeholder"))
+        self.filter_entry.connect("search-changed", self.on_filter_changed)
+        self.filter_entry.connect("stop-search", lambda e: e.set_text(""))
+        sidebar.pack_start(self.filter_entry, False, False, 0)
+        self.connect("key-press-event", self.on_window_key_press)
+
         self.sidebar_scroller = Gtk.ScrolledWindow()
         self.sidebar_scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
         self.sidebar_scroller.set_size_request(280, -1)
-        paned.pack1(self.sidebar_scroller, False, False)
+        sidebar.pack_start(self.sidebar_scroller, True, True, 0)
 
         self.listbox = Gtk.ListBox()
         # MULTIPLE (not SINGLE) so plain click / ctrl+click / shift+click
@@ -1028,6 +1041,7 @@ class RunGuiWindow(Gtk.Window):
         self.listbox.set_activate_on_single_click(False)
         self.listbox.connect("row-activated", self.on_row_activated)
         self.listbox.connect("selected-rows-changed", self.on_selection_changed)
+        self.listbox.set_filter_func(self._row_matches_filter)
         self.sidebar_scroller.add(self.listbox)
 
         for script in list_scripts():
@@ -1062,6 +1076,34 @@ class RunGuiWindow(Gtk.Window):
         log_scroller.add(self.log_view)
 
         self.show_all()
+
+    # -- script list filter --------------------------------------------------
+
+    def _row_matches_filter(self, row):
+        words = self.filter_entry.get_text().lower().split()
+        return all(word in row.script.lower() for word in words)
+
+    def on_filter_changed(self, _entry):
+        self.listbox.invalidate_filter()
+        # A selected row the filter hides would still be run by "Run
+        # selected" without being visible -- drop it from the selection.
+        for row in self.listbox.get_selected_rows():
+            if not self._row_matches_filter(row):
+                self.listbox.unselect_row(row)
+
+    def on_window_key_press(self, _window, event):
+        if event.keyval == Gdk.KEY_Escape and self.filter_entry.get_text():
+            self.filter_entry.set_text("")
+            return True
+        if isinstance(self.get_focus(), Gtk.Editable):
+            return False
+        if event.state & (Gdk.ModifierType.CONTROL_MASK | Gdk.ModifierType.MOD1_MASK):
+            return False
+        char = chr(Gdk.keyval_to_unicode(event.keyval) or 0)
+        if not char.isprintable() or char in ("\0", " "):
+            return False
+        self.filter_entry.grab_focus_without_selecting()
+        return self.filter_entry.event(event)
 
     # -- log helpers --------------------------------------------------
 
