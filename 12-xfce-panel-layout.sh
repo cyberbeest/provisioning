@@ -189,7 +189,10 @@ fi
 # carried over instead of being wiped by a flat overwrite. Ids can't be
 # matched by identity across runs beyond this, since xfce4-panel's own
 # unique-id counter resets on every panel restart and hands freed ids back
-# out -- see lib/merge-xfce-panel-plugins.py's docstring.
+# out -- see lib/merge-xfce-panel-plugins.py's docstring. The same merge
+# also carries the whiskermenu's recently-used apps list over, on every run
+# (before 2026-09-23 it was silently skipped whenever there were no extra
+# ids to carry, i.e. on most machines).
 #
 # A layout from before the 200+ id scheme (see the 2026-09-23 note above)
 # is first renumbered into a temp copy, so the merge below sees it the same

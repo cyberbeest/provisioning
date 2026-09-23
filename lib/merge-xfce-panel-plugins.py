@@ -54,8 +54,6 @@ def main():
         return 0
     old_ids = [int(v.get("value")) for v in old_ids_prop.findall("value")]
     extra_ids = [i for i in old_ids if i not in provisioning_ids]
-    if not extra_ids:
-        return 0
 
     old_plugins = find_property(old_root, "plugins")
     extra_plugin_elements = []
@@ -86,7 +84,9 @@ def main():
 
     # Carry over any whiskermenu "recent" list from the old file onto the
     # matching id in the new one (both provisioning-owned and extra ids --
-    # a hand-moved whiskermenu could sit on either).
+    # a hand-moved whiskermenu could sit on either). This has to run even
+    # when there are no extra ids at all -- the common case on a stock
+    # layout, which is exactly where an early return used to skip it.
     for plugin_id in old_ids:
         old_elem = find_property(old_plugins, f"plugin-{plugin_id}")
         if old_elem is None or old_elem.get("value") != "whiskermenu":
