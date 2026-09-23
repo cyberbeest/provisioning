@@ -91,6 +91,17 @@ OUTPUT"
 	[update.apply_failed_message]="Applying the update failed:
 
 OUTPUT"
+	[update.local_changes_message]="This computer's update folder has changes that aren't on the server:
+
+CHANGES
+Updating normally would discard them. Keep them and only bring in the new updates, or discard them?"
+	[update.local_commits_line]="COUNT commit(s) not yet uploaded"
+	[update.keep_changes]="Keep my changes"
+	[update.discard_changes]="Discard changes"
+	[update.cancel]="Cancel"
+	[update.keep_failed_message]="The update couldn't be applied without touching your changes, so nothing was changed:
+
+OUTPUT"
 	[lockwarning.title]="Screen locking soon"
 	[lockwarning.body]="Move the mouse or press a key to stay unlocked."
 	[clipboard_genmon.label_text]="text"

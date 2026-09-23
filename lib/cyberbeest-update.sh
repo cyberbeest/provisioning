@@ -200,6 +200,46 @@ case "$(printf '%s' "$CHANGED_FILES" | python3 "$SCRIPT_DIR/cyberbeest-update-co
 		;;
 esac
 
+# Edits to tracked files or commits not on the server would be thrown away
+# by the reset below. Never the case on an end-user checkout, but on a
+# development machine the checkout can be (a symlink to) the working copy
+# being edited -- so ask instead of silently discarding. Untracked and
+# ignored files (logs etc.) are left alone by the reset, so they don't count.
+LOCAL_EDITS="$(git -C "$REPO_DIR" status --porcelain --untracked-files=no)"
+LOCAL_COMMITS="$(git -C "$REPO_DIR" rev-list --count "origin/$BRANCH..HEAD")"
+if [ -n "$LOCAL_EDITS" ] || [ "$LOCAL_COMMITS" -gt 0 ]; then
+	summary=""
+	if [ -n "$LOCAL_EDITS" ]; then
+		edit_count="$(printf '%s\n' "$LOCAL_EDITS" | wc -l)"
+		summary+="$(printf '%s\n' "$LOCAL_EDITS" | head -n 12 | cut -c4-)"$'\n'
+		[ "$edit_count" -gt 12 ] && summary+="… (+$((edit_count - 12)))"$'\n'
+	fi
+	if [ "$LOCAL_COMMITS" -gt 0 ]; then
+		commits_line="$(t update.local_commits_line)"
+		summary+="${commits_line//COUNT/$LOCAL_COMMITS}"$'\n'
+	fi
+	local_msg="$(t update.local_changes_message)"
+	discard_label="$(t update.discard_changes)"
+	choice=0
+	answer="$(zenity --question --no-markup --title="$(t update.title)" --width=520 \
+		--text="${local_msg//CHANGES/$summary}" \
+		--ok-label="$(t update.keep_changes)" --cancel-label="$(t update.cancel)" \
+		--extra-button="$discard_label")" || choice=$?
+	if [ "$choice" -eq 0 ]; then
+		# Refuses (changing nothing) if the incoming commits touch an
+		# edited file or local commits have diverged from the server.
+		if ! run_git_with_progress "$(t update.apply_message)" \
+			git -C "$REPO_DIR" merge --ff-only "origin/$BRANCH"; then
+			failed_msg="$(t update.keep_failed_message)"
+			zenity --error --no-markup --title="$(t update.title)" --width=460 --text="${failed_msg//OUTPUT/$GIT_CMD_OUTPUT}"
+			exit 1
+		fi
+		exec python3 "$REPO_DIR/run-gui.py"
+	elif [ "$answer" != "$discard_label" ]; then
+		exit 0
+	fi
+fi
+
 # reset --hard (not merge --ff-only): a plain fast-forward only touches
 # paths that actually changed in the new commits, so a tracked file that
 # got deleted or hand-edited locally -- by accident, or by an older/buggy
