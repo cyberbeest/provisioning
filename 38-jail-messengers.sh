@@ -5,9 +5,10 @@
 # (see 10-browser-sandbox.sh and the manual's "Security decisions" chapter).
 #
 # Telegram's stock profile already whitelists ~/Downloads and is
-# seccomp/apparmor hardened as shipped -- used as-is. Signal and Element
-# only whitelist their own config dir by default, so a ".local" override adds
-# ~/Downloads for those two (see lib/signal-desktop.local, lib/element-desktop.local).
+# seccomp/apparmor hardened as shipped; its ".local" override only adds
+# ~/Pictures (lib/telegram-desktop.local). Signal and Element only whitelist
+# their own config dir by default, so their ".local" overrides add both
+# ~/Downloads and ~/Pictures (see lib/signal-desktop.local, lib/element-desktop.local).
 #
 # Tor Browser is deliberately NOT jailed here: the stock torbrowser-launcher
 # profile makes Tor itself fail with "Tor exited during startup", and it
@@ -35,9 +36,10 @@ TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
 echo "--- Installing firejail-profiles (in case 10-browser-sandbox.sh hasn't run) ---"
 apt-get -o DPkg::Lock::Timeout=60 install -y firejail firejail-profiles
 
-echo "--- Installing Downloads-access overrides for Signal and Element ---"
+echo "--- Installing Downloads/Pictures-access overrides for Signal, Element, and Telegram ---"
 install -m 644 "$DIR/lib/signal-desktop.local" /etc/firejail/signal-desktop.local
 install -m 644 "$DIR/lib/element-desktop.local" /etc/firejail/element-desktop.local
+install -m 644 "$DIR/lib/telegram-desktop.local" /etc/firejail/telegram-desktop.local
 
 echo "--- Allowing userns_create in the firejail-default AppArmor profile (needed by Electron's own internal sandbox) ---"
 # Signal/Element/Telegram are Electron apps -- Electron's own Chromium-based
