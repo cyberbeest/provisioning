@@ -8,7 +8,7 @@
 # icons-adwaita-symbolic-status install below) -- Status (the custom
 # monitoring plugins built by 11-xfce-panel-plugins.sh: kitt-scanner,
 # mem-liquid, wattage-panel) -- Power (the power manager plugin, then a
-# single genmon widget (genmon-11), kept close to the clock rather than
+# single genmon widget (genmon-211), kept close to the clock rather than
 # grouped with Status so it reads as the last thing before the clock: it
 # merges security-status (fed by 07-security-update-timer.sh; icon-click
 # opens the log) and the shutdown-timer (showing the current
@@ -18,7 +18,7 @@
 # its own genmon process; shutdown-timer-menu.py also has the Lock/Restart/
 # Shut Down actions from 09-cyberbeest-logout-dialog.sh's cyberbeest-logout,
 # so there's no separate standalone Power launcher pinned to the panel) --
-# Clipboard status (genmon-19: shows what type of content is currently in
+# Clipboard status (genmon-219: shows what type of content is currently in
 # the X11 clipboard, with a click-menu to view/edit/clear it -- installed
 # by 11a-clipboard-status.sh, which runs before this script for the same
 # reason 11-xfce-panel-plugins.sh does: this script just wires an
@@ -56,6 +56,13 @@
 # lib/xfce-panel-reload.sh's xfce_panel_kill_xfconfd for the full story;
 # this is the fix for the missing-plugin-ids incident already noted in
 # xfce_panel_kill's own history).
+# Bumped 2026-09-23: plugin id scheme -- provisioning now owns ids 200 and
+# up (this template at 201-219, the optional toggle icons at 227-229), and
+# everything below 200 is left to the user. xfce4-panel gives a plugin added
+# by hand the lowest free id, so it can no longer collide with (and later be
+# clobbered by) an id a future provisioning icon claims. A layout from
+# before this is migrated in place on the first re-run -- see
+# lib/migrate-legacy-panel-ids.py.
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG="$DIR/12-xfce-panel-layout.log"
@@ -89,20 +96,20 @@ install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 "$DIR"/lib/i18n/strings.*.sh 
 install -o "$TARGET_USER" -g "$TARGET_USER" -m 755 \
 	"$DIR/lib/shutdown-timer-genmon.sh" "$TARGET_HOME/.local/bin/shutdown-timer-genmon.sh"
 # panel-status-genmon.sh sources update-genmon.sh and shutdown-timer-genmon.sh
-# to combine both into the single genmon-11 widget (see xfce4-panel.xml.template),
+# to combine both into the single genmon-211 widget (see xfce4-panel.xml.template),
 # instead of running each as its own genmon process.
 install -o "$TARGET_USER" -g "$TARGET_USER" -m 755 \
 	"$DIR/lib/panel-status-genmon.sh" "$TARGET_HOME/.local/bin/panel-status-genmon.sh"
-# GENMON_WIDGET_NAME must match this template's plugin-11 (see
+# GENMON_WIDGET_NAME must match this template's plugin-211 (see
 # xfce4-panel.xml.template) so the "refresh the panel icon now" call after
 # picking a preset targets the right widget.
-sed "s|__GENMON_WIDGET__|genmon-11|g" "$DIR/lib/shutdown-timer-menu.py" \
+sed "s|__GENMON_WIDGET__|genmon-211|g" "$DIR/lib/shutdown-timer-menu.py" \
 	> "$TARGET_HOME/.local/bin/shutdown-timer-menu.py"
 chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.local/bin/shutdown-timer-menu.py"
 chmod 755 "$TARGET_HOME/.local/bin/shutdown-timer-menu.py"
 # The menu's "Power saving while locked..." item launches this as a
 # separate process (see shutdown-timer-menu.py's open_power_saving_dialog).
-sed "s|__GENMON_WIDGET__|genmon-11|g" "$DIR/lib/lock-power-saving-dialog.py" \
+sed "s|__GENMON_WIDGET__|genmon-211|g" "$DIR/lib/lock-power-saving-dialog.py" \
 	> "$TARGET_HOME/.local/bin/lock-power-saving-dialog.py"
 chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.local/bin/lock-power-saving-dialog.py"
 chmod 755 "$TARGET_HOME/.local/bin/lock-power-saving-dialog.py"
@@ -158,16 +165,16 @@ install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 \
 	"$DIR"/lib/assets/icons-adwaita-symbolic-status/*.svg \
 	"$TARGET_HOME/.local/share/icons/Adwaita/symbolic/status/"
 
-echo "--- Writing genmon-11.rc, kitt-scanner-14.rc, mem-liquid-15.rc ---"
+echo "--- Writing genmon-211.rc, kitt-scanner-214.rc, mem-liquid-215.rc ---"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.config/xfce4/panel"
-sed "s|__HOME__|$TARGET_HOME|g" "$LAYOUT/genmon.rc.template" > "$TARGET_HOME/.config/xfce4/panel/genmon-11.rc"
-install -m 644 "$LAYOUT/kitt-scanner.rc" "$TARGET_HOME/.config/xfce4/panel/kitt-scanner-14.rc"
-install -m 644 "$LAYOUT/mem-liquid.rc" "$TARGET_HOME/.config/xfce4/panel/mem-liquid-15.rc"
+sed "s|__HOME__|$TARGET_HOME|g" "$LAYOUT/genmon.rc.template" > "$TARGET_HOME/.config/xfce4/panel/genmon-211.rc"
+install -m 644 "$LAYOUT/kitt-scanner.rc" "$TARGET_HOME/.config/xfce4/panel/kitt-scanner-214.rc"
+install -m 644 "$LAYOUT/mem-liquid.rc" "$TARGET_HOME/.config/xfce4/panel/mem-liquid-215.rc"
 
-echo "--- Writing launcher-18 (file manager) ---"
-install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.config/xfce4/panel/launcher-18"
+echo "--- Writing launcher-218 (file manager) ---"
+install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.config/xfce4/panel/launcher-218"
 install -m 644 "$LAYOUT/file-manager.desktop" \
-	"$TARGET_HOME/.config/xfce4/panel/launcher-18/file-manager.desktop"
+	"$TARGET_HOME/.config/xfce4/panel/launcher-218/file-manager.desktop"
 
 echo "--- Writing xfce4-panel.xml ---"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.config/xfce4/xfconf/xfce-perchannel-xml"
@@ -183,13 +190,24 @@ fi
 # matched by identity across runs beyond this, since xfce4-panel's own
 # unique-id counter resets on every panel restart and hands freed ids back
 # out -- see lib/merge-xfce-panel-plugins.py's docstring.
+#
+# A layout from before the 200+ id scheme (see the 2026-09-23 note above)
+# is first renumbered into a temp copy, so the merge below sees it the same
+# as any re-run on a current layout. The panel config files that migration
+# orphans are only deleted at the very end, once the old panel process
+# (which still has them open) is gone.
+PANEL_DIR="$TARGET_HOME/.config/xfce4/panel"
+PANEL_XML_OLD="$(mktemp)"
+PANEL_CLEANUP_LIST="$(mktemp)"
+python3 "$DIR/lib/migrate-legacy-panel-ids.py" migrate \
+	"$PANEL_XML" "$PANEL_XML_OLD" "$PANEL_DIR" "$PANEL_CLEANUP_LIST"
 PANEL_XML_TMP="$(mktemp)"
 sed -e "s|__HOME__|$TARGET_HOME|g" -e "s|__ICONS_DIR__|$ICONS_DIR|g" \
 	"$LAYOUT/xfce4-panel.xml.template" > "$PANEL_XML_TMP"
-python3 "$DIR/lib/merge-xfce-panel-plugins.py" "$PANEL_XML" "$PANEL_XML_TMP" \
-	1 2 3 4 5 6 7 8 11 12 13 14 15 17 18 19
+python3 "$DIR/lib/merge-xfce-panel-plugins.py" "$PANEL_XML_OLD" "$PANEL_XML_TMP" \
+	201 202 203 204 205 206 207 208 211 212 213 214 215 217 218 219
 install -m 644 "$PANEL_XML_TMP" "$PANEL_XML"
-rm -f "$PANEL_XML_TMP"
+rm -f "$PANEL_XML_TMP" "$PANEL_XML_OLD"
 
 echo "--- Fixing ownership ---"
 chown -R "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.config/xfce4"
@@ -225,5 +243,11 @@ if xfce_panel_dbus_addr; then
 
 	xfce_panel_launch || echo "--- warning: panel reload didn't take live effect ---" >&2
 fi
+
+if [ -s "$PANEL_CLEANUP_LIST" ]; then
+	echo "--- Removing panel config orphaned by the plugin id migration ---"
+	python3 "$DIR/lib/migrate-legacy-panel-ids.py" cleanup "$PANEL_DIR" "$PANEL_CLEANUP_LIST"
+fi
+rm -f "$PANEL_CLEANUP_LIST"
 
 echo "=== $(date) : done ==="

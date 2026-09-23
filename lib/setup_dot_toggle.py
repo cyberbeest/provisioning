@@ -12,7 +12,7 @@ stays on -- this only adds an escape hatch for two known failure modes:
    that hijack entirely, so the portal never shows up and nothing resolves.
 
 Whisker launcher "Disable Encrypted DNS" stops dnscrypt-proxy and adds a
-warning panel icon (genmon plugin-29); clicking the icon re-enables it and
+warning panel icon (genmon plugin-229); clicking the icon re-enables it and
 removes itself. Deliberately does NOT disable the systemd units -- a reboot
 always brings encrypted DNS back, so forgetting to re-enable doesn't leave
 the machine unencrypted past the next boot. The genmon script itself also
@@ -79,7 +79,7 @@ notify-send --urgency=low --app-name="Encrypted DNS" \\
 """
 
 DOT_PANEL_ICON_SH = """#!/bin/bash
-# Adds/removes the "Encrypted DNS disabled" genmon panel icon (plugin-29).
+# Adds/removes the "Encrypted DNS disabled" genmon panel icon (plugin-229).
 # Called by dot-disable.sh/dot-enable.sh/dot-genmon.sh -- not meant to be
 # run standalone.
 #
@@ -92,7 +92,7 @@ DOT_PANEL_ICON_SH = """#!/bin/bash
 
 set -uo pipefail
 
-PLUGIN_ID=29
+PLUGIN_ID=229
 ACTION="${1:-}"
 
 # Never use `xfce4-panel -r`: it asks the still-running process to restart
@@ -318,7 +318,7 @@ echo "<click>$HOME/.local/bin/dot-menu.py</click>"
 """
 
 DOT_MENU_PY = '''#!/usr/bin/env python3
-"""Popup menu for the "Encrypted DNS disabled" panel icon (genmon plugin-29)."""
+"""Popup menu for the "Encrypted DNS disabled" panel icon (genmon plugin-229)."""
 
 import os
 import subprocess

@@ -1,0 +1,6 @@
+# Installed by ../55-powerbtn-double-press.sh -- see
+# cyberbeest-powerbtn-double-press.sh. Same event pattern as the stock
+# powerbtn-acpi-support rule, added alongside it (acpid runs every rule
+# that matches).
+event=button[ /]power
+action=/usr/local/bin/cyberbeest-powerbtn-double-press.sh

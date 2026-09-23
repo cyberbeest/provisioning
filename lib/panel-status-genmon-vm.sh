@@ -6,7 +6,7 @@
 # tuning its delay has nothing left to control and would just be
 # confusing clutter on the panel.
 # Installed by 90-vm-mode-overrides.sh over the normal
-# ~/.local/bin/panel-status-genmon.sh -- same genmon-11 widget/rc file,
+# ~/.local/bin/panel-status-genmon.sh -- same genmon-211 widget/rc file,
 # just a different script behind it.
 
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

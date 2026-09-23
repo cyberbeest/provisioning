@@ -95,9 +95,27 @@ fi
 # run ourselves instead of querying systemd. While waiting for the first
 # post-boot run, base it on boot time + OnBootSec rather than
 # last_check_epoch + interval, which would still point into the past.
+#
+# OnUnitActiveSec resets its 120-minute clock on every activation of
+# security-update-check.service, including one that immediately
+# throttle-skips (last check too recent) without touching the status file.
+# So the real timer schedule can drift ahead of last_check_epoch, which only
+# advances on a completed (non-skipped) run -- predicting off last_check_epoch
+# alone can then claim "next check: any moment" indefinitely while the real
+# timer isn't due for another ~2 hours. Prefer the service unit's actual last
+# activation time (covers skips too) and only fall back to last_check_epoch
+# if that's unavailable.
+timer_last_invocation_epoch=""
+timer_last_invocation_ts="$(systemctl show -p ExecMainStartTimestamp --value security-update-check.service 2>/dev/null)"
+if [ -n "$timer_last_invocation_ts" ] && [ "$timer_last_invocation_ts" != "n/a" ]; then
+    timer_last_invocation_epoch="$(date -d "$timer_last_invocation_ts" +%s 2>/dev/null)"
+fi
+
 next_check_epoch=""
 if [ "$awaiting_first_check" = true ]; then
     next_check_epoch=$(( boot_epoch + BOOT_SEC ))
+elif [ -n "$timer_last_invocation_epoch" ]; then
+    next_check_epoch=$(( timer_last_invocation_epoch + CHECK_INTERVAL_SECONDS ))
 elif [ -n "$last_check_epoch" ]; then
     next_check_epoch=$(( last_check_epoch + CHECK_INTERVAL_SECONDS ))
 fi
@@ -112,6 +130,12 @@ reboot_pending=false
 overdue=false
 
 unit_state="$(systemctl show -p ActiveState --value security-update-check.service 2>/dev/null)"
+if [ "$unit_state" != active ] && [ "$unit_state" != activating ]; then
+    # Also covers a user-triggered "Run updates now" run, which goes through
+    # the separate security-update-check-force.service unit (see the log
+    # dialog's button) rather than this timer-driven one.
+    unit_state="$(systemctl show -p ActiveState --value security-update-check-force.service 2>/dev/null)"
+fi
 if [ "$unit_state" = active ] || [ "$unit_state" = activating ]; then
     phase="$(cat "$PHASE_FILE" 2>/dev/null)"
     [ -n "$phase" ] || phase="checking"
@@ -189,6 +213,12 @@ elif [ "$last_check_result" = network-error ]; then
     img="$ICON_NETWORK_ERROR"
     tool="$(t update_genmon.network_error)"
     [ -n "$last_check_reason" ] && tool="${tool}&#10;${last_check_reason}"
+elif [ "$last_check_result" = interrupted ]; then
+    # A milder icon than a real upgrade-error -- this is a transient,
+    # self-healing event (the run got killed mid-way, almost always by a
+    # shutdown/reboot), not an actual apt/dependency problem.
+    img="$ICON_OVERDUE"
+    tool="$(t update_genmon.interrupted)"
 elif [ "$last_check_result" = upgrade-error ]; then
     img="$ICON_UPGRADE_ERROR"
     tool="$(t update_genmon.upgrade_error)"

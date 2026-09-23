@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Popup menu for the VPN panel icon (genmon plugin-28).
+"""Popup menu for the VPN panel icon (genmon plugin-228).
 
 Lists imported profiles with a checkmark on whichever is connected,
 lets you connect/disconnect, import a new profile, or delete one.

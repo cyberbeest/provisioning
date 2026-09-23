@@ -39,6 +39,20 @@ echo "--- Installing Downloads-access overrides for Signal and Element ---"
 install -m 644 "$DIR/lib/signal-desktop.local" /etc/firejail/signal-desktop.local
 install -m 644 "$DIR/lib/element-desktop.local" /etc/firejail/element-desktop.local
 
+echo "--- Allowing userns_create in the firejail-default AppArmor profile (needed by Electron's own internal sandbox) ---"
+# Signal/Element/Telegram are Electron apps -- Electron's own Chromium-based
+# sandbox creates a user namespace as part of its own hardening. Without
+# this, it fails immediately with a FATAL sandbox/credentials.cc error and
+# the app never starts at all. Not a dpkg-managed file (apparmor_parser
+# creates it empty on first profile compile if missing), so this is safe to
+# write directly, no conffile-upgrade risk.
+cat > /etc/apparmor.d/local/firejail-default <<'EOF'
+# Needed by Electron's own internal (Chromium) sandbox -- see
+# 38-jail-messengers.sh.
+userns,
+EOF
+apparmor_parser -r /etc/apparmor.d/firejail-default
+
 echo "--- Installing sandbox wrapper scripts to $TARGET_HOME/bin/ ---"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/bin"
 for f in signal-sandbox.sh telegram-sandbox.sh element-sandbox.sh; do

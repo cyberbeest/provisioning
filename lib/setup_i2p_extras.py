@@ -138,7 +138,7 @@ notify-send --urgency=low --app-name="i2pd" \\
 """
 
 I2PD_PANEL_ICON_SH = """#!/bin/bash
-# Adds/removes the i2pd genmon panel icon (plugin-27) from the live panel.
+# Adds/removes the i2pd genmon panel icon (plugin-227) from the live panel.
 # Called by i2pd-start.sh/i2pd-stop.sh -- not meant to be run standalone.
 #
 # Usage: i2pd-panel-icon.sh add|remove
@@ -150,7 +150,7 @@ I2PD_PANEL_ICON_SH = """#!/bin/bash
 
 set -uo pipefail
 
-PLUGIN_ID=27
+PLUGIN_ID=227
 ACTION="${1:-}"
 
 # Never use `xfce4-panel -r`: it asks the still-running process to restart
@@ -377,7 +377,7 @@ echo "<click>$HOME/.local/bin/i2pd-menu.py</click>"
 """
 
 I2PD_MENU_PY = '''#!/usr/bin/env python3
-"""Popup menu for the i2pd panel icon (genmon plugin-27).
+"""Popup menu for the i2pd panel icon (genmon plugin-227).
 
 Invoked on click instead of stopping i2pd directly. Offers starting the
 I2P Firefox profile / qBittorrent alongside the stop action, since those

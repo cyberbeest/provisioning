@@ -229,12 +229,12 @@ echo "--- Removing battery/wattage/CPU-meter plugins from the panel ---"
 PANEL_XML="$TARGET_HOME/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml"
 if [ -e "$PANEL_XML" ]; then
 	sed -i \
-		-e '\|<value type="int" value="12"/>|d' \
-		-e '\|<value type="int" value="13"/>|d' \
-		-e '\|<value type="int" value="14"/>|d' \
-		-e '\|<property name="plugin-12" type="string" value="power-manager-plugin"/>|d' \
-		-e '\|<property name="plugin-13" type="string" value="wattage-panel"/>|d' \
-		-e '\|<property name="plugin-14" type="string" value="kitt-scanner"/>|d' \
+		-e '\|<value type="int" value="212"/>|d' \
+		-e '\|<value type="int" value="213"/>|d' \
+		-e '\|<value type="int" value="214"/>|d' \
+		-e '\|<property name="plugin-212" type="string" value="power-manager-plugin"/>|d' \
+		-e '\|<property name="plugin-213" type="string" value="wattage-panel"/>|d' \
+		-e '\|<property name="plugin-214" type="string" value="kitt-scanner"/>|d' \
 		"$PANEL_XML"
 
 	. "$DIR/lib/xfce-panel-reload.sh"

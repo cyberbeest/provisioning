@@ -203,6 +203,14 @@ STRINGS = {
     "update_genmon.log_title": "Security Update Log",
     "update_genmon.log_missing": "No update log found yet -- the check hasn't run.",
     "update_genmon.close": "Close",
+    "update_genmon.run_now": "Run updates now",
+    "update_genmon.run_now_started": "Update check started -- the panel icon will update in a moment.",
+    "update_genmon.run_now_already_running": "An update check is already running.",
+    "update_genmon.run_now_failed": "Couldn't start the update check.",
+    "update_genmon.interrupted": (
+        "The last update check was interrupted (likely a shutdown or reboot "
+        "mid-run) -- it'll retry automatically on the usual schedule."
+    ),
 
     "run_gui.window_title": "Cyberbeest Provisioning Runner",
     "run_gui.confirm_remove_openssh": (

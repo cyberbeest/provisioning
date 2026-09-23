@@ -1,7 +1,7 @@
 #!/bin/bash
 # Installs the generic Cyberbeest WireGuard VPN toggle: import any
 # provider's WireGuard .conf, connect/disconnect from a panel icon
-# (genmon plugin-28), automatic kill-switch injection for configs that
+# (genmon plugin-228), automatic kill-switch injection for configs that
 # don't already have one, DNS-leak protection. Also installs the
 # "Cyberbeest VPN" landing page (status + known-supported-provider list +
 # import), which replaces a bare "Import VPN Profile" launcher.
@@ -29,6 +29,10 @@
 # flush -- the write could be lost and the respawned xfconfd would reload
 # the stale on-disk value, leaving a zombie icon (seen with the i2pd
 # variant on tower). No longer touches xfconfd, only the panel.
+#
+# Bumped 2026-09-23: the VPN panel icon moved from plugin-28 to plugin-228
+# (provisioning's ids now start at 200, see 12-xfce-panel-layout.sh's note
+# of the same date -- an existing plugin-28 is renumbered by that script).
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG="$DIR/29-wireguard-vpn-toggle.log"

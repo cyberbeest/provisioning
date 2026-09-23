@@ -24,8 +24,18 @@ set -uo pipefail
 STATUS_FILE=/var/lib/security-update-status
 APPS_STATUS_FILE=/var/lib/security-update-apps-status
 PHASE_FILE=/run/security-update-check.phase
+LOCK_FILE=/run/security-update-check.lock
 CHECK_INTERVAL_SECONDS=$(( 120 * 60 ))
 APPS_FORCE_INTERVAL_SECONDS=$(( 30 * 24 * 60 * 60 ))
+
+# Guard against the timer-triggered run and a user-triggered "run updates
+# now" (security-update-check-force.service, see the panel icon's log
+# dialog) overlapping and racing on the apt/dpkg lock.
+exec 9>"$LOCK_FILE"
+if ! flock -n 9; then
+    echo "Another security-update-check run is already in progress -- skipping."
+    exit 0
+fi
 
 CONF_DIR=/etc/apt/apt.conf.d
 SECURITY_CONF=51unattended-upgrades-local
@@ -77,6 +87,15 @@ ${journal}"
         # "error" icon for working-as-intended behavior.
         PASS_RESULT=skipped-metered
         PASS_REASON="Skipped: on a metered connection."
+    elif echo "$combined" | grep -qi "SIGTERM received\|SIGNAL received, stopping"; then
+        # The process got killed mid-run -- almost always a shutdown/reboot
+        # landing while it was still applying updates (e.g. during a
+        # reimage). It then reports whatever packages it hadn't gotten to
+        # yet as "kept back due to local apt_preferences", which reads like
+        # a real dependency/pinning problem but isn't -- it'll just pick up
+        # cleanly on the next run. Surface that plainly instead.
+        PASS_RESULT=interrupted
+        PASS_REASON="Interrupted mid-run (system shut down or rebooted) -- will retry automatically."
     else
         PASS_RESULT=upgrade-error
         PASS_REASON="$(echo "$combined" | sed '/^$/d' | tail -1)"
@@ -91,7 +110,7 @@ start_epoch="$(date +%s)"
 # recently, so frequent reboots don't hammer Debian's mirrors more often
 # than the intended 120-minute cadence. Gated on the security status file --
 # both passes always run together on this cadence.
-if [ -r "$STATUS_FILE" ]; then
+if [ "${FORCE_CHECK:-0}" != 1 ] && [ -r "$STATUS_FILE" ]; then
     # shellcheck disable=SC1090
     . "$STATUS_FILE"
     if [ -n "${LAST_CHECK_EPOCH:-}" ] \
@@ -213,7 +232,7 @@ STATUS
     chmod 644 "$APPS_STATUS_FILE"
 fi
 
-[ "$security_result" = ok ] || [ "$security_result" = skipped-metered ]
+[ "$security_result" = ok ] || [ "$security_result" = skipped-metered ] || [ "$security_result" = interrupted ]
 EOF
 chmod 755 /usr/local/sbin/security-update-check.sh
 
@@ -242,6 +261,37 @@ Persistent=true
 [Install]
 WantedBy=timers.target
 EOF
+
+echo "--- Writing security-update-check-force.service (for the panel icon's 'Run updates now' button) ---"
+cat > /etc/systemd/system/security-update-check-force.service <<'EOF'
+[Unit]
+Description=Debian security update check (manually triggered, bypasses the 120-minute throttle)
+
+[Service]
+Type=oneshot
+Environment=FORCE_CHECK=1
+ExecStart=/usr/local/sbin/security-update-check.sh
+EOF
+
+echo "--- Installing scoped NOPASSWD sudoers rule for the 'Run updates now' button ---"
+SUDOERS_FILE=/etc/sudoers.d/security-update-check-force
+SUDOERS_TMP="$(mktemp)"
+cat > "$SUDOERS_TMP" <<'EOF'
+# Allow cyberbeest to trigger an immediate security-update check without a
+# password, for the update panel icon's "Run updates now" button. Scoped to
+# exactly this one unit -- no wildcard/general systemctl access. Written by
+# lib/setup-security-update-timer.sh.
+cyberbeest ALL=(root) NOPASSWD: /usr/bin/systemctl start security-update-check-force.service
+EOF
+if visudo -c -f "$SUDOERS_TMP"; then
+    install -m 0440 -o root -g root "$SUDOERS_TMP" "$SUDOERS_FILE"
+    echo "Installed $SUDOERS_FILE"
+else
+    echo "visudo syntax check FAILED, not installing $SUDOERS_FILE"
+    rm -f "$SUDOERS_TMP"
+    exit 1
+fi
+rm -f "$SUDOERS_TMP"
 
 echo "--- Disabling the default daily apt timers (replaced by security-update-check.timer) ---"
 systemctl disable --now apt-daily.timer apt-daily-upgrade.timer

@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 """Click action for the security-update-check genmon icon (update-genmon.sh):
-shows the log of the last check/install run. A plain GTK dialog rather than
-zenity --text-info, which always adds a Cancel button alongside OK -- there's
-nothing to cancel here, it's a read-only log view.
+shows the log of the last check/install run, plus a "Run updates now" button.
+A plain GTK dialog rather than zenity --text-info, which always adds a
+Cancel button alongside OK -- there's nothing to cancel here, it's a
+read-only log view.
 """
+
+import subprocess
 
 import gi
 
@@ -13,6 +16,45 @@ from gi.repository import Gtk
 from i18n import t
 
 LOG_FILE = "/var/log/security-update-check-last.log"
+FORCE_UNIT = "security-update-check-force.service"
+CHECK_UNIT = "security-update-check.service"
+
+
+def _unit_active(unit):
+    try:
+        state = subprocess.run(
+            ["systemctl", "show", "-p", "ActiveState", "--value", unit],
+            capture_output=True, text=True, timeout=5,
+        ).stdout.strip()
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return state in ("active", "activating")
+
+
+def run_updates_now(button):
+    if _unit_active(CHECK_UNIT) or _unit_active(FORCE_UNIT):
+        _info(t("update_genmon.run_now_already_running"))
+        return
+    # The NOPASSWD sudoers rule installed by setup-security-update-timer.sh
+    # scopes this to exactly this one systemctl invocation.
+    result = subprocess.run(
+        ["sudo", "-n", "systemctl", "start", FORCE_UNIT],
+        capture_output=True, text=True,
+    )
+    if result.returncode == 0:
+        _info(t("update_genmon.run_now_started"))
+    else:
+        _info(t("update_genmon.run_now_failed"))
+
+
+def _info(message):
+    dialog = Gtk.MessageDialog(
+        message_type=Gtk.MessageType.INFO,
+        buttons=Gtk.ButtonsType.OK,
+        text=message,
+    )
+    dialog.run()
+    dialog.destroy()
 
 
 def show_log():
@@ -24,6 +66,8 @@ def show_log():
 
     dialog = Gtk.Dialog(title=t("update_genmon.log_title"))
     dialog.set_default_size(800, 600)
+    run_now_button = dialog.add_button(t("update_genmon.run_now"), Gtk.ResponseType.APPLY)
+    run_now_button.connect("clicked", run_updates_now)
     dialog.add_button(t("update_genmon.close"), Gtk.ResponseType.CLOSE)
 
     box = dialog.get_content_area()

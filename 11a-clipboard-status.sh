@@ -1,5 +1,5 @@
 #!/bin/bash
-# Installs the clipboard-status panel icon: a genmon widget (plugin-19,
+# Installs the clipboard-status panel icon: a genmon widget (plugin-219,
 # which 12-xfce-panel-layout.sh's template wires into the panel right
 # before the clock) that shows what type of content currently sits in the
 # X11 clipboard (text/image/files/empty), with a click-menu to view/edit/
@@ -41,7 +41,7 @@ TARGET_UID="$(id -u "$TARGET_USER")"
 
 # Must match the plugin-ids/xfce4-panel.xml.template slot 12-xfce-panel-
 # layout.sh reserves for this widget.
-GENMON_WIDGET="genmon-19"
+GENMON_WIDGET="genmon-219"
 
 echo "--- Installing build dependencies (clipnotify needs libx11/libxfixes headers) ---"
 apt-get -o DPkg::Lock::Timeout=60 update -qq
@@ -112,7 +112,7 @@ else
 	echo "no active session for $TARGET_USER -- it'll start at next login"
 fi
 
-# plugin-19 isn't in the panel's plugin-ids yet at this point (12-xfce-
+# plugin-219 isn't in the panel's plugin-ids yet at this point (12-xfce-
 # panel-layout.sh hasn't run), so this reload won't show the icon -- kept
 # anyway for the same reason 11-xfce-panel-plugins.sh's own end-of-script
 # reload is harmless-but-early for its plugins too: consistent habit,

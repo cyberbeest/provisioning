@@ -29,9 +29,20 @@ qa_pass() {
 }
 
 # Must be called before any simulated keystroke/click/screenshot,
-# per feedback_warn_before_desktop_automation.
+# per feedback_warn_before_desktop_automation. Prefers the dev machine's own
+# warning sound/script when present; falls back to a generic beep + pause on
+# any other machine (this repo is published standalone, not dev-machine-only
+# - see provisioning/qa-flows), so a physical user at that machine's screen
+# still gets a heads-up before automation starts moving their mouse/keyboard.
 qa_warn_automation() {
-    ~/claude/warn-desktop-automation.sh
+    if [ -x "$HOME/claude/warn-desktop-automation.sh" ]; then
+        "$HOME/claude/warn-desktop-automation.sh"
+    else
+        (command -v canberra-gtk-play >/dev/null 2>&1 && canberra-gtk-play -i dialog-warning) \
+            || (command -v paplay >/dev/null 2>&1 && paplay /usr/share/sounds/freedesktop/stereo/dialog-warning.oga 2>/dev/null) \
+            || printf '\a'
+        sleep 2
+    fi
 }
 
 # Find the X window id of the frontmost/active window whose name matches a pattern.

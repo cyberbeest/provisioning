@@ -7,8 +7,8 @@ lib/wireguard-vpn-toggle/vpn-panel-icon.sh, lib/setup_i2p_extras.py) survives
 a re-run of 12-xfce-panel-layout.sh instead of being wiped by a wholesale
 file overwrite. Provisioning's own ids are always taken from the fresh
 template (position, config, everything) -- only ids outside that set are
-carried over, appended after the template's own ids in their prior relative
-order. See 12-xfce-panel-layout.sh's comment on why ids can't be matched by
+carried over, each placed right before the provisioning id it preceded in
+the old layout (or last, if none did). See 12-xfce-panel-layout.sh's comment on why ids can't be matched by
 number alone across runs (xfce4-panel recycles freed ids on panel restart).
 
 Also carries the whiskermenu plugin's "recent" property (its recently-used
@@ -67,7 +67,19 @@ def main():
     new_tree = ET.parse(new_path)
     new_root = new_tree.getroot()
     new_ids_prop = plugin_ids_array(new_root)
-    for plugin_id in extra_ids:
+    # Each extra id goes right before whichever provisioning id followed it
+    # in the old layout, so e.g. a toggle icon the toggle script inserted
+    # just before the clock stays there instead of jumping to the far end.
+    merged_ids = [int(v.get("value")) for v in new_ids_prop.findall("value")]
+    insert_at = len(merged_ids)
+    for plugin_id in reversed(old_ids):
+        if plugin_id in extra_ids:
+            merged_ids.insert(insert_at, plugin_id)
+        elif plugin_id in merged_ids:
+            insert_at = merged_ids.index(plugin_id)
+    for value in new_ids_prop.findall("value"):
+        new_ids_prop.remove(value)
+    for plugin_id in merged_ids:
         ET.SubElement(new_ids_prop, "value", {"type": "int", "value": str(plugin_id)})
 
     new_plugins = find_property(new_root, "plugins")

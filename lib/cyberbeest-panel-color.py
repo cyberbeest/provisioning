@@ -64,8 +64,8 @@ class SyncedPlugin:
 
 
 # rc_path values are substituted at install time to match the panel-layout
-# template's plugin instances (12-xfce-panel-layout.sh: kitt-scanner-14.rc,
-# mem-liquid-15.rc).
+# template's plugin instances (12-xfce-panel-layout.sh: kitt-scanner-214.rc,
+# mem-liquid-215.rc).
 SYNCED_PLUGINS = [
     SyncedPlugin("kitt-scanner", "libkitt-scanner.so", "__KITT_RC_PATH__"),
     SyncedPlugin("mem-liquid", "libmem-liquid.so", "__MEM_LIQUID_RC_PATH__"),

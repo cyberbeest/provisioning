@@ -60,6 +60,9 @@
 # graceful-shutdown timeout and got SIGKILLed 30s later). Now only runs
 # the stop when i2pd wasn't already installed (i.e. an actual fresh
 # install), never on a re-run.
+# Bumped 2026-09-23: the i2pd panel icon moved from plugin-27 to plugin-227
+# (provisioning's ids now start at 200, see 12-xfce-panel-layout.sh's note
+# of the same date -- an existing plugin-27 is renumbered by that script).
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG="$DIR/50-i2pd-default.log"

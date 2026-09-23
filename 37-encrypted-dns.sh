@@ -48,6 +48,11 @@
 # flush -- the write could be lost and the respawned xfconfd would reload
 # the stale on-disk value, leaving a zombie icon (seen with the i2pd
 # variant on tower). No longer touches xfconfd, only the panel.
+#
+# Bumped 2026-09-23: the "Encrypted DNS disabled" panel icon moved from
+# plugin-29 to plugin-229 (provisioning's ids now start at 200, see
+# 12-xfce-panel-layout.sh's note of the same date -- an existing plugin-29
+# is renumbered by that script).
 set -u
 LOG="${BASH_SOURCE%.sh}.log"
 exec > "$LOG" 2>&1

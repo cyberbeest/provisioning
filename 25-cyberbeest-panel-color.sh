@@ -7,8 +7,8 @@
 # match the *default* theme background rather than reading the panel's
 # live color.
 # Depends on: 11-xfce-panel-plugins.sh (builds kitt-scanner and
-# mem-liquid), 12-xfce-panel-layout.sh (installs them as plugin ids 14 and
-# 15, i.e. kitt-scanner-14.rc and mem-liquid-15.rc -- this script's
+# mem-liquid), 12-xfce-panel-layout.sh (installs them as plugin ids 214 and
+# 215, i.e. kitt-scanner-214.rc and mem-liquid-215.rc -- this script's
 # __KITT_RC_PATH__/__MEM_LIQUID_RC_PATH__ substitutions must match that).
 # Degrades gracefully if either plugin isn't installed (the panel color
 # still applies; that plugin's margin-color file write is just skipped).
@@ -30,11 +30,11 @@ apt-get -o DPkg::Lock::Timeout=60 install -y python3-gi gir1.2-gtk-3.0
 echo "--- Installing GUI script to $TARGET_HOME/.local/bin/cyberbeest-panel-color ---"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.local/bin"
 # Must match the kitt-scanner/mem-liquid plugin instances
-# 12-xfce-panel-layout.sh's panel template assigns (kitt-scanner-14.rc,
-# mem-liquid-15.rc).
+# 12-xfce-panel-layout.sh's panel template assigns (kitt-scanner-214.rc,
+# mem-liquid-215.rc).
 sed \
-	-e "s|__KITT_RC_PATH__|$TARGET_HOME/.config/xfce4/panel/kitt-scanner-14.rc|g" \
-	-e "s|__MEM_LIQUID_RC_PATH__|$TARGET_HOME/.config/xfce4/panel/mem-liquid-15.rc|g" \
+	-e "s|__KITT_RC_PATH__|$TARGET_HOME/.config/xfce4/panel/kitt-scanner-214.rc|g" \
+	-e "s|__MEM_LIQUID_RC_PATH__|$TARGET_HOME/.config/xfce4/panel/mem-liquid-215.rc|g" \
 	"$DIR/lib/cyberbeest-panel-color.py" > "$TARGET_HOME/.local/bin/cyberbeest-panel-color"
 chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.local/bin/cyberbeest-panel-color"
 chmod 755 "$TARGET_HOME/.local/bin/cyberbeest-panel-color"

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Adds/removes the VPN genmon panel icon (plugin-28) from the live panel.
+# Adds/removes the VPN genmon panel icon (plugin-228) from the live panel.
 # Present whenever at least one VPN profile has been imported; removed
 # entirely once the last profile is deleted (vpn-remove-profile.sh calls
 # "remove" for that case) -- no panel space spent on a feature nobody's
@@ -14,7 +14,7 @@
 
 set -uo pipefail
 
-PLUGIN_ID=28
+PLUGIN_ID=228
 ACTION="${1:-}"
 
 # Never use `xfce4-panel -r`: it asks the still-running process to restart
