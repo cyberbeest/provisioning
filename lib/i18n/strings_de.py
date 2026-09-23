@@ -309,6 +309,10 @@ STRINGS = {
     "run_gui.log_done_marker": "=== {script} fertig ({duration}) ===\n",
     "run_gui.log_failed_marker": "=== {script} FEHLGESCHLAGEN ({duration}, Exitcode {status}) ===\n",
     "run_gui.log_stopping_dependency": "Stoppe hier, da spätere Skripte hiervon abhängen könnten.\n",
+    "run_gui.log_apt_retry": (
+        "Ein Paketserver hatte ein vorübergehendes Problem. {script} wird in "
+        "{seconds} Sekunden erneut versucht (Wiederholung {attempt} von {total}).\n"
+    ),
     "run_gui.status_stopped": "Nach aktuellem Skript gestoppt.",
     "run_gui.status_failed": "Fehlgeschlagen: {script} -- siehe Protokoll oben.",
     "run_gui.status_finished": "Erfolgreich abgeschlossen. Du kannst dieses Fenster jetzt schließen.",

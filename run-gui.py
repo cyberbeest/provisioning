@@ -318,6 +318,19 @@ CONFIRMATION_SKIP_IF_NOOP = {
 AUTOSTART_FILE = os.path.expanduser("~/.config/autostart/cyberbeest-provisioning.desktop")
 
 MANUAL_TODO_RE = re.compile(r"^MANUAL_TODO:\s*(.+?)\s*$", re.MULTILINE)
+
+# apt errors from a package server being briefly unavailable or mid-sync
+# (e.g. Signal's repo publishing a new index while we download it). Every
+# script runs `apt-get update`, which covers *all* configured repos, so a
+# hiccup on one third-party server fails whichever script happens to run
+# at that moment. Such a failure gets retried after a wait instead of
+# ending the run.
+APT_TRANSIENT_RE = re.compile(
+    r"^E: (Failed to fetch|Some index files failed to download|Unable to fetch some archives)"
+    r"|Hash Sum mismatch|Mirror sync in progress",
+    re.MULTILINE,
+)
+APT_RETRY_DELAYS_S = (60, 120, 240)
 REBOOT_TODO_KEY = "__reboot__"
 # One "send a report" todo per failed script, removed again once it succeeds.
 REPORT_TODO_PREFIX = "__report__:"
@@ -1409,11 +1422,22 @@ class RunGuiWindow(Gtk.Window):
             start_new_session=True,
         )
         self.proc = proc
+        output = []
         for line in proc.stdout:
+            output.append(line)
             GLib.idle_add(self.append_log, script, line)
         status = proc.wait()
         self.proc = None
+        self.last_piped_output = "".join(output)
         return status
+
+    def _wait_unless_stopped(self, seconds):
+        deadline = time.monotonic() + seconds
+        while time.monotonic() < deadline:
+            if self.stop_requested:
+                return False
+            time.sleep(1)
+        return True
 
     def _run_in_terminal(self, script):
         GLib.idle_add(
@@ -1505,6 +1529,21 @@ class RunGuiWindow(Gtk.Window):
             else:
                 GLib.idle_add(self.append_log, script, t("run_gui.log_running_marker").format(script=script))
                 status = self._run_piped(script)
+                # Scripts are idempotent, so re-running the whole script
+                # after a transient package-server error is safe.
+                for attempt, delay in enumerate(APT_RETRY_DELAYS_S, 1):
+                    if status == 0 or not APT_TRANSIENT_RE.search(self.last_piped_output):
+                        break
+                    GLib.idle_add(
+                        self.append_log, script,
+                        t("run_gui.log_apt_retry").format(
+                            script=script, seconds=delay, attempt=attempt, total=len(APT_RETRY_DELAYS_S)
+                        ),
+                    )
+                    if not self._wait_unless_stopped(delay):
+                        break
+                    GLib.idle_add(self.append_log, script, t("run_gui.log_running_marker").format(script=script))
+                    status = self._run_piped(script)
             # For a NEEDS_TERMINAL script this includes however long the
             # xterm sat open waiting for someone to work through its
             # whiptail menus, not just the script's own work -- expected,

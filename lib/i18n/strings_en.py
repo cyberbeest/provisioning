@@ -293,6 +293,10 @@ STRINGS = {
     "run_gui.log_done_marker": "=== {script} done ({duration}) ===\n",
     "run_gui.log_failed_marker": "=== {script} FAILED ({duration}, exit {status}) ===\n",
     "run_gui.log_stopping_dependency": "Stopping here since later scripts may depend on this one.\n",
+    "run_gui.log_apt_retry": (
+        "A package server had a temporary problem. Trying {script} again in "
+        "{seconds} seconds (retry {attempt} of {total}).\n"
+    ),
     "run_gui.status_stopped": "Stopped after current script.",
     "run_gui.status_failed": "Failed: {script} -- see log above.",
     "run_gui.status_finished": "Finished successfully. You can close this window.",
