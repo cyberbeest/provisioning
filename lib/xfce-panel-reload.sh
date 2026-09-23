@@ -49,6 +49,29 @@ xfce_panel_dbus_addr() {
 	# yields empty output instead of a fatal shell redirection error.
 	XFCE_PANEL_DBUS_ADDR="$(cat "/proc/$XFCE_PANEL_PID/environ" 2>/dev/null | tr '\0' '\n' | sed -n 's/^DBUS_SESSION_BUS_ADDRESS=//p')" || true
 	XFCE_PANEL_DBUS_ADDR="${XFCE_PANEL_DBUS_ADDR:-unix:path=/run/user/$(id -u "$TARGET_USER")/bus}"
+
+	# xfce4-session is the session leader and always carries the full
+	# XDG_*/DESKTOP_SESSION environment LightDM's PAM session set up at
+	# login (XDG_CURRENT_DESKTOP, XDG_RUNTIME_DIR, XDG_DATA_DIRS, ...) --
+	# xfce4-panel itself may already be missing these if a previous run of
+	# this same helper relaunched it without them, so always source from
+	# xfce4-session, never from the (possibly already-degraded) panel
+	# process. Apps launched from the panel/whisker menu inherit whatever
+	# xfce4-panel has, and Chromium's keyring-backend detection (used by
+	# Electron's safeStorage in Signal/Element/Telegram) needs
+	# XDG_CURRENT_DESKTOP to pick a backend -- without it, those apps fail
+	# to start with an "unsupported keyring" dialog. Caught 2026-09-23 on
+	# .76 after a provisioning batch that reloaded the panel repeatedly.
+	XFCE_SESSION_ENV=()
+	local session_pid
+	session_pid="$(pgrep -u "$TARGET_USER" -x xfce4-session | head -1)" || true
+	if [ -n "$session_pid" ]; then
+		while IFS= read -r -d '' line; do
+			case "$line" in
+				XDG_*=*|DESKTOP_SESSION=*) XFCE_SESSION_ENV+=("$line") ;;
+			esac
+		done < "/proc/$session_pid/environ"
+	fi
 }
 
 xfce_panel_kill() {
@@ -170,7 +193,20 @@ xfce_panel_kill_xfconfd() {
 
 xfce_panel_launch() {
 	local old_pid="${XFCE_PANEL_PID:-}"
-	su - "$TARGET_USER" -c "DISPLAY='${DISPLAY:-:0}' DBUS_SESSION_BUS_ADDRESS='$XFCE_PANEL_DBUS_ADDR' setsid xfce4-panel >/dev/null 2>&1 < /dev/null &"
+
+	# Re-export the full XDG_*/DESKTOP_SESSION set captured in
+	# xfce_panel_dbus_addr (from xfce4-session, not just DISPLAY and the
+	# D-Bus address) so apps launched from the relaunched panel see the
+	# same environment LightDM set up at login -- see that function's
+	# comment for why this matters (Electron's keyring-backend detection
+	# in particular).
+	local env_assignments="" kv
+	for kv in "${XFCE_SESSION_ENV[@]:-}"; do
+		[ -n "$kv" ] || continue
+		env_assignments+="$(printf '%q ' "$kv")"
+	done
+
+	su - "$TARGET_USER" -c "DISPLAY='${DISPLAY:-:0}' DBUS_SESSION_BUS_ADDRESS='$XFCE_PANEL_DBUS_ADDR' ${env_assignments}setsid xfce4-panel >/dev/null 2>&1 < /dev/null &"
 
 	# Poll for a new pid rather than a flat sleep -- and require it to
 	# differ from the pid we killed, since "a process exists" alone can't
