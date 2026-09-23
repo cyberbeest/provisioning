@@ -135,6 +135,43 @@ IMAGE_EXTS = (
 )
 
 
+# Extensions that are correct for each Pillow format; the first one is what
+# a mismatched file gets offered as its rename target.
+FORMAT_EXTS = {
+    "PNG": (".png",),
+    "JPEG": (".jpg", ".jpeg"),
+    "GIF": (".gif",),
+    "BMP": (".bmp",),
+    "WEBP": (".webp",),
+    "TIFF": (".tif", ".tiff"),
+    "ICO": (".ico",),
+}
+
+
+def mismatched_extension_fix(path):
+    """If path's extension doesn't match its actual content (e.g. a JPEG
+    saved as .png, which is common for images downloaded from the web),
+    return (format_name, suggested_new_path); otherwise None."""
+    try:
+        with Image.open(path) as img:
+            fmt = img.format
+    except OSError:
+        return None
+    exts = FORMAT_EXTS.get(fmt)
+    if not exts:
+        return None
+    folder, filename = os.path.split(path)
+    stem, ext = os.path.splitext(filename)
+    if ext.lower() in exts:
+        return None
+    candidate = os.path.join(folder, stem + exts[0])
+    n = 2
+    while os.path.exists(candidate):
+        candidate = os.path.join(folder, f"{stem} ({n}){exts[0]}")
+        n += 1
+    return fmt, candidate
+
+
 def folder_images_by_date(path):
     """Sibling image files in path's folder, sorted by mtime (oldest first)."""
     folder = os.path.dirname(os.path.abspath(path)) or "."
@@ -412,10 +449,29 @@ class ImageViewerWindow(Gtk.Window):
         self.connect("key-press-event", self.on_key_press)
         self.connect("destroy", Gtk.main_quit)
 
+        vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        self.add(vbox)
+        vbox.show()
+
+        # Only shown when the file's extension doesn't match its content;
+        # nothing is renamed until the user clicks the button.
+        self.rename_bar = Gtk.InfoBar()
+        self.rename_bar.set_message_type(Gtk.MessageType.WARNING)
+        self.rename_bar.set_show_close_button(True)
+        self.rename_bar.set_no_show_all(True)
+        self.rename_label = Gtk.Label(xalign=0)
+        self.rename_label.set_line_wrap(True)
+        self.rename_bar.get_content_area().add(self.rename_label)
+        self.rename_label.show()
+        self.rename_button = self.rename_bar.add_button("Rename", Gtk.ResponseType.ACCEPT)
+        self.rename_bar.connect("response", self.on_rename_response)
+        vbox.pack_start(self.rename_bar, False, False, 0)
+        self.rename_target = None
+
         self.scroller = Gtk.ScrolledWindow()
         self.scroller.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
         self.scroller.connect("size-allocate", self.on_viewport_allocate)
-        self.add(self.scroller)
+        vbox.pack_start(self.scroller, True, True, 0)
         self.scroller.show()
 
         self.image_widget = None
@@ -430,16 +486,54 @@ class ImageViewerWindow(Gtk.Window):
         self._last_nav_time = 0
         self.load_image(path, set_initial_size=True)
 
-    def load_image(self, path, set_initial_size=False):
+    def _set_title_and_tooltip(self, path):
         filename = path.rsplit("/", 1)[-1]
         title_stem = filename.rsplit(".", 1)[0] if "." in filename else filename
         self.set_title(f"{title_stem} - Cyberbeest Images")
+        native_w, native_h = self.native_size
+        self.image_widget.set_tooltip_text(
+            f"{path}\n{native_w} × {native_h}\n{human_file_size(os.path.getsize(path))}"
+        )
+
+    def _update_rename_bar(self, path):
+        fix = mismatched_extension_fix(path)
+        if fix is None:
+            self.rename_target = None
+            self.rename_bar.hide()
+            return
+        fmt, new_path = fix
+        self.rename_target = (path, new_path)
+        self.rename_label.set_text(
+            f"This file is actually a {fmt} image, but its name says otherwise."
+        )
+        self.rename_button.set_label(f"Rename to {os.path.basename(new_path)}")
+        self.rename_bar.show()
+
+    def on_rename_response(self, _bar, response):
+        if response != Gtk.ResponseType.ACCEPT or self.rename_target is None:
+            self.rename_bar.hide()
+            return
+        old_path, new_path = self.rename_target
+        if os.path.exists(new_path):
+            # Something appeared under that name since the bar was shown.
+            self._update_rename_bar(old_path)
+            return
+        try:
+            os.rename(old_path, new_path)
+        except OSError as e:
+            self.rename_label.set_text(f"Couldn't rename: {e.strerror}")
+            return
+        if self.folder_images[self.index] == old_path:
+            self.folder_images[self.index] = new_path
+        self.rename_target = None
+        self.rename_bar.hide()
+        self._set_title_and_tooltip(new_path)
+
+    def load_image(self, path, set_initial_size=False):
         frames, native_size = load_frames(path)
         target_w, target_h = target_display_size(native_size)
-        native_w, native_h = native_size
         self.native_size = native_size
         self._last_fit_size = None
-        tooltip = f"{path}\n{native_w} × {native_h}\n{human_file_size(os.path.getsize(path))}"
 
         if self.image_widget is not None:
             # Reuse the existing widget (and its GL context, for the GL
@@ -472,7 +566,8 @@ class ImageViewerWindow(Gtk.Window):
             self.scroller.add(image_widget)
             image_widget.show()
 
-        self.image_widget.set_tooltip_text(tooltip)
+        self._set_title_and_tooltip(path)
+        self._update_rename_bar(path)
         # Only the initial open sizes the window to fit the image/screen;
         # after that the window keeps whatever size the user picked.
         if set_initial_size:
