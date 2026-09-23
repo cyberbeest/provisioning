@@ -71,7 +71,12 @@ schedule_auto_clear() {
         sleep "$delay" &
         sleep_pid=$!
         echo "$sleep_pid" > "$AUTO_CLEAR_PID_FILE"
-        wait "$sleep_pid" 2>/dev/null
+        # A killed sleep means a newer change superseded this timer -- bail
+        # out. Don't rely on the CHANGED check alone: it has 1s resolution,
+        # and copying an image often fires two clipboard events within the
+        # same second, so the superseded timer saw a "matching" stamp and
+        # cleared the brand-new image immediately.
+        wait "$sleep_pid" 2>/dev/null || exit 0
         current_changed=$(grep '^CHANGED=' "$STATE_FILE" 2>/dev/null | cut -d= -f2)
         if [ "$current_changed" = "$changed_at" ]; then
             xclip -selection clipboard -i /dev/null
