@@ -11,6 +11,7 @@ import os
 import subprocess
 import sys
 import tempfile
+from urllib.parse import unquote, urlparse
 
 # Where 58-cyberbeest-image-viewer.sh installs it. Falls back to xdg-open
 # if that script hasn't run on this machine yet.
@@ -28,8 +29,45 @@ def get_targets():
         return []
 
 
+def original_file(targets):
+    """The file the clipboard image was copied from, if the clipboard also
+    names one (e.g. Cyberbeest Image Viewer's Copy Image) and it still
+    exists -- opening that shows the real file (name, full quality,
+    animation) instead of a re-encoded temp copy."""
+    if "text/uri-list" not in targets:
+        return None
+    try:
+        out = subprocess.run(
+            ["xclip", "-selection", "clipboard", "-o", "-t", "text/uri-list"],
+            capture_output=True, text=True, timeout=2,
+        ).stdout
+    except Exception:
+        return None
+    for line in out.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        uri = urlparse(line)
+        if uri.scheme != "file":
+            return None
+        path = unquote(uri.path)
+        return path if os.path.isfile(path) else None
+    return None
+
+
+def open_image(path):
+    if os.path.exists(IMAGE_VIEWER):
+        subprocess.Popen(["python3", IMAGE_VIEWER, path])
+    else:
+        subprocess.Popen(["xdg-open", path])
+
+
 def main():
     targets = get_targets()
+    path = original_file(targets)
+    if path:
+        open_image(path)
+        return 0
     # Prefer PNG since it's lossless and every image source offers it;
     # fall back to whatever image/* target is actually there.
     mime = "image/png" if "image/png" in targets else next(
@@ -47,10 +85,7 @@ def main():
     ) as f:
         f.write(proc.stdout)
         path = f.name
-    if os.path.exists(IMAGE_VIEWER):
-        subprocess.Popen(["python3", IMAGE_VIEWER, path])
-    else:
-        subprocess.Popen(["xdg-open", path])
+    open_image(path)
     return 0
 
 

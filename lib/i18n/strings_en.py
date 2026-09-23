@@ -363,6 +363,7 @@ STRINGS = {
 
     "clipboard.label_text": "Text",
     "clipboard.label_image": "Image",
+    "clipboard.label_image_file": "Image + file",
     "clipboard.label_files": "File path(s)",
     "clipboard.label_unknown": "Unrecognized content",
     "clipboard.empty": "Clipboard is empty",

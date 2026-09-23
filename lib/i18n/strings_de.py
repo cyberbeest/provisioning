@@ -381,6 +381,7 @@ STRINGS = {
 
     "clipboard.label_text": "Text",
     "clipboard.label_image": "Bild",
+    "clipboard.label_image_file": "Bild + Datei",
     "clipboard.label_files": "Dateipfad(e)",
     "clipboard.label_unknown": "Unbekannter Inhalt",
     "clipboard.empty": "Zwischenablage ist leer",

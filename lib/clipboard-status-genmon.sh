@@ -65,6 +65,7 @@ fmt_duration() {
 case "$TYPE" in
 	text)   icon="📋" ;;
 	image)  icon="🖼" ;;
+	image_file) icon="🖼" ;;
 	files)  icon="📁" ;;
 	empty)  icon="•" ;;
 	*)      icon="❓" ;;
@@ -92,7 +93,11 @@ fi
 # with font size same as any glyph, so putting it inside the enlarged span
 # would make it just as oversized as the icon instead of a small,
 # size-independent gap.
-echo "<txt><span size='small'>&#8202;</span><span size='x-large'>${icon}</span><span size='small'>&#8202;</span></txt>"
+# Image + file gets a small folder badge after the image icon, so it's
+# distinguishable from a plain image at a glance.
+badge=""
+[ "$TYPE" = "image_file" ] && badge="<span size='large'>📁</span>"
+echo "<txt><span size='small'>&#8202;</span><span size='x-large'>${icon}</span>${badge}<span size='small'>&#8202;</span></txt>"
 
 delay=$(auto_clear_seconds)
 
@@ -108,6 +113,7 @@ else
 	case "$TYPE" in
 		text)    label="$(t clipboard_genmon.label_text)" ;;
 		image)   label="$(t clipboard_genmon.label_image)" ;;
+		image_file) label="$(t clipboard_genmon.label_image_file)" ;;
 		files)   label="$(t clipboard_genmon.label_files)" ;;
 		*)       label="$(t clipboard_genmon.label_unknown)" ;;
 	esac

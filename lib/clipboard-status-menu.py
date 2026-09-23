@@ -89,6 +89,7 @@ def status_labels():
     return {
         "text": t("clipboard.label_text"),
         "image": t("clipboard.label_image"),
+        "image_file": t("clipboard.label_image_file"),
         "files": t("clipboard.label_files"),
         "unknown": t("clipboard.label_unknown"),
     }
@@ -110,9 +111,11 @@ def status_header_text(state):
     age = fmt_age(state["CHANGED"])
     text = f"{label} ({age})" if age else label
     preview = state["PREVIEW"].strip()
-    if preview and clip_type in ("text", "files"):
+    if preview and clip_type in ("text", "files", "image_file"):
         if len(preview) > 40:
-            preview = preview[:40] + "…"
+            # A path's useful end is the file name, so shorten it from the
+            # front instead.
+            preview = preview[:40] + "…" if clip_type == "text" else "…" + preview[-40:]
         text += f": {preview}"
 
     delay = read_auto_clear_seconds()
@@ -152,6 +155,7 @@ def build_menu():
     view_actions = {
         "text": (t("clipboard.view_edit"), [VIEWER]),
         "image": (t("clipboard.show_image"), [SHOW_IMAGE]),
+        "image_file": (t("clipboard.show_image"), [SHOW_IMAGE]),
         "files": (t("clipboard.view"), [VIEWER]),
         "unknown": (t("clipboard.view"), [VIEWER]),
     }

@@ -85,6 +85,16 @@ schedule_auto_clear() {
     disown
 }
 
+# First entry of the clipboard's text/uri-list as a plain path: file://
+# prefix dropped and %XX escapes decoded (a space arrives as %20).
+first_uri_path() {
+    local uri
+    uri=$(xclip -selection clipboard -o -t text/uri-list 2>/dev/null \
+        | grep -v '^#' | head -n1 | tr -d '\r')
+    uri="${uri#file://}"
+    printf '%b' "${uri//%/\\x}"
+}
+
 classify_and_write() {
     local targets type preview
 
@@ -93,13 +103,19 @@ classify_and_write() {
     if [ -z "$targets" ]; then
         type="empty"
         preview=""
+    elif printf '%s\n' "$targets" | grep -q '^image/' \
+        && printf '%s\n' "$targets" | grep -q '^text/uri-list$'; then
+        # Both the pixels and the file they came from (e.g. Cyberbeest
+        # Image Viewer's Copy Image) -- pasting gives either, depending on
+        # the app.
+        type="image_file"
+        preview=$(first_uri_path)
     elif printf '%s\n' "$targets" | grep -q '^image/'; then
         type="image"
         preview=""
     elif printf '%s\n' "$targets" | grep -q '^text/uri-list$'; then
         type="files"
-        preview=$(xclip -selection clipboard -o -t text/uri-list 2>/dev/null \
-            | head -n1 | sed 's/^file:\/\///')
+        preview=$(first_uri_path)
     elif printf '%s\n' "$targets" | grep -qE '^(UTF8_STRING|text/plain|STRING)$'; then
         local full
         full=$(xclip -selection clipboard -o 2>/dev/null | tr '\n' ' ')
