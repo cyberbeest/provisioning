@@ -441,9 +441,28 @@ def script_lib_dependencies(script):
     return deps
 
 
+def failed_marker_for(script):
+    return os.path.join(DIR, script[:-3] + ".failed")
+
+
+def mark_script_result(script, succeeded):
+    # A failed run still writes its log, which on its own would make the
+    # log newer than the script and count it as done -- the marker keeps
+    # it pending until a run actually succeeds.
+    marker = failed_marker_for(script)
+    try:
+        if succeeded:
+            if os.path.exists(marker):
+                os.remove(marker)
+        else:
+            open(marker, "w").close()
+    except OSError:
+        pass
+
+
 def script_is_done(script):
     log = log_path_for(script)
-    if not os.path.exists(log):
+    if not os.path.exists(log) or os.path.exists(failed_marker_for(script)):
         return False
     log_mtime = os.path.getmtime(log)
     script_path = os.path.join(DIR, script)
@@ -1553,6 +1572,7 @@ class RunGuiWindow(Gtk.Window):
             GLib.idle_add(self._add_session_runtime, duration)
             GLib.idle_add(self._bump_progress)
 
+            mark_script_result(script, status == 0)
             if status == 0:
                 GLib.idle_add(
                     self.append_log, script,
