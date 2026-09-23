@@ -29,6 +29,12 @@ echo "--- Suppressing the 'security features may offer less protection' nag ---"
 # warning is a false negative here -- firejail already privatizes $HOME,
 # drops all caps, and applies its own seccomp/network isolation around the
 # whole browser, so nothing is actually less protected.
+#
+# The same policies.json also sets browser.tabs.inTitlebar=0 (system titlebar):
+# under firejail --x11=xorg Firefox is an untrusted X client, so its GTK
+# client-side decorations get no working alpha -- the shadow margin renders
+# as a solid black border and CSD resize/move requests don't reach xfwm4.
+# Letting xfwm4 draw the frame fixes both.
 install -d -m 755 /usr/lib/firefox-esr/distribution
 install -m 644 "$DIR/lib/firefox-policies.json" /usr/lib/firefox-esr/distribution/policies.json
 

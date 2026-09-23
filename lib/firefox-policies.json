@@ -4,6 +4,10 @@
 			"security.sandbox.warn_unprivileged_namespaces": {
 				"Value": false,
 				"Status": "default"
+			},
+			"browser.tabs.inTitlebar": {
+				"Value": 0,
+				"Status": "default"
 			}
 		}
 	}
