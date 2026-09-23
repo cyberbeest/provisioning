@@ -2,9 +2,9 @@
 # Installs Cyberbeest Image Viewer (see lib/cyberbeest_image_viewer.py) as
 # the default double-click handler for image files in Thunar/Files.
 #
-# Deliberately minimal for now: no zoom/pan/next-image controls, just a
-# window at the image's native pixel size (downscaled only if it's bigger
-# than the screen). That downscale is gamma-correct -- sRGB is a
+# Opens at the image's native pixel size (downscaled only if it's bigger
+# than the screen), with a collapsible control bar for zoom, rename and
+# copy-to-clipboard. That downscale is gamma-correct -- sRGB is a
 # gamma-encoded signal, so averaging pixel bytes directly (what most image
 # scalers do) darkens fine bright detail. The image is uploaded at full
 # resolution as a GL_SRGB8_ALPHA8 texture, so the GPU's texture unit
