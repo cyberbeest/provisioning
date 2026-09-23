@@ -66,7 +66,7 @@ case "$TYPE" in
 	text)   icon="📋" ;;
 	image)  icon="🖼" ;;
 	files)  icon="📁" ;;
-	empty)  icon="⬜" ;;
+	empty)  icon="•" ;;
 	*)      icon="❓" ;;
 esac
 
