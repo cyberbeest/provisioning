@@ -319,6 +319,8 @@ AUTOSTART_FILE = os.path.expanduser("~/.config/autostart/cyberbeest-provisioning
 
 MANUAL_TODO_RE = re.compile(r"^MANUAL_TODO:\s*(.+?)\s*$", re.MULTILINE)
 REBOOT_TODO_KEY = "__reboot__"
+# One "send a report" todo per failed script, removed again once it succeeds.
+REPORT_TODO_PREFIX = "__report__:"
 
 STATUS_STYLE = {
     "pending": (t("run_gui.state_pending"), "#8a8a8a"),
@@ -808,6 +810,9 @@ class RunGuiWindow(Gtk.Window):
         self.select_vm_scripts_item = Gtk.MenuItem(label=t("run_gui.menu_select_vm_scripts"))
         self.select_vm_scripts_item.connect("activate", lambda _mi: self._select_vm_scripts())
         more_menu.append(self.select_vm_scripts_item)
+        self.switch_to_update_item = Gtk.MenuItem(label=t("run_gui.menu_switch_to_update"))
+        self.switch_to_update_item.connect("activate", self.on_switch_to_update)
+        more_menu.append(self.switch_to_update_item)
         more_menu.show_all()
         self.more_menu_button.set_popup(more_menu)
         button_row1.pack_start(self.more_menu_button, False, False, 0)
@@ -1034,6 +1039,11 @@ class RunGuiWindow(Gtk.Window):
     def _open_password_settings(self, _button):
         subprocess.Popen([os.path.expanduser("~/.local/bin/cyberbeest-change-password")])
 
+    def _open_report(self, script, status):
+        # Separate process: the report window shows the scrubbed log and
+        # sends nothing until its owner clicks Send.
+        subprocess.Popen([sys.executable, os.path.join(DIR, "lib", "cyberbeest-send-report.py"), script, str(status)])
+
     def _do_reboot(self, _button):
         dialog = Gtk.MessageDialog(
             transient_for=self,
@@ -1182,6 +1192,8 @@ class RunGuiWindow(Gtk.Window):
         self.run_all_button.set_sensitive(not busy)
         self.stop_button.set_sensitive(busy)
         self.abort_download_button.set_sensitive(busy)
+        # Closing mid-run would leave the root process running unattended.
+        self.switch_to_update_item.set_sensitive(not busy)
         # Existing todo entries' action/dismiss buttons are things-to-do-once
         # provisioning is done -- re-lock/unlock them for the busy state that
         # just changed, since _rebuild_todo_pane only sets sensitivity at the
@@ -1508,6 +1520,7 @@ class RunGuiWindow(Gtk.Window):
                     t("run_gui.log_done_marker").format(script=script, duration=format_duration(duration)),
                 )
                 GLib.idle_add(self.set_row_status, script, "done", duration)
+                GLib.idle_add(self._dismiss_todo, REPORT_TODO_PREFIX + script)
             else:
                 failed_script = script
                 # Could be a stale/wrong cached password as easily as the
@@ -1522,6 +1535,13 @@ class RunGuiWindow(Gtk.Window):
                     ),
                 )
                 GLib.idle_add(self.set_row_status, script, "failed", duration)
+                GLib.idle_add(
+                    self._add_todo,
+                    REPORT_TODO_PREFIX + script,
+                    t("run_gui.todo_report_text").format(script=script),
+                    (t("run_gui.todo_report_action"),
+                     lambda _b, s=script, st=status: self._open_report(s, st)),
+                )
                 if remaining:
                     GLib.idle_add(
                         self.append_log,
@@ -1653,6 +1673,14 @@ class RunGuiWindow(Gtk.Window):
             env=self._sudo_env(),
         )
         self.status_label.set_text(t("run_gui.status_abort_download_killed"))
+
+    def on_switch_to_update(self, _item):
+        # Cyberbeest Update pulls the latest commits and then reopens this
+        # window itself, so this one just gets out of the way.
+        installed = os.path.expanduser("~/.local/bin/cyberbeest-update.sh")
+        updater = installed if os.path.exists(installed) else os.path.join(DIR, "lib", "cyberbeest-update.sh")
+        subprocess.Popen([updater], start_new_session=True)
+        self.destroy()
 
     def on_stop(self, _button):
         if not self.busy:

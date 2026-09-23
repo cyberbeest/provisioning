@@ -258,6 +258,7 @@ STRINGS = {
     "run_gui.more_actions_tooltip": "More actions",
     "run_gui.menu_disable_autostart": "Disable auto-provisioning on login",
     "run_gui.menu_select_vm_scripts": "Select scripts for VM install",
+    "run_gui.menu_switch_to_update": "Close and check for updates (Cyberbeest Update)",
     "run_gui.total_time": "Total run time this session: {duration}",
     "run_gui.status_idle": "Idle. Double-click a script below to run just that one.",
     "run_gui.todo_frame_title": "Things to do after the provisioning completed",
@@ -378,4 +379,27 @@ STRINGS = {
     "clipboard.autoclear_title": "Clipboard Auto-Clear",
     "clipboard.autoclear_prompt": "Automatically clear the clipboard after:",
     "clipboard.never": "Never",
+
+    "report.window_title": "Send Failure Report",
+    "report.intro": (
+        "{script} failed. You can send this report to the Cyberbeest team so "
+        "we can fix it. This is exactly what will be sent -- edit or delete "
+        "anything you like first."
+    ),
+    "report.privacy_note": (
+        "Personal details like your name, network names and addresses have "
+        "been replaced. The report contains no machine ID, and the server "
+        "does not store your IP address."
+    ),
+    "report.no_log": "(no log file found)",
+    "report.send": "Send",
+    "report.cancel": "Cancel",
+    "report.close": "Close",
+    "report.sending": "Sending...",
+    "report.sent": "Sent, thank you! Report ID: {reply}",
+    "report.failed": "Could not send the report: {error}",
+    "report.empty": "The report is empty -- nothing to send.",
+    "report.too_large": "The report is too large (max 64 KB). Please shorten it.",
+    "run_gui.todo_report_text": "{script} failed. Sending a report helps us fix it.",
+    "run_gui.todo_report_action": "Send Report...",
 }

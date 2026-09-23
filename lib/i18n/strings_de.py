@@ -271,6 +271,7 @@ STRINGS = {
     "run_gui.more_actions_tooltip": "Weitere Aktionen",
     "run_gui.menu_disable_autostart": "Automatisches Provisioning beim Anmelden deaktivieren",
     "run_gui.menu_select_vm_scripts": "Skripte für VM-Installation auswählen",
+    "run_gui.menu_switch_to_update": "Schließen und nach Updates suchen (Cyberbeest Update)",
     "run_gui.total_time": "Laufzeit in dieser Sitzung: {duration}",
     "run_gui.status_idle": "Bereit. Doppelklick auf ein Skript unten, um nur dieses auszuführen.",
     "run_gui.todo_frame_title": "Nach dem Provisioning noch zu erledigen",
@@ -396,4 +397,27 @@ STRINGS = {
     "clipboard.autoclear_title": "Automatisches Leeren der Zwischenablage",
     "clipboard.autoclear_prompt": "Zwischenablage automatisch leeren nach:",
     "clipboard.never": "Nie",
+
+    "report.window_title": "Fehlerbericht senden",
+    "report.intro": (
+        "{script} ist fehlgeschlagen. Du kannst diesen Bericht an das "
+        "Cyberbeest-Team senden, damit wir den Fehler beheben können. Genau "
+        "dieser Text wird gesendet -- du kannst vorher alles ändern oder löschen."
+    ),
+    "report.privacy_note": (
+        "Persönliche Angaben wie dein Name, Netzwerknamen und Adressen wurden "
+        "ersetzt. Der Bericht enthält keine Gerätekennung, und der Server "
+        "speichert deine IP-Adresse nicht."
+    ),
+    "report.no_log": "(keine Protokolldatei gefunden)",
+    "report.send": "Senden",
+    "report.cancel": "Abbrechen",
+    "report.close": "Schließen",
+    "report.sending": "Wird gesendet...",
+    "report.sent": "Gesendet, danke! Berichts-ID: {reply}",
+    "report.failed": "Der Bericht konnte nicht gesendet werden: {error}",
+    "report.empty": "Der Bericht ist leer -- nichts zu senden.",
+    "report.too_large": "Der Bericht ist zu groß (max. 64 KB). Bitte kürze ihn.",
+    "run_gui.todo_report_text": "{script} ist fehlgeschlagen. Ein Bericht hilft uns, den Fehler zu beheben.",
+    "run_gui.todo_report_action": "Bericht senden...",
 }
