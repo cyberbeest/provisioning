@@ -634,13 +634,17 @@ class ImageViewerWindow(Gtk.Window):
         bar.get_style_context().add_provider(_BAR_CSS, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
         bar.set_no_show_all(True)
 
-        bar.pack_start(_icon_button("zoom-out-symbolic", "Zoom Out (-)", lambda: self.zoom_by(1 / ZOOM_STEP)), False, False, 0)
+        # Zoom controls sit centered in the window; the menu and collapse
+        # buttons stay at the right edge.
+        zoom_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=2)
+        zoom_box.pack_start(_icon_button("zoom-out-symbolic", "Zoom Out (-)", lambda: self.zoom_by(1 / ZOOM_STEP)), False, False, 0)
         # Fixed width so the buttons don't shift as the percentage changes.
         self.zoom_label = Gtk.Label(width_chars=10)
-        bar.pack_start(self.zoom_label, False, False, 0)
-        bar.pack_start(_icon_button("zoom-in-symbolic", "Zoom In (+)", lambda: self.zoom_by(ZOOM_STEP)), False, False, 0)
-        bar.pack_start(_icon_button("zoom-original-symbolic", "Zoom 1:1 (0)", self.zoom_to_native), False, False, 0)
-        bar.pack_start(_icon_button("zoom-fit-best-symbolic", "Zoom Fit (f)", self.zoom_to_fit), False, False, 0)
+        zoom_box.pack_start(self.zoom_label, False, False, 0)
+        zoom_box.pack_start(_icon_button("zoom-in-symbolic", "Zoom In (+)", lambda: self.zoom_by(ZOOM_STEP)), False, False, 0)
+        zoom_box.pack_start(_icon_button("zoom-original-symbolic", "Zoom 1:1 (0)", self.zoom_to_native), False, False, 0)
+        zoom_box.pack_start(_icon_button("zoom-fit-best-symbolic", "Zoom Fit (f)", self.zoom_to_fit), False, False, 0)
+        bar.set_center_widget(zoom_box)
 
         bar.pack_end(_icon_button("pan-up-symbolic", "Hide control bar", lambda: self.set_bar_collapsed(True)), False, False, 0)
 
