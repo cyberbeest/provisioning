@@ -7,11 +7,14 @@ image" + Show-button step didn't add any information over just opening
 the image immediately.
 """
 
+import os
 import subprocess
 import sys
 import tempfile
 
-IMAGE_VIEWER_CMD = ["python3", "/home/cyberbeest/claude/cyberbeest_image_viewer.py"]
+# Where 58-cyberbeest-image-viewer.sh installs it. Falls back to xdg-open
+# if that script hasn't run on this machine yet.
+IMAGE_VIEWER = os.path.expanduser("~/.local/bin/cyberbeest_image_viewer.py")
 
 
 def get_targets():
@@ -44,7 +47,10 @@ def main():
     ) as f:
         f.write(proc.stdout)
         path = f.name
-    subprocess.Popen(IMAGE_VIEWER_CMD + [path])
+    if os.path.exists(IMAGE_VIEWER):
+        subprocess.Popen(["python3", IMAGE_VIEWER, path])
+    else:
+        subprocess.Popen(["xdg-open", path])
     return 0
 
 
