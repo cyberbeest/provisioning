@@ -243,8 +243,8 @@ def vm_update_status():
         with open(VM_LIB, encoding="utf-8") as f:
             pins = dict(re.findall(r'^(IMAGE_\w+)="([^"]*)"$', f.read(), re.MULTILINE))
         pinned = pins["IMAGE_SHA256"]
-        download_bytes = int(pins["IMAGE_DOWNLOAD_BYTES"])
-        new_bytes = download_bytes + int(pins["IMAGE_DISK_BYTES"])
+        # The download itself becomes the VM's disk.
+        download_bytes = new_bytes = int(pins["IMAGE_BYTES"])
     except (OSError, KeyError, ValueError):
         return None
     try:
