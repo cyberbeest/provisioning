@@ -1,5 +1,7 @@
 __pycache__/
 *.pyc
 *.log
+*.failed
+*.i18n-hash
 *.so
 *.mo

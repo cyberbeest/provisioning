@@ -8,9 +8,9 @@ signal, so averaging pixel values directly (as most image scalers do)
 darkens fine detail like thin bright lines on a dark background. The
 fix is to decode to linear light, resize, then re-encode to sRGB.
 
-Single-file, single-image tool meant to be the double-click handler for
-image mimetypes in Thunar. No zoom/pan/next-image controls yet -- see
-[[cyberbeest_settings_architecture]] pattern of starting minimal.
+Single-file tool meant to be the double-click handler for image
+mimetypes in Thunar. A collapsible control bar on top shows the zoom
+level and holds the zoom buttons plus a menu (Rename, Copy Image).
 """
 
 import os
@@ -133,6 +133,43 @@ def pil_to_pixbuf(img):
 IMAGE_EXTS = (
     ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".tif", ".tiff", ".ico",
 )
+
+
+# Extensions that are correct for each Pillow format; the first one is what
+# a mismatched file gets offered as its rename target.
+FORMAT_EXTS = {
+    "PNG": (".png",),
+    "JPEG": (".jpg", ".jpeg"),
+    "GIF": (".gif",),
+    "BMP": (".bmp",),
+    "WEBP": (".webp",),
+    "TIFF": (".tif", ".tiff"),
+    "ICO": (".ico",),
+}
+
+
+def mismatched_extension_fix(path):
+    """If path's extension doesn't match its actual content (e.g. a JPEG
+    saved as .png, which is common for images downloaded from the web),
+    return (format_name, suggested_new_path); otherwise None."""
+    try:
+        with Image.open(path) as img:
+            fmt = img.format
+    except OSError:
+        return None
+    exts = FORMAT_EXTS.get(fmt)
+    if not exts:
+        return None
+    folder, filename = os.path.split(path)
+    stem, ext = os.path.splitext(filename)
+    if ext.lower() in exts:
+        return None
+    candidate = os.path.join(folder, stem + exts[0])
+    n = 2
+    while os.path.exists(candidate):
+        candidate = os.path.join(folder, f"{stem} ({n}){exts[0]}")
+        n += 1
+    return fmt, candidate
 
 
 def folder_images_by_date(path):
@@ -390,11 +427,189 @@ def make_cpu_image_widget(frames):
 _BLACK_BG_CSS = Gtk.CssProvider()
 _BLACK_BG_CSS.load_from_data(b"window { background-color: black; }")
 
+# The window itself is black (image backdrop), so the control bar needs
+# the theme's normal background back to be readable.
+_BAR_CSS = Gtk.CssProvider()
+_BAR_CSS.load_from_data(b"box { background-color: @theme_bg_color; padding: 2px 4px; }")
+
+CONFIG_DIR = os.path.expanduser("~/.config/cyberbeest")
+BAR_COLLAPSED_FILE = os.path.join(CONFIG_DIR, "image-viewer-bar-collapsed")
+
+
+def _icon_button(icon_name, tooltip, handler):
+    button = Gtk.Button.new_from_icon_name(icon_name, Gtk.IconSize.BUTTON)
+    button.set_relief(Gtk.ReliefStyle.NONE)
+    button.set_tooltip_text(tooltip)
+    # Keep keyboard focus off the bar, so arrow keys / Enter keep going
+    # to the viewer instead of moving between or clicking bar buttons.
+    button.set_can_focus(False)
+    button.connect("clicked", lambda _b: handler())
+    return button
+
+
+def _menu_item_with_hotkey(label, hotkey, handler):
+    item = Gtk.MenuItem()
+    row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=20)
+    row.pack_start(Gtk.Label(label=label, xalign=0), True, True, 0)
+    row.pack_start(Gtk.Label(label=hotkey, xalign=1), False, False, 0)
+    item.add(row)
+    item.connect("activate", lambda _i: handler())
+    return item
+
+
+class RenameDialog(Gtk.Dialog):
+    """Edits only the part before the extension by default, since changing
+    the extension is almost never what's wanted; a checkbox unlocks the
+    whole filename for the rare case where it is."""
+
+    def __init__(self, parent, path):
+        super().__init__(title="Rename", transient_for=parent, modal=True)
+        self.folder = os.path.dirname(path)
+        self.old_name = os.path.basename(path)
+        stem, self.ext = os.path.splitext(self.old_name)
+        self.new_path = None
+
+        self.add_button("Cancel", Gtk.ResponseType.CANCEL)
+        self.add_button("Rename", Gtk.ResponseType.OK)
+        self.set_default_response(Gtk.ResponseType.OK)
+
+        box = self.get_content_area()
+        box.set_spacing(8)
+        box.set_border_width(12)
+
+        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=2)
+        self.entry = Gtk.Entry(text=stem, activates_default=True, width_chars=40)
+        row.pack_start(self.entry, True, True, 0)
+        self.ext_label = Gtk.Label(label=self.ext)
+        row.pack_start(self.ext_label, False, False, 0)
+        box.pack_start(row, False, False, 0)
+
+        self.whole_check = Gtk.CheckButton(label="Rename the whole file name, including the extension")
+        self.whole_check.connect("toggled", self.on_whole_toggled)
+        # Nothing to unlock for a file without an extension.
+        self.whole_check.set_sensitive(bool(self.ext))
+        box.pack_start(self.whole_check, False, False, 0)
+
+        self.error_label = Gtk.Label(xalign=0)
+        self.error_label.set_line_wrap(True)
+        self.error_label.set_no_show_all(True)
+        box.pack_start(self.error_label, False, False, 0)
+
+        self.connect("response", self.on_response)
+        box.show_all()
+        self.entry.grab_focus()
+
+    def on_whole_toggled(self, check):
+        # Carry over whatever was already typed rather than resetting.
+        if check.get_active():
+            self.entry.set_text(self.entry.get_text() + self.ext)
+            self.ext_label.hide()
+            self.entry.grab_focus()
+            self.entry.select_region(0, -1)
+        else:
+            text = self.entry.get_text()
+            stem, ext = os.path.splitext(text)
+            if ext:
+                self.ext = ext
+            self.entry.set_text(stem if ext else text)
+            self.ext_label.set_text(self.ext)
+            self.ext_label.show()
+            self.entry.grab_focus()
+
+    def _new_name(self):
+        text = self.entry.get_text().strip()
+        if self.whole_check.get_active():
+            return text
+        return text + self.ext if text else ""
+
+    def _show_error(self, text):
+        self.error_label.set_text(text)
+        self.error_label.show()
+
+    def on_response(self, _dialog, response):
+        if response != Gtk.ResponseType.OK:
+            return
+        new_name = self._new_name()
+        if not new_name or new_name in (".", ".."):
+            self._show_error("The name can't be empty.")
+        elif "/" in new_name:
+            self._show_error("The name can't contain a \"/\".")
+        elif new_name == self.old_name:
+            return  # unchanged: just close
+        elif os.path.lexists(os.path.join(self.folder, new_name)):
+            self._show_error(f"A file named \"{new_name}\" already exists here.")
+        else:
+            try:
+                os.rename(os.path.join(self.folder, self.old_name), os.path.join(self.folder, new_name))
+            except OSError as e:
+                self._show_error(f"Couldn't rename: {e.strerror}")
+            else:
+                self.new_path = os.path.join(self.folder, new_name)
+                return
+        # Keep the dialog open so the user can fix the name.
+        self.stop_emission_by_name("response")
+
 
 ZOOM_STEP = 1.25
 MIN_ZOOM_SCALE = 0.02
 SELF_CHECK_INTERVAL_S = 2
 NAV_DEBOUNCE_MS = 200
+
+
+class ClipboardOwner:
+    """Serves a copied image on the CLIPBOARD selection in several formats
+    at once. Gtk.Clipboard.set_with_data() isn't usable from Python, so
+    this goes through the lower-level selection API on an invisible
+    widget instead."""
+
+    INFO_IMAGE, INFO_URIS, INFO_GNOME_FILES = range(3)
+
+    def __init__(self):
+        self.widget = Gtk.Invisible()
+        self.widget.connect("selection-get", self.on_selection_get)
+        self.widget.connect("selection-clear-event", self.on_selection_clear)
+        self.pixbuf = None
+        self.uri = None
+
+    def offer(self, pixbuf, path):
+        self.pixbuf = pixbuf
+        self.uri = GLib.filename_to_uri(os.path.abspath(path))
+        # Built by hand: Gtk.target_table_new_from_list() segfaults under
+        # PyGObject. PNG first, as the lossless default.
+        targets = [
+            Gtk.TargetEntry.new(mime, 0, self.INFO_IMAGE)
+            for mime in ("image/png", "image/bmp", "image/tiff", "image/jpeg")
+        ] + [
+            Gtk.TargetEntry.new("text/uri-list", 0, self.INFO_URIS),
+            Gtk.TargetEntry.new("x-special/gnome-copied-files", 0, self.INFO_GNOME_FILES),
+        ]
+        Gtk.selection_clear_targets(self.widget, Gdk.SELECTION_CLIPBOARD)
+        Gtk.selection_add_targets(self.widget, Gdk.SELECTION_CLIPBOARD, targets)
+        Gtk.selection_owner_set(self.widget, Gdk.SELECTION_CLIPBOARD, Gdk.CURRENT_TIME)
+
+    def owns_clipboard(self):
+        return self.pixbuf is not None
+
+    def on_selection_get(self, _widget, data, info, _time):
+        if self.pixbuf is None:
+            return
+        if info == self.INFO_IMAGE:
+            data.set_pixbuf(self.pixbuf)
+        elif info == self.INFO_URIS:
+            data.set_uris([self.uri])
+        elif info == self.INFO_GNOME_FILES:
+            data.set(data.get_target(), 8, f"copy\n{self.uri}".encode())
+
+    def on_selection_clear(self, _widget, _event):
+        self.pixbuf = None
+        self.uri = None
+        # All viewer windows closed and only the clipboard kept us alive.
+        if not any(isinstance(w, ImageViewerWindow) and w.get_visible() for w in Gtk.Window.list_toplevels()):
+            Gtk.main_quit()
+        return False
+
+
+_clipboard_owner = None
 
 
 class ImageViewerWindow(Gtk.Window):
@@ -410,13 +625,51 @@ class ImageViewerWindow(Gtk.Window):
             self.index = 0
 
         self.connect("key-press-event", self.on_key_press)
-        self.connect("destroy", Gtk.main_quit)
+        self.connect("destroy", self.on_destroy)
+
+        vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        self.add(vbox)
+        vbox.show()
+
+        # Only shown when the file's extension doesn't match its content;
+        # nothing is renamed until the user clicks the button.
+        self.rename_bar = Gtk.InfoBar()
+        self.rename_bar.set_message_type(Gtk.MessageType.WARNING)
+        self.rename_bar.set_show_close_button(True)
+        self.rename_bar.set_no_show_all(True)
+        self.rename_label = Gtk.Label(xalign=0)
+        self.rename_label.set_line_wrap(True)
+        self.rename_bar.get_content_area().add(self.rename_label)
+        self.rename_label.show()
+        self.rename_button = self.rename_bar.add_button("Rename", Gtk.ResponseType.ACCEPT)
+        self.rename_bar.connect("response", self.on_rename_response)
+        vbox.pack_start(self.rename_bar, False, False, 0)
+        self.rename_target = None
+
+        self.control_bar = self._build_control_bar()
+        vbox.pack_start(self.control_bar, False, False, 0)
+        vbox.reorder_child(self.control_bar, 0)
+
+        overlay = Gtk.Overlay()
+        vbox.pack_start(overlay, True, True, 0)
+        overlay.show()
 
         self.scroller = Gtk.ScrolledWindow()
         self.scroller.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
         self.scroller.connect("size-allocate", self.on_viewport_allocate)
-        self.add(self.scroller)
+        overlay.add(self.scroller)
         self.scroller.show()
+
+        # Shown over the image's top-right corner only while the bar is
+        # collapsed. Right margin leaves the vertical scrollbar clickable.
+        self.expand_button = _icon_button("pan-down-symbolic", "Show control bar", lambda: self.set_bar_collapsed(False))
+        self.expand_button.get_style_context().add_class("osd")
+        self.expand_button.set_halign(Gtk.Align.END)
+        self.expand_button.set_valign(Gtk.Align.START)
+        self.expand_button.set_margin_top(6)
+        self.expand_button.set_margin_end(18)
+        self.expand_button.set_no_show_all(True)
+        overlay.add_overlay(self.expand_button)
 
         self.image_widget = None
         self.set_zoom_size = None
@@ -428,18 +681,147 @@ class ImageViewerWindow(Gtk.Window):
         self._last_fit_size = None
         self.drag_state = None
         self._last_nav_time = 0
+        self.frames = None
+        self.set_bar_collapsed(os.path.exists(BAR_COLLAPSED_FILE), remember=False)
         self.load_image(path, set_initial_size=True)
 
-    def load_image(self, path, set_initial_size=False):
+    def _build_control_bar(self):
+        bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=2)
+        bar.get_style_context().add_provider(_BAR_CSS, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+        bar.set_no_show_all(True)
+
+        # Zoom controls sit centered in the window; the menu and collapse
+        # buttons stay at the right edge.
+        zoom_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=2)
+        zoom_box.pack_start(_icon_button("zoom-out-symbolic", "Zoom Out (-)", lambda: self.zoom_by(1 / ZOOM_STEP)), False, False, 0)
+        # Fixed width so the buttons don't shift as the percentage changes.
+        self.zoom_label = Gtk.Label(width_chars=10)
+        zoom_box.pack_start(self.zoom_label, False, False, 0)
+        zoom_box.pack_start(_icon_button("zoom-in-symbolic", "Zoom In (+)", lambda: self.zoom_by(ZOOM_STEP)), False, False, 0)
+        zoom_box.pack_start(_icon_button("zoom-original-symbolic", "Zoom 1:1 (0)", self.zoom_to_native), False, False, 0)
+        zoom_box.pack_start(_icon_button("zoom-fit-best-symbolic", "Zoom Fit (f)", self.zoom_to_fit), False, False, 0)
+        bar.set_center_widget(zoom_box)
+
+        bar.pack_end(_icon_button("pan-up-symbolic", "Hide control bar", lambda: self.set_bar_collapsed(True)), False, False, 0)
+
+        menu = Gtk.Menu()
+        menu.append(_menu_item_with_hotkey("Rename…", "F2", self.show_rename_dialog))
+        menu.append(_menu_item_with_hotkey("Copy Image", "Ctrl+C", self.copy_image))
+        menu.show_all()
+        menu_button = Gtk.MenuButton(popup=menu, relief=Gtk.ReliefStyle.NONE, can_focus=False)
+        menu_button.set_image(Gtk.Image.new_from_icon_name("open-menu-symbolic", Gtk.IconSize.BUTTON))
+        menu_button.set_tooltip_text("Menu")
+        bar.pack_end(menu_button, False, False, 0)
+
+        for child in bar.get_children():
+            child.show_all()
+        return bar
+
+    def set_bar_collapsed(self, collapsed, remember=True):
+        self.control_bar.set_visible(not collapsed)
+        self.expand_button.set_visible(collapsed)
+        if not remember:
+            return
+        try:
+            if collapsed:
+                os.makedirs(CONFIG_DIR, exist_ok=True)
+                open(BAR_COLLAPSED_FILE, "w").close()
+            elif os.path.exists(BAR_COLLAPSED_FILE):
+                os.remove(BAR_COLLAPSED_FILE)
+        except OSError:
+            pass
+
+    def _update_zoom_label(self):
+        percent = round(self._current_scale() * 100)
+        self.zoom_label.set_text(f"Fit {percent}%" if self.zoom_mode == "fit" else f"{percent}%")
+
+    def current_path(self):
+        return self.folder_images[self.index]
+
+    def _path_renamed(self, old_path, new_path):
+        if self.folder_images[self.index] == old_path:
+            self.folder_images[self.index] = new_path
+        self._set_title_and_tooltip(new_path)
+        self._update_rename_bar(new_path)
+
+    def show_rename_dialog(self):
+        dialog = RenameDialog(self, self.current_path())
+        dialog.run()
+        new_path = dialog.new_path
+        dialog.destroy()
+        if new_path is not None:
+            self._path_renamed(os.path.join(dialog.folder, dialog.old_name), new_path)
+
+    def copy_image(self):
+        if not self.frames:
+            return
+        # Offered as both pixels and a file reference; each app pastes
+        # whichever it understands (Files makes an exact copy of the file,
+        # image editors take the pixels). The pixels are the frame on
+        # screen (first frame for an animated GIF), EXIF-rotated as shown.
+        global _clipboard_owner
+        if _clipboard_owner is None:
+            _clipboard_owner = ClipboardOwner()
+        _clipboard_owner.offer(pil_to_pixbuf(self.frames[0][0]), self.current_path())
+
+    def on_destroy(self, _window):
+        if isinstance(self.image_widget, GLImageArea):
+            # Stop a GIF's frame timer from touching the dead GL context.
+            self.image_widget.generation += 1
+        self.frames = None
+        # No clipboard manager runs on Cyberbeest, so a copy only lives as
+        # long as this process does: keep running windowless until
+        # something else takes over the clipboard.
+        if _clipboard_owner is None or not _clipboard_owner.owns_clipboard():
+            Gtk.main_quit()
+
+    def _set_title_and_tooltip(self, path):
         filename = path.rsplit("/", 1)[-1]
         title_stem = filename.rsplit(".", 1)[0] if "." in filename else filename
         self.set_title(f"{title_stem} - Cyberbeest Images")
+        native_w, native_h = self.native_size
+        self.image_widget.set_tooltip_text(
+            f"{path}\n{native_w} × {native_h}\n{human_file_size(os.path.getsize(path))}"
+        )
+
+    def _update_rename_bar(self, path):
+        fix = mismatched_extension_fix(path)
+        if fix is None:
+            self.rename_target = None
+            self.rename_bar.hide()
+            return
+        fmt, new_path = fix
+        self.rename_target = (path, new_path)
+        self.rename_label.set_text(
+            f"This file is actually a {fmt} image, but its name says otherwise."
+        )
+        self.rename_button.set_label(f"Rename to {os.path.basename(new_path)}")
+        self.rename_bar.show()
+
+    def on_rename_response(self, _bar, response):
+        if response != Gtk.ResponseType.ACCEPT or self.rename_target is None:
+            self.rename_bar.hide()
+            return
+        old_path, new_path = self.rename_target
+        if os.path.exists(new_path):
+            # Something appeared under that name since the bar was shown.
+            self._update_rename_bar(old_path)
+            return
+        try:
+            os.rename(old_path, new_path)
+        except OSError as e:
+            self.rename_label.set_text(f"Couldn't rename: {e.strerror}")
+            return
+        self.rename_target = None
+        self.rename_bar.hide()
+        self._path_renamed(old_path, new_path)
+
+    def load_image(self, path, set_initial_size=False):
         frames, native_size = load_frames(path)
         target_w, target_h = target_display_size(native_size)
-        native_w, native_h = native_size
+        self.frames = frames
         self.native_size = native_size
         self._last_fit_size = None
-        tooltip = f"{path}\n{native_w} × {native_h}\n{human_file_size(os.path.getsize(path))}"
 
         if self.image_widget is not None:
             # Reuse the existing widget (and its GL context, for the GL
@@ -472,11 +854,13 @@ class ImageViewerWindow(Gtk.Window):
             self.scroller.add(image_widget)
             image_widget.show()
 
-        self.image_widget.set_tooltip_text(tooltip)
+        self._set_title_and_tooltip(path)
+        self._update_rename_bar(path)
         # Only the initial open sizes the window to fit the image/screen;
         # after that the window keeps whatever size the user picked.
         if set_initial_size:
-            self.set_default_size(target_w, target_h)
+            bar_h = self.control_bar.get_preferred_height()[1] if self.control_bar.get_visible() else 0
+            self.set_default_size(target_w, target_h + bar_h)
         # Every newly shown image starts back at fit, regardless of
         # whatever zoom level was left over from the previous one.
         self.zoom_mode = "fit"
@@ -519,12 +903,14 @@ class ImageViewerWindow(Gtk.Window):
         if (w, h) != self._last_fit_size:
             self._last_fit_size = (w, h)
             self.set_zoom_size(w, h)
+        self._update_zoom_label()
 
     def _apply_manual_zoom(self):
         if self.native_size is None or self.set_zoom_size is None:
             return
         nw, nh = self.native_size
         self.set_zoom_size(max(1, round(nw * self.zoom_scale)), max(1, round(nh * self.zoom_scale)))
+        self._update_zoom_label()
 
     def _current_scale(self):
         if self.zoom_mode == "manual" or self.native_size is None:
@@ -554,18 +940,14 @@ class ImageViewerWindow(Gtk.Window):
     def show_context_menu(self, event):
         menu = Gtk.Menu()
         for label, hotkey, handler in (
-            ("Zoom In", "+", lambda _i: self.zoom_by(ZOOM_STEP)),
-            ("Zoom Out", "-", lambda _i: self.zoom_by(1 / ZOOM_STEP)),
-            ("Zoom 1:1", "0", lambda _i: self.zoom_to_native()),
-            ("Zoom Fit", "f", lambda _i: self.zoom_to_fit()),
+            ("Zoom In", "+", lambda: self.zoom_by(ZOOM_STEP)),
+            ("Zoom Out", "-", lambda: self.zoom_by(1 / ZOOM_STEP)),
+            ("Zoom 1:1", "0", self.zoom_to_native),
+            ("Zoom Fit", "f", self.zoom_to_fit),
         ):
-            item = Gtk.MenuItem()
-            row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=20)
-            row.pack_start(Gtk.Label(label=label, xalign=0), True, True, 0)
-            row.pack_start(Gtk.Label(label=hotkey, xalign=1), False, False, 0)
-            item.add(row)
-            item.connect("activate", handler)
-            menu.append(item)
+            menu.append(_menu_item_with_hotkey(label, hotkey, handler))
+        menu.append(Gtk.SeparatorMenuItem())
+        menu.append(_menu_item_with_hotkey("Copy Image", "Ctrl+C", self.copy_image))
         menu.show_all()
         menu.popup_at_pointer(event)
 
@@ -604,6 +986,12 @@ class ImageViewerWindow(Gtk.Window):
         if event.keyval in (Gdk.KEY_Escape, Gdk.KEY_q):
             self.destroy()
             return True
+        if event.keyval in (Gdk.KEY_c, Gdk.KEY_C) and event.state & Gdk.ModifierType.CONTROL_MASK:
+            self.copy_image()
+            return True
+        if event.keyval == Gdk.KEY_F2:
+            self.show_rename_dialog()
+            return True
         if event.keyval == Gdk.KEY_Left:
             if self._debounce_nav(event.time):
                 self.show_offset(-1)
@@ -631,6 +1019,10 @@ def _check_self_modified(self_path, initial_mtime):
     """Re-exec the running process if its own script file changed on disk
     (e.g. a git pull + reinstall while it's open), so the user doesn't
     have to notice and manually restart to pick up a fix."""
+    # Re-exec'ing would reopen a window the user already closed while
+    # this process only lingers to serve the clipboard.
+    if not any(isinstance(w, ImageViewerWindow) for w in Gtk.Window.list_toplevels()):
+        return True
     try:
         if os.path.getmtime(self_path) != initial_mtime:
             os.execv(sys.executable, [sys.executable, self_path] + sys.argv[1:])

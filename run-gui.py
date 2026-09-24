@@ -107,6 +107,7 @@ reboot after every script or hunt through the log for whether one is
 needed.
 """
 import glob
+import hashlib
 import json
 import os
 import pwd
@@ -121,7 +122,8 @@ import zoneinfo
 import gi
 
 gi.require_version("Gtk", "3.0")
-from gi.repository import GLib, Gtk, Pango
+gi.require_version("Gdk", "3.0")
+from gi.repository import Gdk, GLib, Gtk, Pango
 
 DIR = os.path.dirname(os.path.realpath(__file__))
 ASKPASS = os.path.join(DIR, "lib", "cyberbeest-askpass.py")
@@ -173,6 +175,15 @@ VM_INSTALL_EXCLUDE = {
 # cancelled).
 PROFILE_SCRIPTS = {"00-locale-keyboard-timezone.sh", "00a-touchpad-tap-global.sh"}
 
+# 56- only needs the profile while its VM is out of date: the dialog's
+# "Update the VM" row (see vm_update_status) is its only question.
+VM_SCRIPT = "56-cyberbeest-sandbox-vm-kvm.sh"
+VM_LIB = os.path.join(DIR, "lib", "download-and-create-sandbox-vm-kvm.sh")
+VM_NAME = "Cyberbeest-VM"
+VM_DIR = os.path.expanduser("~/.local/share/cyberbeest-vms")
+# Same margin as the lib script's own space check.
+VM_SPACE_MARGIN = 1024 ** 3
+
 # Where the collected profile answers are handed to 00-/00a-. A plain file
 # rather than environment variables: sudo's default env_reset policy strips
 # arbitrary env vars from the escalated command (only SUDO_ASKPASS and
@@ -215,6 +226,59 @@ def save_persisted_profile(answers):
 # Keep in sync with 00-locale-keyboard-timezone.sh's own COUNTRIES array --
 # that script's interactive whiptail path (used when no profile was
 # collected) is the source of truth this mirrors.
+def _allocated_bytes(path):
+    try:
+        return os.stat(path).st_blocks * 512
+    except OSError:
+        return 0
+
+
+def vm_update_status():
+    """None unless the sandbox VM exists and was built from an older image
+    than the one pinned in VM_LIB. Otherwise the disk-space figures the
+    profile dialog shows next to its "Update the VM" checkbox -- the same
+    arithmetic the lib script checks before touching anything: the old VM
+    stays as the backup, so only a previous backup is freed."""
+    try:
+        with open(VM_LIB, encoding="utf-8") as f:
+            pins = dict(re.findall(r'^(IMAGE_\w+)="([^"]*)"$', f.read(), re.MULTILINE))
+        pinned = pins["IMAGE_SHA256"]
+        download_bytes = int(pins["IMAGE_DOWNLOAD_BYTES"])
+        new_bytes = download_bytes + int(pins["IMAGE_DISK_BYTES"])
+    except (OSError, KeyError, ValueError):
+        return None
+    try:
+        names = subprocess.run(
+            ["virsh", "--connect", "qemu:///session", "list", "--all", "--name"],
+            capture_output=True, text=True, timeout=10,
+        ).stdout.split()
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if VM_NAME not in names:
+        return None
+    try:
+        with open(os.path.join(VM_DIR, VM_NAME + ".image-sha256")) as f:
+            if f.read().strip() == pinned:
+                return None
+    except OSError:
+        pass  # set up before stamping existed: an older image
+    st = os.statvfs(VM_DIR)
+    free = st.f_bavail * st.f_frsize
+    backup = _allocated_bytes(os.path.join(VM_DIR, VM_NAME + "-backup.qcow2"))
+    return {
+        "free": free,
+        "current": _allocated_bytes(os.path.join(VM_DIR, VM_NAME + ".qcow2")),
+        "previous_backup": backup,
+        "download": download_bytes,
+        "needed": new_bytes,
+        "fits": free + backup >= new_bytes + VM_SPACE_MARGIN,
+    }
+
+
+def format_gb(n):
+    return f"{n / 1e9:.1f} GB"
+
+
 PROFILE_COUNTRIES = [
     ("DE", "Germany", "de", "en_US.UTF-8", "de_DE.UTF-8", "de", "Europe/Berlin"),
     ("AT", "Austria", "de", "en_US.UTF-8", "de_AT.UTF-8", "at", "Europe/Vienna"),
@@ -318,7 +382,22 @@ CONFIRMATION_SKIP_IF_NOOP = {
 AUTOSTART_FILE = os.path.expanduser("~/.config/autostart/cyberbeest-provisioning.desktop")
 
 MANUAL_TODO_RE = re.compile(r"^MANUAL_TODO:\s*(.+?)\s*$", re.MULTILINE)
+
+# apt errors from a package server being briefly unavailable or mid-sync
+# (e.g. Signal's repo publishing a new index while we download it). Every
+# script runs `apt-get update`, which covers *all* configured repos, so a
+# hiccup on one third-party server fails whichever script happens to run
+# at that moment. Such a failure gets retried after a wait instead of
+# ending the run.
+APT_TRANSIENT_RE = re.compile(
+    r"^E: (Failed to fetch|Some index files failed to download|Unable to fetch some archives)"
+    r"|Hash Sum mismatch|Mirror sync in progress",
+    re.MULTILINE,
+)
+APT_RETRY_DELAYS_S = (60, 120, 240)
 REBOOT_TODO_KEY = "__reboot__"
+# One "send a report" todo per failed script, removed again once it succeeds.
+REPORT_TODO_PREFIX = "__report__:"
 
 STATUS_STYLE = {
     "pending": (t("run_gui.state_pending"), "#8a8a8a"),
@@ -426,15 +505,137 @@ def script_lib_dependencies(script):
     return deps
 
 
+# The shared i18n catalogs hold every tool's strings, so treating them
+# like any other lib/ dependency re-ran every script that installs them on
+# any string edit anywhere. Instead, a script only goes pending when a
+# string in one of the key groups (the "clipboard." in
+# "clipboard.show_image") its own files use actually changed: a fingerprint
+# of those strings is recorded on each successful run and compared.
+I18N_CATALOG_RE = re.compile(r"/lib/i18n/strings[._][a-z]+\.(py|sh)$")
+_catalog_cache = {}
+
+
+def load_catalog(path):
+    """{key: value} of one catalog file, cached by mtime."""
+    mtime = os.path.getmtime(path)
+    cached = _catalog_cache.get(path)
+    if cached and cached[0] == mtime:
+        return cached[1]
+    entries = {}
+    if path.endswith(".py"):
+        ns = {}
+        with open(path, encoding="utf-8") as f:
+            exec(f.read(), ns)
+        entries = dict(ns.get("STRINGS", {}))
+    else:
+        out = subprocess.run(
+            ["bash", "-c",
+             'declare -gA STRINGS_EN=() STRINGS_L10N=(); . "$1"; '
+             'for n in STRINGS_EN STRINGS_L10N; do declare -n a=$n; '
+             'for k in "${!a[@]}"; do printf "%s\\0%s\\0" "$k" "${a[$k]}"; done; '
+             'unset -n a; done', "_", path],
+            capture_output=True, text=True, timeout=10,
+        ).stdout.split("\0")
+        entries = dict(zip(out[0::2], out[1::2]))
+    _catalog_cache[path] = (mtime, entries)
+    return entries
+
+
+def i18n_fingerprint(script, catalogs, other_deps):
+    """Hash of the catalog strings in the key groups this script's own
+    files mention, or None if none are found (then any catalog change
+    counts, as before)."""
+    catalog_data = {os.path.basename(c): load_catalog(c) for c in sorted(catalogs)}
+    prefixes = {k.split(".", 1)[0] for entries in catalog_data.values() for k in entries if "." in k}
+    used = set()
+    for path in [os.path.join(DIR, script)] + sorted(other_deps):
+        if not os.path.isfile(path):
+            continue
+        try:
+            with open(path, encoding="utf-8", errors="replace") as f:
+                text = f.read()
+        except OSError:
+            continue
+        used.update(m.group(1) for m in re.finditer(r"(?<![\w/.-])([a-z0-9_]+)\.[a-z0-9_{]", text) if m.group(1) in prefixes)
+    if not used:
+        return None
+    digest = hashlib.sha256()
+    for name, entries in catalog_data.items():
+        for key in sorted(k for k in entries if k.split(".", 1)[0] in used):
+            digest.update(f"{name}\0{key}\0{entries[key]}\0".encode())
+    return digest.hexdigest()
+
+
+def i18n_hash_file_for(script):
+    return os.path.join(DIR, script[:-3] + ".i18n-hash")
+
+
+def split_lib_dependencies(script):
+    deps = script_lib_dependencies(script)
+    catalogs = {d for d in deps if I18N_CATALOG_RE.search(d)}
+    return catalogs, deps - catalogs
+
+
+def record_i18n_fingerprint(script):
+    catalogs, others = split_lib_dependencies(script)
+    if not catalogs:
+        return
+    fingerprint = i18n_fingerprint(script, catalogs, others)
+    try:
+        if fingerprint is None:
+            os.remove(i18n_hash_file_for(script))
+        else:
+            with open(i18n_hash_file_for(script), "w") as f:
+                f.write(fingerprint + "\n")
+    except OSError:
+        pass
+
+
+def failed_marker_for(script):
+    return os.path.join(DIR, script[:-3] + ".failed")
+
+
+def mark_script_result(script, succeeded):
+    # A failed run still writes its log, which on its own would make the
+    # log newer than the script and count it as done -- the marker keeps
+    # it pending until a run actually succeeds.
+    marker = failed_marker_for(script)
+    try:
+        if succeeded:
+            if os.path.exists(marker):
+                os.remove(marker)
+            record_i18n_fingerprint(script)
+        else:
+            open(marker, "w").close()
+    except OSError:
+        pass
+
+
 def script_is_done(script):
     log = log_path_for(script)
-    if not os.path.exists(log):
+    if not os.path.exists(log) or os.path.exists(failed_marker_for(script)):
         return False
     log_mtime = os.path.getmtime(log)
     script_path = os.path.join(DIR, script)
     if log_mtime <= os.path.getmtime(script_path):
         return False
-    return all(log_mtime > os.path.getmtime(dep) for dep in script_lib_dependencies(script))
+    catalogs, others = split_lib_dependencies(script)
+    if not all(log_mtime > os.path.getmtime(dep) for dep in others):
+        return False
+    hash_file = i18n_hash_file_for(script)
+    if all(log_mtime > os.path.getmtime(c) for c in catalogs):
+        # Done under the plain mtime rule. A run from before fingerprints
+        # existed (or one outside this GUI) left none -- record it now, as
+        # the installed strings match the current catalogs.
+        if catalogs and not os.path.exists(hash_file):
+            record_i18n_fingerprint(script)
+        return True
+    try:
+        with open(hash_file) as f:
+            stored = f.read().strip()
+    except OSError:
+        return False
+    return stored == i18n_fingerprint(script, catalogs, others)
 
 
 def locale_dependent_scripts():
@@ -645,6 +846,38 @@ class ProvisioningProfileDialog(Gtk.Dialog):
         self.vm_image.set_active(prev.get("PROVISIONING_VM_IMAGE", "yes") != "no")
         add_row(t("run_gui.profile_vm_image_label"), self.vm_image)
 
+        # Only shown while the existing VM is on an older image. Always
+        # starts unticked, even if it was ticked last time: it's a big
+        # download and a VM that suddenly looks different can confuse.
+        self.vm_update = None
+        status = vm_update_status()
+        if status:
+            self.vm_update = Gtk.CheckButton(label=t("run_gui.profile_vm_update_checkbox"))
+            space_text = t("run_gui.profile_vm_update_space").format(
+                free=format_gb(status["free"]),
+                current=format_gb(status["current"]),
+                needed=format_gb(status["needed"]),
+            )
+            if status["previous_backup"]:
+                space_text += "\n" + t("run_gui.profile_vm_update_previous_backup").format(
+                    size=format_gb(status["previous_backup"]))
+            if not status["fits"]:
+                space_text += "\n" + t("run_gui.profile_vm_update_no_space")
+                self.vm_update.set_sensitive(False)
+            space_label = Gtk.Label(label=space_text, xalign=0)
+            space_label.set_line_wrap(True)
+            space_label.get_style_context().add_class("dim-label")
+            info_icon = Gtk.Image.new_from_icon_name("dialog-information-symbolic", Gtk.IconSize.BUTTON)
+            info_icon.set_tooltip_text(t("run_gui.profile_vm_update_tooltip").format(
+                download=format_gb(status["download"])))
+            checkbox_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+            checkbox_row.pack_start(self.vm_update, False, False, 0)
+            checkbox_row.pack_start(info_icon, False, False, 0)
+            vm_update_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+            vm_update_box.pack_start(checkbox_row, False, False, 0)
+            vm_update_box.pack_start(space_label, False, False, 0)
+            add_row(t("run_gui.profile_vm_update_label"), vm_update_box)
+
         # Now that every widget exists, wire up the country "changed" signal
         # and seed language/keyboard/timezone from the previous answers if
         # there were any, else derive them from the country default like the
@@ -718,6 +951,7 @@ class ProvisioningProfileDialog(Gtk.Dialog):
             "PROVISIONING_TIMEZONE": self.tz_combo.get_child().get_text().strip() or "UTC",
             "PROVISIONING_TOUCHPAD_TUNING": "yes" if self.touchpad_tuning.get_active() else "no",
             "PROVISIONING_VM_IMAGE": "yes" if self.vm_image.get_active() else "no",
+            "PROVISIONING_VM_UPDATE": "yes" if self.vm_update and self.vm_update.get_active() else "no",
         }
         self.destroy()
         return answers, response == self.RESPONSE_START
@@ -808,6 +1042,9 @@ class RunGuiWindow(Gtk.Window):
         self.select_vm_scripts_item = Gtk.MenuItem(label=t("run_gui.menu_select_vm_scripts"))
         self.select_vm_scripts_item.connect("activate", lambda _mi: self._select_vm_scripts())
         more_menu.append(self.select_vm_scripts_item)
+        self.switch_to_update_item = Gtk.MenuItem(label=t("run_gui.menu_switch_to_update"))
+        self.switch_to_update_item.connect("activate", self.on_switch_to_update)
+        more_menu.append(self.switch_to_update_item)
         more_menu.show_all()
         self.more_menu_button.set_popup(more_menu)
         button_row1.pack_start(self.more_menu_button, False, False, 0)
@@ -873,10 +1110,22 @@ class RunGuiWindow(Gtk.Window):
         paned.set_position(300)
         root.pack_start(paned, True, True, 0)
 
+        sidebar = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        paned.pack1(sidebar, False, False)
+
+        # Filters the list by file name. Typing anywhere in the window
+        # lands here (see on_window_key_press), Escape clears it.
+        self.filter_entry = Gtk.SearchEntry()
+        self.filter_entry.set_placeholder_text(t("run_gui.filter_placeholder"))
+        self.filter_entry.connect("search-changed", self.on_filter_changed)
+        self.filter_entry.connect("stop-search", lambda e: e.set_text(""))
+        sidebar.pack_start(self.filter_entry, False, False, 0)
+        self.connect("key-press-event", self.on_window_key_press)
+
         self.sidebar_scroller = Gtk.ScrolledWindow()
         self.sidebar_scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
         self.sidebar_scroller.set_size_request(280, -1)
-        paned.pack1(self.sidebar_scroller, False, False)
+        sidebar.pack_start(self.sidebar_scroller, True, True, 0)
 
         self.listbox = Gtk.ListBox()
         # MULTIPLE (not SINGLE) so plain click / ctrl+click / shift+click
@@ -887,6 +1136,7 @@ class RunGuiWindow(Gtk.Window):
         self.listbox.set_activate_on_single_click(False)
         self.listbox.connect("row-activated", self.on_row_activated)
         self.listbox.connect("selected-rows-changed", self.on_selection_changed)
+        self.listbox.set_filter_func(self._row_matches_filter)
         self.sidebar_scroller.add(self.listbox)
 
         for script in list_scripts():
@@ -921,6 +1171,34 @@ class RunGuiWindow(Gtk.Window):
         log_scroller.add(self.log_view)
 
         self.show_all()
+
+    # -- script list filter --------------------------------------------------
+
+    def _row_matches_filter(self, row):
+        words = self.filter_entry.get_text().lower().split()
+        return all(word in row.script.lower() for word in words)
+
+    def on_filter_changed(self, _entry):
+        self.listbox.invalidate_filter()
+        # A selected row the filter hides would still be run by "Run
+        # selected" without being visible -- drop it from the selection.
+        for row in self.listbox.get_selected_rows():
+            if not self._row_matches_filter(row):
+                self.listbox.unselect_row(row)
+
+    def on_window_key_press(self, _window, event):
+        if event.keyval == Gdk.KEY_Escape and self.filter_entry.get_text():
+            self.filter_entry.set_text("")
+            return True
+        if isinstance(self.get_focus(), Gtk.Editable):
+            return False
+        if event.state & (Gdk.ModifierType.CONTROL_MASK | Gdk.ModifierType.MOD1_MASK):
+            return False
+        char = chr(Gdk.keyval_to_unicode(event.keyval) or 0)
+        if not char.isprintable() or char in ("\0", " "):
+            return False
+        self.filter_entry.grab_focus_without_selecting()
+        return self.filter_entry.event(event)
 
     # -- log helpers --------------------------------------------------
 
@@ -1033,6 +1311,11 @@ class RunGuiWindow(Gtk.Window):
 
     def _open_password_settings(self, _button):
         subprocess.Popen([os.path.expanduser("~/.local/bin/cyberbeest-change-password")])
+
+    def _open_report(self, script, status):
+        # Separate process: the report window shows the scrubbed log and
+        # sends nothing until its owner clicks Send.
+        subprocess.Popen([sys.executable, os.path.join(DIR, "lib", "cyberbeest-send-report.py"), script, str(status)])
 
     def _do_reboot(self, _button):
         dialog = Gtk.MessageDialog(
@@ -1182,6 +1465,8 @@ class RunGuiWindow(Gtk.Window):
         self.run_all_button.set_sensitive(not busy)
         self.stop_button.set_sensitive(busy)
         self.abort_download_button.set_sensitive(busy)
+        # Closing mid-run would leave the root process running unattended.
+        self.switch_to_update_item.set_sensitive(not busy)
         # Existing todo entries' action/dismiss buttons are things-to-do-once
         # provisioning is done -- re-lock/unlock them for the busy state that
         # just changed, since _rebuild_todo_pane only sets sensitivity at the
@@ -1302,7 +1587,9 @@ class RunGuiWindow(Gtk.Window):
         # run doesn't proceed) -- True only for an actual Start click.
         if self.profile_env is not None:
             return True
-        if not (set(scripts) & PROFILE_SCRIPTS):
+        if not (set(scripts) & PROFILE_SCRIPTS) and not (
+            VM_SCRIPT in scripts and vm_update_status()
+        ):
             return True
         return self._edit_profile(pending_scripts=scripts)
 
@@ -1397,11 +1684,22 @@ class RunGuiWindow(Gtk.Window):
             start_new_session=True,
         )
         self.proc = proc
+        output = []
         for line in proc.stdout:
+            output.append(line)
             GLib.idle_add(self.append_log, script, line)
         status = proc.wait()
         self.proc = None
+        self.last_piped_output = "".join(output)
         return status
+
+    def _wait_unless_stopped(self, seconds):
+        deadline = time.monotonic() + seconds
+        while time.monotonic() < deadline:
+            if self.stop_requested:
+                return False
+            time.sleep(1)
+        return True
 
     def _run_in_terminal(self, script):
         GLib.idle_add(
@@ -1493,6 +1791,21 @@ class RunGuiWindow(Gtk.Window):
             else:
                 GLib.idle_add(self.append_log, script, t("run_gui.log_running_marker").format(script=script))
                 status = self._run_piped(script)
+                # Scripts are idempotent, so re-running the whole script
+                # after a transient package-server error is safe.
+                for attempt, delay in enumerate(APT_RETRY_DELAYS_S, 1):
+                    if status == 0 or not APT_TRANSIENT_RE.search(self.last_piped_output):
+                        break
+                    GLib.idle_add(
+                        self.append_log, script,
+                        t("run_gui.log_apt_retry").format(
+                            script=script, seconds=delay, attempt=attempt, total=len(APT_RETRY_DELAYS_S)
+                        ),
+                    )
+                    if not self._wait_unless_stopped(delay):
+                        break
+                    GLib.idle_add(self.append_log, script, t("run_gui.log_running_marker").format(script=script))
+                    status = self._run_piped(script)
             # For a NEEDS_TERMINAL script this includes however long the
             # xterm sat open waiting for someone to work through its
             # whiptail menus, not just the script's own work -- expected,
@@ -1502,12 +1815,14 @@ class RunGuiWindow(Gtk.Window):
             GLib.idle_add(self._add_session_runtime, duration)
             GLib.idle_add(self._bump_progress)
 
+            mark_script_result(script, status == 0)
             if status == 0:
                 GLib.idle_add(
                     self.append_log, script,
                     t("run_gui.log_done_marker").format(script=script, duration=format_duration(duration)),
                 )
                 GLib.idle_add(self.set_row_status, script, "done", duration)
+                GLib.idle_add(self._dismiss_todo, REPORT_TODO_PREFIX + script)
             else:
                 failed_script = script
                 # Could be a stale/wrong cached password as easily as the
@@ -1522,6 +1837,13 @@ class RunGuiWindow(Gtk.Window):
                     ),
                 )
                 GLib.idle_add(self.set_row_status, script, "failed", duration)
+                GLib.idle_add(
+                    self._add_todo,
+                    REPORT_TODO_PREFIX + script,
+                    t("run_gui.todo_report_text").format(script=script),
+                    (t("run_gui.todo_report_action"),
+                     lambda _b, s=script, st=status: self._open_report(s, st)),
+                )
                 if remaining:
                     GLib.idle_add(
                         self.append_log,
@@ -1653,6 +1975,14 @@ class RunGuiWindow(Gtk.Window):
             env=self._sudo_env(),
         )
         self.status_label.set_text(t("run_gui.status_abort_download_killed"))
+
+    def on_switch_to_update(self, _item):
+        # Cyberbeest Update pulls the latest commits and then reopens this
+        # window itself, so this one just gets out of the way.
+        installed = os.path.expanduser("~/.local/bin/cyberbeest-update.sh")
+        updater = installed if os.path.exists(installed) else os.path.join(DIR, "lib", "cyberbeest-update.sh")
+        subprocess.Popen([updater], start_new_session=True)
+        self.destroy()
 
     def on_stop(self, _button):
         if not self.busy:

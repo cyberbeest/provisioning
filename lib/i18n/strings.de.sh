@@ -93,10 +93,22 @@ OUTPUT"
 	[update.apply_failed_message]="Anwenden des Updates fehlgeschlagen:
 
 OUTPUT"
+	[update.local_changes_message]="Der Update-Ordner dieses Computers enthält Änderungen, die nicht auf dem Server sind:
+
+CHANGES
+Ein normales Update würde sie verwerfen. Behalten und nur die neuen Updates übernehmen, oder verwerfen?"
+	[update.local_commits_line]="COUNT Commit(s) noch nicht hochgeladen"
+	[update.keep_changes]="Änderungen behalten"
+	[update.discard_changes]="Änderungen verwerfen"
+	[update.cancel]="Abbrechen"
+	[update.keep_failed_message]="Das Update ließ sich nicht anwenden, ohne deine Änderungen anzutasten, daher wurde nichts verändert:
+
+OUTPUT"
 	[lockwarning.title]="Bildschirm sperrt gleich"
 	[lockwarning.body]="Bewege die Maus oder drücke eine Taste, um entsperrt zu bleiben."
 	[clipboard_genmon.label_text]="Text"
 	[clipboard_genmon.label_image]="Bild"
+	[clipboard_genmon.label_image_file]="Bild + Datei"
 	[clipboard_genmon.label_files]="Dateipfad(e)"
 	[clipboard_genmon.label_unknown]="unbekannter Inhalt"
 	[clipboard_genmon.never]="Nie"

@@ -18,7 +18,7 @@ import gi
 
 gi.require_version("Gtk", "3.0")
 gi.require_version("Gdk", "3.0")
-from gi.repository import Gdk, Gtk
+from gi.repository import Gdk, Gio, GLib, Gtk
 
 from i18n import t
 
@@ -89,6 +89,7 @@ def status_labels():
     return {
         "text": t("clipboard.label_text"),
         "image": t("clipboard.label_image"),
+        "image_file": t("clipboard.label_image_file"),
         "files": t("clipboard.label_files"),
         "unknown": t("clipboard.label_unknown"),
     }
@@ -110,9 +111,11 @@ def status_header_text(state):
     age = fmt_age(state["CHANGED"])
     text = f"{label} ({age})" if age else label
     preview = state["PREVIEW"].strip()
-    if preview and clip_type in ("text", "files"):
+    if preview and clip_type in ("text", "files", "image_file"):
         if len(preview) > 40:
-            preview = preview[:40] + "…"
+            # A path's useful end is the file name, so shorten it from the
+            # front instead.
+            preview = preview[:40] + "…" if clip_type == "text" else "…" + preview[-40:]
         text += f": {preview}"
 
     delay = read_auto_clear_seconds()
@@ -124,6 +127,55 @@ def status_header_text(state):
         remaining = max(remaining, 0)
         text += t("clipboard.clears_in").format(duration=fmt_duration(remaining))
     return text
+
+
+def clipboard_file_uris():
+    """file:// URIs on the clipboard whose files still exist."""
+    try:
+        out = subprocess.run(
+            ["xclip", "-selection", "clipboard", "-o", "-t", "text/uri-list"],
+            capture_output=True, text=True, timeout=2,
+        ).stdout
+    except Exception:
+        return []
+    uris = []
+    for line in out.splitlines():
+        line = line.strip()
+        if not line.startswith("file://"):
+            continue
+        try:
+            path = GLib.filename_from_uri(line)[0]
+        except GLib.Error:
+            continue
+        if os.path.exists(path):
+            uris.append(line)
+    return uris
+
+
+def first_uri_per_folder(uris):
+    """One URI per distinct containing folder, in clipboard order."""
+    seen = {}
+    for uri in uris:
+        folder = os.path.dirname(GLib.filename_from_uri(uri)[0])
+        seen.setdefault(folder, uri)
+    return list(seen.values())
+
+
+def show_in_folder(_item, uris):
+    Gtk.main_quit()
+    # Opens each containing folder with a file selected -- Files (Thunar)
+    # implements the freedesktop FileManager1 interface for this. It opens
+    # a separate window per URI passed (even for files in the same
+    # folder), so only one file per folder is passed: one window each.
+    for uri in first_uri_per_folder(uris):
+        try:
+            Gio.bus_get_sync(Gio.BusType.SESSION).call_sync(
+                "org.freedesktop.FileManager1", "/org/freedesktop/FileManager1",
+                "org.freedesktop.FileManager1", "ShowItems",
+                GLib.Variant("(ass)", ([uri], "")), None, Gio.DBusCallFlags.NONE, 5000,
+            )
+        except GLib.Error:
+            subprocess.Popen(["xdg-open", os.path.dirname(GLib.filename_from_uri(uri)[0])])
 
 
 def launch(_item, cmd):
@@ -152,9 +204,26 @@ def build_menu():
     view_actions = {
         "text": (t("clipboard.view_edit"), [VIEWER]),
         "image": (t("clipboard.show_image"), [SHOW_IMAGE]),
+        "image_file": (t("clipboard.show_image"), [SHOW_IMAGE]),
         "files": (t("clipboard.view"), [VIEWER]),
         "unknown": (t("clipboard.view"), [VIEWER]),
     }
+    if clip_type in ("files", "image_file"):
+        uris = clipboard_file_uris()
+        # For image + file, "Show image" already opens the original file.
+        if clip_type == "files" and len(uris) == 1:
+            open_item = Gtk.MenuItem(label=t("clipboard.open_file"))
+            open_item.connect("activate", launch, ["xdg-open", GLib.filename_from_uri(uris[0])[0]])
+            menu.append(open_item)
+        if uris:
+            folder_count = len(first_uri_per_folder(uris))
+            folder_item = Gtk.MenuItem(
+                label=t("clipboard.show_in_folder") if folder_count == 1
+                else t("clipboard.show_in_folders").format(count=folder_count)
+            )
+            folder_item.connect("activate", show_in_folder, uris)
+            menu.append(folder_item)
+
     if clip_type in view_actions:
         label, cmd = view_actions[clip_type]
         view_item = Gtk.MenuItem(label=label)

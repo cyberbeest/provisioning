@@ -71,13 +71,28 @@ schedule_auto_clear() {
         sleep "$delay" &
         sleep_pid=$!
         echo "$sleep_pid" > "$AUTO_CLEAR_PID_FILE"
-        wait "$sleep_pid" 2>/dev/null
+        # A killed sleep means a newer change superseded this timer -- bail
+        # out. Don't rely on the CHANGED check alone: it has 1s resolution,
+        # and copying an image often fires two clipboard events within the
+        # same second, so the superseded timer saw a "matching" stamp and
+        # cleared the brand-new image immediately.
+        wait "$sleep_pid" 2>/dev/null || exit 0
         current_changed=$(grep '^CHANGED=' "$STATE_FILE" 2>/dev/null | cut -d= -f2)
         if [ "$current_changed" = "$changed_at" ]; then
             xclip -selection clipboard -i /dev/null
         fi
     ) &
     disown
+}
+
+# First entry of the clipboard's text/uri-list as a plain path: file://
+# prefix dropped and %XX escapes decoded (a space arrives as %20).
+first_uri_path() {
+    local uri
+    uri=$(xclip -selection clipboard -o -t text/uri-list 2>/dev/null \
+        | grep -v '^#' | head -n1 | tr -d '\r')
+    uri="${uri#file://}"
+    printf '%b' "${uri//%/\\x}"
 }
 
 classify_and_write() {
@@ -88,13 +103,19 @@ classify_and_write() {
     if [ -z "$targets" ]; then
         type="empty"
         preview=""
+    elif printf '%s\n' "$targets" | grep -q '^image/' \
+        && printf '%s\n' "$targets" | grep -q '^text/uri-list$'; then
+        # Both the pixels and the file they came from (e.g. Cyberbeest
+        # Image Viewer's Copy Image) -- pasting gives either, depending on
+        # the app.
+        type="image_file"
+        preview=$(first_uri_path)
     elif printf '%s\n' "$targets" | grep -q '^image/'; then
         type="image"
         preview=""
     elif printf '%s\n' "$targets" | grep -q '^text/uri-list$'; then
         type="files"
-        preview=$(xclip -selection clipboard -o -t text/uri-list 2>/dev/null \
-            | head -n1 | sed 's/^file:\/\///')
+        preview=$(first_uri_path)
     elif printf '%s\n' "$targets" | grep -qE '^(UTF8_STRING|text/plain|STRING)$'; then
         local full
         full=$(xclip -selection clipboard -o 2>/dev/null | tr '\n' ' ')

@@ -256,12 +256,36 @@ STRINGS = {
     ),
     "run_gui.profile_vm_image_label": "VM-Image:",
     "run_gui.profile_vm_image_checkbox": "Cyberbeest-VM-Image herunterladen (KVM)",
+    "run_gui.profile_vm_update_label": "VM-Update:",
+    "run_gui.profile_vm_update_checkbox": (
+        "Cyberbeest-VM auf die neue Version aktualisieren "
+        "(die alte VM bleibt als Sicherung in GNOME Boxes erhalten)"
+    ),
+    "run_gui.profile_vm_update_space": (
+        "Freier Speicherplatz: {free}. Aktuelle VM: {current}. Das Update braucht {needed}."
+    ),
+    "run_gui.profile_vm_update_previous_backup": (
+        "Die vorherige Sicherung ({size}) wird gelöscht."
+    ),
+    "run_gui.profile_vm_update_no_space": (
+        "Nicht genug freier Speicherplatz für das Update."
+    ),
+    "run_gui.profile_vm_update_tooltip": (
+        "Eine neuere Version der Cyberbeest-VM ist verfügbar. Beim Update wird sie "
+        "heruntergeladen (etwa {download}) und als frische VM eingerichtet: Du beginnst "
+        "mit einer leeren VM und meldest dich in deinen Apps neu an.\n\n"
+        "Deine bisherige VM bleibt als Sicherung erhalten und ist weiter in GNOME Boxes "
+        "verfügbar, es geht also nichts verloren. Es wird nur eine Sicherung aufbewahrt. "
+        "Die VM muss während des Updates ausgeschaltet sein. Dateien im Ordner "
+        "VM-Shared sind nicht betroffen."
+    ),
     "run_gui.button_run_changed": "Nur Geändertes ausführen",
     "run_gui.button_run_changed_count": "Nur Geändertes ausführen ({count})",
     "run_gui.button_run_all": "Alles ausführen",
     "run_gui.button_run_selected": "Auswahl ausführen",
     "run_gui.button_profile": "Profil...",
     "run_gui.button_select_all": "Alles auswählen",
+    "run_gui.filter_placeholder": "Skripte filtern…",
     "run_gui.button_stop": "Nach aktuellem Skript stoppen",
     "run_gui.button_abort_download": "Download abbrechen",
     "run_gui.button_view_source": "Quelltext ansehen",
@@ -271,6 +295,7 @@ STRINGS = {
     "run_gui.more_actions_tooltip": "Weitere Aktionen",
     "run_gui.menu_disable_autostart": "Automatisches Provisioning beim Anmelden deaktivieren",
     "run_gui.menu_select_vm_scripts": "Skripte für VM-Installation auswählen",
+    "run_gui.menu_switch_to_update": "Schließen und nach Updates suchen (Cyberbeest Update)",
     "run_gui.total_time": "Laufzeit in dieser Sitzung: {duration}",
     "run_gui.status_idle": "Bereit. Doppelklick auf ein Skript unten, um nur dieses auszuführen.",
     "run_gui.todo_frame_title": "Nach dem Provisioning noch zu erledigen",
@@ -308,6 +333,10 @@ STRINGS = {
     "run_gui.log_done_marker": "=== {script} fertig ({duration}) ===\n",
     "run_gui.log_failed_marker": "=== {script} FEHLGESCHLAGEN ({duration}, Exitcode {status}) ===\n",
     "run_gui.log_stopping_dependency": "Stoppe hier, da spätere Skripte hiervon abhängen könnten.\n",
+    "run_gui.log_apt_retry": (
+        "Ein Paketserver hatte ein vorübergehendes Problem. {script} wird in "
+        "{seconds} Sekunden erneut versucht (Wiederholung {attempt} von {total}).\n"
+    ),
     "run_gui.status_stopped": "Nach aktuellem Skript gestoppt.",
     "run_gui.status_failed": "Fehlgeschlagen: {script} -- siehe Protokoll oben.",
     "run_gui.status_finished": "Erfolgreich abgeschlossen. Du kannst dieses Fenster jetzt schließen.",
@@ -376,12 +405,16 @@ STRINGS = {
 
     "clipboard.label_text": "Text",
     "clipboard.label_image": "Bild",
+    "clipboard.label_image_file": "Bild + Datei",
     "clipboard.label_files": "Dateipfad(e)",
     "clipboard.label_unknown": "Unbekannter Inhalt",
     "clipboard.empty": "Zwischenablage ist leer",
     "clipboard.clears_in": " — wird geleert in {duration}",
     "clipboard.view_edit": "Anzeigen / Bearbeiten…",
     "clipboard.show_image": "Bild anzeigen",
+    "clipboard.open_file": "Datei öffnen",
+    "clipboard.show_in_folder": "Im Ordner zeigen",
+    "clipboard.show_in_folders": "In Ordnern zeigen ({count} Fenster)",
     "clipboard.view": "Anzeigen…",
     "clipboard.clear_clipboard": "Zwischenablage leeren",
     "clipboard.auto_clear_settings": "Einstellungen für automatisches Leeren…",
@@ -396,4 +429,27 @@ STRINGS = {
     "clipboard.autoclear_title": "Automatisches Leeren der Zwischenablage",
     "clipboard.autoclear_prompt": "Zwischenablage automatisch leeren nach:",
     "clipboard.never": "Nie",
+
+    "report.window_title": "Fehlerbericht senden",
+    "report.intro": (
+        "{script} ist fehlgeschlagen. Du kannst diesen Bericht an das "
+        "Cyberbeest-Team senden, damit wir den Fehler beheben können. Genau "
+        "dieser Text wird gesendet -- du kannst vorher alles ändern oder löschen."
+    ),
+    "report.privacy_note": (
+        "Persönliche Angaben wie dein Name, Netzwerknamen und Adressen wurden "
+        "ersetzt. Der Bericht enthält keine Gerätekennung, und der Server "
+        "speichert deine IP-Adresse nicht."
+    ),
+    "report.no_log": "(keine Protokolldatei gefunden)",
+    "report.send": "Senden",
+    "report.cancel": "Abbrechen",
+    "report.close": "Schließen",
+    "report.sending": "Wird gesendet...",
+    "report.sent": "Gesendet, danke! Berichts-ID: {reply}",
+    "report.failed": "Der Bericht konnte nicht gesendet werden: {error}",
+    "report.empty": "Der Bericht ist leer -- nichts zu senden.",
+    "report.too_large": "Der Bericht ist zu groß (max. 64 KB). Bitte kürze ihn.",
+    "run_gui.todo_report_text": "{script} ist fehlgeschlagen. Ein Bericht hilft uns, den Fehler zu beheben.",
+    "run_gui.todo_report_action": "Bericht senden...",
 }

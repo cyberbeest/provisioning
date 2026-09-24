@@ -243,12 +243,35 @@ STRINGS = {
     ),
     "run_gui.profile_vm_image_label": "VM image:",
     "run_gui.profile_vm_image_checkbox": "Download the Cyberbeest VM disk image (KVM)",
+    "run_gui.profile_vm_update_label": "VM update:",
+    "run_gui.profile_vm_update_checkbox": (
+        "Update the Cyberbeest VM to the new version "
+        "(the old VM is kept as a backup in GNOME Boxes)"
+    ),
+    "run_gui.profile_vm_update_space": (
+        "Free disk space: {free}. Current VM: {current}. The update needs {needed}."
+    ),
+    "run_gui.profile_vm_update_previous_backup": (
+        "The previous backup ({size}) will be deleted."
+    ),
+    "run_gui.profile_vm_update_no_space": (
+        "Not enough free disk space for the update."
+    ),
+    "run_gui.profile_vm_update_tooltip": (
+        "A newer version of the Cyberbeest VM is available. Updating downloads it "
+        "(about {download}) and sets it up as a fresh VM: you start over with an empty "
+        "VM and log in to your apps again.\n\n"
+        "Your current VM is kept as a backup and stays available in GNOME Boxes, "
+        "so nothing in it is lost. Only one backup is kept. The VM must be shut down "
+        "during the update. Files in the VM-Shared folder are not affected."
+    ),
     "run_gui.button_run_changed": "Run changed only",
     "run_gui.button_run_changed_count": "Run changed only ({count})",
     "run_gui.button_run_all": "Run all",
     "run_gui.button_run_selected": "Run selected",
     "run_gui.button_profile": "Profile...",
     "run_gui.button_select_all": "Select all",
+    "run_gui.filter_placeholder": "Filter scripts…",
     "run_gui.button_stop": "Stop after current script",
     "run_gui.button_abort_download": "Abort download",
     "run_gui.button_view_source": "View source",
@@ -258,6 +281,7 @@ STRINGS = {
     "run_gui.more_actions_tooltip": "More actions",
     "run_gui.menu_disable_autostart": "Disable auto-provisioning on login",
     "run_gui.menu_select_vm_scripts": "Select scripts for VM install",
+    "run_gui.menu_switch_to_update": "Close and check for updates (Cyberbeest Update)",
     "run_gui.total_time": "Total run time this session: {duration}",
     "run_gui.status_idle": "Idle. Double-click a script below to run just that one.",
     "run_gui.todo_frame_title": "Things to do after the provisioning completed",
@@ -292,6 +316,10 @@ STRINGS = {
     "run_gui.log_done_marker": "=== {script} done ({duration}) ===\n",
     "run_gui.log_failed_marker": "=== {script} FAILED ({duration}, exit {status}) ===\n",
     "run_gui.log_stopping_dependency": "Stopping here since later scripts may depend on this one.\n",
+    "run_gui.log_apt_retry": (
+        "A package server had a temporary problem. Trying {script} again in "
+        "{seconds} seconds (retry {attempt} of {total}).\n"
+    ),
     "run_gui.status_stopped": "Stopped after current script.",
     "run_gui.status_failed": "Failed: {script} -- see log above.",
     "run_gui.status_finished": "Finished successfully. You can close this window.",
@@ -358,12 +386,16 @@ STRINGS = {
 
     "clipboard.label_text": "Text",
     "clipboard.label_image": "Image",
+    "clipboard.label_image_file": "Image + file",
     "clipboard.label_files": "File path(s)",
     "clipboard.label_unknown": "Unrecognized content",
     "clipboard.empty": "Clipboard is empty",
     "clipboard.clears_in": " — clears in {duration}",
     "clipboard.view_edit": "View / Edit…",
     "clipboard.show_image": "Show image",
+    "clipboard.open_file": "Open file",
+    "clipboard.show_in_folder": "Show in folder",
+    "clipboard.show_in_folders": "Show in folders ({count} windows)",
     "clipboard.view": "View…",
     "clipboard.clear_clipboard": "Clear clipboard",
     "clipboard.auto_clear_settings": "Auto-clear settings…",
@@ -378,4 +410,27 @@ STRINGS = {
     "clipboard.autoclear_title": "Clipboard Auto-Clear",
     "clipboard.autoclear_prompt": "Automatically clear the clipboard after:",
     "clipboard.never": "Never",
+
+    "report.window_title": "Send Failure Report",
+    "report.intro": (
+        "{script} failed. You can send this report to the Cyberbeest team so "
+        "we can fix it. This is exactly what will be sent -- edit or delete "
+        "anything you like first."
+    ),
+    "report.privacy_note": (
+        "Personal details like your name, network names and addresses have "
+        "been replaced. The report contains no machine ID, and the server "
+        "does not store your IP address."
+    ),
+    "report.no_log": "(no log file found)",
+    "report.send": "Send",
+    "report.cancel": "Cancel",
+    "report.close": "Close",
+    "report.sending": "Sending...",
+    "report.sent": "Sent, thank you! Report ID: {reply}",
+    "report.failed": "Could not send the report: {error}",
+    "report.empty": "The report is empty -- nothing to send.",
+    "report.too_large": "The report is too large (max 64 KB). Please shorten it.",
+    "run_gui.todo_report_text": "{script} failed. Sending a report helps us fix it.",
+    "run_gui.todo_report_action": "Send Report...",
 }
