@@ -34,13 +34,13 @@ shutdown_vm() {
 
 	waited=0
 	while [ "$waited" -lt "$SHUTDOWN_TIMEOUT" ]; do
-		state=$(virsh --connect "$CONNECT" domstate "$VM_NAME" 2>/dev/null || echo "shut off")
+		state=$(LC_ALL=C virsh --connect "$CONNECT" domstate "$VM_NAME" 2>/dev/null || echo "shut off")
 		[ "$state" = "shut off" ] && break
 		sleep 2
 		waited=$((waited + 2))
 	done
 
-	state=$(virsh --connect "$CONNECT" domstate "$VM_NAME" 2>/dev/null || echo "shut off")
+	state=$(LC_ALL=C virsh --connect "$CONNECT" domstate "$VM_NAME" 2>/dev/null || echo "shut off")
 	if [ "$state" != "shut off" ]; then
 		virsh --connect "$CONNECT" destroy "$VM_NAME" >/dev/null 2>&1
 		notify "Virtuelle Maschine gestoppt" "$VM_NAME: reagierte nicht, wurde hart gestoppt."
@@ -51,12 +51,14 @@ shutdown_vm() {
 	fi
 }
 
-virsh --connect "$CONNECT" event --domain "$VM_NAME" --event lifecycle --loop --timestamp 2>/dev/null |
+# LC_ALL=C on every virsh call whose output is matched: virsh translates
+# both event lines and domstate ("ausgeschaltet" on a German machine).
+LC_ALL=C virsh --connect "$CONNECT" event --domain "$VM_NAME" --event lifecycle --loop --timestamp 2>/dev/null |
 while read -r line; do
 	case "$line" in
 		*"Suspended Paused"*)
 			sleep "$GRACE_SECONDS"
-			state=$(virsh --connect "$CONNECT" domstate "$VM_NAME" 2>/dev/null || echo "shut off")
+			state=$(LC_ALL=C virsh --connect "$CONNECT" domstate "$VM_NAME" 2>/dev/null || echo "shut off")
 			[ "$state" = "paused" ] && shutdown_vm
 			;;
 		*"Stopped"*|*"Undefined"*)
