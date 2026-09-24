@@ -119,21 +119,27 @@ while true; do
     warn_enabled=$(read_setting WARN_BEFORE_LOCK_ENABLED "$DEFAULT_WARN_ENABLED")
     warn_seconds=$(read_setting WARN_SECONDS_BEFORE_LOCK "$DEFAULT_WARN_SECONDS")
     if [ "$warn_enabled" = "true" ] && [ "$warn_seconds" -gt 0 ]; then
-        if [ "$remaining" -gt 0 ] && [ "$remaining" -le "$warn_seconds" ]; then
+        # Shown one second lower than the idle arithmetic says:
+        # xfce4-screensaver truncates idle time to whole seconds and polls
+        # with a whole-second g_timeout_add_seconds timer (gs-listener-x11.c),
+        # so the lock lands up to a second early -- unshifted, the screen
+        # went black while the countdown still said 2.
+        shown=$(( remaining - 1 ))
+        if [ "$shown" -gt 0 ] && [ "$remaining" -le "$warn_seconds" ]; then
             # Re-sent every second (replacing the previous one in place
             # via -r) so the title counts down the remaining seconds.
-            if [ "$remaining" -ne "$warned_remaining" ]; then
-                if [ "$remaining" -eq 1 ]; then
+            if [ "$shown" -ne "$warned_remaining" ]; then
+                if [ "$shown" -eq 1 ]; then
                     title=$(t lockwarning.title_one)
                 else
                     title=$(t lockwarning.title)
-                    title=${title//SECONDS/$remaining}
+                    title=${title//SECONDS/$shown}
                 fi
                 last_notif_id=$(notify-send -p -r "$last_notif_id" \
-                    -t $(( (remaining + 1) * 1000 )) \
+                    -t $(( (shown + 1) * 1000 )) \
                     "$title" \
                     "$(t lockwarning.body)")
-                warned_remaining=$remaining
+                warned_remaining=$shown
             fi
         elif [ "$remaining" -gt "$warn_seconds" ]; then
             warned_remaining=0
