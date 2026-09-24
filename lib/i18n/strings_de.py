@@ -51,7 +51,7 @@ STRINGS = {
     "timer.shutdown_after_both": "Abschalten nach Sperrdauer von:",
     "timer.on_ac": "Im Netzbetrieb:",
     "timer.on_battery": "Im Akkubetrieb:",
-    "timer.power_saving_while_locked": "Energiesparen bei Sperrung…",
+    "timer.power_saving_while_locked": "Erweiterte Energieoptionen…",
 
     "lockpower.window_title": "Cyberbeest Erweiterte Energieoptionen",
     "lockpower.info": (

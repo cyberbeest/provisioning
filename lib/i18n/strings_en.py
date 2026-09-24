@@ -47,7 +47,7 @@ STRINGS = {
     "timer.shutdown_after_both": "Shutdown after locked for:",
     "timer.on_ac": "On AC power:",
     "timer.on_battery": "On battery:",
-    "timer.power_saving_while_locked": "Power saving while locked…",
+    "timer.power_saving_while_locked": "Extended power options…",
 
     "lockpower.window_title": "Cyberbeest Extended Power Options",
     "lockpower.info": (
