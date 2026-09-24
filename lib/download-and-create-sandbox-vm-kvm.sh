@@ -55,6 +55,14 @@ DISPLAY_NAME="${1:-Cyberbeest VM}"
 # entry, rather than making the friendly name itself space-free.
 VM_NAME="${DISPLAY_NAME// /-}"
 CONNECT="qemu:///session"
+# qemu:///session finds the user's libvirt daemon through XDG_RUNTIME_DIR.
+# Run via sudo -u (as 56- does), that's unset, and virsh then starts a
+# second, separate daemon that doesn't know about VMs the desktop session
+# is running -- a running VM looks "shut off" to it. Seen 2026-09-24; it
+# would have let an update rename a running VM and move its disk.
+if [ -z "${XDG_RUNTIME_DIR:-}" ] && [ -d "/run/user/$(id -u)" ]; then
+	export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+fi
 VM_DIR="$HOME/.local/share/cyberbeest-vms"
 # A verified download waiting to become the VM's disk. It survives a
 # failure *before* that point (e.g. the VM still running), so a retry
@@ -128,6 +136,9 @@ install_helpers() {
 	echo "--- Installing the VM launcher ---"
 	mkdir -p "$HOME/.local/bin/i18n"
 	install -m 755 "$DIR/cyberbeest-vm-start.sh" "$HOME/.local/bin/cyberbeest-vm-start.sh"
+	# For the change-password dialog (disk_password_gui.py), which syncs the
+	# VM's password on its own after a change.
+	install -m 755 "$DIR/cyberbeest-vm-set-password-hash.sh" "$HOME/.local/bin/cyberbeest-vm-set-password-hash.sh"
 	# i18n.sh resolves its catalogs relative to itself -- see lib/i18n.sh.
 	install -m 644 "$DIR/i18n.sh" "$HOME/.local/bin/i18n.sh"
 	install -m 644 "$DIR"/i18n/strings.*.sh "$HOME/.local/bin/i18n/"

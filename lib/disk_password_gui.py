@@ -280,6 +280,40 @@ def change_user_password(current_password, new_password):
     return False, t("pw.change_failed_wrong_current")
 
 
+VM_PASSWORD_SYNC = os.path.expanduser("~/.local/bin/cyberbeest-vm-set-password-hash.sh")
+
+
+def sync_vm_password(new_password):
+    """Give the sandbox VM's account the new short password, so it also
+    answers sudo prompts inside the VM. Only a hash leaves this process
+    (openssl reads the password on stdin, never from argv). The helper
+    runs detached: with the VM shut off it rewrites the disk image, which
+    takes half a minute, and the dialog shouldn't wait for that. A machine
+    without the VM feature has no helper, and nothing happens."""
+    if not os.access(VM_PASSWORD_SYNC, os.X_OK):
+        return
+    try:
+        hashed = subprocess.run(
+            ["openssl", "passwd", "-6", "-stdin"],
+            input=new_password + "\n", capture_output=True, text=True, check=True,
+        ).stdout.strip()
+        helper = subprocess.Popen(
+            [VM_PASSWORD_SYNC], stdin=subprocess.PIPE, text=True,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True,
+        )
+        helper.stdin.write(hashed + "\n")
+        helper.stdin.close()
+    except (OSError, subprocess.CalledProcessError):
+        pass
+
+
+def change_user_password_and_sync_vm(current_password, new_password):
+    ok, message = change_user_password(current_password, new_password)
+    if ok:
+        sync_vm_password(new_password)
+    return ok, message
+
+
 PASSWORD_TYPES = {
     "master": {
         "title": t("pw.master_title"),
@@ -293,7 +327,7 @@ PASSWORD_TYPES = {
         "title": t("pw.short_title"),
         "description": t("pw.short_desc"),
         "requires_current": True,
-        "change": change_user_password,
+        "change": change_user_password_and_sync_vm,
         "word_count": 2,
         "min_length": 5,
     },
