@@ -7,8 +7,8 @@ BRANCH="stable"
 
 # The NN-*.sh scripts that used to hardcode /home/cyberbeest instead of
 # $HOME (00-locale-keyboard-timezone.sh, 18-desktop-background.sh,
-# 21-default-password-nag.sh, 90-vm-mode-overrides.sh) have since been
-# fixed to substitute $TARGET_HOME dynamically -- confirmed 2026-09-10, see
+# 21-default-password-nag.sh, and the since-removed 90-vm-mode-overrides.sh)
+# have since been fixed to substitute $TARGET_HOME dynamically -- confirmed 2026-09-10, see
 # memory: cyberbeest_kvm_provisioning_track. Provisioning now runs under
 # whatever username invokes it; this used to be a hard `exit 1` gate
 # requiring the account be named "cyberbeest" specifically, back when that

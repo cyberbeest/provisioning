@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Cyberbeest sandbox VM settings
+Comment=Turns off auto-lock and the KITT scanner and sets the VM background inside the sandbox VM
+Exec=/home/cyberbeest/.local/bin/sandbox-vm-session.sh
+NoDisplay=true
+X-GNOME-Autostart-enabled=true

@@ -57,6 +57,19 @@ LEGACY_TOGGLES = {
     28: "vpn-genmon.sh",
     29: "dot-genmon.sh",
 }
+# Debian's stock panel-1 (/etc/xdg/xfce4/panel/default.xml), which the first
+# login creates before provisioning runs. Its plugins sit below 200 too, so
+# without this they were carried over as if hand-added: every install laid
+# out since the 2026-09-23 id scheme got a second tasklist, systray and
+# clock plus an Applications menu, workspace switcher and actions button
+# (the duplicate systray even pops a "could not be loaded" dialog). Dropped
+# only if all ten are there with exactly these types -- a combination no
+# one builds by hand -- which also cleans up machines that already have it.
+STOCK_PANEL_1 = {
+    1: "applicationsmenu", 2: "tasklist", 3: "separator", 4: "pager",
+    5: "separator", 6: "systray", 7: "separator", 8: "clock",
+    9: "separator", 10: "actions",
+}
 # Provisioning plugins that no longer exist at all -- dropped outright.
 # genmon-16: the standalone shutdown-timer widget, merged into genmon-11 on
 # 2026-09-05 (panel-status-genmon.sh) but left behind on machines laid out
@@ -112,11 +125,24 @@ def migrate(old_path, out_path, panel_dir, cleanup_path):
         elem = find_property(plugins, f"plugin-{plugin_id}")
         return elem.get("value") if elem is not None else None
 
-    if 1 not in ids or plugin_type(1) != "whiskermenu" or 1 + ID_OFFSET in ids:
+    stock = [i for i, t in STOCK_PANEL_1.items() if i in ids and plugin_type(i) == t]
+    stock_dropped = len(stock) == len(STOCK_PANEL_1)
+    if stock_dropped:
+        for value in list(values):
+            if int(value.get("value")) in STOCK_PANEL_1:
+                ids_prop.remove(value)
+        for plugin_id in STOCK_PANEL_1:
+            plugins.remove(find_property(plugins, f"plugin-{plugin_id}"))
+        values = ids_prop.findall("value")
+        ids = [int(v.get("value")) for v in values]
+        print("dropped the stock xfce4-panel plugins 1-10")
+
+    legacy = 1 in ids and plugin_type(1) == "whiskermenu" and 1 + ID_OFFSET not in ids
+    if not legacy and not stock_dropped:
         return 0
 
     moved, dropped = {}, []
-    for plugin_id in ids:
+    for plugin_id in ids if legacy else []:
         ptype = plugin_type(plugin_id)
         if LEGACY_TEMPLATE.get(plugin_id) == ptype:
             moved[plugin_id] = plugin_id + ID_OFFSET

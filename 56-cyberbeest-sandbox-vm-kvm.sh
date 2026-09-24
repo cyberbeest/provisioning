@@ -2,13 +2,13 @@
 # Downloads the Cyberbeest sandbox VM (same OS as the host, for running
 # untrusted apps in extra isolation) and registers it under QEMU/KVM +
 # GNOME Boxes -- see lib/download-and-create-sandbox-vm-kvm.sh for the
-# actual mechanism, and 53a-qemu-kvm-boxes.sh for installing the hypervisor
+# actual mechanism, and 53a-qemu-kvm-virt-manager.sh for installing the hypervisor
 # itself. KVM is the only hypervisor provisioning ships -- VirtualBox was
-# dropped entirely 2026-09-19, see 53a-qemu-kvm-boxes.sh.
+# dropped entirely 2026-09-19, see 53a-qemu-kvm-virt-manager.sh.
 #
 # Skipped entirely inside a VM: a VM guest has no business getting its own
-# nested sandbox VM (see 90-vm-mode-overrides.sh, which is the mirror-image
-# check -- that one only runs *inside* a VM, this one only outside).
+# nested sandbox VM (91-sandbox-vm.sh is the guest-side counterpart: it
+# only acts inside a sandbox VM set up by this script).
 #
 # Override: PROVISIONING_FORCE_VM_IMAGE_IN_VM=1 bypasses the
 # systemd-detect-virt skip above. Added 2026-09-19 for the release-build
@@ -23,10 +23,9 @@
 # in the whole provisioning chain. run-gui.py's "stop after current
 # script" should be able to interrupt it immediately rather than waiting
 # for the download to finish on its own.
-# Depends on: 53a-qemu-kvm-boxes.sh.
-# The lib script installs these helpers; naming them here makes run-gui.py
-# mark this script pending when one changes: lib/cyberbeest-vm-start.sh,
-# lib/cyberbeest-vm-watcher.sh, lib/cyberbeest-vm-title-fix.sh.
+# Depends on: 53a-qemu-kvm-virt-manager.sh.
+# The lib script installs this launcher; naming it here makes run-gui.py
+# mark this script pending when one changes: lib/cyberbeest-vm-start.sh.
 # Idempotent: safe to re-run (download-and-create-sandbox-vm-kvm.sh skips a
 # VM that's already on the pinned image).
 #

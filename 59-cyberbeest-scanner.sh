@@ -74,6 +74,14 @@ echo "--- Leaving clamd disabled/stopped by default (started on demand per scan)
 systemctl stop clamav-daemon 2>/dev/null || true
 systemctl disable clamav-daemon 2>/dev/null || true
 
+echo "--- Disabling chkrootkit's own daily timer (scans run from the scanner GUI) ---"
+# The package enables a daily, Persistent=true timer: a machine that was off
+# at midnight -- most laptops, and every sandbox VM started after one -- runs
+# a full scan right after booting, slowing down the first minutes of use.
+# rkhunter's and debsums' own scheduled runs are already off by default
+# (CRON_DAILY_RUN empty, CRON_CHECK=never).
+systemctl disable --now chkrootkit.timer 2>/dev/null || true
+
 echo "--- Building rkhunter's file-property baseline now, while the machine is clean ---"
 rkhunter --propupd || true
 

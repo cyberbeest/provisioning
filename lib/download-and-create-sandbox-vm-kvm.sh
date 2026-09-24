@@ -90,6 +90,14 @@ allocated() {
 	if [ -e "$1" ]; then du -B1 "$1" | cut -f1; else echo 0; fi
 }
 
+# Checked before anything is downloaded or moved, so a machine without KVM
+# never gets halfway through an update (see --virt-type kvm below).
+if ! LC_ALL=C virsh --connect "$CONNECT" domcapabilities --virttype kvm >/dev/null 2>&1; then
+	echo "KVM isn't available (no usable /dev/kvm) -- stopping; the VM would be far too slow without it." >&2
+	echo "(Re-run 53a-qemu-kvm-virt-manager.sh, or check that virtualization is enabled in the firmware settings.)" >&2
+	exit 1
+fi
+
 # A finished download is recorded as verified in $CACHE_PATH.sha256; any
 # other cached copy (an older image, or one from before pinning) can never
 # be used again, so it goes whether or not anything else happens below.
@@ -99,14 +107,34 @@ if [ -f "$CACHE_PATH" ] && [ "$(cat "$CACHE_PATH.sha256" 2>/dev/null)" != "$IMAG
 fi
 rm -f "$LEGACY_GZ" "$LEGACY_GZ.sha256" "$LEGACY_GZ.version" "$LEGACY_GZ.part" "$LEGACY_GZ.version.part"
 
+write_menu_entry() {
+	echo "--- Adding the Whisker menu launcher ---"
+	mkdir -p "$HOME/.local/share/applications"
+	cat > "$HOME/.local/share/applications/cyberbeest-sandbox-vm.desktop" <<EOF
+[Desktop Entry]
+Type=Application
+Name=$DISPLAY_NAME
+Comment=Run untrusted apps in an isolated same-OS virtual machine
+Exec=$HOME/.local/bin/cyberbeest-vm-start.sh "$VM_NAME" "$DISPLAY_NAME"
+Icon=computer
+Categories=System;
+Terminal=false
+EOF
+}
+
 # Also run when an existing VM is left as it is, so fixes to these reach
 # machines that don't take a new image.
 install_helpers() {
-	echo "--- Installing the start/watcher/title-fix helper scripts ---"
-	mkdir -p "$HOME/.local/bin"
+	echo "--- Installing the VM launcher ---"
+	mkdir -p "$HOME/.local/bin/i18n"
 	install -m 755 "$DIR/cyberbeest-vm-start.sh" "$HOME/.local/bin/cyberbeest-vm-start.sh"
-	install -m 755 "$DIR/cyberbeest-vm-watcher.sh" "$HOME/.local/bin/cyberbeest-vm-watcher.sh"
-	install -m 755 "$DIR/cyberbeest-vm-title-fix.sh" "$HOME/.local/bin/cyberbeest-vm-title-fix.sh"
+	# i18n.sh resolves its catalogs relative to itself -- see lib/i18n.sh.
+	install -m 644 "$DIR/i18n.sh" "$HOME/.local/bin/i18n.sh"
+	install -m 644 "$DIR"/i18n/strings.*.sh "$HOME/.local/bin/i18n/"
+	# GNOME Boxes-era helpers, replaced by the launcher waiting on its own
+	# virt-viewer window (2026-09-24).
+	rm -f "$HOME/.local/bin/cyberbeest-vm-watcher.sh" "$HOME/.local/bin/cyberbeest-vm-title-fix.sh"
+	write_menu_entry
 }
 
 UPDATING=0
@@ -287,7 +315,7 @@ if [ "$UPDATING" -eq 1 ]; then
 		[ -f "$OLD_NVRAM" ] && mv "$OLD_NVRAM" "$BACKUP_NVRAM"
 		virt-xml --connect "$CONNECT" "$BACKUP_NAME" --edit --boot nvram="$BACKUP_NVRAM"
 	fi
-	# GNOME Boxes lists a domain by its title when it has one.
+	# Virtual Machine Manager lists a domain by its title when it has one.
 	virsh --connect "$CONNECT" desc "$BACKUP_NAME" --config --title \
 		"$DISPLAY_NAME (backup $(date +%Y-%m-%d))"
 	rm -f "$STAMP_PATH"
@@ -317,15 +345,41 @@ rm -f "$CACHE_PATH.sha256"
 echo "--- Matching guest locale/keyboard to the host ---"
 bash "$DIR/set-vm-guest-locale.sh" "$DISK_PATH"
 
+# The image is also the standalone VM product, so it doesn't know it's
+# about to become a sandbox. The marker tells the guest's own provisioning
+# (91-sandbox-vm.sh); the rest is what that script would install, put in
+# place now so the first login already looks right. The guest account is
+# always "cyberbeest" (fixed in the image, like on the base ISO).
+echo "--- Setting the guest up as a sandbox VM ---"
+GUEST_HOME=/home/cyberbeest
+virt-customize -a "$DISK_PATH" \
+	--hostname cyberbeest-vm \
+	--mkdir /etc/cyberbeest \
+	--touch /etc/cyberbeest/sandbox-vm \
+	--mkdir "$GUEST_HOME/.local/bin" \
+	--mkdir "$GUEST_HOME/.local/share/cyberbeest" \
+	--mkdir "$GUEST_HOME/.config/autostart" \
+	--upload "$DIR/sandbox-vm-session.sh:$GUEST_HOME/.local/bin/sandbox-vm-session.sh" \
+	--upload "$DIR/assets/vm-background-tile.png:$GUEST_HOME/.local/share/cyberbeest/vm-background-tile.png" \
+	--upload "$DIR/cyberbeest-sandbox-vm-session.desktop:$GUEST_HOME/.config/autostart/cyberbeest-sandbox-vm-session.desktop" \
+	--chmod "0755:$GUEST_HOME/.local/bin/sandbox-vm-session.sh" \
+	--run-command "chown -R cyberbeest:cyberbeest $GUEST_HOME/.local $GUEST_HOME/.config/autostart" \
+	--upload "$DIR/plymouth-theme/cyberbeest-for-print-vm.png:/tmp/cyberbeest-for-print-vm.png" \
+	--run-command "if [ -d /usr/share/plymouth/themes/cyberbeest ]; then install -m 644 /tmp/cyberbeest-for-print-vm.png /usr/share/plymouth/themes/cyberbeest/cyberbeest-for-print.png && plymouth-set-default-theme -R cyberbeest; fi; rm -f /tmp/cyberbeest-for-print-vm.png"
+
 echo "--- Registering the VM ---"
 # --print-xml + define instead of a plain virt-install --import, which
 # always boots the new VM -- with no window, so it just ran invisibly in
 # the background after provisioning. Defining never starts it; the menu
 # launcher does, with a window and the shutdown watcher attached.
 VM_XML="$(mktemp)"
+# --virt-type kvm: without KVM (no /dev/kvm) virt-install otherwise quietly
+# falls back to software emulation, far too slow to even boot this image.
 virt-install --print-xml \
 	--connect "$CONNECT" \
+	--virt-type kvm \
 	--name "$VM_NAME" \
+	--metadata title="$DISPLAY_NAME" \
 	--memory 2048 \
 	--vcpus 2 \
 	--disk path="$DISK_PATH",format=qcow2,bus=virtio \
@@ -343,18 +397,6 @@ virsh --connect "$CONNECT" define "$VM_XML"
 rm -f "$VM_XML"
 
 install_helpers
-echo "--- Adding the Whisker menu launcher ---"
-mkdir -p "$HOME/.local/share/applications"
-cat > "$HOME/.local/share/applications/cyberbeest-sandbox-vm.desktop" <<EOF
-[Desktop Entry]
-Type=Application
-Name=$DISPLAY_NAME
-Comment=Run untrusted apps in an isolated same-OS virtual machine
-Exec=$HOME/.local/bin/cyberbeest-vm-start.sh "$VM_NAME" "$DISPLAY_NAME"
-Icon=computer
-Categories=System;
-Terminal=false
-EOF
 
 trap - ERR
 printf '%s' "$IMAGE_SHA256" > "$STAMP_PATH"
