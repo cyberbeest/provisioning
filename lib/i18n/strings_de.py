@@ -212,9 +212,11 @@ STRINGS = {
     "panelcolor.preset_charcoal": "Anthrazit",
     "update_genmon.log_title": "Sicherheitsupdate-Protokoll",
     "update_genmon.log_missing": "Noch kein Update-Protokoll vorhanden -- die Prüfung wurde noch nicht ausgeführt.",
+    "update_genmon.log_last_run": "Protokoll des letzten Update-Laufs:",
+    "update_genmon.log_live": "Updates laufen -- Live-Ausgabe:",
+    "update_genmon.log_starting": "Update-Lauf wird gestartet...",
     "update_genmon.close": "Schließen",
     "update_genmon.run_now": "Jetzt aktualisieren",
-    "update_genmon.run_now_started": "Update-Prüfung gestartet -- das Panel-Symbol aktualisiert sich in Kürze.",
     "update_genmon.run_now_already_running": "Eine Update-Prüfung läuft bereits.",
     "update_genmon.run_now_failed": "Update-Prüfung konnte nicht gestartet werden.",
     "update_genmon.interrupted": (
