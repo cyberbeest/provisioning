@@ -175,6 +175,15 @@ VM_INSTALL_EXCLUDE = {
 # cancelled).
 PROFILE_SCRIPTS = {"00-locale-keyboard-timezone.sh", "00a-touchpad-tap-global.sh"}
 
+# 56- only needs the profile while its VM is out of date: the dialog's
+# "Update the VM" row (see vm_update_status) is its only question.
+VM_SCRIPT = "56-cyberbeest-sandbox-vm-kvm.sh"
+VM_LIB = os.path.join(DIR, "lib", "download-and-create-sandbox-vm-kvm.sh")
+VM_NAME = "Cyberbeest-VM"
+VM_DIR = os.path.expanduser("~/.local/share/cyberbeest-vms")
+# Same margin as the lib script's own space check.
+VM_SPACE_MARGIN = 1024 ** 3
+
 # Where the collected profile answers are handed to 00-/00a-. A plain file
 # rather than environment variables: sudo's default env_reset policy strips
 # arbitrary env vars from the escalated command (only SUDO_ASKPASS and
@@ -217,6 +226,59 @@ def save_persisted_profile(answers):
 # Keep in sync with 00-locale-keyboard-timezone.sh's own COUNTRIES array --
 # that script's interactive whiptail path (used when no profile was
 # collected) is the source of truth this mirrors.
+def _allocated_bytes(path):
+    try:
+        return os.stat(path).st_blocks * 512
+    except OSError:
+        return 0
+
+
+def vm_update_status():
+    """None unless the sandbox VM exists and was built from an older image
+    than the one pinned in VM_LIB. Otherwise the disk-space figures the
+    profile dialog shows next to its "Update the VM" checkbox -- the same
+    arithmetic the lib script checks before touching anything: the old VM
+    stays as the backup, so only a previous backup is freed."""
+    try:
+        with open(VM_LIB, encoding="utf-8") as f:
+            pins = dict(re.findall(r'^(IMAGE_\w+)="([^"]*)"$', f.read(), re.MULTILINE))
+        pinned = pins["IMAGE_SHA256"]
+        download_bytes = int(pins["IMAGE_DOWNLOAD_BYTES"])
+        new_bytes = download_bytes + int(pins["IMAGE_DISK_BYTES"])
+    except (OSError, KeyError, ValueError):
+        return None
+    try:
+        names = subprocess.run(
+            ["virsh", "--connect", "qemu:///session", "list", "--all", "--name"],
+            capture_output=True, text=True, timeout=10,
+        ).stdout.split()
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if VM_NAME not in names:
+        return None
+    try:
+        with open(os.path.join(VM_DIR, VM_NAME + ".image-sha256")) as f:
+            if f.read().strip() == pinned:
+                return None
+    except OSError:
+        pass  # set up before stamping existed: an older image
+    st = os.statvfs(VM_DIR)
+    free = st.f_bavail * st.f_frsize
+    backup = _allocated_bytes(os.path.join(VM_DIR, VM_NAME + "-backup.qcow2"))
+    return {
+        "free": free,
+        "current": _allocated_bytes(os.path.join(VM_DIR, VM_NAME + ".qcow2")),
+        "previous_backup": backup,
+        "download": download_bytes,
+        "needed": new_bytes,
+        "fits": free + backup >= new_bytes + VM_SPACE_MARGIN,
+    }
+
+
+def format_gb(n):
+    return f"{n / 1e9:.1f} GB"
+
+
 PROFILE_COUNTRIES = [
     ("DE", "Germany", "de", "en_US.UTF-8", "de_DE.UTF-8", "de", "Europe/Berlin"),
     ("AT", "Austria", "de", "en_US.UTF-8", "de_AT.UTF-8", "at", "Europe/Vienna"),
@@ -784,6 +846,38 @@ class ProvisioningProfileDialog(Gtk.Dialog):
         self.vm_image.set_active(prev.get("PROVISIONING_VM_IMAGE", "yes") != "no")
         add_row(t("run_gui.profile_vm_image_label"), self.vm_image)
 
+        # Only shown while the existing VM is on an older image. Always
+        # starts unticked, even if it was ticked last time: it's a big
+        # download and a VM that suddenly looks different can confuse.
+        self.vm_update = None
+        status = vm_update_status()
+        if status:
+            self.vm_update = Gtk.CheckButton(label=t("run_gui.profile_vm_update_checkbox"))
+            space_text = t("run_gui.profile_vm_update_space").format(
+                free=format_gb(status["free"]),
+                current=format_gb(status["current"]),
+                needed=format_gb(status["needed"]),
+            )
+            if status["previous_backup"]:
+                space_text += "\n" + t("run_gui.profile_vm_update_previous_backup").format(
+                    size=format_gb(status["previous_backup"]))
+            if not status["fits"]:
+                space_text += "\n" + t("run_gui.profile_vm_update_no_space")
+                self.vm_update.set_sensitive(False)
+            space_label = Gtk.Label(label=space_text, xalign=0)
+            space_label.set_line_wrap(True)
+            space_label.get_style_context().add_class("dim-label")
+            info_icon = Gtk.Image.new_from_icon_name("dialog-information-symbolic", Gtk.IconSize.BUTTON)
+            info_icon.set_tooltip_text(t("run_gui.profile_vm_update_tooltip").format(
+                download=format_gb(status["download"])))
+            checkbox_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+            checkbox_row.pack_start(self.vm_update, False, False, 0)
+            checkbox_row.pack_start(info_icon, False, False, 0)
+            vm_update_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+            vm_update_box.pack_start(checkbox_row, False, False, 0)
+            vm_update_box.pack_start(space_label, False, False, 0)
+            add_row(t("run_gui.profile_vm_update_label"), vm_update_box)
+
         # Now that every widget exists, wire up the country "changed" signal
         # and seed language/keyboard/timezone from the previous answers if
         # there were any, else derive them from the country default like the
@@ -857,6 +951,7 @@ class ProvisioningProfileDialog(Gtk.Dialog):
             "PROVISIONING_TIMEZONE": self.tz_combo.get_child().get_text().strip() or "UTC",
             "PROVISIONING_TOUCHPAD_TUNING": "yes" if self.touchpad_tuning.get_active() else "no",
             "PROVISIONING_VM_IMAGE": "yes" if self.vm_image.get_active() else "no",
+            "PROVISIONING_VM_UPDATE": "yes" if self.vm_update and self.vm_update.get_active() else "no",
         }
         self.destroy()
         return answers, response == self.RESPONSE_START
@@ -1492,7 +1587,9 @@ class RunGuiWindow(Gtk.Window):
         # run doesn't proceed) -- True only for an actual Start click.
         if self.profile_env is not None:
             return True
-        if not (set(scripts) & PROFILE_SCRIPTS):
+        if not (set(scripts) & PROFILE_SCRIPTS) and not (
+            VM_SCRIPT in scripts and vm_update_status()
+        ):
             return True
         return self._edit_profile(pending_scripts=scripts)
 

@@ -256,6 +256,29 @@ STRINGS = {
     ),
     "run_gui.profile_vm_image_label": "VM-Image:",
     "run_gui.profile_vm_image_checkbox": "Cyberbeest-VM-Image herunterladen (KVM)",
+    "run_gui.profile_vm_update_label": "VM-Update:",
+    "run_gui.profile_vm_update_checkbox": (
+        "Cyberbeest-VM auf die neue Version aktualisieren "
+        "(die alte VM bleibt als Sicherung in GNOME Boxes erhalten)"
+    ),
+    "run_gui.profile_vm_update_space": (
+        "Freier Speicherplatz: {free}. Aktuelle VM: {current}. Das Update braucht {needed}."
+    ),
+    "run_gui.profile_vm_update_previous_backup": (
+        "Die vorherige Sicherung ({size}) wird gelöscht."
+    ),
+    "run_gui.profile_vm_update_no_space": (
+        "Nicht genug freier Speicherplatz für das Update."
+    ),
+    "run_gui.profile_vm_update_tooltip": (
+        "Eine neuere Version der Cyberbeest-VM ist verfügbar. Beim Update wird sie "
+        "heruntergeladen (etwa {download}) und als frische VM eingerichtet: Du beginnst "
+        "mit einer leeren VM und meldest dich in deinen Apps neu an.\n\n"
+        "Deine bisherige VM bleibt als Sicherung erhalten und ist weiter in GNOME Boxes "
+        "verfügbar, es geht also nichts verloren. Es wird nur eine Sicherung aufbewahrt. "
+        "Die VM muss während des Updates ausgeschaltet sein. Dateien im Ordner "
+        "VM-Shared sind nicht betroffen."
+    ),
     "run_gui.button_run_changed": "Nur Geändertes ausführen",
     "run_gui.button_run_changed_count": "Nur Geändertes ausführen ({count})",
     "run_gui.button_run_all": "Alles ausführen",

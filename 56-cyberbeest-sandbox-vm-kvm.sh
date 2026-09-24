@@ -24,9 +24,14 @@
 # script" should be able to interrupt it immediately rather than waiting
 # for the download to finish on its own.
 # Depends on: 53a-qemu-kvm-boxes.sh.
-# Idempotent: safe to re-run (download-and-create-sandbox-vm-kvm.sh detects
-# an existing VM of the same name and skips cleanly rather than
-# re-downloading several GB over it).
+# Idempotent: safe to re-run (download-and-create-sandbox-vm-kvm.sh skips a
+# VM that's already on the pinned image).
+#
+# Goes pending again whenever a new image is pinned in the lib script. An
+# existing VM is then only updated if the provisioning profile's "Update
+# the VM" box is ticked (PROVISIONING_VM_UPDATE, read in via
+# vm-profile-gate.sh; off by default), and the old VM is always kept as a
+# backup -- see the lib script's header.
 #
 # Bumped 2026-09-10: lib/download-and-create-sandbox-vm-kvm.sh's default VM
 # name ("Cyberbeest Sandbox") has a space, which virt-install rejects
@@ -55,7 +60,10 @@ echo "--- Installing libguestfs-tools (offline locale-sync) and pv (download pro
 apt-get -o DPkg::Lock::Timeout=60 update -qq
 apt-get -o DPkg::Lock::Timeout=60 install -y libguestfs-tools pv
 
+UPDATE_ARGS=()
+[ "${PROVISIONING_VM_UPDATE:-no}" = "yes" ] && UPDATE_ARGS=(--update)
+
 echo "--- Downloading and creating the sandbox VM as $TARGET_USER ---"
-sudo -u "$TARGET_USER" bash "$DIR/lib/download-and-create-sandbox-vm-kvm.sh"
+sudo -u "$TARGET_USER" bash "$DIR/lib/download-and-create-sandbox-vm-kvm.sh" "${UPDATE_ARGS[@]}"
 
 echo "=== $(date) : done ==="

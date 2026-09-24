@@ -243,6 +243,28 @@ STRINGS = {
     ),
     "run_gui.profile_vm_image_label": "VM image:",
     "run_gui.profile_vm_image_checkbox": "Download the Cyberbeest VM disk image (KVM)",
+    "run_gui.profile_vm_update_label": "VM update:",
+    "run_gui.profile_vm_update_checkbox": (
+        "Update the Cyberbeest VM to the new version "
+        "(the old VM is kept as a backup in GNOME Boxes)"
+    ),
+    "run_gui.profile_vm_update_space": (
+        "Free disk space: {free}. Current VM: {current}. The update needs {needed}."
+    ),
+    "run_gui.profile_vm_update_previous_backup": (
+        "The previous backup ({size}) will be deleted."
+    ),
+    "run_gui.profile_vm_update_no_space": (
+        "Not enough free disk space for the update."
+    ),
+    "run_gui.profile_vm_update_tooltip": (
+        "A newer version of the Cyberbeest VM is available. Updating downloads it "
+        "(about {download}) and sets it up as a fresh VM: you start over with an empty "
+        "VM and log in to your apps again.\n\n"
+        "Your current VM is kept as a backup and stays available in GNOME Boxes, "
+        "so nothing in it is lost. Only one backup is kept. The VM must be shut down "
+        "during the update. Files in the VM-Shared folder are not affected."
+    ),
     "run_gui.button_run_changed": "Run changed only",
     "run_gui.button_run_changed_count": "Run changed only ({count})",
     "run_gui.button_run_all": "Run all",
