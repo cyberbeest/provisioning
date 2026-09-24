@@ -318,7 +318,12 @@ echo "--- Matching guest locale/keyboard to the host ---"
 bash "$DIR/set-vm-guest-locale.sh" "$DISK_PATH"
 
 echo "--- Registering the VM ---"
-virt-install \
+# --print-xml + define instead of a plain virt-install --import, which
+# always boots the new VM -- with no window, so it just ran invisibly in
+# the background after provisioning. Defining never starts it; the menu
+# launcher does, with a window and the shutdown watcher attached.
+VM_XML="$(mktemp)"
+virt-install --print-xml \
 	--connect "$CONNECT" \
 	--name "$VM_NAME" \
 	--memory 2048 \
@@ -333,7 +338,9 @@ virt-install \
 	--channel unix,target.type=virtio,target.name=org.qemu.guest_agent.0 \
 	--filesystem driver.type=virtiofs,source.dir="$SHARED_DIR",target.dir=shared \
 	--memorybacking access.mode=shared \
-	--noautoconsole
+	--noautoconsole > "$VM_XML"
+virsh --connect "$CONNECT" define "$VM_XML"
+rm -f "$VM_XML"
 
 install_helpers
 echo "--- Adding the Whisker menu launcher ---"
