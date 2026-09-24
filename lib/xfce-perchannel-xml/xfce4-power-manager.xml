@@ -19,20 +19,21 @@
          any one property in this channel (e.g. the "Lock screen after"
          picker's -t int write) makes xfconfd rewrite the whole channel from
          its in-memory cache -- any property it loaded with a type mismatch
-         silently drops out of that rewrite instead of surviving. That's how
-         brightness-inactivity-on-ac/battery below went missing on a real
-         install after the picker was used, re-enabling dimming. -->
+         silently drops out of that rewrite instead of surviving. -->
     <property name="dpms-on-ac-sleep" type="int" value="5"/>
     <property name="dpms-on-ac-off" type="int" value="6"/>
     <property name="dpms-on-battery-sleep" type="int" value="5"/>
     <property name="dpms-on-battery-off" type="int" value="6"/>
     <!-- "Reduce brightness on inactivity" (a separate feature from DPMS
-         sleep/off above): explicitly disabled, rather than relying on
-         whatever this xfce4-power-manager build's compiled-in default
-         happens to be for an unset key -- seen enabled by default on a
-         fresh install, dimming the screen ahead of the actual lock. -->
-    <property name="brightness-inactivity-on-ac" type="int" value="0"/>
-    <property name="brightness-inactivity-on-battery" type="int" value="0"/>
+         sleep/off above): explicitly disabled, rather than relying on this
+         xfce4-power-manager build's compiled-in defaults for an unset key
+         (AC: never, battery: 300s, which dims the screen 5min into idle on
+         battery with no lock). The keys are brightness-on-ac/-battery (see
+         xfpm's common/xfpm-config.h), in seconds, and 9 is the minimum and
+         means "Never", not 0. Earlier revisions set the nonexistent
+         brightness-inactivity-on-* keys to 0, which xfpm ignored. -->
+    <property name="brightness-on-ac" type="int" value="9"/>
+    <property name="brightness-on-battery" type="int" value="9"/>
     <property name="dpms-enabled" type="bool" value="true"/>
     <property name="inactivity-on-ac" type="uint" value="0"/>
     <property name="inactivity-on-battery" type="uint" value="0"/>

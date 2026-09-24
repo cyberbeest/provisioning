@@ -68,8 +68,14 @@ if [ -d "/run/user/$TARGET_UID" ]; then
 		as_user "xfconf-query -c xfce4-power-manager -p /xfce4-power-manager/dpms-on-$source-sleep -n -t int -s 5"
 		as_user "xfconf-query -c xfce4-power-manager -p /xfce4-power-manager/dpms-on-$source-off -n -t int -s 6"
 	done
-	as_user "xfconf-query -c xfce4-power-manager -p /xfce4-power-manager/brightness-inactivity-on-ac -n -t int -s 0"
-	as_user "xfconf-query -c xfce4-power-manager -p /xfce4-power-manager/brightness-inactivity-on-battery -n -t int -s 0"
+	# Brightness reduction on inactivity: 9 is xfpm's "Never" (not 0), and
+	# the keys are brightness-on-*, not the brightness-inactivity-on-* ones
+	# earlier revisions wrote (ignored by xfpm, so battery kept its
+	# compiled-in 300s dim) -- drop those leftovers too.
+	for source in ac battery; do
+		as_user "xfconf-query -c xfce4-power-manager -p /xfce4-power-manager/brightness-on-$source -n -t int -s 9"
+		as_user "xfconf-query -c xfce4-power-manager -p /xfce4-power-manager/brightness-inactivity-on-$source -r"
+	done
 	as_user "xfconf-query -c xfce4-power-manager -p /xfce4-power-manager/dpms-enabled -n -t bool -s true"
 else
 	echo "no active session for $TARGET_USER -- values will apply at next login"
