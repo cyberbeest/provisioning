@@ -24,6 +24,9 @@
 # script" should be able to interrupt it immediately rather than waiting
 # for the download to finish on its own.
 # Depends on: 53a-qemu-kvm-boxes.sh.
+# The lib script installs these helpers; naming them here makes run-gui.py
+# mark this script pending when one changes: lib/cyberbeest-vm-start.sh,
+# lib/cyberbeest-vm-watcher.sh, lib/cyberbeest-vm-title-fix.sh.
 # Idempotent: safe to re-run (download-and-create-sandbox-vm-kvm.sh skips a
 # VM that's already on the pinned image).
 #

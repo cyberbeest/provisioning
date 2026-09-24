@@ -17,7 +17,7 @@ DISPLAY_NAME="${2:?usage: cyberbeest-vm-title-fix.sh <vm-name> <display-name>}"
 CONNECT="qemu:///session"
 
 while :; do
-	state=$(virsh --connect "$CONNECT" domstate "$VM_NAME" 2>/dev/null || echo "shut off")
+	state=$(LC_ALL=C virsh --connect "$CONNECT" domstate "$VM_NAME" 2>/dev/null || echo "shut off")
 	[ "$state" = "shut off" ] && exit 0
 
 	winid=$(wmctrl -lx 2>/dev/null | awk '$3 ~ /org\.gnome\.Boxes/ {print $1; exit}')

@@ -20,7 +20,7 @@ notify() {
 		notify-send -i computer -a "Cyberbeest" "$@" 2>/dev/null || true
 }
 
-state=$(virsh --connect "$CONNECT" domstate "$VM_NAME" 2>/dev/null || echo "shut off")
+state=$(LC_ALL=C virsh --connect "$CONNECT" domstate "$VM_NAME" 2>/dev/null || echo "shut off")
 
 case "$state" in
 	"shut off"|"crashed")

@@ -66,8 +66,18 @@ BACKUP_NAME="$VM_NAME-backup"
 BACKUP_DISK="$VM_DIR/$BACKUP_NAME.qcow2"
 SHARED_DIR="$HOME/VM-Shared"
 
+# Captures the list before matching: piping virsh straight into `grep -q`
+# lets grep exit early, virsh then dies of SIGPIPE and pipefail turns an
+# existing VM into "no VM" -- which would send this script down the
+# fresh-install path over the existing VM's disk. A virsh failure is fatal
+# for the same reason.
 vm_exists() {
-	virsh --connect "$CONNECT" list --all --name 2>/dev/null | grep -qxF "$1"
+	local names
+	names="$(virsh --connect "$CONNECT" list --all --name)" || {
+		echo "Could not list VMs (virsh failed) -- stopping rather than guessing." >&2
+		exit 1
+	}
+	grep -qxF "$1" <<<"$names"
 }
 
 # Bytes actually allocated on disk (qcow2 files can be sparse), 0 if missing.
@@ -83,19 +93,31 @@ if [ -f "$CACHE_PATH" ] && [ "$(cat "$CACHE_PATH.sha256" 2>/dev/null)" != "$IMAG
 	rm -f "$CACHE_PATH" "$CACHE_PATH.sha256" "$CACHE_PATH.version"
 fi
 
+# Also run when an existing VM is left as it is, so fixes to these reach
+# machines that don't take a new image.
+install_helpers() {
+	echo "--- Installing the start/watcher/title-fix helper scripts ---"
+	mkdir -p "$HOME/.local/bin"
+	install -m 755 "$DIR/cyberbeest-vm-start.sh" "$HOME/.local/bin/cyberbeest-vm-start.sh"
+	install -m 755 "$DIR/cyberbeest-vm-watcher.sh" "$HOME/.local/bin/cyberbeest-vm-watcher.sh"
+	install -m 755 "$DIR/cyberbeest-vm-title-fix.sh" "$HOME/.local/bin/cyberbeest-vm-title-fix.sh"
+}
+
 UPDATING=0
 if vm_exists "$VM_NAME"; then
 	if [ "$(cat "$STAMP_PATH" 2>/dev/null)" = "$IMAGE_SHA256" ]; then
 		echo "\"$VM_NAME\" is already on the current image -- nothing to do."
+		install_helpers
 		exit 0
 	fi
 	echo "\"$VM_NAME\" was set up from an older image; a new one is available."
 	if [ "$UPDATE" -eq 0 ]; then
 		echo "Not updating it (\"Update the VM\" is off in the provisioning profile) -- leaving it alone."
 		echo "(To update: tick it in run-gui.py's Profile..., then re-run this script.)"
+		install_helpers
 		exit 0
 	fi
-	STATE="$(virsh --connect "$CONNECT" domstate "$VM_NAME" 2>/dev/null || echo "shut off")"
+	STATE="$(LC_ALL=C virsh --connect "$CONNECT" domstate "$VM_NAME" 2>/dev/null || echo "shut off")"
 	if [ "$STATE" != "shut off" ]; then
 		echo "\"$VM_NAME\" is $STATE -- shut it down first, then re-run this script." >&2
 		exit 1
@@ -216,6 +238,14 @@ if [ "$UPDATING" -eq 1 ]; then
 	rm -f "$STAMP_PATH"
 fi
 
+# Last line of defense for the user's data: nothing past this point may
+# write over a disk that belongs to an existing VM.
+if [ -e "$DISK_PATH" ]; then
+	echo "$DISK_PATH already exists but no VM \"$VM_NAME\" is registered -- not overwriting it." >&2
+	echo "(Move or delete it yourself, then re-run this script.)" >&2
+	exit 1
+fi
+
 # Only armed now: before this point "$VM_NAME" may still be the user's old
 # VM, which a failed download must never undefine.
 cleanup_on_failure() {
@@ -249,12 +279,7 @@ virt-install \
 	--memorybacking access.mode=shared \
 	--noautoconsole
 
-echo "--- Installing the start/watcher/title-fix helper scripts ---"
-mkdir -p "$HOME/.local/bin"
-install -m 755 "$DIR/cyberbeest-vm-start.sh" "$HOME/.local/bin/cyberbeest-vm-start.sh"
-install -m 755 "$DIR/cyberbeest-vm-watcher.sh" "$HOME/.local/bin/cyberbeest-vm-watcher.sh"
-install -m 755 "$DIR/cyberbeest-vm-title-fix.sh" "$HOME/.local/bin/cyberbeest-vm-title-fix.sh"
-
+install_helpers
 echo "--- Adding the Whisker menu launcher ---"
 mkdir -p "$HOME/.local/share/applications"
 cat > "$HOME/.local/share/applications/cyberbeest-sandbox-vm.desktop" <<EOF
