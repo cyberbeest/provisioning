@@ -82,11 +82,11 @@ idle_delay_seconds() {
     echo $(( ${mins:-5} * 60 ))
 }
 
-warned=0
+warned_remaining=0
 
 while true; do
     if is_locked; then
-        warned=0
+        warned_remaining=0
         close_notification
         sleep 2
         continue
@@ -120,15 +120,23 @@ while true; do
     warn_seconds=$(read_setting WARN_SECONDS_BEFORE_LOCK "$DEFAULT_WARN_SECONDS")
     if [ "$warn_enabled" = "true" ] && [ "$warn_seconds" -gt 0 ]; then
         if [ "$remaining" -gt 0 ] && [ "$remaining" -le "$warn_seconds" ]; then
-            if [ "$warned" -eq 0 ]; then
-                last_notif_id=$(notify-send -p \
+            # Re-sent every second (replacing the previous one in place
+            # via -r) so the title counts down the remaining seconds.
+            if [ "$remaining" -ne "$warned_remaining" ]; then
+                if [ "$remaining" -eq 1 ]; then
+                    title=$(t lockwarning.title_one)
+                else
+                    title=$(t lockwarning.title)
+                    title=${title//SECONDS/$remaining}
+                fi
+                last_notif_id=$(notify-send -p -r "$last_notif_id" \
                     -t $(( (remaining + 1) * 1000 )) \
-                    "$(t lockwarning.title)" \
+                    "$title" \
                     "$(t lockwarning.body)")
-                warned=1
+                warned_remaining=$remaining
             fi
         elif [ "$remaining" -gt "$warn_seconds" ]; then
-            warned=0
+            warned_remaining=0
             close_notification
         fi
     fi

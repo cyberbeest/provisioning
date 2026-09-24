@@ -102,7 +102,8 @@ Updating normally would discard them. Keep them and only bring in the new update
 	[update.keep_failed_message]="The update couldn't be applied without touching your changes, so nothing was changed:
 
 OUTPUT"
-	[lockwarning.title]="Screen locking soon"
+	[lockwarning.title]="Screen locks in SECONDS seconds"
+	[lockwarning.title_one]="Screen locks in 1 second"
 	[lockwarning.body]="Move the mouse or press a key to stay unlocked."
 	[clipboard_genmon.label_text]="text"
 	[clipboard_genmon.label_image]="image"

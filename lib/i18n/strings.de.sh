@@ -104,7 +104,8 @@ Ein normales Update würde sie verwerfen. Behalten und nur die neuen Updates üb
 	[update.keep_failed_message]="Das Update ließ sich nicht anwenden, ohne deine Änderungen anzutasten, daher wurde nichts verändert:
 
 OUTPUT"
-	[lockwarning.title]="Bildschirm sperrt gleich"
+	[lockwarning.title]="Bildschirm sperrt in SECONDS Sekunden"
+	[lockwarning.title_one]="Bildschirm sperrt in 1 Sekunde"
 	[lockwarning.body]="Bewege die Maus oder drücke eine Taste, um entsperrt zu bleiben."
 	[clipboard_genmon.label_text]="Text"
 	[clipboard_genmon.label_image]="Bild"
