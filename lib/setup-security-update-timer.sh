@@ -26,6 +26,11 @@ APPS_STATUS_FILE=/var/lib/security-update-apps-status
 PHASE_FILE=/run/security-update-check.phase
 LOCK_FILE=/run/security-update-check.lock
 CHECK_INTERVAL_SECONDS=$(( 120 * 60 ))
+# The timer fires on quarter-hour slots with up to a minute of AccuracySec
+# jitter, so a check that started a few seconds past 20:00 is only 119.x
+# minutes old at 22:00 -- without slack that slot would skip and the real
+# interval would stretch to 135 minutes. update-genmon.sh mirrors this.
+THROTTLE_SLACK_SECONDS=$(( 5 * 60 ))
 APPS_FORCE_INTERVAL_SECONDS=$(( 30 * 24 * 60 * 60 ))
 
 # Guard against the timer-triggered run and a user-triggered "run updates
@@ -104,9 +109,8 @@ ${journal}"
 
 start_epoch="$(date +%s)"
 
-# The timer's OnBootSec=5min trigger fires on every boot regardless of when
-# the last real check ran, and Persistent=true can also fire a catch-up run
-# right after boot. Skip without touching the network if we already checked
+# The timer fires every 15 minutes (plus a Persistent=true catch-up run right
+# after boot), regardless of when the last real check ran. Skip without touching the network if we already checked
 # recently, so frequent reboots don't hammer Debian's mirrors more often
 # than the intended 120-minute cadence. Gated on the security status file --
 # both passes always run together on this cadence.
@@ -114,7 +118,7 @@ if [ "${FORCE_CHECK:-0}" != 1 ] && [ -r "$STATUS_FILE" ]; then
     # shellcheck disable=SC1090
     . "$STATUS_FILE"
     if [ -n "${LAST_CHECK_EPOCH:-}" ] \
-       && [ $(( start_epoch - LAST_CHECK_EPOCH )) -lt "$CHECK_INTERVAL_SECONDS" ]; then
+       && [ $(( start_epoch - LAST_CHECK_EPOCH )) -lt $(( CHECK_INTERVAL_SECONDS - THROTTLE_SLACK_SECONDS )) ]; then
         echo "Last check was $(( (start_epoch - LAST_CHECK_EPOCH) / 60 )) min ago, under the ${CHECK_INTERVAL_SECONDS}s interval -- skipping."
         exit 0
     fi
@@ -250,11 +254,17 @@ EOF
 
 cat > /etc/systemd/system/security-update-check.timer <<'EOF'
 [Unit]
-Description=Run Debian security update check every 120 minutes
+Description=Run Debian security update check (every 120 minutes, throttled in the script)
 
 [Timer]
-OnBootSec=5min
-OnUnitActiveSec=120min
+# Wall clock, not monotonic: OnBootSec counts from kernel start, so a LUKS
+# prompt that sat for more than 5 minutes left it already in the past when
+# timers.target came up, and systemd never fired it -- no checks for that
+# whole boot. OnActiveSec avoids that but re-arms on every daemon-reload
+# (any package install), resetting the schedule. A quarter-hourly calendar
+# timer has neither problem; security-update-check.sh's own 120-minute
+# throttle (below) turns all but one slot per interval into a cheap skip.
+OnCalendar=*:0/15
 AccuracySec=1min
 Persistent=true
 
@@ -304,7 +314,10 @@ EOF
 
 echo "--- Enabling security-update-check.timer ---"
 systemctl daemon-reload
-systemctl enable --now security-update-check.timer
+systemctl enable security-update-check.timer
+# restart, not just --now: an already-running timer keeps its old trigger
+# schedule, and a re-run here is how timer changes reach existing machines.
+systemctl restart security-update-check.timer
 
 echo "--- Running an initial check now so the panel icon has data immediately ---"
 /usr/local/sbin/security-update-check.sh || echo "(non-zero exit is fine if this first run itself hit an error -- status file is still written)"
