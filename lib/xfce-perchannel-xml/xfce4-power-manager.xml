@@ -18,7 +18,7 @@
          int (confirmed on two provisioned machines), and a later write to
          any one property in this channel (e.g. the "Lock screen after"
          picker's -t int write) makes xfconfd rewrite the whole channel from
-         its in-memory cache -- any property it loaded with a type mismatch
+         its in-memory cache; any property it loaded with a type mismatch
          silently drops out of that rewrite instead of surviving. -->
     <property name="dpms-on-ac-sleep" type="int" value="5"/>
     <property name="dpms-on-ac-off" type="int" value="6"/>
