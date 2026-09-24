@@ -17,7 +17,7 @@
 # so starting the VM and closing its window both behave like a normal app.
 #
 # Versioning: the image is pinned by SHA-256 below. Publishing a new image
-# means uploading it, then updating the three IMAGE_* values here -- that
+# means uploading it, then updating the two IMAGE_* values here -- that
 # edit is also what makes 56-cyberbeest-sandbox-vm-kvm.sh pending again on
 # every machine (run-gui.py tracks lib/ files a script references). A VM
 # set up from an older image is detected via the hash stamped next to its
@@ -34,11 +34,14 @@
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 
-IMAGE_URL="https://cyberbeest.com/vm-images/cyberbeest-donor.qcow2.gz"
+# A plain qcow2, not gzipped: the image is already compressed cluster by
+# cluster (qemu-img convert -c), so gzip only saved ~1.6% while forcing a
+# second full-size copy during extraction. The downloaded file now simply
+# becomes the VM's disk.
+IMAGE_URL="https://cyberbeest.com/vm-images/cyberbeest-donor.qcow2"
 # Parsed by run-gui.py (vm_update_status) too -- keep the plain KEY="value" form.
-IMAGE_SHA256="3413d2ec88c52e2b9944db7ce79d2f65a9422349ff666bc99b32e70bff6270fc"
-IMAGE_DOWNLOAD_BYTES="3093302109"
-IMAGE_DISK_BYTES="3143303168"
+IMAGE_SHA256="0c5663ecdaa4d3a1cf2c9d4a909fa12ddbe0d99a6d3371760689c4e8da216ae2"
+IMAGE_BYTES="3143303168"
 
 UPDATE=0
 if [ "${1:-}" = "--update" ]; then
@@ -53,11 +56,13 @@ DISPLAY_NAME="${1:-Cyberbeest VM}"
 VM_NAME="${DISPLAY_NAME// /-}"
 CONNECT="qemu:///session"
 VM_DIR="$HOME/.local/share/cyberbeest-vms"
-# Cached separately from the per-VM disk so a later failure (e.g.
-# virt-install rejecting the name, as happened once already) doesn't cost
-# a re-download of several GB just to retry that step -- only the
-# extracted, VM-specific disk is cleaned up on failure, never this cache.
-CACHE_PATH="$VM_DIR/cyberbeest-donor.qcow2.gz"
+# A verified download waiting to become the VM's disk. It survives a
+# failure *before* that point (e.g. the VM still running), so a retry
+# needn't download several GB again. Once moved into place it's modified
+# (guest locale), so a failure after that means a fresh download.
+CACHE_PATH="$VM_DIR/cyberbeest-donor.qcow2"
+# Left behind by versions that downloaded a gzipped image.
+LEGACY_GZ="$VM_DIR/cyberbeest-donor.qcow2.gz"
 DISK_PATH="$VM_DIR/$VM_NAME.qcow2"
 # Which image a VM was built from, written after a successful setup.
 # VMs set up before this existed have none and count as outdated.
@@ -92,6 +97,7 @@ if [ -f "$CACHE_PATH" ] && [ "$(cat "$CACHE_PATH.sha256" 2>/dev/null)" != "$IMAG
 	echo "--- Removing a cached download of an older image ---"
 	rm -f "$CACHE_PATH" "$CACHE_PATH.sha256" "$CACHE_PATH.version"
 fi
+rm -f "$LEGACY_GZ" "$LEGACY_GZ.sha256" "$LEGACY_GZ.version" "$LEGACY_GZ.part" "$LEGACY_GZ.version.part"
 
 # Also run when an existing VM is left as it is, so fixes to these reach
 # machines that don't take a new image.
@@ -122,6 +128,20 @@ if vm_exists "$VM_NAME"; then
 		echo "\"$VM_NAME\" is $STATE -- shut it down first, then re-run this script." >&2
 		exit 1
 	fi
+	# A backup disk nobody owns is most likely the user's data from an
+	# interrupted earlier run -- never treat it as a disposable old backup.
+	if [ -e "$BACKUP_DISK" ] && ! vm_exists "$BACKUP_NAME"; then
+		echo "$BACKUP_DISK exists but no VM \"$BACKUP_NAME\" is registered -- stopping so it isn't deleted." >&2
+		echo "(If it's the old VM's disk from an interrupted update, move it back to $DISK_PATH.)" >&2
+		exit 1
+	fi
+	if vm_exists "$BACKUP_NAME"; then
+		BACKUP_STATE="$(LC_ALL=C virsh --connect "$CONNECT" domstate "$BACKUP_NAME" 2>/dev/null || echo "shut off")"
+		if [ "$BACKUP_STATE" != "shut off" ]; then
+			echo "The backup VM \"$BACKUP_NAME\" is $BACKUP_STATE -- shut it down first, then re-run this script." >&2
+			exit 1
+		fi
+	fi
 	UPDATING=1
 fi
 
@@ -137,7 +157,7 @@ RECLAIMABLE=0
 if [ "$UPDATING" -eq 1 ]; then
 	RECLAIMABLE=$((RECLAIMABLE + $(allocated "$BACKUP_DISK")))
 fi
-NEEDED=$((IMAGE_DOWNLOAD_BYTES + IMAGE_DISK_BYTES + MARGIN_BYTES))
+NEEDED=$((IMAGE_BYTES + MARGIN_BYTES))
 if [ $((FREE_BYTES + RECLAIMABLE)) -lt "$NEEDED" ]; then
 	echo "Not enough disk space: need $((NEEDED / 1000000)) MB, only $(((FREE_BYTES + RECLAIMABLE) / 1000000)) MB available." >&2
 	[ "$UPDATING" -eq 1 ] && echo "(The old VM is kept as a backup, so its disk still counts as used.)" >&2
@@ -213,15 +233,50 @@ else
 fi
 echo "--- Download complete ---"
 
+# GNOME Boxes saves a VM's memory to disk when its window is closed and our
+# watcher didn't shut it down first (it couldn't on German machines before
+# its LC_ALL=C fix). libvirt refuses to rename a VM in that state, and
+# dropping the saved state would be a power cut for whatever ran inside.
+# So: resume it headless and shut it down through the guest agent, the
+# same way the watcher does. If that doesn't finish, save it again, which
+# leaves the VM exactly as it was.
+SHUTDOWN_TIMEOUT=180
+has_managed_save() {
+	local info
+	info="$(LC_ALL=C virsh --connect "$CONNECT" dominfo "$1")"
+	grep -q '^Managed save: *yes' <<<"$info"
+}
+shut_down_saved_vm() {
+	echo "--- \"$VM_NAME\" was suspended when last closed -- resuming it briefly to shut it down cleanly ---"
+	virsh --connect "$CONNECT" start "$VM_NAME" >/dev/null
+	local deadline=$((SECONDS + SHUTDOWN_TIMEOUT)) state
+	while [ "$SECONDS" -lt "$deadline" ]; do
+		state="$(LC_ALL=C virsh --connect "$CONNECT" domstate "$VM_NAME" 2>/dev/null || echo "shut off")"
+		case "$state" in
+			"shut off") echo "--- Shut down cleanly ---"; return 0 ;;
+			paused) virsh --connect "$CONNECT" resume "$VM_NAME" >/dev/null 2>&1 || true ;;
+			*) virsh --connect "$CONNECT" shutdown "$VM_NAME" --mode agent >/dev/null 2>&1 || true ;;
+		esac
+		sleep 5
+	done
+	echo "\"$VM_NAME\" didn't shut down within ${SHUTDOWN_TIMEOUT}s -- saving it again, as it was." >&2
+	virsh --connect "$CONNECT" managedsave "$VM_NAME" >/dev/null
+	echo "(Start it from the menu, shut it down from inside, then re-run this script.)" >&2
+	exit 1
+}
+
 if [ "$UPDATING" -eq 1 ]; then
+	has_managed_save "$VM_NAME" && shut_down_saved_vm
 	if vm_exists "$BACKUP_NAME"; then
 		echo "--- Deleting the previous backup VM \"$BACKUP_NAME\" ---"
-		virsh --connect "$CONNECT" undefine "$BACKUP_NAME" --nvram
+		virsh --connect "$CONNECT" undefine "$BACKUP_NAME" --nvram --managed-save
+		rm -f "$BACKUP_DISK"
 	fi
-	rm -f "$BACKUP_DISK"
 	echo "--- Keeping the old VM as \"$BACKUP_NAME\" ---"
-	mv "$DISK_PATH" "$BACKUP_DISK"
+	# Rename first: it's the step libvirt may refuse, and until the disk
+	# moves, a refusal leaves everything as it was.
 	virsh --connect "$CONNECT" domrename "$VM_NAME" "$BACKUP_NAME"
+	mv "$DISK_PATH" "$BACKUP_DISK"
 	virt-xml --connect "$CONNECT" "$BACKUP_NAME" --edit --disk path="$BACKUP_DISK"
 	# domrename leaves the UEFI vars file at its old-name path, which the
 	# new VM is about to be given too -- sharing it would also make a later
@@ -249,14 +304,15 @@ fi
 # Only armed now: before this point "$VM_NAME" may still be the user's old
 # VM, which a failed download must never undefine.
 cleanup_on_failure() {
-	echo "--- Failed -- removing the partially-created VM and disk (keeping the cached download at $CACHE_PATH) ---" >&2
+	echo "--- Failed -- removing the partially-created VM and disk ---" >&2
 	rm -f "$DISK_PATH"
 	virsh --connect "$CONNECT" undefine "$VM_NAME" --nvram 2>/dev/null || true
 }
 trap cleanup_on_failure ERR
 
-echo "--- Extracting to $DISK_PATH ---"
-gunzip -c "$CACHE_PATH" > "$DISK_PATH"
+echo "--- Moving the download into place as $DISK_PATH ---"
+mv "$CACHE_PATH" "$DISK_PATH"
+rm -f "$CACHE_PATH.sha256"
 
 echo "--- Matching guest locale/keyboard to the host ---"
 bash "$DIR/set-vm-guest-locale.sh" "$DISK_PATH"
@@ -295,8 +351,5 @@ EOF
 
 trap - ERR
 printf '%s' "$IMAGE_SHA256" > "$STAMP_PATH"
-# Several GB that nothing needs once the VM exists -- and would otherwise
-# end up inside release images built from a provisioned machine.
-rm -f "$CACHE_PATH" "$CACHE_PATH.sha256" "$VERSION_FILE"
 echo "--- Done: \"$DISPLAY_NAME\" created at $DISK_PATH ---"
 echo "Start it from the Whisker menu, or: $HOME/.local/bin/cyberbeest-vm-start.sh"

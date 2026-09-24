@@ -31,7 +31,6 @@ DIR="$(cd "$(dirname "$0")/.." && pwd)"
 VBOX_VDI="$HOME/VirtualBox VMs/Cyberbeest Donor Image/Cyberbeest Donor Image.vdi"
 BUILD_DIR="$HOME/vms/donor-build"
 OUT_QCOW2="$BUILD_DIR/cyberbeest-donor.qcow2"
-OUT_GZ="$BUILD_DIR/cyberbeest-donor.qcow2.gz"
 
 if [ ! -f "$VBOX_VDI" ]; then
 	echo "Donor VDI not found at: $VBOX_VDI" >&2
@@ -61,10 +60,10 @@ echo "=== $(date) : compacting ==="
 qemu-img convert -p -O qcow2 -c "$OUT_QCOW2" "$OUT_QCOW2.compact"
 mv "$OUT_QCOW2.compact" "$OUT_QCOW2"
 
-echo "=== $(date) : compressing ==="
-rm -f "$OUT_GZ"
-pv "$OUT_QCOW2" | gzip > "$OUT_GZ"
-
-echo "=== $(date) : done: $OUT_GZ ==="
+# No gzip on top: -c above already compresses every cluster, so gzip
+# gained ~1.6% and cost users a second full-size copy while extracting.
+echo "=== $(date) : done: $OUT_QCOW2 ==="
 qemu-img info "$OUT_QCOW2"
-ls -lh "$OUT_GZ"
+echo "Upload it to cyberbeest.com/vm-images/, then pin it in lib/download-and-create-sandbox-vm-kvm.sh:"
+echo "IMAGE_SHA256=\"$(sha256sum "$OUT_QCOW2" | cut -d' ' -f1)\""
+echo "IMAGE_BYTES=\"$(stat -c%s "$OUT_QCOW2")\""
