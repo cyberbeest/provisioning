@@ -202,9 +202,11 @@ STRINGS = {
     "panelcolor.preset_charcoal": "Charcoal",
     "update_genmon.log_title": "Security Update Log",
     "update_genmon.log_missing": "No update log found yet -- the check hasn't run.",
+    "update_genmon.log_last_run": "Log of the last update run:",
+    "update_genmon.log_live": "Updates are running -- live output:",
+    "update_genmon.log_starting": "Starting the update run...",
     "update_genmon.close": "Close",
     "update_genmon.run_now": "Run updates now",
-    "update_genmon.run_now_started": "Update check started -- the panel icon will update in a moment.",
     "update_genmon.run_now_already_running": "An update check is already running.",
     "update_genmon.run_now_failed": "Couldn't start the update check.",
     "update_genmon.interrupted": (

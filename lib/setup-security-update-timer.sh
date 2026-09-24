@@ -25,6 +25,13 @@ STATUS_FILE=/var/lib/security-update-status
 APPS_STATUS_FILE=/var/lib/security-update-apps-status
 PHASE_FILE=/run/security-update-check.phase
 LOCK_FILE=/run/security-update-check.lock
+# Output of the run in progress, appended as it happens, so the panel icon's
+# log dialog (update-genmon-view-log.py) can follow it live. Only exists
+# while a real (non-throttled) run is going; the finished run's log is
+# LOG_FILE further down.
+LIVE_LOG=/run/security-update-check.live.log
+UU_LOG_DIR=/var/log/unattended-upgrades
+TAIL_PID=""
 CHECK_INTERVAL_SECONDS=$(( 120 * 60 ))
 # The timer fires on quarter-hour slots with up to a minute of AccuracySec
 # jitter, so a check that started a few seconds past 20:00 is only 119.x
@@ -54,7 +61,25 @@ set_phase() {
 
 disable_conf() { [ -f "$CONF_DIR/$1" ] && mv "$CONF_DIR/$1" "$CONF_DIR/$1.disabled"; }
 enable_conf()  { [ -f "$CONF_DIR/$1.disabled" ] && mv "$CONF_DIR/$1.disabled" "$CONF_DIR/$1"; }
+# unattended-upgrades sends its progress to its own log files (root-only
+# directory) rather than stdout, so mirror those into LIVE_LOG while a pass
+# runs. -n0: only lines from this pass, not the files' history.
+start_live_tail() {
+    tail -q -n0 -F "$UU_LOG_DIR/unattended-upgrades.log" "$UU_LOG_DIR/unattended-upgrades-dpkg.log" \
+        >> "$LIVE_LOG" 2>/dev/null &
+    TAIL_PID=$!
+}
+stop_live_tail() {
+    [ -n "$TAIL_PID" ] || return 0
+    # Give tail's 1s poll a moment to pick up the pass's last lines.
+    sleep 1
+    kill "$TAIL_PID" 2>/dev/null
+    wait "$TAIL_PID" 2>/dev/null
+    TAIL_PID=""
+}
 cleanup() {
+    stop_live_tail
+    rm -f "$LIVE_LOG"
     enable_conf "$SECURITY_CONF"
     enable_conf "$VENDOR_CONF"
     rm -f "$CONF_DIR/$FORCE_CONF"
@@ -67,8 +92,11 @@ trap cleanup EXIT
 # PASS_OUTPUT globals.
 run_uu_pass() {
     local pass_start="$1" out status journal combined
-    out="$(unattended-upgrades 2>&1)"
+    start_live_tail
+    # pipefail (set above) keeps unattended-upgrades' own exit status.
+    out="$(unattended-upgrades 2>&1 | tee -a "$LIVE_LOG")"
     status=$?
+    stop_live_tail
     if [ "$status" -eq 0 ]; then
         PASS_RESULT=ok
         PASS_REASON=""
@@ -125,7 +153,11 @@ if [ "${FORCE_CHECK:-0}" != 1 ] && [ -r "$STATUS_FILE" ]; then
 fi
 
 set_phase checking
-update_out="$(apt-get -o DPkg::Lock::Timeout=60 update -qq 2>&1)"
+: > "$LIVE_LOG"
+chmod 644 "$LIVE_LOG"
+echo "=== security-update-check.sh run: $(date -d "@$start_epoch") ===" >> "$LIVE_LOG"
+echo "--- apt-get update ---" >> "$LIVE_LOG"
+update_out="$(apt-get -o DPkg::Lock::Timeout=60 update -qq 2>&1 | tee -a "$LIVE_LOG")"
 update_status=$?
 
 security_result=ok
@@ -144,7 +176,7 @@ if [ "$update_status" -ne 0 ]; then
 else
     set_phase installing
 
-    echo "--- Security pass (Debian-Security, always -- even on metered) ---"
+    echo "--- Security pass (Debian-Security, always -- even on metered) ---" | tee -a "$LIVE_LOG"
     disable_conf "$VENDOR_CONF"
     phase1_start="$(date +%s)"
     run_uu_pass "$phase1_start"
@@ -153,7 +185,7 @@ else
     security_output="$PASS_OUTPUT"
     enable_conf "$VENDOR_CONF"
 
-    echo "--- Messenger-apps pass (Signal/Element) ---"
+    echo "--- Messenger-apps pass (Signal/Element) ---" | tee -a "$LIVE_LOG"
     apps_last_success_epoch=""
     if [ -r "$APPS_STATUS_FILE" ]; then
         # shellcheck disable=SC1090
