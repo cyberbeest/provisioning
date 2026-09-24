@@ -279,8 +279,8 @@ if [ -d "$TARGET_UID_RUNTIME" ]; then
 		xfconf_set_retry xfce4-screensaver /lock/enabled false -- -n -t bool -s false
 		xfconf_set_retry xfce4-screensaver /saver/idle-activation/enabled false -- -n -t bool -s false
 		xfconf_set_retry xfce4-power-manager /xfce4-power-manager/dpms-enabled false -- -n -t bool -s false
-		xfconf_set_retry xfce4-power-manager /xfce4-power-manager/brightness-inactivity-on-ac 0 -- -n -t uint -s 0
-		xfconf_set_retry xfce4-power-manager /xfce4-power-manager/brightness-inactivity-on-battery 0 -- -n -t uint -s 0
+		xfconf_set_retry xfce4-power-manager /xfce4-power-manager/brightness-on-ac 9 -- -n -t int -s 9
+		xfconf_set_retry xfce4-power-manager /xfce4-power-manager/brightness-on-battery 9 -- -n -t int -s 9
 	"
 
 	echo "--- Disabling lock-shutdown-watcher ---"
