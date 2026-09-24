@@ -230,8 +230,9 @@ EOF
 Description=Run Viber update check daily
 
 [Timer]
-OnBootSec=10min
-OnUnitActiveSec=1d
+# Wall clock, not OnBootSec/OnActiveSec -- see lib/setup-security-update-timer.sh
+# (a slow LUKS prompt can leave OnBootSec never firing for a whole boot).
+OnCalendar=daily
 AccuracySec=1h
 Persistent=true
 
@@ -239,7 +240,7 @@ Persistent=true
 WantedBy=timers.target
 EOF
     systemctl daemon-reload >>"$LOG" 2>&1
-    systemctl enable --now viber-update-check.timer >>"$LOG" 2>&1 || { log "enabling viber-update-check.timer failed"; return 1; }
+    { systemctl enable viber-update-check.timer && systemctl restart viber-update-check.timer; } >>"$LOG" 2>&1 || { log "enabling viber-update-check.timer failed"; return 1; }
     log "Viber update timer installed and enabled"
 }
 

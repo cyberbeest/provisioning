@@ -70,54 +70,40 @@ if [ -r "$APPS_STATUS_FILE" ]; then
 fi
 
 CHECK_INTERVAL_SECONDS=$(( 120 * 60 ))
-BOOT_SEC=$(( 5 * 60 ))  # matches OnBootSec=5min in security-update-check.timer
-BOOT_GRACE_SECONDS=$(( 6 * 60 ))
+SLOT_SECONDS=$(( 15 * 60 ))  # matches OnCalendar=*:0/15 in security-update-check.timer
+THROTTLE_SLACK_SECONDS=$(( 5 * 60 ))  # matches security-update-check.sh
 
-# security-update-check.timer has both OnBootSec=5min and
-# OnUnitActiveSec=120min triggers, but security-update-check.sh now skips
-# without running if the last real check was under 120 minutes ago (so
-# frequent reboots don't hammer Debian's mirrors). That means a boot-driven
-# run only actually does anything if a check was already due -- so only
-# treat this as "waiting for the first check" when the 120-minute interval
-# had already elapsed before boot; otherwise the OnBootSec trigger will just
-# skip and the existing last-check status stands.
-uptime_seconds="$(awk '{print int($1)}' /proc/uptime 2>/dev/null)"
-boot_epoch=""
-[ -n "$uptime_seconds" ] && boot_epoch=$(( now_epoch - uptime_seconds ))
-awaiting_first_check=false
-if [ -n "$boot_epoch" ] && [ $(( now_epoch - boot_epoch )) -lt "$BOOT_GRACE_SECONDS" ] \
-   && { [ -z "$last_check_epoch" ] || [ $(( boot_epoch - last_check_epoch )) -ge "$CHECK_INTERVAL_SECONDS" ]; }; then
-    awaiting_first_check=true
-fi
-
-# security-update-check.timer fires on OnUnitActiveSec (monotonic), so
-# systemd never populates NextElapseUSecRealtime for it -- derive the next
-# run ourselves instead of querying systemd. While waiting for the first
-# post-boot run, base it on boot time + OnBootSec rather than
-# last_check_epoch + interval, which would still point into the past.
-#
-# OnUnitActiveSec resets its 120-minute clock on every activation of
-# security-update-check.service, including one that immediately
-# throttle-skips (last check too recent) without touching the status file.
-# So the real timer schedule can drift ahead of last_check_epoch, which only
-# advances on a completed (non-skipped) run -- predicting off last_check_epoch
-# alone can then claim "next check: any moment" indefinitely while the real
-# timer isn't due for another ~2 hours. Prefer the service unit's actual last
-# activation time (covers skips too) and only fall back to last_check_epoch
-# if that's unavailable.
-timer_last_invocation_epoch=""
-timer_last_invocation_ts="$(systemctl show -p ExecMainStartTimestamp --value security-update-check.service 2>/dev/null)"
-if [ -n "$timer_last_invocation_ts" ] && [ "$timer_last_invocation_ts" != "n/a" ]; then
-    timer_last_invocation_epoch="$(date -d "$timer_last_invocation_ts" +%s 2>/dev/null)"
-fi
-
+# security-update-check.timer fires on the wall clock every 15 minutes
+# (plus a Persistent= catch-up run right after boot if a slot was missed),
+# and security-update-check.sh skips without touching the network unless
+# the last real check is at least 115 minutes old (120 minus 5 of slack for
+# timer jitter). So the next real check is the first quarter-hour slot at
+# or after last check + 115 min, never
+# earlier than now. A skipped activation doesn't shift that, unlike the
+# old monotonic OnUnitActiveSec schedule.
 next_check_epoch=""
-if [ "$awaiting_first_check" = true ]; then
-    next_check_epoch=$(( boot_epoch + BOOT_SEC ))
-elif [ -n "$timer_last_invocation_epoch" ]; then
-    next_check_epoch=$(( timer_last_invocation_epoch + CHECK_INTERVAL_SECONDS ))
-elif [ -n "$last_check_epoch" ]; then
-    next_check_epoch=$(( last_check_epoch + CHECK_INTERVAL_SECONDS ))
+due_epoch="$now_epoch"
+min_gap=$(( CHECK_INTERVAL_SECONDS - THROTTLE_SLACK_SECONDS ))
+if [ -n "$last_check_epoch" ] && [ $(( last_check_epoch + min_gap )) -gt "$now_epoch" ]; then
+    due_epoch=$(( last_check_epoch + min_gap ))
+fi
+next_check_epoch=$(( (due_epoch + SLOT_SECONDS - 1) / SLOT_SECONDS * SLOT_SECONDS ))
+
+# Right after boot a check is often already due (machine was off) and the
+# timer will pick it up within one slot -- show that as "checking" rather
+# than "overdue". Measured from when the timer unit started, not kernel
+# boot: a LUKS prompt can sit for minutes before timers start.
+timer_start_epoch=""
+timer_start_ts="$(systemctl show -p ActiveEnterTimestamp --value security-update-check.timer 2>/dev/null)"
+if [ -n "$timer_start_ts" ] && [ "$timer_start_ts" != "n/a" ]; then
+    timer_start_epoch="$(date -d "$timer_start_ts" +%s 2>/dev/null)"
+fi
+awaiting_first_check=false
+if [ -n "$timer_start_epoch" ] \
+   && [ $(( now_epoch - timer_start_epoch )) -lt $(( SLOT_SECONDS + 60 )) ] \
+   && { [ -z "$last_check_epoch" ] || [ "$last_check_epoch" -lt "$timer_start_epoch" ]; } \
+   && [ "$due_epoch" -le "$now_epoch" ]; then
+    awaiting_first_check=true
 fi
 
 last_check_rel="$(t update_genmon.unknown)"
