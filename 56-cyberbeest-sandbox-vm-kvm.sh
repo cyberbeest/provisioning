@@ -68,4 +68,16 @@ UPDATE_ARGS=()
 echo "--- Downloading and creating the sandbox VM as $TARGET_USER ---"
 sudo -u "$TARGET_USER" bash "$DIR/lib/download-and-create-sandbox-vm-kvm.sh" "${UPDATE_ARGS[@]}"
 
+echo "--- Giving the VM the host user's password ---"
+# The hash, not the password: /etc/shadow's yescrypt hash works unchanged in
+# the guest, so the host's short password also answers sudo prompts in the
+# VM. A new VM would otherwise keep the image's publicly known default.
+# Every run re-syncs, which also picks up a password changed with plain
+# `passwd` rather than the change-password dialog (that one syncs on its
+# own). Not being able to sync (VM paused or saved) isn't a provisioning
+# failure -- the helper logs why and it's retried on the next run.
+HOST_HASH="$(getent shadow "$TARGET_USER" | cut -d: -f2)"
+printf '%s\n' "$HOST_HASH" \
+	| sudo -u "$TARGET_USER" bash "$DIR/lib/cyberbeest-vm-set-password-hash.sh" || true
+
 echo "=== $(date) : done ==="

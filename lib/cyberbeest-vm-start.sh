@@ -60,7 +60,7 @@ exec >>"$LOG" 2>&1
 
 case "$(domstate)" in
 	"shut off"|crashed)
-		notify "$(msg vm_start.starting_title)" "$(msg vm_start.starting_body)"
+		# No "starting" notice: the window itself shows up within seconds.
 		virsh --connect "$CONNECT" start "$VM_NAME" || {
 			notify "$(msg vm_start.failed_title)" "$(msg vm_start.failed_body)"
 			exit 1
