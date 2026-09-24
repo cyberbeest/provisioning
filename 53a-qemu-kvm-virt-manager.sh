@@ -1,7 +1,15 @@
 #!/bin/bash
-# Installs QEMU/KVM + libvirt + GNOME Boxes on the host for the same-OS VM
-# feature -- the guest VM itself is a separate, later step
+# Installs QEMU/KVM + libvirt + Virtual Machine Manager on the host for the
+# same-OS VM feature -- the guest VM itself is a separate, later step
 # (56-cyberbeest-sandbox-vm-kvm.sh).
+#
+# The VM itself opens from its own menu entry in a plain virt-viewer window
+# (see lib/cyberbeest-vm-start.sh). Virtual Machine Manager is the full view
+# of all VMs -- including the backup a VM update leaves behind -- set to
+# show the user's own VMs (qemu:///session) rather than the system ones.
+# GNOME Boxes was used until 2026-09-24 and is removed here: it hid what
+# state a VM was actually in (running, paused, saved), which is false
+# simplicity for something that holds on to RAM and data.
 #
 # KVM is the only hypervisor provisioning installs: in-tree,
 # hardware-accelerated, and -- via this setup -- unprivileged per-user
@@ -20,19 +28,20 @@
 # with a core-file-size rlimit error.
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
-LOG="$DIR/53a-qemu-kvm-boxes.log"
+LOG="$DIR/53a-qemu-kvm-virt-manager.log"
 exec > >(tee -a "$LOG") 2>&1
 
-echo "=== $(date) : installing QEMU/KVM + GNOME Boxes ==="
+echo "=== $(date) : installing QEMU/KVM + Virtual Machine Manager ==="
 
 TARGET_USER="${SUDO_USER:?SUDO_USER not set -- run this via sudo, not as a raw root shell}"
 
 echo "--- apt-get update ---"
 apt-get -o DPkg::Lock::Timeout=60 update -qq
 
-echo "--- Installing qemu-kvm, libvirt, GNOME Boxes, and supporting packages ---"
+echo "--- Installing qemu-kvm, libvirt, Virtual Machine Manager, and supporting packages ---"
 apt-get -o DPkg::Lock::Timeout=60 install -y \
-	gnome-boxes \
+	virt-manager \
+	virt-viewer \
 	libvirt-daemon-system \
 	libvirt-clients \
 	virtinst \
@@ -41,6 +50,14 @@ apt-get -o DPkg::Lock::Timeout=60 install -y \
 	ovmf \
 	virtiofsd \
 	passt
+
+echo "--- Removing VirtualBox's KVM blacklist, if present ---"
+# Written by the old 53-virtualbox.sh (VirtualBox and KVM can't both hold
+# VT-x). This removal was lost when VirtualBox was dropped on 2026-09-19, so
+# machines that ever had VirtualBox kept KVM blocked from loading at boot,
+# and libvirt silently fell back to software emulation (TCG): a VM that
+# took 7+ minutes to boot and then timed out into emergency mode.
+rm -f /etc/modprobe.d/blacklist-kvm.conf
 
 echo "--- Loading the KVM module ---"
 if grep -q vmx /proc/cpuinfo; then
@@ -81,19 +98,22 @@ if ! grep -q "^max_core" "$TARGET_HOME/.config/libvirt/qemu.conf" 2>/dev/null; t
 	chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.config/libvirt/qemu.conf"
 fi
 
-echo "--- Disabling GNOME Boxes' first-run welcome tutorial/carousel ---"
-# Boxes shows a first-run onboarding carousel (view stack in
-# src/welcome-tutorial.vala upstream, gated by the org.gnome.boxes
-# "first-run" gsettings key, default true) the first time it's opened.
-# End users should never see dev/onboarding chrome, so ship the schema
-# default as already-seen. Same technique as 02-gnome-software-store.sh's
-# gschema.override for org.gnome.software's Explore carousel.
-cat >/usr/share/glib-2.0/schemas/95-cyberbeest-gnome-boxes.gschema.override <<'EOF'
-[org.gnome.boxes]
-first-run=false
+echo "--- Pointing Virtual Machine Manager at the user's own VMs ---"
+# Its default is the system-wide qemu:///system, where none of our VMs are
+# (they run unprivileged under qemu:///session). Shipped as the schema
+# default, so a user who adds other connections keeps them.
+cat >/usr/share/glib-2.0/schemas/95-cyberbeest-virt-manager.gschema.override <<'EOF'
+[org.virt-manager.virt-manager.connections]
+uris=['qemu:///session']
+autoconnect=['qemu:///session']
 EOF
+
+echo "--- Removing GNOME Boxes, if a previous provisioning run installed it ---"
+if dpkg -l gnome-boxes 2>/dev/null | grep -q '^ii'; then
+	apt-get -o DPkg::Lock::Timeout=60 remove -y gnome-boxes
+fi
+rm -f /usr/share/glib-2.0/schemas/95-cyberbeest-gnome-boxes.gschema.override
 glib-compile-schemas /usr/share/glib-2.0/schemas/
-echo "Disabled GNOME Boxes' first-run tutorial (first-run=false)."
 
 echo "--- Enabling libvirtd ---"
 systemctl enable --now libvirtd

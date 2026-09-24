@@ -838,7 +838,7 @@ class ProvisioningProfileDialog(Gtk.Dialog):
         add_row(t("run_gui.profile_touchpad_label"), self.touchpad_tuning)
 
         # VM image download (56-cyberbeest-sandbox-vm-kvm.sh): the
-        # hypervisor itself (53a-qemu-kvm-boxes.sh, KVM -- the only one
+        # hypervisor itself (53a-qemu-kvm-virt-manager.sh, KVM -- the only one
         # provisioning ships, VirtualBox was dropped entirely 2026-09-19)
         # always installs regardless of this choice. This checkbox only
         # controls the multi-GB KVM VM disk-image download.

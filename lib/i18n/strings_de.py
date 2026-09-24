@@ -259,7 +259,7 @@ STRINGS = {
     "run_gui.profile_vm_update_label": "VM-Update:",
     "run_gui.profile_vm_update_checkbox": (
         "Cyberbeest-VM auf die neue Version aktualisieren "
-        "(die alte VM bleibt als Sicherung in GNOME Boxes erhalten)"
+        "(die alte VM bleibt als Sicherung in der Virtuellen Maschinenverwaltung erhalten)"
     ),
     "run_gui.profile_vm_update_space": (
         "Freier Speicherplatz: {free}. Aktuelle VM: {current}. Das Update braucht {needed}."
@@ -274,7 +274,7 @@ STRINGS = {
         "Eine neuere Version der Cyberbeest-VM ist verfügbar. Beim Update wird sie "
         "heruntergeladen (etwa {download}) und als frische VM eingerichtet: Du beginnst "
         "mit einer leeren VM und meldest dich in deinen Apps neu an.\n\n"
-        "Deine bisherige VM bleibt als Sicherung erhalten und ist weiter in GNOME Boxes "
+        "Deine bisherige VM bleibt als Sicherung erhalten und ist weiter in der Virtuellen Maschinenverwaltung "
         "verfügbar, es geht also nichts verloren. Es wird nur eine Sicherung aufbewahrt. "
         "Die VM muss während des Updates ausgeschaltet sein. Dateien im Ordner "
         "VM-Shared sind nicht betroffen."

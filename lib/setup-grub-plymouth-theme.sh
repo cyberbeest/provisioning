@@ -44,8 +44,17 @@ install -m 644 /usr/share/plymouth/themes/spinner/bullet.png \
 	"$THEME_DIR/"
 install -m 644 "$THEME_SRC/cyberbeest.plymouth" \
 	"$THEME_SRC/watermark.png" "$THEME_SRC/watermark-shutdown.png" \
-	"$THEME_SRC/cyberbeest-for-print.png" \
 	"$THEME_DIR/"
+# cyberbeest-for-print.png is the logo on the bright-mode background. A
+# sandbox VM (marked by the host at setup, see 91-sandbox-vm.sh) gets the
+# VM-specific one instead, so its boot splash is clearly not the laptop's
+# own. Checked here rather than in 91- because this script rewrites the
+# theme whenever it runs, and would otherwise put the laptop logo back.
+if [ -e /etc/cyberbeest/sandbox-vm ]; then
+	install -m 644 "$THEME_SRC/cyberbeest-for-print-vm.png" "$THEME_DIR/cyberbeest-for-print.png"
+else
+	install -m 644 "$THEME_SRC/cyberbeest-for-print.png" "$THEME_DIR/"
+fi
 # cyberbeest.script itself gets the LUKS prompt and shutdown text
 # substituted in for the current locale rather than being copied verbatim --
 # see the i18n.sh comment above and the __LUKS_PROMPT__/__LUKS_SUCCESS__/

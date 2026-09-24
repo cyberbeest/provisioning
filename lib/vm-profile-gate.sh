@@ -4,7 +4,7 @@
 # sourced into the same shell, not run as a subprocess -- if the user
 # opted out of the multi-GB KVM disk-image download.
 #
-# 53a-qemu-kvm-boxes.sh doesn't source this: KVM installs unconditionally
+# 53a-qemu-kvm-virt-manager.sh doesn't source this: KVM installs unconditionally
 # (no "pick a hypervisor" profile question -- it's the only hypervisor
 # provisioning ships, VirtualBox was dropped entirely 2026-09-19), only the
 # VM disk-image download is optional. See memory:
