@@ -136,7 +136,15 @@ def notify_stop_nagging():
         pass
 
 
+SANDBOX_VM_MARKER = "/etc/cyberbeest-sandbox-vm"
+
+
 def main():
+    # A Cyberbeest sandbox VM gets its short password from the host (see
+    # cyberbeest-vm-set-password-hash.sh), whose own nag covers it, and has
+    # no LUKS master password of its own.
+    if os.path.exists(SANDBOX_VM_MARKER):
+        return
     dismissed = load_dismissed()
     while True:
         check = run_check()

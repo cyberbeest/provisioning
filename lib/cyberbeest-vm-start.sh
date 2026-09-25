@@ -7,6 +7,10 @@
 # and wired to the Whisker menu launcher (with the VM name baked into the
 # launcher's Exec= line as $1).
 #
+# Closing the window normally *saves* the VM (hibernation) rather than
+# shutting it down, so the next start is a restore in seconds; it only
+# really shuts down when the guest needs a fresh boot -- see the end.
+#
 # virt-viewer rather than GNOME Boxes (dropped 2026-09-24): one window for
 # one VM, no library of VMs to choose from. The full list, including the
 # backup VM an update leaves behind, is in Virtual Machine Manager.
@@ -18,6 +22,7 @@
 #
 # Usage: cyberbeest-vm-start.sh [vm-name] [display-name]
 set -uo pipefail
+
 VM_NAME="${1:-Cyberbeest-VM}"
 DISPLAY_NAME="${2:-$VM_NAME}"
 CONNECT="qemu:///session"
@@ -46,6 +51,37 @@ domstate() {
 	LC_ALL=C virsh --connect "$CONNECT" domstate "$VM_NAME" 2>/dev/null || echo "shut off"
 }
 
+close_note() {
+	[ -n "${1:-}" ] && gdbus call --session --dest org.freedesktop.Notifications \
+		--object-path /org/freedesktop/Notifications \
+		--method org.freedesktop.Notifications.CloseNotification "$1" >/dev/null 2>&1
+}
+
+has_saved_state() {
+	local info
+	info="$(LC_ALL=C virsh --connect "$CONNECT" dominfo "$VM_NAME" 2>/dev/null)"
+	grep -q '^Managed save: *yes' <<<"$info"
+}
+
+# Runs a command in the guest through its agent; exit status is the
+# command's own (1 if the agent doesn't answer).
+guest_run() {
+	local pid out json
+	json="$(python3 -c 'import json,sys; print(json.dumps({"execute":"guest-exec","arguments":{"path":"/bin/sh","arg":["-c",sys.argv[1]]}}))' "$1")"
+	pid="$(virsh --connect "$CONNECT" qemu-agent-command "$VM_NAME" "$json" 2>/dev/null \
+		| sed -n 's/.*"pid":\([0-9]*\).*/\1/p')"
+	[ -n "$pid" ] || return 1
+	for _ in $(seq 1 20); do
+		out="$(virsh --connect "$CONNECT" qemu-agent-command "$VM_NAME" \
+			"{\"execute\":\"guest-exec-status\",\"arguments\":{\"pid\":$pid}}" 2>/dev/null)"
+		case "$out" in
+			*'"exited":true'*) [[ "$out" == *'"exitcode":0'* ]]; return ;;
+		esac
+		sleep 0.5
+	done
+	return 1
+}
+
 exec 9>"$LOCK"
 if ! flock -n 9; then
 	# Already open: raise the existing window instead of a second viewer.
@@ -58,18 +94,52 @@ if ! flock -n 9; then
 fi
 exec >>"$LOG" 2>&1
 
+# A VM closed by this launcher is normally saved (hibernated), not shut
+# down -- see the end of this script -- so starting it usually means
+# restoring that: seconds instead of a full boot, with everything as it
+# was left.
+restored=false
 case "$(domstate)" in
 	"shut off"|crashed)
-		# No "starting" notice: the window itself shows up within seconds.
+		# No notice for a boot: its window shows up within seconds and shows
+		# the boot. A restore shows nothing until it's done (~10 s), so
+		# that gets one, up until the window opens.
+		restore_note=""
+		if has_saved_state; then
+			restored=true
+			restore_note="$(notify-send -p -t 0 -i computer -a "Cyberbeest" \
+				"$(msg vm_start.restoring_title)" "$(msg vm_start.restoring_body)" 2>/dev/null)"
+		fi
 		virsh --connect "$CONNECT" start "$VM_NAME" || {
+			close_note "$restore_note"
 			notify "$(msg vm_start.failed_title)" "$(msg vm_start.failed_body)"
 			exit 1
 		}
+		close_note "$restore_note"
 		;;
 	paused)
 		virsh --connect "$CONNECT" resume "$VM_NAME"
+		restored=true
 		;;
 esac
+
+# After a restore the guest's clock is as far behind as the VM was saved,
+# and a password change made meanwhile (see cyberbeest-vm-set-password-hash.sh,
+# which can't touch a saved VM) is still pending. Both need the guest
+# agent, so this waits for it in the background while the window opens.
+after_restore() {
+	local pending="$HOME/.local/share/cyberbeest-vms/$VM_NAME.pending-password-hash"
+	for _ in $(seq 1 60); do
+		virsh --connect "$CONNECT" qemu-agent-command "$VM_NAME" '{"execute":"guest-ping"}' >/dev/null 2>&1 && break
+		sleep 1
+	done
+	virsh --connect "$CONNECT" domtime "$VM_NAME" --sync >/dev/null 2>&1 \
+		&& echo "$(date '+%F %T') $VM_NAME restored, guest clock synced"
+	if [ -s "$pending" ] && "$HOME/.local/bin/cyberbeest-vm-set-password-hash.sh" "$VM_NAME" <"$pending"; then
+		rm -f "$pending"
+	fi
+}
+[ "$restored" = true ] && after_restore &
 
 # virt-viewer's title bar is full of icon buttons without tooltips (send
 # keys, USB, CD, machine menu, fullscreen, main menu) -- noise for people
@@ -127,7 +197,43 @@ echo "$viewer_pid" >"$PID_FILE"
 wait "$viewer_pid"
 rm -f "$PID_FILE"
 
+# The laptop shutting down with the window still open: libvirt saves the
+# VM itself (auto_shutdown_try_save, set up by 53a-), which is also what
+# closed the window -- nothing to do here, and a second save would only
+# collide with it.
+if [ "$(busctl get-property org.freedesktop.login1 /org/freedesktop/login1 \
+	org.freedesktop.login1.Manager PreparingForShutdown 2>/dev/null)" = "b true" ]; then
+	echo "$(date '+%F %T') host is shutting down, libvirt saves $VM_NAME"
+	exit 0
+fi
+
 [ "$(domstate)" = "shut off" ] && exit 0
+
+# Save (hibernate) rather than shut down, unless the guest needs a real
+# boot: after updates that ask for one (/run/reboot-required, e.g. a new
+# kernel), or once it has run for more than REBOOT_AFTER_DAYS since its last
+# real boot -- a VM that's only ever restored would otherwise never apply
+# kernel updates. Saving mid-update is fine: the update carries on after
+# the restore.
+REBOOT_AFTER_DAYS=7
+if ! guest_run "[ -e /run/reboot-required ] || [ \$(cut -d. -f1 /proc/uptime) -gt $((REBOOT_AFTER_DAYS * 86400)) ]"; then
+	echo "$(date '+%F %T') window closed, saving $VM_NAME"
+	note_id="$(notify-send -p -t 0 -i computer -a "Cyberbeest" \
+		"$(msg vm_start.saving_title)" 2>/dev/null)"
+	# The save takes a while (~11 s, lzop -- see 53a-): shutting down or
+	# suspending the laptop in the middle of it would lose the VM's state
+	# like a power cut, so both are held off until it's done.
+	if systemd-inhibit --what=shutdown:sleep --who=Cyberbeest --mode=block \
+		--why="$(msg vm_start.saving_title)" \
+		virsh --connect "$CONNECT" managedsave "$VM_NAME" >/dev/null 2>&1; then
+		[ -n "$note_id" ] && gdbus call --session --dest org.freedesktop.Notifications \
+			--object-path /org/freedesktop/Notifications \
+			--method org.freedesktop.Notifications.CloseNotification "$note_id" >/dev/null 2>&1
+		echo "$(date '+%F %T') $VM_NAME saved"
+		exit 0
+	fi
+	echo "$(date '+%F %T') saving $VM_NAME failed, shutting it down instead"
+fi
 
 # Whether the guest is installing packages right now, asked through its
 # agent (so only possible before the shutdown starts, while the agent still
@@ -154,7 +260,7 @@ guest_updating() {
 # Notifications stay up (-t 0) until the VM is actually off, then get
 # closed -- rather than vanishing after the notification daemon's default
 # few seconds while the shutdown is still going on.
-note_id=""
+note_id="${note_id:-}"
 if guest_updating; then
 	# Shutting down now would interrupt dpkg (the guest's shutdown only
 	# waits for unattended-upgrades, not for a manual apt run), so wait for

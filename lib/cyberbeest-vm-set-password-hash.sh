@@ -5,8 +5,9 @@
 # the guest account's hash:
 #   - VM running: through the guest agent (guest-set-user-password, crypted)
 #   - VM shut off: offline, into the disk image (virt-customize)
-#   - anything else (paused, saved state, starting up): skipped and logged;
-#     editing a disk that belongs to a saved RAM state would corrupt it
+#   - VM saved (hibernated): kept as pending, applied by the launcher after
+#     the next restore -- its disk belongs to the saved RAM state
+#   - anything else (paused, starting up): skipped and logged
 # Only the current VM: a backup left by an update keeps its old password,
 # being a snapshot of the old state.
 #
@@ -69,8 +70,13 @@ case "$state" in
 		;;
 	"shut off")
 		if grep -q '^Managed save: *yes' <<<"$info"; then
-			log "$VM_NAME has a saved state -- password not updated"
-			exit 1
+			# Saved (hibernated): its disk belongs to the saved RAM state
+			# and mustn't be edited. The launcher applies this through the
+			# guest agent right after the next restore.
+			pending="$HOME/.local/share/cyberbeest-vms/$VM_NAME.pending-password-hash"
+			(umask 077 && printf '%s\n' "$hash" >"$pending")
+			log "$VM_NAME is saved -- password will be updated after its next start"
+			exit 0
 		fi
 		tmp="$(mktemp "${XDG_RUNTIME_DIR:-/tmp}/cyberbeest-vm-hash.XXXXXX")"
 		trap 'rm -f "$tmp"' EXIT

@@ -8,6 +8,10 @@
 #   - auto-lock, screensaver and display blanking: the host locks itself,
 #     and a second lock screen inside a window helps no one
 #   - the KITT scanner in the panel: constant motion in a second panel
+#   - the battery and wattage icons: a KVM guest has no battery
+#   - the panel's status icon (auto-lock countdown + security updates, one
+#     genmon since 2026-09-05): auto-lock is off here, and the guest's
+#     updates install on their own (the launcher waits for them on close)
 #     right next to the host's own
 #   - the photo wallpaper: replaced by a faint "VM" watermark on dark blue,
 #     so it's obvious at a glance which desktop is the VM
@@ -71,23 +75,33 @@ for mon in $monitors; do
 done
 [ "$changed" = true ] && { xfdesktop --reload >/dev/null 2>&1 || true; }
 
-# KITT scanner: drop it from every panel's plugin-ids, then restart the
-# panel so it goes away now rather than at the next login.
-kitt_ids=""
+# KITT scanner, battery/wattage and status icon: drop them from every
+# panel's plugin-ids, then restart the panel so they go away now rather than
+# at the next login.
+# The status icon is a genmon like others (e.g. the clipboard one), so it's
+# recognized by the script its rc file runs.
+drop_ids=""
 for prop in $(xfconf-query -c xfce4-panel -l 2>/dev/null | grep -E '^/plugins/plugin-[0-9]+$'); do
-	[ "$(xfconf-query -c xfce4-panel -p "$prop" 2>/dev/null)" = "$KITT_TYPE" ] && kitt_ids="$kitt_ids ${prop##*-}"
+	id="${prop##*-}"
+	case "$(xfconf-query -c xfce4-panel -p "$prop" 2>/dev/null)" in
+		"$KITT_TYPE"|wattage-panel|power-manager-plugin) drop_ids="$drop_ids $id" ;;
+		genmon)
+			grep -qs '^Command=.*/panel-status-genmon\.sh' "$HOME/.config/xfce4/panel/genmon-$id.rc" \
+				&& drop_ids="$drop_ids $id"
+			;;
+	esac
 done
-if [ -n "$kitt_ids" ]; then
+if [ -n "$drop_ids" ]; then
 	for panel in $(xfconf-query -c xfce4-panel -p /panels 2>/dev/null | grep -E '^[0-9]+$'); do
 		ids="$(xfconf-query -c xfce4-panel -p "/panels/panel-$panel/plugin-ids" 2>/dev/null | grep -E '^[0-9]+$')"
 		keep=()
 		found=false
 		for id in $ids; do
-			if [[ " $kitt_ids " == *" $id "* ]]; then found=true; else keep+=(-t int -s "$id"); fi
+			if [[ " $drop_ids " == *" $id "* ]]; then found=true; else keep+=(-t int -s "$id"); fi
 		done
 		[ "$found" = true ] && xfconf-query -c xfce4-panel -p "/panels/panel-$panel/plugin-ids" -n -a "${keep[@]}"
 	done
-	for id in $kitt_ids; do
+	for id in $drop_ids; do
 		xfconf-query -c xfce4-panel -p "/plugins/plugin-$id" -r -R
 	done
 	# Kill and relaunch, never `xfce4-panel -r`, which restarts from the
