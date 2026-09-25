@@ -26,7 +26,7 @@ from i18n import t
 import gi
 
 gi.require_version("Gtk", "3.0")
-from gi.repository import Gtk, Pango
+from gi.repository import GLib, Gtk, Pango
 
 RESPONSE_SWITCH = 100
 
@@ -267,6 +267,7 @@ def show_diff_dialog(parent, repo_dir, revision, lookup_paths, display_path, dat
 def main():
     track, other_track, repo_dir = sys.argv[1], sys.argv[2], sys.argv[3]
     revision = sys.argv[4] if len(sys.argv) > 4 else None
+    version = sys.argv[5] if len(sys.argv) > 5 and sys.argv[5] else None
     changed_files = parse_changed_files(sys.stdin.read())
 
     dialog = Gtk.Dialog(title=t("update.title"))
@@ -296,6 +297,13 @@ def main():
     last_pull_label = Gtk.Label(xalign=0)
     last_pull_label.set_markup(f"<small>{last_pull_text(repo_dir)}</small>")
     box.pack_start(last_pull_label, False, False, 0)
+
+    if version:
+        version_label = Gtk.Label(xalign=0)
+        version_label.set_markup(
+            f"<small>{t('update.version_label').format(version=GLib.markup_escape_text(version))}</small>"
+        )
+        box.pack_start(version_label, False, False, 0)
 
     files_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
     files_heading = Gtk.Label(xalign=0)

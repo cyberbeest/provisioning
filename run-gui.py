@@ -638,6 +638,54 @@ def script_is_done(script):
     return stored == i18n_fingerprint(script, catalogs, others)
 
 
+def repo_version_string():
+    """<track><commit-date YYYY-MMDD>-<short-hash>[ + N pending][ + M
+    changed] for this checkout -- what Cyberbeest Update and this window
+    show instead of a hand-maintained version number, since git already
+    tracks exactly this. <track> is "beta"/"stable" (mapped from the raw
+    git branch, main/stable, the same way cyberbeest-update.sh's own
+    $TRACK is) -- deliberately not run through i18n, since this string is
+    meant to be a stable identifier (e.g. to quote in a bug report), not
+    localized UI text. "pending" is a script that has never been run at
+    all (no .log yet); "changed" is one that was run before but is no
+    longer done per script_is_done() (stale .log, or a previous run
+    failed). No separator between the track and the date: both are
+    unambiguous either way (the track label isn't digits-first) and it's
+    one less thing pushing the string past a glance-able length.
+    """
+    try:
+        branch = subprocess.run(
+            ["git", "-C", DIR, "rev-parse", "--abbrev-ref", "HEAD"],
+            capture_output=True, text=True, check=True,
+        ).stdout.strip()
+        commit_date = subprocess.run(
+            ["git", "-C", DIR, "log", "-1", "--format=%cd", "--date=format:%Y-%m%d"],
+            capture_output=True, text=True, check=True,
+        ).stdout.strip()
+        short_hash = subprocess.run(
+            ["git", "-C", DIR, "rev-parse", "--short", "HEAD"],
+            capture_output=True, text=True, check=True,
+        ).stdout.strip()
+    except (subprocess.CalledProcessError, OSError):
+        return None
+
+    track = "stable" if branch == "stable" else "beta"
+    version = f"{track}{commit_date}-{short_hash}"
+
+    pending = 0
+    changed = 0
+    for script in list_scripts():
+        if not os.path.exists(log_path_for(script)):
+            pending += 1
+        elif not script_is_done(script):
+            changed += 1
+    if pending:
+        version += f" + {pending} pending"
+    if changed:
+        version += f" + {changed} changed"
+    return version
+
+
 def locale_dependent_scripts():
     # Mirrors 00-locale-keyboard-timezone.sh's own `grep -lZ
     # '^# LOCALE_DEPENDENT:'` -- used to tell whether its "Run changed" TODO
@@ -1054,6 +1102,18 @@ class RunGuiWindow(Gtk.Window):
 
         button_row2 = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         button_box.pack_start(button_row2, False, False, 0)
+
+        # This checkout's git-derived version string (branch/commit-date/
+        # hash, plus pending/changed counts) -- see repo_version_string().
+        # Small and dim, right-aligned on the second button row: worth
+        # having on screen (e.g. to quote in a bug report) without
+        # competing for attention with anything actually actionable.
+        version = repo_version_string()
+        if version:
+            self.version_label = Gtk.Label(xalign=1)
+            self.version_label.set_markup(f"<small>{GLib.markup_escape_text(version)}</small>")
+            self.version_label.get_style_context().add_class("dim-label")
+            button_row2.pack_end(self.version_label, False, False, 0)
 
         # Directly under the more-actions dropdown above -- selecting
         # everything is prep for "Run selected", same family as that
@@ -2003,6 +2063,15 @@ class RunGuiWindow(Gtk.Window):
 
 
 def main():
+    # Used by cyberbeest-update.sh (bash) to get the exact same version
+    # string this window shows, instead of reimplementing the pending/
+    # changed logic in a second language -- see repo_version_string().
+    if "--print-version" in sys.argv[1:]:
+        version = repo_version_string()
+        if version is None:
+            sys.exit(1)
+        print(version)
+        return
     RunGuiWindow()
     Gtk.main()
 

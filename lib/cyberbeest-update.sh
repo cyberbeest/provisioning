@@ -38,6 +38,19 @@ else
 	TRACK="$(t update.track_beta)"
 fi
 
+# This checkout's git-derived version string, shown in the confirm dialog
+# below -- shelled out to run-gui.py rather than reimplemented here so the
+# pending/changed counts (which need its own script_is_done() logic) can't
+# drift between the two tools. Started in the background here and only
+# waited on right before the confirm dialog opens (see $VERSION_FILE below)
+# so its ~1s of local work (scanning every script) runs alongside the
+# network fetch instead of adding its own silent pause in front of it --
+# see run_git_with_progress's own comment above for why that pause matters.
+# Best-effort: a failure just leaves that line out of the dialog.
+VERSION_FILE="$(mktemp)"
+python3 "$REPO_DIR/run-gui.py" --print-version >"$VERSION_FILE" 2>/dev/null &
+VERSION_PID=$!
+
 # The other track's checkout dir/branch/label -- ~/provisioning is always
 # stable and ~/provisioning-bleeding always main, per beestify.sh /
 # beestify-bleeding.sh (see README.md), regardless of what branch this
@@ -185,10 +198,14 @@ while IFS=$'\t' read -r -a fields; do
 	CHANGED_FILES+="$line"$'\t'"$date"$'\n'
 done <<<"$(git -C "$REPO_DIR" diff --name-status HEAD "origin/$BRANCH")"
 
+wait "$VERSION_PID" || true
+VERSION="$(cat "$VERSION_FILE")"
+rm -f "$VERSION_FILE"
+
 # Passed as "origin/$BRANCH" (not a precomputed diff) so the confirm dialog
 # can run `git diff` per file on demand, only for whichever row the user
 # double-clicks -- most users never open one.
-case "$(printf '%s' "$CHANGED_FILES" | python3 "$SCRIPT_DIR/cyberbeest-update-confirm.py" "$TRACK" "$OTHER_TRACK" "$REPO_DIR" "origin/$BRANCH")" in
+case "$(printf '%s' "$CHANGED_FILES" | python3 "$SCRIPT_DIR/cyberbeest-update-confirm.py" "$TRACK" "$OTHER_TRACK" "$REPO_DIR" "origin/$BRANCH" "$VERSION")" in
 	yes)
 		;;
 	switch)

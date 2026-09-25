@@ -371,6 +371,7 @@ STRINGS = {
     ),
     "update.last_pull_message": "Zuletzt aktualisiert: {when} ({relative})",
     "update.last_pull_never": "Noch nie aktualisiert.",
+    "update.version_label": "Version: {version}",
 
     "relative.just_now": "gerade eben",
     "relative.minute_ago": "vor {n} Minute",
