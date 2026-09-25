@@ -40,7 +40,22 @@ panel_dbus_addr() {
     PANEL_DBUS_ADDR="${PANEL_DBUS_ADDR:-unix:path=/run/user/$(id -u)/bus}"
 }
 
+# Flocks the same file lib/xfce-panel-reload.sh and the panel watchdog use
+# so a kill+relaunch here can never interleave with one of theirs -- two
+# racing kill+relaunch cycles could otherwise land a SIGKILL on the
+# *other's* freshly-launched process, or spawn two panels back to back. See
+# xfce-panel-reload.sh's own comment on xfce_panel_reload_lock for the full
+# story. /run/user, not $HOME, so a stale lock can never survive a reboot.
+PANEL_RELOAD_LOCK_FILE="/run/user/$(id -u)/cyberbeest-panel-reload.lock"
+
 reload_panel() {
+    (
+        flock -x 200
+        reload_panel_impl
+    ) 200>"$PANEL_RELOAD_LOCK_FILE"
+}
+
+reload_panel_impl() {
     # No panel running (no graphical session) -- nothing to reload.
     local old_pid
     old_pid="$(pgrep -x xfce4-panel | head -n1)"
