@@ -164,6 +164,20 @@ restart_panel_impl() {
 # (30s kill wait + 10s launch wait + 1.5s settle + 10s crash-retry watch,
 # doubled for its one retry).
 restart_panel() {
+    # Self-heal a lock file a root-context reload left behind before
+    # xfce-panel-reload.sh's own chmod-0666 fix existed (root:root, mode
+    # 644 -- unwritable by us). We can't chmod/chown our way out of that
+    # (neither the file's owner nor root), only delete it -- unlink is
+    # governed by the directory's permissions, not the file's, and
+    # /run/user/<uid> is ours. Confirmed live 2026-09-25 on .76: this
+    # exact situation silently blocked every relaunch attempt after 12-
+    # ran, with nothing short of manually removing the file able to clear
+    # it. Checked on every call, not just once, since anything could
+    # leave a stale unwritable file behind again in the future.
+    if [ -e "$PANEL_RELOAD_LOCK_FILE" ] && ! : 2>/dev/null >>"$PANEL_RELOAD_LOCK_FILE"; then
+        echo "xfce-panel-watchdog: panel-reload lock file isn't writable by us -- removing a likely stale root-owned copy" >&2
+        rm -f "$PANEL_RELOAD_LOCK_FILE" 2>/dev/null || true
+    fi
     (
         if ! flock -x -w 90 200; then
             echo "xfce-panel-watchdog: could not get the panel-reload lock within 90s -- skipping this check" >&2

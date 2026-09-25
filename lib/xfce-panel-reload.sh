@@ -66,6 +66,21 @@ xfce_panel_reload_lock() {
 	[ -n "${_XFCE_PANEL_RELOAD_LOCK_FD:-}" ] && return 0
 	local lock_file="/run/user/$(id -u "$TARGET_USER")/cyberbeest-panel-reload.lock"
 	exec {_XFCE_PANEL_RELOAD_LOCK_FD}>"$lock_file"
+	# This runs as root, so if the file doesn't already exist, the exec
+	# above just created it owned by root:root, mode 644 -- unwritable by
+	# TARGET_USER. The watchdog and the three toggle scripts open the same
+	# path as that plain user, so left alone, every one of them would fail
+	# with a permanent "Permission denied" on this file from now on,
+	# unable to ever fix it themselves (chmod/chown need the file's owner
+	# or root, and a plain user is neither once root beat them to
+	# creating it). Confirmed live 2026-09-25 on .76: 12- ran this, the
+	# panel crashed ~30s later (outside its own launch's crash-watch
+	# window -- exactly what the watchdog exists to catch), and the
+	# watchdog then failed every single relaunch attempt with this error
+	# until the stale root-owned file was deleted by hand. chmod after
+	# every acquisition (not just on first creation) so a install that
+	# predates this fix also self-heals the moment 11-/12- next runs.
+	chmod 0666 "$lock_file" 2>/dev/null || true
 	flock -x "$_XFCE_PANEL_RELOAD_LOCK_FD"
 }
 
