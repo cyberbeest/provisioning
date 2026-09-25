@@ -148,10 +148,61 @@ install_helpers() {
 	write_menu_entry
 }
 
+# The image is also the standalone VM product, so it doesn't know it's
+# about to become a sandbox. The marker tells the guest's own provisioning
+# (91-sandbox-vm.sh); the rest is what that script would install, put in
+# place now so the first login already looks right. The guest account is
+# always "cyberbeest" (fixed in the image, like on the base ISO).
+# Also used on VMs set up before this existed (see below), which is why it
+# cleans up the guest's panel too: images from before 2026-09-25 carry
+# XFCE's stock panel plugins next to the Cyberbeest ones (a duplicate
+# systray among them), which the guest's own 12- only removes once the
+# guest updates. The migration script is a pure file transform that
+# leaves a clean layout untouched.
+sandbox_setup() {
+	local disk="$1" guest_home=/home/cyberbeest
+	local panel_xml="$guest_home/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml"
+	echo "--- Setting the guest up as a sandbox VM ---"
+	virt-customize -a "$disk" \
+		--hostname cyberbeest-vm \
+		--touch /etc/cyberbeest-sandbox-vm \
+		--mkdir "$guest_home/.local/bin" \
+		--mkdir "$guest_home/.local/share/cyberbeest" \
+		--mkdir "$guest_home/.config/autostart" \
+		--upload "$DIR/sandbox-vm-session.sh:$guest_home/.local/bin/sandbox-vm-session.sh" \
+		--upload "$DIR/assets/vm-background-tile.png:$guest_home/.local/share/cyberbeest/vm-background-tile.png" \
+		--upload "$DIR/cyberbeest-sandbox-vm-session.desktop:$guest_home/.config/autostart/cyberbeest-sandbox-vm-session.desktop" \
+		--chmod "0755:$guest_home/.local/bin/sandbox-vm-session.sh" \
+		--upload "$DIR/migrate-legacy-panel-ids.py:/tmp/migrate-legacy-panel-ids.py" \
+		--run-command "if [ -f $panel_xml ]; then python3 /tmp/migrate-legacy-panel-ids.py migrate $panel_xml /tmp/panel.xml $guest_home/.config/xfce4/panel /tmp/panel-cleanup && cp /tmp/panel.xml $panel_xml && python3 /tmp/migrate-legacy-panel-ids.py cleanup $guest_home/.config/xfce4/panel /tmp/panel-cleanup; fi; rm -f /tmp/migrate-legacy-panel-ids.py /tmp/panel.xml /tmp/panel-cleanup" \
+		--run-command "chown -R cyberbeest:cyberbeest $guest_home/.local $guest_home/.config" \
+		--upload "$DIR/sandbox-vm-system.sh:/tmp/sandbox-vm-system.sh" \
+		--run-command "bash /tmp/sandbox-vm-system.sh cyberbeest && rm -f /tmp/sandbox-vm-system.sh" \
+		--upload "$DIR/plymouth-theme/cyberbeest-for-print-vm.png:/tmp/cyberbeest-for-print-vm.png" \
+		--run-command "if [ -d /usr/share/plymouth/themes/cyberbeest ]; then install -m 644 /tmp/cyberbeest-for-print-vm.png /usr/share/plymouth/themes/cyberbeest/cyberbeest-for-print.png && plymouth-set-default-theme -R cyberbeest; fi; rm -f /tmp/cyberbeest-for-print-vm.png"
+}
+
+# A VM set up before the sandbox setup above existed has no marker: give it
+# the same setup. Only while it's shut off without a saved state -- a
+# running VM's disk is in use, and a saved one's belongs to its saved RAM
+# state; either way the next run tries again.
+sandbox_setup_if_missing() {
+	local info disk marker
+	info="$(LC_ALL=C virsh --connect "$CONNECT" dominfo "$VM_NAME" 2>/dev/null)"
+	grep -q '^State: *shut off' <<<"$info" || return 0
+	grep -q '^Managed save: *yes' <<<"$info" && return 0
+	disk="$(LC_ALL=C virsh --connect "$CONNECT" domblklist "$VM_NAME" | awk '$1 == "vda" {print $2}')"
+	marker="$(guestfish --ro -a "$disk" -i exists /etc/cyberbeest-sandbox-vm 2>/dev/null || true)"
+	[ "$marker" = "true" ] && return 0
+	echo "\"$VM_NAME\" predates the sandbox setup -- applying it now"
+	sandbox_setup "$disk"
+}
+
 UPDATING=0
 if vm_exists "$VM_NAME"; then
 	if [ "$(cat "$STAMP_PATH" 2>/dev/null)" = "$IMAGE_SHA256" ]; then
-		echo "\"$VM_NAME\" is already on the current image -- nothing to do."
+		echo "\"$VM_NAME\" is already on the current image."
+		sandbox_setup_if_missing
 		install_helpers
 		exit 0
 	fi
@@ -159,6 +210,7 @@ if vm_exists "$VM_NAME"; then
 	if [ "$UPDATE" -eq 0 ]; then
 		echo "Not updating it (\"Update the VM\" is off in the provisioning profile) -- leaving it alone."
 		echo "(To update: tick it in run-gui.py's Profile..., then re-run this script.)"
+		sandbox_setup_if_missing
 		install_helpers
 		exit 0
 	fi
@@ -356,28 +408,7 @@ rm -f "$CACHE_PATH.sha256"
 echo "--- Matching guest locale/keyboard to the host ---"
 bash "$DIR/set-vm-guest-locale.sh" "$DISK_PATH"
 
-# The image is also the standalone VM product, so it doesn't know it's
-# about to become a sandbox. The marker tells the guest's own provisioning
-# (91-sandbox-vm.sh); the rest is what that script would install, put in
-# place now so the first login already looks right. The guest account is
-# always "cyberbeest" (fixed in the image, like on the base ISO).
-echo "--- Setting the guest up as a sandbox VM ---"
-GUEST_HOME=/home/cyberbeest
-virt-customize -a "$DISK_PATH" \
-	--hostname cyberbeest-vm \
-	--touch /etc/cyberbeest-sandbox-vm \
-	--mkdir "$GUEST_HOME/.local/bin" \
-	--mkdir "$GUEST_HOME/.local/share/cyberbeest" \
-	--mkdir "$GUEST_HOME/.config/autostart" \
-	--upload "$DIR/sandbox-vm-session.sh:$GUEST_HOME/.local/bin/sandbox-vm-session.sh" \
-	--upload "$DIR/assets/vm-background-tile.png:$GUEST_HOME/.local/share/cyberbeest/vm-background-tile.png" \
-	--upload "$DIR/cyberbeest-sandbox-vm-session.desktop:$GUEST_HOME/.config/autostart/cyberbeest-sandbox-vm-session.desktop" \
-	--chmod "0755:$GUEST_HOME/.local/bin/sandbox-vm-session.sh" \
-	--run-command "chown -R cyberbeest:cyberbeest $GUEST_HOME/.local $GUEST_HOME/.config/autostart" \
-	--upload "$DIR/sandbox-vm-system.sh:/tmp/sandbox-vm-system.sh" \
-	--run-command "bash /tmp/sandbox-vm-system.sh cyberbeest && rm -f /tmp/sandbox-vm-system.sh" \
-	--upload "$DIR/plymouth-theme/cyberbeest-for-print-vm.png:/tmp/cyberbeest-for-print-vm.png" \
-	--run-command "if [ -d /usr/share/plymouth/themes/cyberbeest ]; then install -m 644 /tmp/cyberbeest-for-print-vm.png /usr/share/plymouth/themes/cyberbeest/cyberbeest-for-print.png && plymouth-set-default-theme -R cyberbeest; fi; rm -f /tmp/cyberbeest-for-print-vm.png"
+sandbox_setup "$DISK_PATH"
 
 echo "--- Registering the VM ---"
 # --print-xml + define instead of a plain virt-install --import, which

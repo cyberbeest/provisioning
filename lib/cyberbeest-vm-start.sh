@@ -223,16 +223,16 @@ if ! guest_run "[ -e /run/reboot-required ] || [ \$(cut -d. -f1 /proc/uptime) -g
 	# The save takes a while (~11 s, lzop -- see 53a-): shutting down or
 	# suspending the laptop in the middle of it would lose the VM's state
 	# like a power cut, so both are held off until it's done.
-	if systemd-inhibit --what=shutdown:sleep --who=Cyberbeest --mode=block \
+	if save_out="$(systemd-inhibit --what=shutdown:sleep --who=Cyberbeest --mode=block \
 		--why="$(msg vm_start.saving_title)" \
-		virsh --connect "$CONNECT" managedsave "$VM_NAME" >/dev/null 2>&1; then
+		virsh --connect "$CONNECT" managedsave "$VM_NAME" 2>&1)"; then
 		[ -n "$note_id" ] && gdbus call --session --dest org.freedesktop.Notifications \
 			--object-path /org/freedesktop/Notifications \
 			--method org.freedesktop.Notifications.CloseNotification "$note_id" >/dev/null 2>&1
 		echo "$(date '+%F %T') $VM_NAME saved"
 		exit 0
 	fi
-	echo "$(date '+%F %T') saving $VM_NAME failed, shutting it down instead"
+	echo "$(date '+%F %T') saving $VM_NAME failed, shutting it down instead: $save_out"
 fi
 
 # Whether the guest is installing packages right now, asked through its
