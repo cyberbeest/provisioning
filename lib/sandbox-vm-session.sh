@@ -1,6 +1,6 @@
 #!/bin/bash
 # Runs at every login inside a Cyberbeest *sandbox* VM (the VM a Cyberbeest
-# laptop runs untrusted apps in -- marked by /etc/cyberbeest/sandbox-vm,
+# laptop runs untrusted apps in -- marked by /etc/cyberbeest-sandbox-vm,
 # written by the host's lib/download-and-create-sandbox-vm-kvm.sh). Not used
 # on laptops or in the standalone VM product, which keep their full setup.
 #
