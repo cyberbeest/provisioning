@@ -243,4 +243,25 @@ xfce_panel_launch() {
 		echo "--- warning: xfce4-panel pid changed again during settle (pid $new_pid -> ${settled_pid:-gone}) -- something else respawned it ---" >&2
 		return 1
 	fi
+
+	# Keep watching a while longer: xfce4-panel's stock launcher plugin
+	# (liblauncher.so) sporadically segfaults a few seconds into a panel
+	# start -- a null-pointer read at the same offset every time, seen on
+	# tower since 2026-09-11 and on .76 on 2026-09-25 right after this
+	# reload -- and nothing respawns the panel after that. A fresh start
+	# has worked every time, so one retry; not more, so a panel that
+	# crashes for some other reason can't loop.
+	local watched=0
+	while [ "$watched" -lt 20 ]; do
+		sleep 0.5
+		watched=$((watched + 1))
+		pgrep -u "$TARGET_USER" -x xfce4-panel >/dev/null && continue
+		if [ "${_XFCE_PANEL_RETRYING:-}" = 1 ]; then
+			echo "--- warning: xfce4-panel crashed again right after the retry ---" >&2
+			return 1
+		fi
+		echo "--- xfce4-panel crashed during startup (the known liblauncher.so segfault?) -- starting it once more ---" >&2
+		_XFCE_PANEL_RETRYING=1 XFCE_PANEL_PID="" xfce_panel_launch
+		return
+	done
 }
