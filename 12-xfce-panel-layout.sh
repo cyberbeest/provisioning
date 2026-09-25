@@ -63,6 +63,20 @@
 # clobbered by) an id a future provisioning icon claims. A layout from
 # before this is migrated in place on the first re-run -- see
 # lib/migrate-legacy-panel-ids.py.
+#
+# Bumped 2026-09-25: stops xfce4-panel right at the start now, before any
+# config file is written, instead of only reloading it at the very end.
+# xfce4-panel's launcher plugin sporadically segfaults (a null-pointer read
+# in launcher_plugin_file_changed, its GFileMonitor callback for the
+# .desktop files it's watching -- liblauncher.so, same offset every time,
+# see lib/xfce-panel-reload.sh's xfce_panel_launch) when one of those files
+# changes while the plugin is still settling in after a restart. Reproduced
+# live on .76 2026-09-25: 11- restarted the panel, then this script
+# rewrote launcher-218's file-manager.desktop (line ~174 below) while that
+# panel was already running and watching it -- and it crashed on the spot,
+# well before this script ever reached its own reload step. Killing the
+# panel before any of these writes means there's no live watcher left to
+# race.
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG="$DIR/12-xfce-panel-layout.log"
@@ -73,6 +87,14 @@ echo "=== $(date) : applying xfce4 panel layout ==="
 TARGET_USER="${SUDO_USER:?SUDO_USER not set -- run this via sudo, not as a raw root shell}"
 TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
 LAYOUT="$DIR/lib/xfce-panel-layout"
+
+echo "--- Stopping xfce4-panel first, if one is running, so the config writes below can't race a live launcher-plugin file-monitor callback (see the 2026-09-25 note above) ---"
+. "$DIR/lib/xfce-panel-reload.sh"
+PANEL_WAS_RUNNING=0
+if xfce_panel_dbus_addr; then
+	xfce_panel_kill
+	PANEL_WAS_RUNNING=1
+fi
 
 echo "--- Installing whiskermenu, genmon, power-manager and pulseaudio panel plugins ---"
 apt-get -o DPkg::Lock::Timeout=60 update -qq
@@ -215,16 +237,14 @@ rm -f "$PANEL_XML_TMP" "$PANEL_XML_OLD"
 echo "--- Fixing ownership ---"
 chown -R "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.config/xfce4"
 
-echo "--- Reloading xfce4-panel for the logged-in user, if one is running ---"
-. "$DIR/lib/xfce-panel-reload.sh"
-if xfce_panel_dbus_addr; then
+echo "--- Relaunching xfce4-panel for the logged-in user, if one was running (already stopped above) ---"
+if [ "$PANEL_WAS_RUNNING" -eq 1 ]; then
 	# Debian's stock xfce4-panel default (or a first login that happened
 	# before this script ran) may have created a second panel (its own
 	# top/bottom bar, id != 1). Overwriting the file above doesn't remove
-	# it from a *live* xfconfd's in-memory state -- kill xfconfd so it
-	# comes back reading only our file, before restarting the panel.
-	xfce_panel_kill
-	# xfconfd itself, not just the panel client: this script writes
+	# it from a *live* xfconfd's in-memory state -- kill xfconfd (not just
+	# the panel client, already stopped above) so it comes back reading
+	# only our file, before relaunching the panel. This script writes
 	# xfce4-panel.xml directly rather than through xfconf-query, which
 	# xfconfd's own in-memory cache (if it was already running, e.g. from
 	# the very first pre-provisioning login) has no way to notice -- see
