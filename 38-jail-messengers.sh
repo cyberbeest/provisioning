@@ -61,6 +61,33 @@ for f in signal-sandbox.sh telegram-sandbox.sh element-sandbox.sh; do
 	install -o "$TARGET_USER" -g "$TARGET_USER" -m 755 "$DIR/lib/$f" "$TARGET_HOME/bin/$f"
 done
 
+echo "--- Pre-seeding Element's safeStorage backend (skips the OS keyring) ---"
+# Same underlying issue as Signal's --password-store=basic (see
+# lib/signal-sandbox.sh): Electron's keyring detection fails whenever there's
+# no usable gnome-keyring/kwallet/libsecret backend. Signal just breaks
+# silently in that case; Element is more upfront and shows a blocking
+# "System unsupported" dialog on its very first launch, requiring a manual
+# click through "Use weaker encryption" before it'll start at all. Once
+# accepted it remembers the choice in this same file (safeStorageBackend),
+# so pre-seeding it here avoids that first-launch dialog outright (confirmed
+# 2026-09-25 in the KVM test VM). Only sets the key if the file doesn't
+# already have an opinion, so it won't clobber a real backend Element
+# already detected and is using successfully.
+install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.config/Element"
+sudo -u "$TARGET_USER" python3 -c "
+import json, os
+
+path = os.path.expanduser('~/.config/Element/electron-config.json')
+try:
+    with open(path) as f:
+        cfg = json.load(f)
+except (FileNotFoundError, json.JSONDecodeError):
+    cfg = {}
+cfg.setdefault('safeStorageBackend', 'basic_text')
+with open(path, 'w') as f:
+    json.dump(cfg, f, indent='\t')
+"
+
 echo "--- Installing .desktop overrides to $TARGET_HOME/.local/share/applications/ ---"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.local/share/applications"
 
