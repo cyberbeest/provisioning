@@ -49,7 +49,8 @@ apt-get -o DPkg::Lock::Timeout=60 install -y \
 	qemu-utils \
 	ovmf \
 	virtiofsd \
-	passt
+	passt \
+	lzop
 
 echo "--- Removing VirtualBox's KVM blacklist, if present ---"
 # Written by the old 53-virtualbox.sh (VirtualBox and KVM can't both hold
@@ -97,6 +98,57 @@ if ! grep -q "^max_core" "$TARGET_HOME/.config/libvirt/qemu.conf" 2>/dev/null; t
 	echo "max_core = 0" >> "$TARGET_HOME/.config/libvirt/qemu.conf"
 	chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.config/libvirt/qemu.conf"
 fi
+# Closing the sandbox VM's window saves (hibernates) it -- see
+# lib/cyberbeest-vm-start.sh. lzop-compressed (hence the package above).
+# Measured 2026-09-25 on the dev machine (N3350), same 1.3 GB of guest RAM:
+# lzop's file is 0.51 GB (raw 1.3-1.5, zstd 0.34), and it decompresses as
+# fast as zstd (~5 s, CPU-bound), so restores are equally quick -- but it
+# saves in ~11 s instead of zstd's ~22 s, which keeps the "saving"
+# notice and its shutdown lock short. "sparse" was no better than raw.
+# On host shutdown, the user's libvirt daemon saves running VMs (its
+# per-user default, made explicit) -- but by default it would also restore
+# them as soon as it starts again after the reboot, bringing the VM back
+# running with no window. With restore off, a saved VM waits for its menu
+# entry, which restores it into a window.
+QEMU_CONF="$TARGET_HOME/.config/libvirt/qemu.conf"
+qemu_conf_changed=false
+touch "$QEMU_CONF"
+for setting in 'save_image_format = "lzop"' 'auto_shutdown_try_save = "persistent"' 'auto_shutdown_restore = 0'; do
+	key="${setting%% *}"
+	if grep -qxF "$setting" "$QEMU_CONF"; then
+		continue
+	elif grep -q "^$key " "$QEMU_CONF"; then
+		# Set to something else before (save_image_format was "zstd" for a day).
+		sed -i "s|^$key .*|$setting|" "$QEMU_CONF"
+	else
+		echo "$setting" >>"$QEMU_CONF"
+	fi
+	qemu_conf_changed=true
+done
+chown "$TARGET_USER:$TARGET_USER" "$QEMU_CONF"
+# The user's session libvirtd reads qemu.conf only at startup; it exits on
+# its own when idle, but a running one would keep the old settings until
+# then. Only restarted while no VM runs: a VM survives the restart, but the
+# new daemon no longer knows its shared folder's virtiofsd can be saved,
+# so saving that VM fails ("migration with this virtiofs device is not
+# supported") until it's shut down once -- seen 2026-09-25.
+if [ "$qemu_conf_changed" = true ] && ! pgrep -u "$TARGET_USER" -f '^/usr/bin/qemu-system' >/dev/null; then
+	pkill -u "$TARGET_USER" -x libvirtd || true
+fi
+
+echo "--- Letting a shutdown wait for the sandbox VM to be saved ---"
+# If the laptop shuts down with the VM running, the user's libvirt daemon
+# saves it (auto_shutdown_try_save, below) under a shutdown "delay" lock.
+# logind only waits InhibitDelayMaxSec for such locks -- 5 s by default,
+# while a save takes 20-35 s. Only matters while a delay lock is actually
+# held. Read by logind at its next start (reboot).
+install -d /etc/systemd/logind.conf.d
+cat >/etc/systemd/logind.conf.d/cyberbeest-vm.conf <<'EOF'
+# Cyberbeest: time for the sandbox VM to be saved before shutdown -- see
+# 53a-qemu-kvm-virt-manager.sh.
+[Login]
+InhibitDelayMaxSec=90
+EOF
 
 echo "--- Pointing Virtual Machine Manager at the user's own VMs ---"
 # Its default is the system-wide qemu:///system, where none of our VMs are
