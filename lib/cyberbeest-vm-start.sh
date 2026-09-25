@@ -222,10 +222,22 @@ if ! guest_run "[ -e /run/reboot-required ] || [ \$(cut -d. -f1 /proc/uptime) -g
 		"$(msg vm_start.saving_title)" 2>/dev/null)"
 	# The save takes a while (~11 s, lzop -- see 53a-): shutting down or
 	# suspending the laptop in the middle of it would lose the VM's state
-	# like a power cut, so both are held off until it's done.
-	if save_out="$(systemd-inhibit --what=shutdown:sleep --who=Cyberbeest --mode=block \
+	# like a power cut, so both are held off until it's done -- where
+	# polkit lets us. On some machines it wants a password for the lock
+	# ("Failed to inhibit: Interactive authentication required", .76,
+	# 2026-09-25); saving without it is still far better than shutting the
+	# VM down, and a host shutdown mid-save is caught by libvirt's own
+	# save-on-shutdown anyway (see 53a-).
+	save_out="$(systemd-inhibit --what=shutdown:sleep --who=Cyberbeest --mode=block \
 		--why="$(msg vm_start.saving_title)" \
-		virsh --connect "$CONNECT" managedsave "$VM_NAME" 2>&1)"; then
+		virsh --connect "$CONNECT" managedsave "$VM_NAME" 2>&1)"
+	saved=$?
+	if [ "$saved" -ne 0 ] && [[ "$save_out" == *"Failed to inhibit"* ]]; then
+		echo "$(date '+%F %T') no shutdown lock ($save_out) -- saving without it"
+		save_out="$(virsh --connect "$CONNECT" managedsave "$VM_NAME" 2>&1)"
+		saved=$?
+	fi
+	if [ "$saved" -eq 0 ]; then
 		[ -n "$note_id" ] && gdbus call --session --dest org.freedesktop.Notifications \
 			--object-path /org/freedesktop/Notifications \
 			--method org.freedesktop.Notifications.CloseNotification "$note_id" >/dev/null 2>&1
