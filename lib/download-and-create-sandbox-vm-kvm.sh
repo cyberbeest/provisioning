@@ -365,8 +365,7 @@ echo "--- Setting the guest up as a sandbox VM ---"
 GUEST_HOME=/home/cyberbeest
 virt-customize -a "$DISK_PATH" \
 	--hostname cyberbeest-vm \
-	--mkdir /etc/cyberbeest \
-	--touch /etc/cyberbeest/sandbox-vm \
+	--touch /etc/cyberbeest-sandbox-vm \
 	--mkdir "$GUEST_HOME/.local/bin" \
 	--mkdir "$GUEST_HOME/.local/share/cyberbeest" \
 	--mkdir "$GUEST_HOME/.config/autostart" \
@@ -375,6 +374,8 @@ virt-customize -a "$DISK_PATH" \
 	--upload "$DIR/cyberbeest-sandbox-vm-session.desktop:$GUEST_HOME/.config/autostart/cyberbeest-sandbox-vm-session.desktop" \
 	--chmod "0755:$GUEST_HOME/.local/bin/sandbox-vm-session.sh" \
 	--run-command "chown -R cyberbeest:cyberbeest $GUEST_HOME/.local $GUEST_HOME/.config/autostart" \
+	--upload "$DIR/sandbox-vm-system.sh:/tmp/sandbox-vm-system.sh" \
+	--run-command "bash /tmp/sandbox-vm-system.sh cyberbeest && rm -f /tmp/sandbox-vm-system.sh" \
 	--upload "$DIR/plymouth-theme/cyberbeest-for-print-vm.png:/tmp/cyberbeest-for-print-vm.png" \
 	--run-command "if [ -d /usr/share/plymouth/themes/cyberbeest ]; then install -m 644 /tmp/cyberbeest-for-print-vm.png /usr/share/plymouth/themes/cyberbeest/cyberbeest-for-print.png && plymouth-set-default-theme -R cyberbeest; fi; rm -f /tmp/cyberbeest-for-print-vm.png"
 

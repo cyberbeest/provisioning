@@ -50,7 +50,7 @@ install -m 644 "$THEME_SRC/cyberbeest.plymouth" \
 # VM-specific one instead, so its boot splash is clearly not the laptop's
 # own. Checked here rather than in 91- because this script rewrites the
 # theme whenever it runs, and would otherwise put the laptop logo back.
-if [ -e /etc/cyberbeest/sandbox-vm ]; then
+if [ -e /etc/cyberbeest-sandbox-vm ]; then
 	install -m 644 "$THEME_SRC/cyberbeest-for-print-vm.png" "$THEME_DIR/cyberbeest-for-print.png"
 else
 	install -m 644 "$THEME_SRC/cyberbeest-for-print.png" "$THEME_DIR/"

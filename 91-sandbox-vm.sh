@@ -2,15 +2,16 @@
 # Keeps a Cyberbeest *sandbox* VM's own settings current: the VM a Cyberbeest
 # laptop runs untrusted apps in (see 56-cyberbeest-sandbox-vm-kvm.sh on the
 # host) runs this same provisioning inside, and this is the one script that
-# knows it's in one. Recognized by /etc/cyberbeest/sandbox-vm, which the host
+# knows it's in one. Recognized by /etc/cyberbeest-sandbox-vm, which the host
 # writes when it sets the VM up; everywhere else -- laptops, the standalone VM
 # product -- this does nothing.
 #
 # Installs lib/sandbox-vm-session.sh (auto-lock/blanking off, no KITT
 # scanner, "VM" watermark background -- see that script) with its autostart
-# entry and background tile. The host already puts the same files into a
-# fresh VM; this is how later fixes to them reach existing VMs, through the
-# guest's normal update.
+# entry and background tile, and runs lib/sandbox-vm-system.sh (services a
+# sandbox doesn't need, lean initramfs -- see that one). The host already
+# does the same for a fresh VM; this is how later fixes reach existing VMs,
+# through the guest's normal update.
 #
 # Idempotent: safe to re-run.
 set -euo pipefail
@@ -20,8 +21,11 @@ exec > >(tee -a "$LOG") 2>&1
 
 echo "=== $(date) : sandbox VM settings ==="
 
-if [ ! -e /etc/cyberbeest/sandbox-vm ]; then
-	echo "not a sandbox VM (no /etc/cyberbeest/sandbox-vm) -- nothing to do"
+# /etc/cyberbeest/sandbox-vm: where the marker lived for a day (2026-09-24)
+# before moving out of the root-only /etc/cyberbeest -- see
+# lib/sandbox-vm-system.sh, which moves it.
+if [ ! -e /etc/cyberbeest-sandbox-vm ] && [ ! -e /etc/cyberbeest/sandbox-vm ]; then
+	echo "not a sandbox VM (no /etc/cyberbeest-sandbox-vm) -- nothing to do"
 	echo "=== $(date) : done (skipped) ==="
 	exit 0
 fi
@@ -39,6 +43,9 @@ install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 \
 sed "s|/home/cyberbeest/|$TARGET_HOME/|g" "$DIR/lib/cyberbeest-sandbox-vm-session.desktop" \
 	> "$TARGET_HOME/.config/autostart/cyberbeest-sandbox-vm-session.desktop"
 chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.config/autostart/cyberbeest-sandbox-vm-session.desktop"
+
+# Root-level half: skipped services, exim4's log dir, lean initramfs.
+bash "$DIR/lib/sandbox-vm-system.sh" "$TARGET_USER"
 
 echo "--- Applying it now, if the target user has an active session ---"
 TARGET_UID="$(id -u "$TARGET_USER")"
