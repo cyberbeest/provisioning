@@ -450,8 +450,9 @@ watt_update_label(WattPlugin *wp)
     if (status == BATT_DISCHARGING) {
         gint64 elapsed_s = now_s - wp->battery_start_s;
         gchar elapsed_buf[32];
-        g_snprintf(elapsed_buf, sizeof(elapsed_buf), "%d:%02d",
-                   (int) (elapsed_s / 60), (int) (elapsed_s % 60));
+        g_snprintf(elapsed_buf, sizeof(elapsed_buf), "%d:%02d:%02d",
+                   (int) (elapsed_s / 3600), (int) (elapsed_s / 60 % 60),
+                   (int) (elapsed_s % 60));
         g_string_append_printf(tooltip, _("\n\nAverages since on battery (%s):"), elapsed_buf);
 
         for (guint i = 0; i < AVG_WINDOWS_COUNT; i++) {
