@@ -102,6 +102,13 @@ install -o root -g root -m 755 \
 	"$DIR/lib/cyberbeest-check-default-passwords.sh" /usr/local/sbin/cyberbeest-check-default-passwords
 install -o root -g root -m 755 \
 	"$DIR/lib/cyberbeest-record-initial-password.sh" /usr/local/sbin/cyberbeest-record-initial-password
+# Earlier versions of the recorder left /etc/cyberbeest at 700, which hid
+# the world-readable settings in it from the user's own tools -- see the
+# recorder. initial-passwords.conf in there is 600 on its own.
+if [ -d /etc/cyberbeest ]; then
+	chmod 755 /etc/cyberbeest
+	[ -e /etc/cyberbeest/initial-passwords.conf ] && chmod 600 /etc/cyberbeest/initial-passwords.conf
+fi
 
 echo "--- Recording the ISO's fixed installer passwords as temporary ---"
 # These match usb-stick-maker/preseed.cfg's d-i passwd/user-password and

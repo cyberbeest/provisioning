@@ -51,7 +51,14 @@ if [ -z "$value" ]; then
 fi
 
 CONF=/etc/cyberbeest/initial-passwords.conf
-install -d -m 700 /etc/cyberbeest
+# The directory stays world-readable: other files in it are read by the
+# user's own tools (disk_password_gui.py reads machine-name,
+# plymouth-bright-mode and the boot-chime settings), which a 700 here made
+# fail silently until 2026-09-25 -- the dialog then showed defaults instead
+# of the actual settings. This file protects itself: umask 077 means every
+# copy of it written below, including the temp file, is 600 from the start.
+umask 077
+install -d -m 755 /etc/cyberbeest
 touch "$CONF"
 chmod 600 "$CONF"
 
