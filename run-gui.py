@@ -1128,22 +1128,16 @@ class RunGuiWindow(Gtk.Window):
         self.more_menu_button.set_popup(more_menu)
         button_row1.pack_start(self.more_menu_button, False, False, 0)
 
-        # Three separate labels rather than one combined string -- each one
-        # updates at its own rate (elapsed ticks every second, the estimates
-        # only really move once a script finishes) and this way a translated
-        # catalog can size/order them without one long templated sentence.
-        self.estimated_remaining_label = Gtk.Label(
-            label=t("run_gui.estimated_remaining_time").format(duration=format_duration(0)), xalign=1
+        # One compact "elapsed | remaining | total" label rather than three
+        # separate ones with text labels -- once you know what the three
+        # numbers are, the words are just noise.
+        self.timing_label = Gtk.Label(
+            label=t("run_gui.timing_summary").format(
+                elapsed=format_duration(0), remaining=format_duration(0), total=format_duration(0)
+            ),
+            xalign=1,
         )
-        button_row1.pack_end(self.estimated_remaining_label, False, False, 0)
-        self.estimated_total_label = Gtk.Label(
-            label=t("run_gui.estimated_total_time").format(duration=format_duration(0)), xalign=1
-        )
-        button_row1.pack_end(self.estimated_total_label, False, False, 0)
-        self.elapsed_time_label = Gtk.Label(
-            label=t("run_gui.elapsed_time").format(duration=format_duration(0)), xalign=1
-        )
-        button_row1.pack_end(self.elapsed_time_label, False, False, 0)
+        button_row1.pack_end(self.timing_label, False, False, 0)
 
         button_row2 = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         button_box.pack_start(button_row2, False, False, 0)
@@ -1586,12 +1580,12 @@ class RunGuiWindow(Gtk.Window):
         queued = list(self.remaining_queue)
         remaining = remaining_current + sum(SCRIPT_DURATION_ESTIMATES.get(s, 0) for s in queued)
         total_estimate = elapsed + remaining
-        self.elapsed_time_label.set_text(t("run_gui.elapsed_time").format(duration=format_duration(elapsed)))
-        self.estimated_total_label.set_text(
-            t("run_gui.estimated_total_time").format(duration=format_duration(total_estimate))
-        )
-        self.estimated_remaining_label.set_text(
-            t("run_gui.estimated_remaining_time").format(duration=format_duration(remaining))
+        self.timing_label.set_text(
+            t("run_gui.timing_summary").format(
+                elapsed=format_duration(elapsed),
+                remaining=format_duration(remaining),
+                total=format_duration(total_estimate),
+            )
         )
 
     # -- starting runs --------------------------------------------------
