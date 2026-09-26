@@ -284,9 +284,7 @@ STRINGS = {
     "run_gui.menu_disable_autostart": "Disable auto-provisioning on login",
     "run_gui.menu_select_vm_scripts": "Select scripts for VM install",
     "run_gui.menu_switch_to_update": "Close and check for updates (Cyberbeest Update)",
-    "run_gui.elapsed_time": "Elapsed: {duration}",
-    "run_gui.estimated_total_time": "Est. total: {duration}",
-    "run_gui.estimated_remaining_time": "Est. remaining: {duration}",
+    "run_gui.timing_summary": "{elapsed} | {remaining} | {total}",
     "run_gui.status_idle": "Idle. Double-click a script below to run just that one.",
     "run_gui.todo_frame_title": "Things to do after the provisioning completed",
     "run_gui.log_hasnt_run_this_session": (
