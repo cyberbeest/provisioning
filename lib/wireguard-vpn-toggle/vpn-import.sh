@@ -16,13 +16,17 @@ SRC="$(zenity --file-selection --title="$(t vpn.import_file_title)" \
     --file-filter="$(t vpn.import_file_filter) | *.conf" 2>/dev/null)"
 [ -z "$SRC" ] && exit 0
 
-DEFAULT_NAME="$(basename "$SRC" .conf | tr -c 'a-zA-Z0-9_-' '-')"
+# cut -c1-15: matches the validation below -- providers' own downloaded
+# config filenames (e.g. Proton's) are often longer than wg-quick's
+# 15-character interface-name limit, so pre-shortening the suggested
+# default means most imports never hit that rejection at all.
+DEFAULT_NAME="$(basename "$SRC" .conf | tr -c 'a-zA-Z0-9_-' '-' | cut -c1-15)"
 NAME="$(zenity --entry --title="$(t vpn.import_name_title)" \
     --text="$(t vpn.import_name_text)" \
     --entry-text="$DEFAULT_NAME" 2>/dev/null)"
 [ -z "$NAME" ] && exit 0
 
-if ! [[ "$NAME" =~ ^[a-zA-Z0-9_-]{1,32}$ ]]; then
+if ! [[ "$NAME" =~ ^[a-zA-Z0-9_-]{1,15}$ ]]; then
     zenity --error --text="$(t vpn.import_invalid_name)" 2>/dev/null
     exit 1
 fi
