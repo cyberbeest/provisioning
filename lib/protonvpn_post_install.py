@@ -28,12 +28,16 @@ both filling gaps Proton's own app leaves open:
 Runs unprivileged, as the user (no pkexec). Idempotent: safe to re-run.
 Call with no args after install (silently pre-seeds the kill switch, then
 shows the autostart Yes/No dialog); call with "remove" after uninstall to
-clean up the autostart entry, silently, no dialog. The kill switch
-preference is left alone on remove, same as any other app's user config.
+kill any still-running protonvpn-app instance (apt removing the package
+doesn't touch an already-running process -- it keeps its tray icon and
+all until killed or logged out) and clean up the autostart entry, both
+silently, no dialog. The kill switch preference is left alone on remove,
+same as any other app's user config.
 """
 
 import glob
 import os
+import subprocess
 import sys
 
 APPLICATIONS_DIR = "/usr/share/applications"
@@ -117,7 +121,17 @@ def do_install():
         install_autostart(desktop_file)
 
 
+def kill_running_app():
+    # apt removing the package doesn't touch an already-running instance --
+    # it keeps running from its now-unlinked binary, tray icon and all,
+    # until killed or logged out. pkill excludes its own process, so this
+    # can't self-match.
+    subprocess.run(["pkill", "-f", EXEC_BINARY], check=False)
+
+
 def do_remove():
+    kill_running_app()
+
     if not os.path.isdir(AUTOSTART_DIR):
         return
     for name in os.listdir(AUTOSTART_DIR):

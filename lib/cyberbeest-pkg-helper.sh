@@ -137,8 +137,12 @@ do_install() {
 }
 
 do_remove() {
+    # --autoremove: some of these rows (Proton VPN in particular) install an
+    # empty metapackage that just pulls in the real app as a dependency --
+    # a plain "remove" would only drop the metapackage and leave the
+    # dependency (and its running daemon/services) installed and running.
     log "Removing: $*"
-    apt-get -o DPkg::Lock::Timeout=60 remove -y "$@" >>"$LOG" 2>&1 || { log "apt-get remove failed: $*"; return 1; }
+    apt-get -o DPkg::Lock::Timeout=60 remove --autoremove -y "$@" >>"$LOG" 2>&1 || { log "apt-get remove failed: $*"; return 1; }
     log "Remove finished: $*"
 }
 
