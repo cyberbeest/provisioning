@@ -75,12 +75,14 @@ APPS = [
     {
         "id": "protonvpn",
         "name": "Proton VPN",
-        "description": "Proton's own Linux app -- also installs and enables a persistent background daemon, same reason it's opt-in. Officially targets GNOME; works on Xfce but pulls in some GNOME libraries as dependencies.",
+        "description": "Proton's own Linux app -- also installs and enables a persistent background daemon, same reason it's opt-in. Officially targets GNOME; works on Xfce but pulls in some GNOME libraries as dependencies. After installing, the standard kill switch is turned on by default and you'll be asked whether to start it automatically at login -- Proton's own app has no setting for either.",
         "category": "VPN & Networking",
         "check_pkg": "proton-vpn-gnome-desktop",
         "install_pkg": "proton-vpn-gnome-desktop",
         "remove_pkg": "proton-vpn-gnome-desktop",
         "repo": "protonvpn",
+        "post_install_script": "__PROTONVPN_POST_INSTALL_SCRIPT__",
+        "post_remove_script": "__PROTONVPN_POST_INSTALL_SCRIPT__",
     },
     {
         "id": "chrome",
@@ -544,7 +546,9 @@ class PackagesPage(Gtk.Box):
                 continue
             if not args:
                 continue
-            proc = subprocess.run(args, capture_output=True, text=True, timeout=120)
+            # 10 min, not 2 -- protonvpn_post_install.py blocks on a
+            # confirmation dialog the user might not answer right away.
+            proc = subprocess.run(args, capture_output=True, text=True, timeout=600)
             if proc.returncode != 0:
                 detail = (proc.stderr or proc.stdout or "").strip()
                 return f"{row.app['name']} {verb}, but {gerund} failed: {detail}"

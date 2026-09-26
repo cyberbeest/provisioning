@@ -9,6 +9,11 @@
 # its post-install step (lib/enable_qbittorrent_i2p.py) just flips on I2P
 # support in its own config, assuming i2pd is already present.
 #
+# Proton VPN's post-install/post-remove step (lib/protonvpn_post_install.py)
+# pre-seeds its standard kill switch on and offers to autostart it at
+# login -- Proton's own app has no setting for either -- and cleans the
+# autostart entry back up on uninstall.
+#
 # This only deploys the *tool*; it does not install qbittorrent/mullvad-vpn/
 # proton-vpn-gnome-desktop themselves -- those stay opt-in, checked by hand
 # in the GUI.
@@ -39,7 +44,8 @@ install -m 644 "$DIR/lib/com.cyberbeest.package-manager.policy" /usr/share/polki
 echo "--- Installing GUI + post-install helper to $TARGET_HOME/.local/bin ---"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.local/bin"
 sed "s|__LOG_PATH__|$TARGET_HOME/.local/share/cyberbeest/cyberbeest_package_manager.log|g; \
-     s|__QBT_POST_INSTALL_SCRIPT__|$TARGET_HOME/.local/bin/enable_qbittorrent_i2p.py|g" \
+     s|__QBT_POST_INSTALL_SCRIPT__|$TARGET_HOME/.local/bin/enable_qbittorrent_i2p.py|g; \
+     s|__PROTONVPN_POST_INSTALL_SCRIPT__|$TARGET_HOME/.local/bin/protonvpn_post_install.py|g" \
 	"$DIR/lib/cyberbeest_package_manager_gui.py" \
 	> "$TARGET_HOME/.local/bin/cyberbeest-package-manager"
 chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.local/bin/cyberbeest-package-manager"
@@ -47,6 +53,9 @@ chmod 755 "$TARGET_HOME/.local/bin/cyberbeest-package-manager"
 
 install -o "$TARGET_USER" -g "$TARGET_USER" -m 755 \
 	"$DIR/lib/enable_qbittorrent_i2p.py" "$TARGET_HOME/.local/bin/enable_qbittorrent_i2p.py"
+
+install -o "$TARGET_USER" -g "$TARGET_USER" -m 755 \
+	"$DIR/lib/protonvpn_post_install.py" "$TARGET_HOME/.local/bin/protonvpn_post_install.py"
 
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.local/share/cyberbeest"
 
