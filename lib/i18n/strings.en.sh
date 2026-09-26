@@ -64,6 +64,8 @@ Only continue if you clicked an install link on a page you trust."
 	[panel_status_genmon.security_heading]="Security updates"
 	[panel_status_genmon.ip_line]="IP address: ADDR"
 	[panel_status_genmon.ip_unknown]="no network connection"
+	[panel_status_genmon.ports_line]="Listening ports: PORTS"
+	[panel_status_genmon.ports_none]="none"
 	[update.title]="Cyberbeest Update"
 	[update.no_repo_message]="No provisioning checkout found at ~/provisioning or ~/provisioning-bleeding.
 
