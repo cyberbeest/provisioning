@@ -407,15 +407,17 @@ STATUS_STYLE = {
     "skipped": (t("run_gui.state_skipped"), "#8a8a8a"),
 }
 
-# Wall-clock durations captured from a real end-to-end provisioning run
-# (2026-08-31, derived from the "=== <date> : ..." timestamp on each
-# script's first log line vs. the next script's), shown next to "pending"
-# rows as a rough per-script estimate. Actual time on a given machine varies
-# mainly with network speed (apt/pip installs) and whether packages are
-# already cached -- treat these as ballpark, not a guarantee. A script not
-# in this dict (e.g. one added since) just shows "pending" with no estimate.
+# Wall-clock durations, derived from the "=== <date> : ..." timestamp on
+# each script's first log line vs. the next script's, shown next to
+# "pending" rows as a rough per-script estimate. This is a running max
+# across real end-to-end provisioning runs (started 2026-08-31, last
+# refreshed from a run on 2026-09-26) -- a run's own value only replaces
+# an entry when it's bigger. Actual time on a given machine varies mainly
+# with network speed (apt/pip installs) and whether packages are already
+# cached -- treat these as ballpark, not a guarantee. A script not in this
+# dict (e.g. one added since) just shows "pending" with no estimate.
 SCRIPT_DURATION_ESTIMATES = {
-    "00-locale-keyboard-timezone.sh": 37,
+    "00-locale-keyboard-timezone.sh": 88,
     "00a-touchpad-tap-global.sh": 0,
     "01-bluetooth-tethering.sh": 26,
     "02-gnome-software-store.sh": 14,
@@ -424,47 +426,60 @@ SCRIPT_DURATION_ESTIMATES = {
     "05-unattended-upgrades-security.sh": 87,
     "06-vendor-origins-unattended-upgrades.sh": 52,
     "07-security-update-timer.sh": 114,
-    "08-xdg-user-dirs.sh": 2,
-    "09-cyberbeest-logout-dialog.sh": 2,
+    "08-xdg-user-dirs.sh": 5,
+    "09-cyberbeest-logout-dialog.sh": 6,
     "10-browser-sandbox.sh": 23,
     "11-xfce-panel-plugins.sh": 99,
-    "12-xfce-panel-layout.sh": 7,
+    "11a-clipboard-status.sh": 19,
+    "12-xfce-panel-layout.sh": 20,
     "13-lock-shutdown-watcher.sh": 16,
+    "13a-lock-warning-watcher.sh": 6,
     "14-user-avatar.sh": 0,
-    "15-grub-plymouth-theme.sh": 67,
-    "16-power-lock-config.sh": 5,
+    "15-grub-plymouth-theme.sh": 69,
+    "16-power-lock-config.sh": 8,
     "17-login-lock-screen.sh": 0,
-    "18-desktop-background.sh": 0,
+    "18-desktop-background.sh": 1,
     "19-low-battery-shutdown.sh": 1,
-    "20-shutdown-sound.sh": 0,
+    "20-shutdown-sound.sh": 1,
     "21-default-password-nag.sh": 9,
-    "22-i2p-package-manager.sh": 2,
+    "22-i2p-package-manager.sh": 6,
     "23-vlc-media-player.sh": 22,
-    "24-avif-mime-default.sh": 0,
-    "25-cyberbeest-panel-color.sh": 2,
-    "26-lid-close-policy.sh": 3,
-    "27-desktop-hotlinks.sh": 7,
-    "29-wireguard-vpn-toggle.sh": 5,
-    "30-lockscreen-shutdown-button.sh": 99,
-    "31-disable-sleep-states.sh": 1,
+    "24-avif-mime-default.sh": 1,
+    "25-cyberbeest-panel-color.sh": 5,
+    "26-lid-close-policy.sh": 7,
+    "27-desktop-hotlinks.sh": 8,
+    "28-single-workspace.sh": 1,
+    "29-wireguard-vpn-toggle.sh": 6,
+    "30-lockscreen-shutdown-button.sh": 104,
+    "31-disable-sleep-states.sh": 4,
     "32-minor-apt-packages.sh": 109,
     "33-rename-thunar-to-files.sh": 11,
-    "35-boot-chime.sh": 3,
+    "35-boot-chime.sh": 8,
     "36-crypto-wallets.sh": 47,
     "37-encrypted-dns.sh": 20,
-    "38-jail-messengers.sh": 2,
-    "39-feather-tor-ondemand.sh": 2,
-    "40-jail-wallets-viber.sh": 2,
-    "41-bookmark-seeder.sh": 3,
+    "38-jail-messengers.sh": 4,
+    "39-feather-tor-ondemand.sh": 4,
+    "40-jail-wallets-viber.sh": 6,
+    "41-bookmark-seeder.sh": 5,
     "42-security-watch.sh": 17,
-    "43-intrusion-watch.sh": 3,
-    "44-wipe-app-data.sh": 2,
+    "43-intrusion-watch.sh": 5,
+    "44-wipe-app-data.sh": 5,
     "45-hide-redundant-terminals.sh": 1,
     "46-cyberbeest-keyboard-shortcuts.sh": 0,
     "47-set-max-volume.sh": 0,
-    "48-whisker-menu-categories.sh": 0,
-    "49-whisker-category-cleanup.sh": 1,
+    "48-whisker-menu-categories.sh": 1,
+    "49-whisker-category-cleanup.sh": 2,
     "50-i2pd-default.sh": 281,
+    "51-fail2ban.sh": 4,
+    "52-cyberbeest-update.sh": 0,
+    "53a-qemu-kvm-virt-manager.sh": 142,
+    "54-lock-screen-curtain.sh": 7,
+    "55-powerbtn-double-press.sh": 19,
+    "56-cyberbeest-sandbox-vm-kvm.sh": 741,
+    "58-cyberbeest-image-viewer.sh": 36,
+    "59-cyberbeest-scanner.sh": 144,
+    "60-xfce-panel-watchdog.sh": 1,
+    "91-sandbox-vm.sh": 0,
 }
 
 

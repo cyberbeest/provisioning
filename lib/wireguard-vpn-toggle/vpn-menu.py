@@ -13,6 +13,12 @@ import gi
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk
 
+# i18n.py only resolves `from i18n import t` if i18n.py (and its
+# strings_*.py catalogs) sit next to this installed script -- true both
+# here in the repo checkout and once deployed to ~/.local/bin, since
+# Python always adds a script's own directory to sys.path.
+from i18n import t
+
 HOME = os.path.expanduser("~")
 BIN = os.path.join(HOME, ".local", "bin")
 STATE_DIR = os.path.join(HOME, ".config", "cyberbeest")
@@ -72,13 +78,17 @@ def build_menu():
     active = get_active()
 
     if not profiles:
-        empty_item = Gtk.MenuItem(label="No VPN profiles imported yet")
+        empty_item = Gtk.MenuItem(label=t("vpn.menu_empty"))
         empty_item.set_sensitive(False)
         menu.append(empty_item)
         menu.append(Gtk.SeparatorMenuItem())
 
     for name in profiles:
-        label = f"✓ {name} (connected)" if name == active else f"Connect: {name}"
+        label = (
+            t("vpn.menu_connected").format(name=name)
+            if name == active
+            else t("vpn.menu_connect").format(name=name)
+        )
         item = Gtk.MenuItem(label=label)
         if name == active:
             item.set_sensitive(False)
@@ -88,13 +98,13 @@ def build_menu():
 
     if active:
         menu.append(Gtk.SeparatorMenuItem())
-        disconnect_item = Gtk.MenuItem(label="Disconnect")
+        disconnect_item = Gtk.MenuItem(label=t("vpn.disconnect"))
         disconnect_item.connect("activate", disconnect)
         menu.append(disconnect_item)
 
     menu.append(Gtk.SeparatorMenuItem())
 
-    import_item = Gtk.MenuItem(label="Import New Profile...")
+    import_item = Gtk.MenuItem(label=t("vpn.menu_import"))
     import_item.connect("activate", import_profile)
     menu.append(import_item)
 
@@ -104,7 +114,7 @@ def build_menu():
             remove_item = Gtk.MenuItem(label=name)
             remove_item.connect("activate", remove_profile, name)
             remove_menu.append(remove_item)
-        remove_root = Gtk.MenuItem(label="Remove Profile")
+        remove_root = Gtk.MenuItem(label=t("vpn.menu_remove"))
         remove_root.set_submenu(remove_menu)
         menu.append(remove_root)
 

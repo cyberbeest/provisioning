@@ -78,6 +78,21 @@ sed "s|__PACKAGE_MANAGER_SCRIPT__|$TARGET_HOME/.local/bin/cyberbeest-package-man
 chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.local/bin/vpn_manager_gui.py"
 chmod 755 "$TARGET_HOME/.local/bin/vpn_manager_gui.py"
 
+# i18n.sh/i18n.py only resolve their catalogs relative to their own
+# location, so both need a copy next to the scripts installed here too --
+# same per-installed-directory duplication convention as
+# 11a-clipboard-status.sh and 12-xfce-panel-layout.sh. vpn-import.sh,
+# vpn-connect.sh, vpn-disconnect.sh, vpn-remove-profile.sh, and
+# vpn-genmon.sh use i18n.sh; vpn_manager_gui.py and vpn-menu.py use
+# i18n.py.
+install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 "$DIR/lib/i18n.sh" "$TARGET_HOME/.local/bin/i18n.sh"
+install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 "$DIR/lib/i18n.py" "$TARGET_HOME/.local/bin/i18n.py"
+install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.local/bin/i18n"
+install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 \
+	"$DIR/lib/i18n/strings.en.sh" "$DIR/lib/i18n/strings.de.sh" \
+	"$DIR/lib/i18n/strings_en.py" "$DIR/lib/i18n/strings_de.py" \
+	"$TARGET_HOME/.local/bin/i18n/"
+
 echo "--- Installing Whisker menu entry ---"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.local/share/applications"
 cat > "$TARGET_HOME/.local/share/applications/vpn.desktop" <<EOF
@@ -85,6 +100,7 @@ cat > "$TARGET_HOME/.local/share/applications/vpn.desktop" <<EOF
 Type=Application
 Name=Cyberbeest VPN
 Comment=Connect to a VPN, see known-supported providers, or import a WireGuard config
+Comment[de]=Mit einem VPN verbinden, bekanntermaßen unterstützte Anbieter ansehen oder eine WireGuard-Konfiguration importieren
 Exec=$TARGET_HOME/.local/bin/vpn_manager_gui.py
 Icon=network-vpn
 Categories=Network;
