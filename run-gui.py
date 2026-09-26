@@ -1165,6 +1165,11 @@ class RunGuiWindow(Gtk.Window):
         # startup and refilled at the start of each run in _start_run().
         self.progress_bar = Gtk.ProgressBar()
         self.progress_bar.set_show_text(True)
+        # Themes default this to just a few px tall -- bump it so it's
+        # actually easy to see progress on at a glance.
+        progress_css = Gtk.CssProvider()
+        progress_css.load_from_data(b"progressbar > trough { min-height: 12px; } progressbar > trough > progress { min-height: 12px; }")
+        self.progress_bar.get_style_context().add_provider(progress_css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
         root.pack_start(self.progress_bar, False, False, 0)
 
         self.todo_frame = Gtk.Frame(label=t("run_gui.todo_frame_title"))
