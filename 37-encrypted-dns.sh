@@ -59,6 +59,19 @@ exec > "$LOG" 2>&1
 
 echo "=== $(date) starting 37-encrypted-dns.sh ==="
 
+# A Cyberbeest sandbox VM already gets its DNS forwarded through the host's
+# own encrypted resolver (libvirt/QEMU forwards guest DNS to the host), and
+# sandbox-vm-system.sh drops a ConditionPathExists=!/etc/cyberbeest-sandbox-vm
+# onto dnscrypt-proxy-local.service specifically so it never starts there.
+# Without this check, this script doesn't know that, sees the (correctly)
+# unmet condition as the service failing to start, and reports a false
+# failure on every run inside a sandbox VM.
+if [ -e /etc/cyberbeest-sandbox-vm ] || [ -e /etc/cyberbeest/sandbox-vm ]; then
+	echo "sandbox VM -- dnscrypt-proxy-local.service is meant to stay off here (see sandbox-vm-system.sh), skipping"
+	echo "=== $(date) : done (skipped) ==="
+	exit 0
+fi
+
 UNIT=dnscrypt-proxy-local.service
 
 revert() {
