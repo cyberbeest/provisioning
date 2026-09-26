@@ -26,7 +26,7 @@ from i18n import t
 import gi
 
 gi.require_version("Gtk", "3.0")
-from gi.repository import Gtk, Pango
+from gi.repository import GLib, Gtk, Pango
 
 RESPONSE_SWITCH = 100
 
@@ -39,25 +39,44 @@ _STATUS_LABELS = {
 }
 
 
+def parse_commit_history(blob):
+    """Splits cyberbeest-update.sh's \\x1e/\\x1f-encoded commit history
+    field back into a [(date, subject), ...] list, newest first.
+    """
+    commits = []
+    for chunk in blob.split("\x1e"):
+        if not chunk:
+            continue
+        date, _, subject = chunk.partition("\x1f")
+        commits.append((date, subject))
+    return commits
+
+
 def parse_changed_files(raw):
     """Turns cyberbeest-update.sh's enriched `git diff --name-status` lines
-    into (status, display_path, date, lookup_paths) rows.
+    into (status, display_path, date, subject, commits, lookup_paths) rows.
 
     Rename/copy lines carry a similarity percentage after the letter
     (e.g. "R100") and two paths (old, new); every other status is a
-    single letter and one path. cyberbeest-update.sh appends the date of
-    the newest incoming commit touching that path as a trailing field.
-    lookup_paths is what a per-file `git diff -- <paths>` needs: both
-    paths for a rename/copy (the old one only exists in HEAD's tree, the
-    new one only in the incoming tree), one path otherwise.
+    single letter and one path. cyberbeest-update.sh appends the encoded
+    commit history for that path (see parse_commit_history) as a trailing
+    field; date/subject are the newest entry in it. lookup_paths is what a
+    per-file `git diff -- <paths>` needs: both paths for a rename/copy (the
+    old one only exists in HEAD's tree, the new one only in the incoming
+    tree), one path otherwise.
     """
     rows = []
-    for line in raw.splitlines():
+    # Split on a literal "\n" only, not str.splitlines(): that method also
+    # treats \x1c/\x1d/\x1e (the commit-history field's own separators) as
+    # line boundaries, which would shred that field's encoding right back
+    # apart.
+    for line in raw.split("\n"):
         if not line.strip():
             continue
         fields = line.split("\t")
-        date = fields[-1]
+        commits = parse_commit_history(fields[-1])
         fields = fields[:-1]
+        date, subject = commits[0] if commits else ("", "")
         code = fields[0][0]
         label = t(_STATUS_LABELS.get(code, "update.status_other")).format(code=fields[0])
         if code in ("R", "C") and len(fields) >= 3:
@@ -66,7 +85,7 @@ def parse_changed_files(raw):
         else:
             path = fields[-1]
             lookup_paths = [fields[-1]]
-        rows.append((label, path, date, lookup_paths))
+        rows.append((label, path, date, subject, commits, lookup_paths))
     return rows
 
 
@@ -209,12 +228,13 @@ def fetch_changed_files(repo_dir, revision):
             continue
         fields = line.split("\t")
         path = fields[-1]
-        date = subprocess.run(
-            ["git", "-C", repo_dir, "log", "-1", "--format=%ad", "--date=short",
+        log_text = subprocess.run(
+            ["git", "-C", repo_dir, "log", "--format=%ad\x1f%s", "--date=short",
              f"HEAD..{revision}", "--", path],
             capture_output=True, text=True, check=False,
-        ).stdout.strip()
-        raw_lines.append("\t".join(fields) + "\t" + date)
+        ).stdout
+        history = "\x1e".join(log_text.splitlines())
+        raw_lines.append("\t".join(fields) + "\t" + history)
 
     return parse_changed_files("\n".join(raw_lines))
 
@@ -267,6 +287,7 @@ def show_diff_dialog(parent, repo_dir, revision, lookup_paths, display_path, dat
 def main():
     track, other_track, repo_dir = sys.argv[1], sys.argv[2], sys.argv[3]
     revision = sys.argv[4] if len(sys.argv) > 4 else None
+    version = sys.argv[5] if len(sys.argv) > 5 and sys.argv[5] else None
     changed_files = parse_changed_files(sys.stdin.read())
 
     dialog = Gtk.Dialog(title=t("update.title"))
@@ -297,6 +318,13 @@ def main():
     last_pull_label.set_markup(f"<small>{last_pull_text(repo_dir)}</small>")
     box.pack_start(last_pull_label, False, False, 0)
 
+    if version:
+        version_label = Gtk.Label(xalign=0)
+        version_label.set_markup(
+            f"<small>{t('update.version_label').format(version=GLib.markup_escape_text(version))}</small>"
+        )
+        box.pack_start(version_label, False, False, 0)
+
     files_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
     files_heading = Gtk.Label(xalign=0)
     files_heading.set_markup(f"<b>{t('update.files_heading')}</b>")
@@ -326,7 +354,11 @@ def main():
     # visibility toggled between them, rather than only building whichever
     # applies at start -- the reload button can turn an empty list into a
     # non-empty one (or vice versa) without rebuilding the dialog's layout.
-    store = Gtk.ListStore(str, str, str)
+    # 5th column (tooltip text) is never shown as a TreeViewColumn -- it
+    # only feeds set_tooltip_column below, and is left NULL (via appending
+    # None) for a single-commit file so hovering it shows no tooltip: the
+    # Comment cell already displays that one commit's subject in full.
+    store = Gtk.ListStore(str, str, str, str, str)
     tree = Gtk.TreeView(model=store)
     tree.append_column(Gtk.TreeViewColumn("", Gtk.CellRendererText(), text=0))
     path_renderer = Gtk.CellRendererText()
@@ -335,9 +367,15 @@ def main():
     path_column = Gtk.TreeViewColumn(t("update.column_file"), path_renderer, text=1)
     path_column.set_expand(True)
     tree.append_column(path_column)
+    comment_renderer = Gtk.CellRendererText()
+    comment_renderer.set_property("ellipsize", Pango.EllipsizeMode.END)
+    comment_column = Gtk.TreeViewColumn(t("update.column_comment"), comment_renderer, text=2)
+    comment_column.set_expand(True)
+    tree.append_column(comment_column)
     date_renderer = Gtk.CellRendererText()
     date_renderer.set_property("family", "monospace")
-    tree.append_column(Gtk.TreeViewColumn(t("update.column_date"), date_renderer, text=2))
+    tree.append_column(Gtk.TreeViewColumn(t("update.column_date"), date_renderer, text=3))
+    tree.set_tooltip_column(4)
 
     # A ScrolledWindow with a capped height, not an ever-growing list -- a
     # big pull (e.g. switching after months away) can easily touch dozens of
@@ -354,8 +392,11 @@ def main():
 
     def populate(rows):
         store.clear()
-        for status, path, date, _lookup_paths in rows:
-            store.append([status, path, date])
+        for status, path, date, subject, commits, _lookup_paths in rows:
+            tooltip = None
+            if len(commits) > 1:
+                tooltip = "\n".join(f"{d}: {s}" for d, s in commits)
+            store.append([status, path, subject, date, tooltip])
         scroller.set_visible(bool(rows))
         scroller.set_min_content_height(min(28 * len(rows) + 28, 240))
         no_changes_label.set_visible(not rows)
@@ -374,7 +415,7 @@ def main():
             if tree_iter is None:
                 return
             idx = model.get_path(tree_iter).get_indices()[0]
-            _status, path, date, lookup_paths = changed_files[idx]
+            _status, path, date, _subject, _commits, lookup_paths = changed_files[idx]
             show_diff_dialog(dialog, repo_dir, revision, lookup_paths, path, date)
 
         diff_button.connect("clicked", on_diff_clicked)

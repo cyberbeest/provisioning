@@ -371,6 +371,7 @@ STRINGS = {
     ),
     "update.last_pull_message": "Zuletzt aktualisiert: {when} ({relative})",
     "update.last_pull_never": "Noch nie aktualisiert.",
+    "update.version_label": "Version: {version}",
 
     "relative.just_now": "gerade eben",
     "relative.minute_ago": "vor {n} Minute",
@@ -396,6 +397,7 @@ STRINGS = {
     "update.status_copied": "Kopiert",
     "update.status_other": "{code}",
     "update.column_file": "Datei",
+    "update.column_comment": "Kommentar",
     "update.column_date": "Datum",
     "update.diff_row_button": "Dateiunterschiede anzeigen",
     "update.recheck_button_tooltip": "Erneut bei GitHub nachsehen",

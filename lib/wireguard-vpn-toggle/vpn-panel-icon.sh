@@ -40,7 +40,35 @@ panel_dbus_addr() {
     PANEL_DBUS_ADDR="${PANEL_DBUS_ADDR:-unix:path=/run/user/$(id -u)/bus}"
 }
 
+# Flocks the same file lib/xfce-panel-reload.sh and the panel watchdog use
+# so a kill+relaunch here can never interleave with one of theirs -- two
+# racing kill+relaunch cycles could otherwise land a SIGKILL on the
+# *other's* freshly-launched process, or spawn two panels back to back. See
+# xfce-panel-reload.sh's own comment on xfce_panel_reload_lock for the full
+# story. /run/user, not $HOME, so a stale lock can never survive a reboot.
+PANEL_RELOAD_LOCK_FILE="/run/user/$(id -u)/cyberbeest-panel-reload.lock"
+
 reload_panel() {
+    # Self-heal a lock file a root-context reload left behind before
+    # xfce-panel-reload.sh's own chmod-0666 fix existed (root:root, mode
+    # 644 -- unwritable by us). We can't chmod/chown our way out of that
+    # (neither the file's owner nor root), only delete it -- unlink is
+    # governed by the directory's permissions, not the file's, and
+    # /run/user/<uid> is ours. Confirmed live 2026-09-25 on .76: this
+    # exact situation silently blocked the panel watchdog's every
+    # relaunch attempt after a provisioning reload ran, with nothing short
+    # of manually removing the file able to clear it.
+    if [ -e "$PANEL_RELOAD_LOCK_FILE" ] && ! : 2>/dev/null >>"$PANEL_RELOAD_LOCK_FILE"; then
+        echo "warning: panel-reload lock file isn't writable by us -- removing a likely stale root-owned copy" >&2
+        rm -f "$PANEL_RELOAD_LOCK_FILE" 2>/dev/null || true
+    fi
+    (
+        flock -x 200
+        reload_panel_impl
+    ) 200>"$PANEL_RELOAD_LOCK_FILE"
+}
+
+reload_panel_impl() {
     # No panel running (no graphical session) -- nothing to reload.
     local old_pid
     old_pid="$(pgrep -x xfce4-panel | head -n1)"

@@ -1,0 +1,10 @@
+[Unit]
+Description=Restart xfce4-panel if it crashes
+
+[Service]
+Type=simple
+ExecStart=%h/bin/xfce-panel-watchdog.sh
+Restart=on-failure
+
+[Install]
+WantedBy=default.target

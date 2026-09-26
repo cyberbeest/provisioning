@@ -30,11 +30,14 @@ echo "--- Suppressing the 'security features may offer less protection' nag ---"
 # drops all caps, and applies its own seccomp/network isolation around the
 # whole browser, so nothing is actually less protected.
 #
-# The same policies.json also sets browser.tabs.inTitlebar=0 (system titlebar):
-# under firejail --x11=xorg Firefox is an untrusted X client, so its GTK
-# client-side decorations get no working alpha -- the shadow margin renders
-# as a solid black border and CSD resize/move requests don't reach xfwm4.
-# Letting xfwm4 draw the frame fixes both. browser.uidensity=1 (compact
+# The same policies.json also sets browser.tabs.inTitlebar=0 (system titlebar).
+# This was originally needed because firejail --x11=xorg made Firefox an
+# untrusted X client, breaking GTK client-side decoration alpha (shadow
+# margin rendered as a solid black border, CSD resize/move didn't reach
+# xfwm4). --x11=xorg has since been dropped (see lib/browser-sandbox.sh --
+# it broke AltGr/3rd-level keyboard input), so this is no longer strictly
+# required, but the system titlebar is left in place rather than switching
+# CSD back untested. browser.uidensity=1 (compact
 # toolbars) wins back some of the height the titlebar costs; Mozilla labels
 # it "not supported" (unmaintained, may be dropped -> falls back to normal),
 # so browser.compactmode.show stays off to keep that label out of the UI.

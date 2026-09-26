@@ -40,6 +40,57 @@
 # i2pd toggle's panel icon) -- callers should check its exit status rather
 # than assume success.
 
+# Every script that kills+relaunches this user's xfce4-panel -- this lib,
+# its three standalone per-user forks (i2pd/vpn/dot panel-icon.sh), and
+# lib/xfce-panel-watchdog.sh -- flocks the same file for the whole
+# kill-through-launch window. Without this, two of them landing at once
+# (e.g. the watchdog noticing a crash at the exact moment 12- also starts
+# its own reload, or an icon toggle firing mid-provisioning-run) can
+# interleave: one's SIGKILL lands on the *other's* freshly-launched
+# process, two panels get spawned back to back, or a "new pid" check reads
+# the wrong process's pid across the two racing callers. Serializing on
+# this lock means at most one kill+launch cycle is ever in flight for a
+# given user, and the watchdog in particular can tell "someone else is
+# already doing a legitimate reload" (lock held) apart from "the panel
+# genuinely just crashed on its own" (lock free, no process) -- see that
+# script's own comment. Lives under /run/user/<uid>, not TARGET_HOME, so
+# it can never survive a reboot as a stale lock and is reachable by both a
+# root-run provisioning script (root can open a file under another user's
+# 0700 runtime dir) and the per-user scripts that run as that user
+# directly.
+xfce_panel_reload_lock() {
+	# Idempotent: xfce_panel_kill acquires it and xfce_panel_launch reuses
+	# the same already-open fd rather than opening a second one -- flock()
+	# locks are per open-file-description, so a second fd opened by this
+	# same process would itself block on the first, a self-deadlock.
+	[ -n "${_XFCE_PANEL_RELOAD_LOCK_FD:-}" ] && return 0
+	local lock_file="/run/user/$(id -u "$TARGET_USER")/cyberbeest-panel-reload.lock"
+	exec {_XFCE_PANEL_RELOAD_LOCK_FD}>"$lock_file"
+	# This runs as root, so if the file doesn't already exist, the exec
+	# above just created it owned by root:root, mode 644 -- unwritable by
+	# TARGET_USER. The watchdog and the three toggle scripts open the same
+	# path as that plain user, so left alone, every one of them would fail
+	# with a permanent "Permission denied" on this file from now on,
+	# unable to ever fix it themselves (chmod/chown need the file's owner
+	# or root, and a plain user is neither once root beat them to
+	# creating it). Confirmed live 2026-09-25 on .76: 12- ran this, the
+	# panel crashed ~30s later (outside its own launch's crash-watch
+	# window -- exactly what the watchdog exists to catch), and the
+	# watchdog then failed every single relaunch attempt with this error
+	# until the stale root-owned file was deleted by hand. chmod after
+	# every acquisition (not just on first creation) so a install that
+	# predates this fix also self-heals the moment 11-/12- next runs.
+	chmod 0666 "$lock_file" 2>/dev/null || true
+	flock -x "$_XFCE_PANEL_RELOAD_LOCK_FD"
+}
+
+xfce_panel_reload_unlock() {
+	[ -n "${_XFCE_PANEL_RELOAD_LOCK_FD:-}" ] || return 0
+	flock -u "$_XFCE_PANEL_RELOAD_LOCK_FD"
+	exec {_XFCE_PANEL_RELOAD_LOCK_FD}>&-
+	_XFCE_PANEL_RELOAD_LOCK_FD=""
+}
+
 xfce_panel_dbus_addr() {
 	command -v xfce4-panel >/dev/null 2>&1 || return 1
 	XFCE_PANEL_PID="$(pgrep -u "$TARGET_USER" -x xfce4-panel | head -1)" || true
@@ -96,6 +147,8 @@ xfce_panel_kill() {
 	# correctly, xfconfd was killed a moment later before it flushed, and
 	# the icon came back on every subsequent panel restart because the
 	# on-disk xfce4-panel.xml still had the old value.
+	xfce_panel_reload_lock
+
 	pkill -9 -u "$TARGET_USER" -x xfce4-panel || true
 
 	# Wait for the old process to actually be gone rather than trusting a
@@ -224,10 +277,12 @@ xfce_panel_launch() {
 	done
 	if [ -z "$new_pid" ]; then
 		echo "--- warning: xfce4-panel did not come up after launch ---" >&2
+		xfce_panel_reload_unlock
 		return 1
 	fi
 	if [ "$new_pid" = "$old_pid" ]; then
 		echo "--- warning: xfce4-panel pid unchanged after launch (old process never died?) ---" >&2
+		xfce_panel_reload_unlock
 		return 1
 	fi
 
@@ -241,6 +296,7 @@ xfce_panel_launch() {
 	settled_pid="$(pgrep -u "$TARGET_USER" -x xfce4-panel | head -1)"
 	if [ "$settled_pid" != "$new_pid" ]; then
 		echo "--- warning: xfce4-panel pid changed again during settle (pid $new_pid -> ${settled_pid:-gone}) -- something else respawned it ---" >&2
+		xfce_panel_reload_unlock
 		return 1
 	fi
 
@@ -258,10 +314,17 @@ xfce_panel_launch() {
 		pgrep -u "$TARGET_USER" -x xfce4-panel >/dev/null && continue
 		if [ "${_XFCE_PANEL_RETRYING:-}" = 1 ]; then
 			echo "--- warning: xfce4-panel crashed again right after the retry ---" >&2
+			xfce_panel_reload_unlock
 			return 1
 		fi
 		echo "--- xfce4-panel crashed during startup (the known liblauncher.so segfault?) -- starting it once more ---" >&2
+		# Deliberately does NOT unlock here: the recursive call below reuses
+		# this same held lock (xfce_panel_reload_lock is a no-op once
+		# already held) and is the one that actually unlocks once the whole
+		# retry chain is done, whichever way it ends.
 		_XFCE_PANEL_RETRYING=1 XFCE_PANEL_PID="" xfce_panel_launch
 		return
 	done
+
+	xfce_panel_reload_unlock
 }
