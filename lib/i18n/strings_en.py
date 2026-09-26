@@ -378,6 +378,7 @@ STRINGS = {
     "update.status_copied": "Copied",
     "update.status_other": "{code}",
     "update.column_file": "File",
+    "update.column_comment": "Comment",
     "update.column_date": "Date",
     "update.diff_row_button": "Show file differences",
     "update.recheck_button_tooltip": "Check GitHub again",

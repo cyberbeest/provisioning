@@ -184,18 +184,23 @@ if ! run_git_with_progress "$(t update.progress_message)" \
 	exit 1
 fi
 
-# Appends the date of the newest incoming commit touching each path, as an
-# extra tab-separated field -- cyberbeest-update-confirm.py's date column.
-# For a rename/copy line, $path is the new path (last name-status field);
+# Appends every incoming commit touching each path (newest first), as one
+# extra tab-separated field -- cyberbeest-update-confirm.py's Date/Comment
+# columns (from the newest entry) and the Comment column's tooltip (the
+# full list, for a file touched by more than one commit). Commits are
+# joined with \x1e and each commit's date/subject with \x1f -- control
+# characters that can't collide with a tab or newline, so this one field
+# still nests cleanly inside the outer tab/newline-delimited format. For a
+# rename/copy line, $path is the new path (last name-status field);
 # looking that up still finds the rename commit since it touches the new
 # path too.
 CHANGED_FILES=""
 while IFS=$'\t' read -r -a fields; do
 	[ "${#fields[@]}" -eq 0 ] && continue
 	path="${fields[-1]}"
-	date="$(git -C "$REPO_DIR" log -1 --format=%ad --date=short "HEAD..origin/$BRANCH" -- "$path")"
+	history="$(git -C "$REPO_DIR" log --format=$'%ad\x1f%s' --date=short "HEAD..origin/$BRANCH" -- "$path" | paste -sd $'\x1e' -)"
 	line="$(IFS=$'\t'; echo "${fields[*]}")"
-	CHANGED_FILES+="$line"$'\t'"$date"$'\n'
+	CHANGED_FILES+="$line"$'\t'"$history"$'\n'
 done <<<"$(git -C "$REPO_DIR" diff --name-status HEAD "origin/$BRANCH")"
 
 wait "$VERSION_PID" || true
