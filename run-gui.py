@@ -1061,11 +1061,16 @@ class RunGuiWindow(Gtk.Window):
         self.batch_scripts = set()
         self.queue_total = 0
         self.queue_done = 0
-        # Sum of individual script durations run in this session -- not
-        # wall-clock time since the window opened (which would also count
-        # idle time sitting on this screen doing nothing), and deliberately
-        # not persisted across restarts of run-gui.py itself.
-        self.session_total_seconds = 0.0
+        # Wall-clock start of the run currently in progress (None when
+        # idle) -- resets every run, unlike the old "session total" this
+        # replaced, which kept accumulating across separate runs until
+        # run-gui.py itself was restarted.
+        self.run_start_time = None
+        # The scripts not yet started in the current run (excludes the one
+        # currently running, which is popped off the front before it
+        # starts) -- the exact same list object _worker pops from, so it
+        # stays live without any extra syncing back to the GUI thread.
+        self.remaining_queue = []
 
         root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
         root.set_border_width(12)
@@ -1123,8 +1128,22 @@ class RunGuiWindow(Gtk.Window):
         self.more_menu_button.set_popup(more_menu)
         button_row1.pack_start(self.more_menu_button, False, False, 0)
 
-        self.total_time_label = Gtk.Label(label=t("run_gui.total_time").format(duration=format_duration(0)), xalign=1)
-        button_row1.pack_end(self.total_time_label, False, False, 0)
+        # Three separate labels rather than one combined string -- each one
+        # updates at its own rate (elapsed ticks every second, the estimates
+        # only really move once a script finishes) and this way a translated
+        # catalog can size/order them without one long templated sentence.
+        self.estimated_remaining_label = Gtk.Label(
+            label=t("run_gui.estimated_remaining_time").format(duration=format_duration(0)), xalign=1
+        )
+        button_row1.pack_end(self.estimated_remaining_label, False, False, 0)
+        self.estimated_total_label = Gtk.Label(
+            label=t("run_gui.estimated_total_time").format(duration=format_duration(0)), xalign=1
+        )
+        button_row1.pack_end(self.estimated_total_label, False, False, 0)
+        self.elapsed_time_label = Gtk.Label(
+            label=t("run_gui.elapsed_time").format(duration=format_duration(0)), xalign=1
+        )
+        button_row1.pack_end(self.elapsed_time_label, False, False, 0)
 
         button_row2 = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         button_box.pack_start(button_row2, False, False, 0)
@@ -1543,9 +1562,37 @@ class RunGuiWindow(Gtk.Window):
         has_selection = bool(self.listbox.get_selected_rows())
         self.run_selected_button.set_sensitive(not self.busy and has_selection)
 
-    def _add_session_runtime(self, seconds):
-        self.session_total_seconds += seconds
-        self.total_time_label.set_text(t("run_gui.total_time").format(duration=format_duration(self.session_total_seconds)))
+    def _update_timing_labels(self):
+        # Elapsed is plain wall-clock since this run started -- ticks every
+        # second on its own regardless of what's currently running.
+        elapsed = time.monotonic() - self.run_start_time if self.run_start_time else 0.0
+        elapsed_current = (
+            time.monotonic() - self.current_script_start if self.current_script_start else 0.0
+        )
+        # What's left of the currently running script's own estimate (never
+        # negative -- a script that's already overrun its estimate just
+        # contributes nothing further), plus the estimates for everything
+        # still queued behind it. A script with no estimate on record (new,
+        # or never timed) contributes 0, same as its row shows no "~" hint.
+        current_estimate = (
+            SCRIPT_DURATION_ESTIMATES.get(self.currently_running_script, 0)
+            if self.currently_running_script
+            else 0
+        )
+        remaining_current = max(0.0, current_estimate - elapsed_current) if self.currently_running_script else 0.0
+        # Snapshot rather than iterating self.remaining_queue directly --
+        # _worker (a different thread) pops from the front of that same list
+        # as scripts start.
+        queued = list(self.remaining_queue)
+        remaining = remaining_current + sum(SCRIPT_DURATION_ESTIMATES.get(s, 0) for s in queued)
+        total_estimate = elapsed + remaining
+        self.elapsed_time_label.set_text(t("run_gui.elapsed_time").format(duration=format_duration(elapsed)))
+        self.estimated_total_label.set_text(
+            t("run_gui.estimated_total_time").format(duration=format_duration(total_estimate))
+        )
+        self.estimated_remaining_label.set_text(
+            t("run_gui.estimated_remaining_time").format(duration=format_duration(remaining))
+        )
 
     # -- starting runs --------------------------------------------------
 
@@ -1573,16 +1620,18 @@ class RunGuiWindow(Gtk.Window):
         elif self.tick_source_id is not None:
             GLib.source_remove(self.tick_source_id)
             self.tick_source_id = None
+            # One last refresh so the final numbers reflect the run's actual
+            # end rather than whatever was on screen up to a second ago.
+            self._update_timing_labels()
 
     def _tick(self):
-        # Runs once a second while a run is active, so the current script's
-        # elapsed time and the session total both visibly count up live
-        # instead of only jumping when a script finishes.
-        elapsed_current = time.monotonic() - self.current_script_start if self.current_script_start else 0.0
-        self.total_time_label.set_text(
-            t("run_gui.total_time").format(duration=format_duration(self.session_total_seconds + elapsed_current))
-        )
+        # Runs once a second while a run is active, so elapsed/estimated
+        # total/estimated remaining and the current script's own elapsed
+        # time all visibly count (up or down) live instead of only jumping
+        # when a script finishes.
+        self._update_timing_labels()
         if self.currently_running_script:
+            elapsed_current = time.monotonic() - self.current_script_start if self.current_script_start else 0.0
             self.status_label.set_text(
                 t("run_gui.status_running_script_elapsed").format(
                     script=self.currently_running_script, elapsed=format_duration(elapsed_current)
@@ -1698,6 +1747,9 @@ class RunGuiWindow(Gtk.Window):
         self.queue_total = len(scripts)
         self.queue_done = 0
         self._update_progress()
+        self.run_start_time = time.monotonic()
+        self.remaining_queue = list(scripts)
+        self._update_timing_labels()
         self._set_controls_busy(True)
         threading.Thread(target=self._worker, args=(scripts,), daemon=True).start()
 
@@ -1846,7 +1898,11 @@ class RunGuiWindow(Gtk.Window):
     def _worker(self, scripts):
         stopped = False
         failed_script = None
-        remaining = list(scripts)
+        # Same list object _start_run put in self.remaining_queue -- popping
+        # from it here is what keeps the GUI thread's queue-of-what's-left
+        # view (used for the remaining-time estimate) live without needing
+        # an explicit sync back on every iteration.
+        remaining = self.remaining_queue
 
         while remaining:
             if self.stop_requested:
@@ -1903,7 +1959,6 @@ class RunGuiWindow(Gtk.Window):
             # since that's genuinely how long this step took this run.
             duration = time.monotonic() - start_time
             self.current_script_start = None
-            GLib.idle_add(self._add_session_runtime, duration)
             GLib.idle_add(self._bump_progress)
 
             mark_script_result(script, status == 0)
