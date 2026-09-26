@@ -142,6 +142,15 @@ echo "--- Pushing the values live, if the target user has an active session ---"
 if [ "$HAVE_SESSION" = true ]; then
 	as_user "xfconf-query -c xfce4-screensaver -p /saver/idle-activation/enabled -n -t bool -s $IDLE_ENABLED"
 	as_user "xfconf-query -c xfce4-screensaver -p /saver/idle-activation/delay -n -t int -s $IDLE_DELAY"
+	# /lock/enabled and /lock/user-switching/enabled are also in the xml file
+	# installed above, but a raw XML overwrite alone only takes effect at
+	# xfce4-screensaver's next startup -- a live session's already-running
+	# xfconfd never loaded these properties (they were never set via
+	# xfconf-query before now) and will flush its stale in-memory model back
+	# over the file, silently dropping the whole /lock section we just wrote.
+	# Push them live too, same as idle-activation above.
+	as_user "xfconf-query -c xfce4-screensaver -p /lock/enabled -n -t bool -s true"
+	as_user "xfconf-query -c xfce4-screensaver -p /lock/user-switching/enabled -n -t bool -s false"
 	for source in ac battery; do
 		as_user "xfconf-query -c xfce4-power-manager -p $PM/dpms-on-$source-sleep -n -t int -s ${DPMS[$source-sleep]}"
 		as_user "xfconf-query -c xfce4-power-manager -p $PM/dpms-on-$source-off -n -t int -s ${DPMS[$source-off]}"

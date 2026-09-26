@@ -46,12 +46,27 @@ is_unset() {
 	! xfconf-query -c xfce4-desktop -p "$1" >/dev/null 2>&1
 }
 
+# Also true if the key IS set but points at a file that doesn't actually
+# exist/read (e.g. xfdesktop auto-populates a new workspace's last-image
+# with the desktop-base "default" alternative before this script ever runs
+# on it, and that alternative can be a dangling symlink on a shipped unit --
+# see cyberbeest_desktop_background memory, 2026-09-26 workspace0 case).
+# is_unset()'s plain existence check doesn't catch this "set but broken"
+# case, so a broken key never gets corrected and xfdesktop just renders
+# black for that workspace.
+needs_fallback() {
+	local val
+	val="$(xfconf-query -c xfce4-desktop -p "$1" 2>/dev/null)" || return 0
+	[ -n "$val" ] && [ -r "$val" ] && return 1
+	return 0
+}
+
 echo "$monitors" | while read -r mon; do
 	base="/backdrop/screen0/monitor$mon"
 	ws=0
 	while [ "$ws" -lt "$workspace_count" ]; do
 		wsbase="$base/workspace$ws"
-		if is_unset "$wsbase/last-image"; then
+		if needs_fallback "$wsbase/last-image"; then
 			xfconf-query -c xfce4-desktop -p "$wsbase/last-image" -n -t string -s "$IMAGE"
 			xfconf-query -c xfce4-desktop -p "$wsbase/image-style" -n -t int -s 5
 			xfconf-query -c xfce4-desktop -p "$wsbase/color-style" -n -t int -s 0
@@ -60,7 +75,7 @@ echo "$monitors" | while read -r mon; do
 	done
 	# Pre-workspace-support xfdesktop versions only look at the monitor-level
 	# keys, not any workspace<N> sub-property -- keep both in sync.
-	if is_unset "$base/image-path"; then
+	if needs_fallback "$base/image-path"; then
 		xfconf-query -c xfce4-desktop -p "$base/image-path" -n -t string -s "$IMAGE"
 		xfconf-query -c xfce4-desktop -p "$base/last-image" -n -t string -s "$IMAGE"
 		xfconf-query -c xfce4-desktop -p "$base/image-style" -n -t int -s 5
