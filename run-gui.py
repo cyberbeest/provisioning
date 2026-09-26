@@ -395,6 +395,16 @@ APT_TRANSIENT_RE = re.compile(
     re.MULTILINE,
 )
 APT_RETRY_DELAYS_S = (60, 120, 240)
+
+# sudo's own failure messages when the cached/typed password is wrong or the
+# askpass dialog was cancelled -- e.g. "Sorry, try again." x N followed by
+# "sudo: 3 incorrect password attempts", or "sudo: no password was
+# provided" / "sudo: a password is required" on cancel. This is a mistyped
+# password, not a script bug, so it shouldn't prompt to send a report.
+SUDO_AUTH_FAIL_RE = re.compile(
+    r"^sudo: (\d+ incorrect password attempts?|no password was provided|a password is required)$",
+    re.MULTILINE,
+)
 REBOOT_TODO_KEY = "__reboot__"
 # One "send a report" todo per failed script, removed again once it succeeds.
 REPORT_TODO_PREFIX = "__report__:"
@@ -1927,11 +1937,17 @@ class RunGuiWindow(Gtk.Window):
             # so it no longer needs the xterm/TTY treatment -- runs piped
             # like everything else.
             profile_driven = self.profile_env is not None and script in PROFILE_SCRIPTS
+            # Only the piped path captures its output for inspection below
+            # (a NEEDS_TERMINAL script's sudo prompt happens directly in the
+            # xterm, uncaptured) -- stays "" rather than carrying over
+            # whatever an earlier, unrelated piped script left behind.
+            piped_output = ""
             if script in NEEDS_TERMINAL and not profile_driven:
                 status = self._run_in_terminal(script)
             else:
                 GLib.idle_add(self.append_log, script, t("run_gui.log_running_marker").format(script=script))
                 status = self._run_piped(script)
+                piped_output = self.last_piped_output
                 # Scripts are idempotent, so re-running the whole script
                 # after a transient package-server error is safe.
                 for attempt, delay in enumerate(APT_RETRY_DELAYS_S, 1):
@@ -1947,6 +1963,7 @@ class RunGuiWindow(Gtk.Window):
                         break
                     GLib.idle_add(self.append_log, script, t("run_gui.log_running_marker").format(script=script))
                     status = self._run_piped(script)
+                    piped_output = self.last_piped_output
             # For a NEEDS_TERMINAL script this includes however long the
             # xterm sat open waiting for someone to work through its
             # whiptail menus, not just the script's own work -- expected,
@@ -1977,13 +1994,19 @@ class RunGuiWindow(Gtk.Window):
                     ),
                 )
                 GLib.idle_add(self.set_row_status, script, "failed", duration)
-                GLib.idle_add(
-                    self._add_todo,
-                    REPORT_TODO_PREFIX + script,
-                    t("run_gui.todo_report_text").format(script=script),
-                    (t("run_gui.todo_report_action"),
-                     lambda _b, s=script, st=status: self._open_report(s, st)),
-                )
+                if SUDO_AUTH_FAIL_RE.search(piped_output):
+                    GLib.idle_add(
+                        self.append_log, script,
+                        t("run_gui.log_failed_password").format(script=script),
+                    )
+                else:
+                    GLib.idle_add(
+                        self._add_todo,
+                        REPORT_TODO_PREFIX + script,
+                        t("run_gui.todo_report_text").format(script=script),
+                        (t("run_gui.todo_report_action"),
+                         lambda _b, s=script, st=status: self._open_report(s, st)),
+                    )
                 if remaining:
                     GLib.idle_add(
                         self.append_log,

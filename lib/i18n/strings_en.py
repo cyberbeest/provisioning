@@ -317,6 +317,10 @@ STRINGS = {
     "run_gui.log_running_marker": "=== running {script} ===\n",
     "run_gui.log_done_marker": "=== {script} done ({duration}) ===\n",
     "run_gui.log_failed_marker": "=== {script} FAILED ({duration}, exit {status}) ===\n",
+    "run_gui.log_failed_password": (
+        "That looks like a wrong sudo password rather than a problem with "
+        "{script} itself. Just run it again and re-enter the password.\n"
+    ),
     "run_gui.log_stopping_dependency": "Stopping here since later scripts may depend on this one.\n",
     "run_gui.log_apt_retry": (
         "A package server had a temporary problem. Trying {script} again in "

@@ -334,6 +334,11 @@ STRINGS = {
     "run_gui.log_running_marker": "=== {script} läuft ===\n",
     "run_gui.log_done_marker": "=== {script} fertig ({duration}) ===\n",
     "run_gui.log_failed_marker": "=== {script} FEHLGESCHLAGEN ({duration}, Exitcode {status}) ===\n",
+    "run_gui.log_failed_password": (
+        "Das sieht nach einem falschen Sudo-Passwort aus, nicht nach einem "
+        "Problem mit {script} selbst. Einfach erneut ausführen und das "
+        "Passwort neu eingeben.\n"
+    ),
     "run_gui.log_stopping_dependency": "Stoppe hier, da spätere Skripte hiervon abhängen könnten.\n",
     "run_gui.log_apt_retry": (
         "Ein Paketserver hatte ein vorübergehendes Problem. {script} wird in "
