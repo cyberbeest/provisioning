@@ -15,7 +15,12 @@ set -euo pipefail
 SRC="${1:-}"
 NAME="${2:-}"
 
-[[ "$NAME" =~ ^[a-zA-Z0-9_-]{1,32}$ ]] || { echo "Invalid profile name: $NAME" >&2; exit 1; }
+# 15, not 32: wg-quick itself caps interface names there (its own regex is
+# [a-zA-Z0-9_=+.-]{1,15} -- see /usr/bin/wg-quick), since the profile name
+# becomes the actual kernel network interface name via wg-quick@NAME. A
+# longer name would import fine here and only fail, cryptically, at
+# connect time.
+[[ "$NAME" =~ ^[a-zA-Z0-9_-]{1,15}$ ]] || { echo "Invalid profile name: $NAME" >&2; exit 1; }
 
 # Defensive scoping: only ever copy from inside the invoking (real, pre-sudo)
 # user's home directory. The picked file is already something that user's
