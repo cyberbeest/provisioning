@@ -456,4 +456,91 @@ STRINGS = {
     "report.too_large": "Der Bericht ist zu groß (max. 64 KB). Bitte kürze ihn.",
     "run_gui.todo_report_text": "{script} ist fehlgeschlagen. Ein Bericht hilft uns, den Fehler zu beheben.",
     "run_gui.todo_report_action": "Bericht senden...",
+
+    "vpn.window_title": "Cyberbeest VPN",
+    "vpn.status_heading": "VPN-Status",
+    "vpn.disconnect": "Trennen",
+    "vpn.status_connected": "Verbunden: {name}",
+    "vpn.status_not_connected_no_profiles": "Nicht verbunden. Noch keine Profile importiert.",
+    "vpn.status_not_connected": "Nicht verbunden.",
+    "vpn.kill_switch_label": "Automatischer Kill Switch:",
+    "vpn.kill_switch_body": (
+        "Jedes hier importierte VPN-Profil bekommt automatisch einen Kill "
+        "Switch, falls es noch keinen hat — bricht der Tunnel unerwartet "
+        "ab, wird dein Datenverkehr blockiert, statt stillschweigend auf "
+        "deine ungeschützte Verbindung zurückzufallen."
+    ),
+    "vpn.providers_heading": "Bekanntermaßen unterstützte VPNs (Stand {date})",
+    "vpn.open_button": "{name} öffnen",
+    "vpn.install_button": "Installieren...",
+    "vpn.signup_button": "Registrieren",
+    "vpn.other_heading": "Jeder andere VPN-Anbieter",
+    "vpn.other_note": (
+        "Jeder Anbieter, der eine WireGuard-.conf-Datei ausgibt, "
+        "funktioniert, auch wenn er oben nicht aufgeführt ist. Importiere "
+        "sie hier — Cyberbeest fügt automatisch einen Kill Switch hinzu, "
+        "falls die Konfiguration noch keinen hat."
+    ),
+    "vpn.import_button": "VPN-Profil importieren...",
+
+    "vpn.mullvad_note": (
+        "Anmeldung per Kontonummer, keine E-Mail nötig. Installation über "
+        "die Cyberbeest-Paketverwaltung — optional, weil danach ein "
+        "eigener Hintergrunddienst läuft."
+    ),
+    "vpn.mullvad_badge": "Ohne Protokolle, auditiert",
+    "vpn.mullvad_detail": (
+        "Mullvad (Schweden) veröffentlicht eine No-Logs-Richtlinie und "
+        "hat sie von unabhängigen externen Prüfern (Cure53, Assured AB) "
+        "bestätigen lassen. Die Registrierung braucht weder E-Mail noch "
+        "persönliche Daten — nur eine generierte Kontonummer —, sodass es "
+        "schon im Prinzip weniger zu protokollieren gibt."
+    ),
+
+    "vpn.protonvpn_note": (
+        "Installation über die Cyberbeest-Paketverwaltung — aus demselben "
+        "Grund optional wie bei Mullvad. Offiziell für GNOME gedacht, "
+        "funktioniert aber auch auf diesem Xfce-System."
+    ),
+    "vpn.protonvpn_badge": "Ohne Protokolle, auditiert",
+    "vpn.protonvpn_detail": (
+        "Proton VPN (Schweiz) veröffentlicht eine No-Logs-Richtlinie, die "
+        "2022 unabhängig von SEC Consult geprüft wurde. Gehört zum "
+        "selben Mutterunternehmen wie Proton Mail."
+    ),
+
+    "vpn.ivpn_note": (
+        "Registrieren, eine WireGuard-Konfiguration herunterladen und "
+        "unten importieren."
+    ),
+    "vpn.ivpn_badge": "Ohne Protokolle, auditiert",
+    "vpn.ivpn_detail": (
+        "IVPN (Gibraltar) veröffentlicht eine No-Logs-Richtlinie, "
+        "veröffentlicht eigene externe Prüfberichte und führt einen "
+        "Warrant Canary (eine regelmäßig aktualisierte Erklärung, dass "
+        "keine geheime behördliche Anordnung vorliegt — bleibt sie aus, "
+        "ist das das Warnsignal)."
+    ),
+
+    "vpn.airvpn_note": (
+        "Registrieren, eine WireGuard-Konfiguration erzeugen und unten "
+        "importieren."
+    ),
+    "vpn.airvpn_badge": "Ohne Protokolle, nicht auditiert",
+    "vpn.airvpn_detail": (
+        "AirVPN (Italien) behauptet eine No-Logs-Richtlinie und hat in "
+        "der Privatsphäre-Community einen guten Ruf, hat das aber — "
+        "anders als die drei oben — bislang nicht durch eine unabhängige "
+        "externe Prüfung bestätigen lassen. Italien gilt als EU-Rechtsraum "
+        "manchen Datenschutz-Fürsprechern zufolge zudem als etwas "
+        "schwächerer rechtlicher Schutz als Schweden/Schweiz/Gibraltar, "
+        "was aber weniger ins Gewicht fällt, wenn wirklich nichts "
+        "protokolliert wird, das herausgegeben werden könnte."
+    ),
+
+    "vpn.menu_empty": "Noch keine VPN-Profile importiert",
+    "vpn.menu_connected": "✓ {name} (verbunden)",
+    "vpn.menu_connect": "Verbinden: {name}",
+    "vpn.menu_import": "Neues Profil importieren...",
+    "vpn.menu_remove": "Profil entfernen",
 }

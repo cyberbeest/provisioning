@@ -26,12 +26,21 @@ import gi
 gi.require_version("Gtk", "3.0")
 from gi.repository import GLib, Gtk
 
+# i18n.py only resolves `from i18n import t` if i18n.py (and its
+# strings_*.py catalogs) sit next to this installed script -- true both
+# here in the repo checkout and once deployed to ~/.local/bin, since
+# Python always adds a script's own directory to sys.path.
+from i18n import t
+
 BIN = os.path.join(os.path.expanduser("~"), ".local", "bin")
 STATE_DIR = os.path.expanduser("~/.config/cyberbeest")
 ACTIVE_FILE = os.path.join(STATE_DIR, "vpn_active")
 PROFILES_FILE = os.path.join(STATE_DIR, "vpn_profiles")
 
-TODAY = datetime.date.today().strftime("%B %-d, %Y")
+# Numeric, not a spelled-out month name (datetime's %B has no locale
+# awareness here) -- matches the plain ISO dates used everywhere else in
+# this codebase (see cyberbeest-update-confirm.py, cyberbeest_scanner_gui.py).
+TODAY = datetime.date.today().strftime("%Y-%m-%d")
 
 # "native_app": has a Linux app available via Cyberbeest Package Manager
 #   (not installed by default -- these run a persistent background daemon,
@@ -40,6 +49,10 @@ TODAY = datetime.date.today().strftime("%B %-d, %Y")
 # "config_only": no Linux app worth bundling -- button just opens the
 #   provider's sign-up page; the user then imports the .conf they download
 #   from that account via the Import button below.
+# "audited" drives the badge color (see _build_provider_row) -- kept as its
+# own field rather than sniffed out of no_log_badge_key's translated text,
+# since "audited"/"unaudited" as English substrings obviously don't survive
+# translation.
 PROVIDERS = [
     {
         "name": "Mullvad",
@@ -47,15 +60,11 @@ PROVIDERS = [
         "desktop_id": "mullvad-vpn.desktop",
         "check_pkg": "mullvad-vpn",
         "pkg_manager_id": "mullvad",
-        "note": "Account-number login, no email needed. Install via Cyberbeest "
-                "Package Manager — opt-in because it runs its own background "
-                "service once installed.",
+        "note_key": "vpn.mullvad_note",
         "signup_url": "https://mullvad.net/en/account/create",
-        "no_log_badge": "No-log, audited",
-        "no_log_detail": "Mullvad (Sweden) publishes a no-logs policy and has had "
-                "it independently verified by outside auditors (Cure53, Assured AB). "
-                "Signup needs no email or personal info at all — just a generated "
-                "account number — so there's less to log even in principle.",
+        "audited": True,
+        "no_log_badge_key": "vpn.mullvad_badge",
+        "no_log_detail_key": "vpn.mullvad_detail",
     },
     {
         "name": "Proton VPN",
@@ -63,41 +72,29 @@ PROVIDERS = [
         "desktop_id": "protonvpn.desktop",  # unverified -- not installed on this machine yet; confirm actual .desktop id once it is
         "check_pkg": "proton-vpn-gnome-desktop",
         "pkg_manager_id": "protonvpn",
-        "note": "Install via Cyberbeest Package Manager — same opt-in reasoning "
-                "as Mullvad. Officially targets GNOME; still works on this "
-                "Xfce machine.",
+        "note_key": "vpn.protonvpn_note",
         "signup_url": "https://protonvpn.com/pricing",
-        "no_log_badge": "No-log, audited",
-        "no_log_detail": "Proton VPN (Switzerland) publishes a no-logs policy, "
-                "independently audited by SEC Consult in 2022. Same parent company "
-                "as Proton Mail.",
+        "audited": True,
+        "no_log_badge_key": "vpn.protonvpn_badge",
+        "no_log_detail_key": "vpn.protonvpn_detail",
     },
     {
         "name": "IVPN",
         "kind": "config_only",
-        "note": "Sign up, download a WireGuard config, "
-                "then Import it below.",
+        "note_key": "vpn.ivpn_note",
         "signup_url": "https://www.ivpn.net/pricing/",
-        "no_log_badge": "No-log, audited",
-        "no_log_detail": "IVPN (Gibraltar) publishes a no-logs policy, publishes "
-                "its own third-party audit results, and maintains a warrant canary "
-                "(a regularly-updated statement confirming it hasn't received a "
-                "secret legal order — if it stops updating, that's the signal).",
+        "audited": True,
+        "no_log_badge_key": "vpn.ivpn_badge",
+        "no_log_detail_key": "vpn.ivpn_detail",
     },
     {
         "name": "AirVPN",
         "kind": "config_only",
-        "note": "Sign up, generate a WireGuard config, "
-                "then Import it below.",
+        "note_key": "vpn.airvpn_note",
         "signup_url": "https://airvpn.org/plans/",
-        "no_log_badge": "No-log, unaudited",
-        "no_log_detail": "AirVPN (Italy) claims a no-logs policy and has a solid "
-                "reputation in the privacy community, but — unlike the three "
-                "above — hasn't published an independent third-party audit "
-                "confirming it. Italy is also an EU jurisdiction, considered a "
-                "somewhat weaker legal shield than Sweden/Switzerland/Gibraltar "
-                "by some privacy advocates, though this matters less if there's "
-                "genuinely nothing logged to hand over.",
+        "audited": False,
+        "no_log_badge_key": "vpn.airvpn_badge",
+        "no_log_detail_key": "vpn.airvpn_detail",
     },
 ]
 
@@ -157,7 +154,7 @@ class VPNManagerPage(Gtk.Box):
         self.set_border_width(16)
 
         heading = Gtk.Label(xalign=0)
-        heading.set_markup("<b>VPN Status</b>")
+        heading.set_markup(f"<b>{t('vpn.status_heading')}</b>")
         self.pack_start(heading, False, False, 0)
 
         self.status_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
@@ -166,7 +163,7 @@ class VPNManagerPage(Gtk.Box):
         self.status_label = Gtk.Label(xalign=0)
         self.status_box.pack_start(self.status_label, False, False, 0)
 
-        self.disconnect_button = Gtk.Button(label="Disconnect")
+        self.disconnect_button = Gtk.Button(label=t("vpn.disconnect"))
         self.disconnect_button.connect("clicked", self.on_disconnect)
         self.disconnect_button.set_no_show_all(True)
         self.status_box.pack_start(self.disconnect_button, False, False, 0)
@@ -176,18 +173,15 @@ class VPNManagerPage(Gtk.Box):
 
         kill_switch_note = Gtk.Label(xalign=0, wrap=True, max_width_chars=48)
         kill_switch_note.set_markup(
-            '<span foreground="#3a8f3a"><b>Automatic kill switch:</b></span> '
-            "Any VPN config profile you import here gets a kill switch added "
-            "automatically if it doesn't already have one — if the tunnel ever "
-            "drops unexpectedly, your traffic is blocked instead of silently "
-            "falling back to your raw connection."
+            f'<span foreground="#3a8f3a"><b>{GLib.markup_escape_text(t("vpn.kill_switch_label"))}</b></span> '
+            f'{GLib.markup_escape_text(t("vpn.kill_switch_body"))}'
         )
         self.pack_start(kill_switch_note, False, False, 0)
 
         self.pack_start(Gtk.Separator(), False, False, 4)
 
         providers_heading = Gtk.Label(xalign=0)
-        providers_heading.set_markup(f"<b>Known-supported VPNs (as of {TODAY})</b>")
+        providers_heading.set_markup(f"<b>{t('vpn.providers_heading').format(date=TODAY)}</b>")
         self.pack_start(providers_heading, False, False, 0)
 
         for provider in PROVIDERS:
@@ -196,19 +190,17 @@ class VPNManagerPage(Gtk.Box):
         self.pack_start(Gtk.Separator(), False, False, 4)
 
         other_heading = Gtk.Label(xalign=0)
-        other_heading.set_markup("<b>Any other VPN</b>")
+        other_heading.set_markup(f"<b>{t('vpn.other_heading')}</b>")
         self.pack_start(other_heading, False, False, 0)
 
         other_note = Gtk.Label(
             wrap=True, max_width_chars=48, xalign=0,
-            label="Any provider that hands out a WireGuard .conf file works, even "
-                  "if it's not listed above. Import it here — Cyberbeest adds a "
-                  "kill switch automatically if the config doesn't already have one.",
+            label=t("vpn.other_note"),
         )
         other_note.get_style_context().add_class("dim-label")
         self.pack_start(other_note, False, False, 0)
 
-        import_button = Gtk.Button(label="Import VPN Profile...")
+        import_button = Gtk.Button(label=t("vpn.import_button"))
         import_button.connect("clicked", self.on_import)
         self.pack_start(import_button, False, False, 0)
 
@@ -227,34 +219,34 @@ class VPNManagerPage(Gtk.Box):
 
         if provider["kind"] == "native_app":
             if is_pkg_installed(provider["check_pkg"]):
-                app_button = Gtk.Button(label=f"Open {provider['name']}")
+                app_button = Gtk.Button(label=t("vpn.open_button").format(name=provider["name"]))
                 app_button.connect("clicked", self.on_open_app, provider["desktop_id"])
             else:
-                app_button = Gtk.Button(label="Install...")
+                app_button = Gtk.Button(label=t("vpn.install_button"))
                 app_button.connect(
                     "clicked", self.on_open_package_manager, provider.get("pkg_manager_id")
                 )
             top_row.pack_start(app_button, False, False, 0)
 
-        signup_button = Gtk.Button(label="Sign Up")
+        signup_button = Gtk.Button(label=t("vpn.signup_button"))
         signup_button.connect("clicked", self.on_signup, provider["signup_url"])
         top_row.pack_start(signup_button, False, False, 0)
 
-        badge_text = provider.get("no_log_badge")
-        if badge_text:
-            color = "#3a8f3a" if "audited" in badge_text and "unaudited" not in badge_text else "#a08000"
+        badge_key = provider.get("no_log_badge_key")
+        if badge_key:
+            color = "#3a8f3a" if provider.get("audited") else "#a08000"
             badge = Gtk.Label(xalign=0)
             badge.set_markup(
                 f'<span underline="single" foreground="{color}">'
-                f'{GLib.markup_escape_text(badge_text)}</span>'
+                f'{GLib.markup_escape_text(t(badge_key))}</span>'
             )
-            badge.set_tooltip_text(provider.get("no_log_detail", ""))
+            badge.set_tooltip_text(t(provider.get("no_log_detail_key", "")))
             badge_box = Gtk.EventBox()
             badge_box.add(badge)
             box.pack_start(badge_box, False, False, 0)
 
         note_label = Gtk.Label(
-            wrap=True, max_width_chars=48, xalign=0, label=provider["note"]
+            wrap=True, max_width_chars=48, xalign=0, label=t(provider["note_key"])
         )
         note_label.get_style_context().add_class("dim-label")
         box.pack_start(note_label, False, False, 0)
@@ -264,15 +256,15 @@ class VPNManagerPage(Gtk.Box):
     def _refresh_status(self):
         active = read_active()
         if active and is_active(active):
-            self.status_label.set_text(f"Connected: {active}")
+            self.status_label.set_text(t("vpn.status_connected").format(name=active))
             self.disconnect_button.set_sensitive(True)
             self.disconnect_button.show()
         else:
             count = profile_count()
             if count == 0:
-                self.status_label.set_text("Not connected. No profiles imported yet.")
+                self.status_label.set_text(t("vpn.status_not_connected_no_profiles"))
             else:
-                self.status_label.set_text("Not connected.")
+                self.status_label.set_text(t("vpn.status_not_connected"))
             self.disconnect_button.hide()
 
     def _refresh_status_tick(self):
@@ -305,7 +297,7 @@ class VPNManagerPage(Gtk.Box):
 
 class VPNManagerWindow(Gtk.Window):
     def __init__(self):
-        super().__init__(title="Cyberbeest VPN")
+        super().__init__(title=t("vpn.window_title"))
         self.set_default_size(420, -1)
         self.set_position(Gtk.WindowPosition.CENTER)
         self.connect("destroy", Gtk.main_quit)

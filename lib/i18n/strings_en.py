@@ -437,4 +437,81 @@ STRINGS = {
     "report.too_large": "The report is too large (max 64 KB). Please shorten it.",
     "run_gui.todo_report_text": "{script} failed. Sending a report helps us fix it.",
     "run_gui.todo_report_action": "Send Report...",
+
+    "vpn.window_title": "Cyberbeest VPN",
+    "vpn.status_heading": "VPN Status",
+    "vpn.disconnect": "Disconnect",
+    "vpn.status_connected": "Connected: {name}",
+    "vpn.status_not_connected_no_profiles": "Not connected. No profiles imported yet.",
+    "vpn.status_not_connected": "Not connected.",
+    "vpn.kill_switch_label": "Automatic kill switch:",
+    "vpn.kill_switch_body": (
+        "Any VPN config profile you import here gets a kill switch added "
+        "automatically if it doesn't already have one — if the tunnel ever "
+        "drops unexpectedly, your traffic is blocked instead of silently "
+        "falling back to your raw connection."
+    ),
+    "vpn.providers_heading": "Known-supported VPNs (as of {date})",
+    "vpn.open_button": "Open {name}",
+    "vpn.install_button": "Install...",
+    "vpn.signup_button": "Sign Up",
+    "vpn.other_heading": "Any other VPN",
+    "vpn.other_note": (
+        "Any provider that hands out a WireGuard .conf file works, even "
+        "if it's not listed above. Import it here — Cyberbeest adds a "
+        "kill switch automatically if the config doesn't already have one."
+    ),
+    "vpn.import_button": "Import VPN Profile...",
+
+    "vpn.mullvad_note": (
+        "Account-number login, no email needed. Install via Cyberbeest "
+        "Package Manager — opt-in because it runs its own background "
+        "service once installed."
+    ),
+    "vpn.mullvad_badge": "No-log, audited",
+    "vpn.mullvad_detail": (
+        "Mullvad (Sweden) publishes a no-logs policy and has had "
+        "it independently verified by outside auditors (Cure53, Assured AB). "
+        "Signup needs no email or personal info at all — just a generated "
+        "account number — so there's less to log even in principle."
+    ),
+
+    "vpn.protonvpn_note": (
+        "Install via Cyberbeest Package Manager — same opt-in reasoning "
+        "as Mullvad. Officially targets GNOME; still works on this "
+        "Xfce machine."
+    ),
+    "vpn.protonvpn_badge": "No-log, audited",
+    "vpn.protonvpn_detail": (
+        "Proton VPN (Switzerland) publishes a no-logs policy, "
+        "independently audited by SEC Consult in 2022. Same parent company "
+        "as Proton Mail."
+    ),
+
+    "vpn.ivpn_note": "Sign up, download a WireGuard config, then Import it below.",
+    "vpn.ivpn_badge": "No-log, audited",
+    "vpn.ivpn_detail": (
+        "IVPN (Gibraltar) publishes a no-logs policy, publishes "
+        "its own third-party audit results, and maintains a warrant canary "
+        "(a regularly-updated statement confirming it hasn't received a "
+        "secret legal order — if it stops updating, that's the signal)."
+    ),
+
+    "vpn.airvpn_note": "Sign up, generate a WireGuard config, then Import it below.",
+    "vpn.airvpn_badge": "No-log, unaudited",
+    "vpn.airvpn_detail": (
+        "AirVPN (Italy) claims a no-logs policy and has a solid "
+        "reputation in the privacy community, but — unlike the three "
+        "above — hasn't published an independent third-party audit "
+        "confirming it. Italy is also an EU jurisdiction, considered a "
+        "somewhat weaker legal shield than Sweden/Switzerland/Gibraltar "
+        "by some privacy advocates, though this matters less if there's "
+        "genuinely nothing logged to hand over."
+    ),
+
+    "vpn.menu_empty": "No VPN profiles imported yet",
+    "vpn.menu_connected": "✓ {name} (connected)",
+    "vpn.menu_connect": "Connect: {name}",
+    "vpn.menu_import": "Import New Profile...",
+    "vpn.menu_remove": "Remove Profile",
 }
