@@ -646,12 +646,18 @@ def repo_version_string():
     git branch, main/stable, the same way cyberbeest-update.sh's own
     $TRACK is) -- deliberately not run through i18n, since this string is
     meant to be a stable identifier (e.g. to quote in a bug report), not
-    localized UI text. "pending" is a script that has never been run at
-    all (no .log yet); "changed" is one that was run before but is no
-    longer done per script_is_done() (stale .log, or a previous run
-    failed). No separator between the track and the date: both are
-    unambiguous either way (the track label isn't digits-first) and it's
-    one less thing pushing the string past a glance-able length.
+    localized UI text. "pending" is exactly what the runner's own "Run
+    changed only" button counts: every script script_is_done() calls not
+    done, whether it's never been run at all or was run before but is now
+    stale -- the per-row status list doesn't distinguish those either, so
+    neither does this. "changed" is the number of tracked files this
+    checkout has modified locally against its own HEAD (git status
+    --porcelain, ignored/untracked files excluded) -- 0 on a normal
+    end-user machine; cyberbeest-update.sh's own LOCAL_EDITS check uses
+    the same git status call for the same reason. No separator between
+    the track and the date: both are unambiguous either way (the track
+    label isn't digits-first) and it's one less thing pushing the string
+    past a glance-able length.
     """
     try:
         branch = subprocess.run(
@@ -672,15 +678,20 @@ def repo_version_string():
     track = "stable" if branch == "stable" else "beta"
     version = f"{track}{commit_date}-{short_hash}"
 
-    pending = 0
-    changed = 0
-    for script in list_scripts():
-        if not os.path.exists(log_path_for(script)):
-            pending += 1
-        elif not script_is_done(script):
-            changed += 1
+    pending = sum(1 for s in list_scripts() if not script_is_done(s))
     if pending:
         version += f" + {pending} pending"
+
+    # Best-effort: a failure (e.g. not actually a git checkout) just leaves
+    # this part out rather than breaking the whole version string.
+    try:
+        local_edits = subprocess.run(
+            ["git", "-C", DIR, "status", "--porcelain", "--untracked-files=no"],
+            capture_output=True, text=True, check=True,
+        ).stdout
+        changed = sum(1 for line in local_edits.splitlines() if line.strip())
+    except (subprocess.CalledProcessError, OSError):
+        changed = 0
     if changed:
         version += f" + {changed} changed"
     return version
