@@ -24,7 +24,7 @@
 # monitor name (and workspace count) aren't known until then.
 set -uo pipefail
 
-IMAGE="/usr/share/backgrounds/xfce/cyberbeest-fallback.png"
+IMAGE="/usr/share/backgrounds/xfce/cyberbeest-fallback.jpg"
 
 # xrandr can be run before the WM/xfdesktop has fully started, so retry
 # briefly rather than assuming X is instantly ready at autostart time.
