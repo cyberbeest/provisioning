@@ -133,7 +133,7 @@ Name=$DISPLAY_NAME
 Comment=Run untrusted apps in an isolated same-OS virtual machine
 Exec=$HOME/.local/bin/cyberbeest-vm-start.sh "$VM_NAME" "$DISPLAY_NAME"
 Icon=computer
-Categories=System;
+Categories=Cyberbeest;Settings;
 Terminal=false
 EOF
 }
