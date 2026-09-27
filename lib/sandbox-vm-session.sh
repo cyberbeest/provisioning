@@ -9,12 +9,17 @@
 #     and a second lock screen inside a window helps no one
 #   - the KITT scanner in the panel: constant motion in a second panel
 #   - the battery and wattage icons: a KVM guest has no battery
-#   - the panel's status icon (auto-lock countdown + security updates, one
-#     genmon since 2026-09-05): auto-lock is off here, and the guest's
-#     updates install on their own (the launcher waits for them on close)
-#     right next to the host's own
 #   - the photo wallpaper: replaced by a faint "VM" watermark on dark blue,
 #     so it's obvious at a glance which desktop is the VM
+# The panel's status icon (auto-lock countdown + security updates, one genmon
+# since 2026-09-05, see lib/panel-status-genmon.sh) is only half noise here:
+# auto-lock is off in the guest, so the lock-countdown text is meaningless,
+# but the guest's own security-update status is just as important to see as
+# on the host -- it's a separate machine with its own unattended-upgrades, not
+# something the host's icon covers. So this swaps that genmon's Command over
+# to lib/update-genmon.sh (the security-update half alone, icon + tooltip, no
+# text -- it already supports running standalone, see that script's own
+# comment) instead of dropping the plugin outright.
 # Re-applied at every login rather than once, since the guest's own
 # provisioning (12-, 16-, 18-) puts its defaults back whenever it updates.
 # Only writes what differs, and restarts the panel only if the scanner is
@@ -75,22 +80,31 @@ for mon in $monitors; do
 done
 [ "$changed" = true ] && { xfdesktop --reload >/dev/null 2>&1 || true; }
 
-# KITT scanner, battery/wattage and status icon: drop them from every
-# panel's plugin-ids, then restart the panel so they go away now rather than
-# at the next login.
+# KITT scanner and battery/wattage: drop them from every panel's plugin-ids.
+# Status icon: leave the plugin in place, but point its rc file's Command at
+# the standalone security-update-only half instead (see file header).
 # The status icon is a genmon like others (e.g. the clipboard one), so it's
 # recognized by the script its rc file runs.
 drop_ids=""
+status_ids=""
 for prop in $(xfconf-query -c xfce4-panel -l 2>/dev/null | grep -E '^/plugins/plugin-[0-9]+$'); do
 	id="${prop##*-}"
 	case "$(xfconf-query -c xfce4-panel -p "$prop" 2>/dev/null)" in
 		"$KITT_TYPE"|wattage-panel|power-manager-plugin) drop_ids="$drop_ids $id" ;;
 		genmon)
 			grep -qs '^Command=.*/panel-status-genmon\.sh' "$HOME/.config/xfce4/panel/genmon-$id.rc" \
-				&& drop_ids="$drop_ids $id"
+				&& status_ids="$status_ids $id"
 			;;
 	esac
 done
+
+changed_status=false
+for id in $status_ids; do
+	rc="$HOME/.config/xfce4/panel/genmon-$id.rc"
+	sed -i 's|/panel-status-genmon\.sh|/update-genmon.sh|' "$rc"
+	changed_status=true
+done
+
 if [ -n "$drop_ids" ]; then
 	for panel in $(xfconf-query -c xfce4-panel -p /panels 2>/dev/null | grep -E '^[0-9]+$'); do
 		ids="$(xfconf-query -c xfce4-panel -p "/panels/panel-$panel/plugin-ids" 2>/dev/null | grep -E '^[0-9]+$')"
@@ -104,6 +118,9 @@ if [ -n "$drop_ids" ]; then
 	for id in $drop_ids; do
 		xfconf-query -c xfce4-panel -p "/plugins/plugin-$id" -r -R
 	done
+fi
+
+if [ -n "$drop_ids" ] || [ "$changed_status" = true ]; then
 	# Kill and relaunch, never `xfce4-panel -r`, which restarts from the
 	# panel's own cached config and can write that back over the change
 	# just made -- same approach as lib/xfce-panel-reload.sh.
