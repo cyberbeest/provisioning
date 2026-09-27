@@ -16,10 +16,16 @@
 # see their own headers for what each does) and a Whisker menu launcher,
 # so starting the VM and closing its window both behave like a normal app.
 #
-# Versioning: the image is pinned by SHA-256 below. Publishing a new image
-# means uploading it, then updating the two IMAGE_* values here -- that
-# edit is also what makes 56-cyberbeest-sandbox-vm-kvm.sh pending again on
-# every machine (run-gui.py tracks lib/ files a script references). A VM
+# Versioning: the image is pinned by SHA-256 below, and IMAGE_URL is
+# derived from it -- the server filename carries the same hash prefix, so
+# a stale/mismatched pin 404s instead of silently downloading a file meant
+# for a different branch's pin (main/beta and stable each get their own
+# filename this way, never sharing one mutable name). Publishing a new
+# image means uploading it under
+# cyberbeest-donor-<first 12 hex chars of its sha256>.qcow2, then updating
+# IMAGE_SHA256/IMAGE_BYTES here -- that edit is also what makes
+# 56-cyberbeest-sandbox-vm-kvm.sh pending again on every machine
+# (run-gui.py tracks lib/ files a script references). A VM
 # set up from an older image is detected via the hash stamped next to its
 # disk. It is only replaced when the provisioning profile's "Update the VM"
 # box was ticked (PROVISIONING_VM_UPDATE=yes, passed in as --update) --
@@ -38,10 +44,12 @@ DIR="$(cd "$(dirname "$0")" && pwd)"
 # cluster (qemu-img convert -c), so gzip only saved ~1.6% while forcing a
 # second full-size copy during extraction. The downloaded file now simply
 # becomes the VM's disk.
-IMAGE_URL="https://cyberbeest.com/vm-images/cyberbeest-donor.qcow2"
-# Parsed by run-gui.py (vm_update_status) too -- keep the plain KEY="value" form.
-IMAGE_SHA256="0c5663ecdaa4d3a1cf2c9d4a909fa12ddbe0d99a6d3371760689c4e8da216ae2"
-IMAGE_BYTES="3143303168"
+# Parsed by run-gui.py (vm_update_status) too -- keep these two as plain
+# KEY="value" literals (no expansion) on their own line.
+IMAGE_SHA256="090a2cccd7752cd53f94180d75923accdc2f1f81657fe74291c24f8d9993844b"
+IMAGE_BYTES="3257204736"
+# Derived, not pinned separately -- see the versioning note above.
+IMAGE_URL="https://cyberbeest.com/vm-images/cyberbeest-donor-${IMAGE_SHA256:0:12}.qcow2"
 
 UPDATE=0
 if [ "${1:-}" = "--update" ]; then
@@ -316,7 +324,12 @@ else
 		rm -f "$CACHE_PATH.part" "$VERSION_FILE.part"
 		echo "Checksum mismatch: expected $IMAGE_SHA256, got $ACTUAL_SHA256 -- discarded the download." >&2
 		echo "(If a new image was just uploaded, provisioning's pinned hash may not be updated yet.)" >&2
-		exit 1
+		# Not a script bug to report -- most likely the server file and this
+		# machine's pin are briefly out of sync. Nothing for the user to do
+		# but wait for the next provisioning/update run to pick up a
+		# matching pair, so this is a MANUAL_TODO notice, not a failure.
+		echo "MANUAL_TODO: The sandbox VM image couldn't be verified after downloading, so it wasn't set up this time -- this will be retried automatically on the next run."
+		exit 0
 	fi
 	mv "$CACHE_PATH.part" "$CACHE_PATH"
 	printf '%s' "$IMAGE_SHA256" > "$CACHE_PATH.sha256"
