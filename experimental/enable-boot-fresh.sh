@@ -89,9 +89,12 @@ sed -e "s|__LUKS_PROMPT__|$(sed_escape "$(t plymouth.luks_prompt)")|" \
     -e "s|__BRIGHT_MODE__|$(sed_escape "$BRIGHT_MODE")|" \
     "$THEME_SRC/cyberbeest.script" > "$THEME_DIR/cyberbeest.script"
 chmod 644 "$THEME_DIR/cyberbeest.script"
+# -R (--rebuild-initrd) already calls plymouth-update-initrd internally
+# (confirmed by reading /usr/sbin/plymouth-set-default-theme), which does
+# a full update-initramfs -- covers the crypttab/resume-override/askpass
+# changes above too, not just the theme. A separate explicit
+# update-initramfs call here was regenerating the initramfs twice per
+# kernel for no reason.
 plymouth-set-default-theme -R cyberbeest
-
-echo "--- rebuilding initramfs (crypttab + resume override + askpass wrapper) ---"
-update-initramfs -u -k all
 
 echo "=== $(date) : done. Reboot required. Verify on a spare VT with plymouthd --tty first -- see header. ==="
