@@ -518,4 +518,8 @@ STRINGS = {
     "vpn.menu_connect": "Connect: {name}",
     "vpn.menu_import": "Import New Profile...",
     "vpn.menu_remove": "Remove Profile",
+    "vpn.menu_hide_icon": "Remove Icon",
+    "vpn.menu_hide_icon_connected": "Disconnect and Remove Icon",
+    "vpn.show_icon_button": "Show VPN Icon",
+    "vpn.status_icon_hidden": "VPN icon hidden ({count} profile(s) saved, not connected).",
 }

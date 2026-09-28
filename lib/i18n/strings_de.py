@@ -548,4 +548,8 @@ STRINGS = {
     "vpn.menu_connect": "Verbinden: {name}",
     "vpn.menu_import": "Neues Profil importieren...",
     "vpn.menu_remove": "Profil entfernen",
+    "vpn.menu_hide_icon": "Symbol entfernen",
+    "vpn.menu_hide_icon_connected": "Trennen und Symbol entfernen",
+    "vpn.show_icon_button": "VPN-Symbol anzeigen",
+    "vpn.status_icon_hidden": "VPN-Symbol ausgeblendet ({count} Profil(e) gespeichert, nicht verbunden).",
 }

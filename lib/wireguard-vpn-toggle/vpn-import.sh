@@ -47,6 +47,7 @@ if ! sudo -n /usr/local/lib/cyberbeest/vpn-import-helper.sh "$SRC" "$NAME" >/dev
 fi
 
 echo "$NAME" >>"$PROFILES_FILE"
+rm -f "$STATE_DIR/vpn_icon_hidden"
 "$HOME/.local/bin/vpn-panel-icon.sh" add
 
 notify_title="$(t vpn.import_notify_title)"

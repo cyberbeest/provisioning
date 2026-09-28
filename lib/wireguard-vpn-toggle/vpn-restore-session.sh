@@ -9,7 +9,7 @@ STATE_DIR="$HOME/.config/cyberbeest"
 PROFILES_FILE="$STATE_DIR/vpn_profiles"
 ACTIVE_FILE="$STATE_DIR/vpn_active"
 
-if [ -s "$PROFILES_FILE" ]; then
+if [ -s "$PROFILES_FILE" ] && [ ! -e "$STATE_DIR/vpn_icon_hidden" ]; then
     "$HOME/.local/bin/vpn-panel-icon.sh" add
 fi
 
