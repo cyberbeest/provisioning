@@ -1,0 +1,56 @@
+#!/bin/sh
+# Installed as /lib/cryptsetup/cyberbeest-askpass-boot-fresh, referenced by
+# /etc/crypttab's keyscript= option (see enable-boot-fresh.sh) in place of
+# the default /lib/cryptsetup/askpass. Called exactly like askpass itself
+# (run_keyscript in /lib/cryptsetup/functions execs it with the prompt
+# text as $1, on the left side of a pipe into cryptsetup) -- so this must
+# behave as a transparent passthrough, differing only in the two things
+# below.
+#
+# 1. Before showing the prompt, tells the Plymouth theme whether a
+#    hibernation image is pending (checking /boot -- the one filesystem
+#    readable before LUKS unlock), so it can conditionally show the
+#    "Boot Fresh" button. See cyberbeest-boot-fresh-marker.hook for how
+#    the marker gets written/cleared around hibernate itself.
+#
+# 2. After the password is typed, checks whether Ctrl+F -- a raw 0x06
+#    byte -- appears anywhere in it. Plymouth's own keyboard handling
+#    (ply-keyboard.c: process_keyboard_input's default case) appends
+#    EVERY unmatched key to the password buffer before also forwarding
+#    it to the theme script's keyboard callback -- there's no way to
+#    make Plymouth swallow the keystroke instead, so a Ctrl+F pressed
+#    while typing ends up embedded in the raw password text. If found:
+#    strip it out (so the real passphrase still unlocks LUKS correctly
+#    even though the user's keypress landed inside their typing), and
+#    record the "skip resume" choice as a marker in the initramfs's own
+#    tmpfs for scripts/local-premount/resume (the override installed by
+#    enable-boot-fresh.sh) to honor -- LUKS unlock happens before that
+#    script ever runs, so this is the only way to hand the decision
+#    forward.
+#
+# POSIX sh, no bashisms: dash is /bin/sh in the initramfs.
+set -eu
+
+PROMPT="$1"
+
+if [ -e /boot/cyberbeest-hibernated ]; then
+	plymouth update --status=cyberbeest-hibernated 2>/dev/null || true
+fi
+
+raw="$(/lib/cryptsetup/askpass "$PROMPT")"
+
+# 0x06 = Ctrl+F. No \x06-style escape in POSIX sh (same constraint as the
+# .script tokenizer -- see cyberbeest.script), so built the same way: a
+# real embedded byte via printf, not an escape sequence.
+ctrl_f="$(printf '\6')"
+
+case "$raw" in
+*"$ctrl_f"*)
+	rm -f /boot/cyberbeest-hibernated
+	touch /run/cyberbeest-noresume
+	printf '%s' "$raw" | tr -d "$ctrl_f"
+	;;
+*)
+	printf '%s' "$raw"
+	;;
+esac

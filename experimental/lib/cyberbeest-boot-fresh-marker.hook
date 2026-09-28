@@ -1,0 +1,34 @@
+#!/bin/bash
+# systemd-sleep hook (installed to /usr/lib/systemd/system-sleep/ -- see
+# cyberbeest-hibernate-splash.hook for why NOT /etc/systemd/system-sleep/).
+# Marks whether a hibernation image is pending, on the ONE filesystem
+# readable before LUKS unlock: /boot (a separate, unencrypted partition --
+# GRUB has to read the kernel/initrd from it directly). This is what lets
+# the LUKS prompt conditionally offer "Boot Fresh" only when there's
+# actually something to skip, instead of showing a confusing option on
+# every normal boot.
+#
+# pre hibernate: touch the marker, right before the kernel writes the
+# image. Runs as root, outside user.slice, so unaffected by the freeze
+# timing issue that broke the splash's original hook-based launch.
+# post hibernate: remove it -- if this runs, resume succeeded and the
+# image has been consumed, so there's nothing left to offer skipping.
+#
+# The OTHER removal path -- the user actually pressing Ctrl+F at the LUKS
+# prompt to skip resume -- is handled by
+# cyberbeest-askpass-boot-fresh, not here (this hook's own "post" never
+# runs in that timeline: skipping resume means the kernel continues an
+# entirely fresh boot, abandoning the old frozen process tree this hook
+# would have been part of).
+[ "$2" = "hibernate" ] || exit 0
+
+case "$1" in
+pre)
+	touch /boot/cyberbeest-hibernated
+	;;
+post)
+	rm -f /boot/cyberbeest-hibernated
+	;;
+esac
+
+exit 0

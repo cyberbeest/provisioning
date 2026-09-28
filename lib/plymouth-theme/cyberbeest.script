@@ -184,6 +184,16 @@ fun password_dialog_setup(prompt) {
     local.entry_sprite.SetY(local.entry_y);
     local.entry_sprite.SetZ(20);
 
+    # "Boot Fresh" button -- created once like everything else above, but
+    # only ever made visible by redraw_boot_fresh() when a hibernation
+    # image is actually pending. See that function and
+    # update_status_callback() below.
+    local.boot_fresh_y = local.entry_y + local.entry_image.GetHeight() + 24;
+    local.boot_fresh_sprite = Sprite();
+    local.boot_fresh_sprite.SetY(local.boot_fresh_y);
+    local.boot_fresh_sprite.SetZ(20);
+    local.boot_fresh_sprite.SetOpacity(0);
+
     global.password_dialog = local;
 }
 
@@ -222,6 +232,8 @@ fun display_password_callback(prompt, bullets) {
             password_dialog.bullet_sprite[i].SetOpacity(0);
         }
     }
+
+    redraw_boot_fresh();
 }
 Plymouth.SetDisplayPasswordFunction(display_password_callback);
 
@@ -236,9 +248,75 @@ fun display_normal_callback() {
             password_dialog.name_sprite.SetOpacity(0);
         for (i = 0; password_dialog.bullet_sprite[i]; i++)
             password_dialog.bullet_sprite[i].SetOpacity(0);
+        if (password_dialog.boot_fresh_sprite)
+            password_dialog.boot_fresh_sprite.SetOpacity(0);
     }
 }
 Plymouth.SetDisplayNormalFunction(display_normal_callback);
+
+# ---------------------------------------------------------------------
+# "Boot Fresh" -- skip resuming a pending hibernation image, offered only
+# when one is actually pending. cyberbeest-askpass-boot-fresh (the
+# crypttab keyscript wrapper) checks /boot/cyberbeest-hibernated -- the
+# one filesystem readable before LUKS unlock -- and sends
+# `plymouth update --status=cyberbeest-hibernated` before the password
+# prompt is even shown, which is what update_status_callback below reacts
+# to.
+#
+# Ctrl+F just toggles the visual state here. The actual "skip resume"
+# effect happens entirely outside Plymouth: that same wrapper script
+# strips the raw Ctrl+F byte (0x06) that Plymouth's own keyboard handling
+# embeds directly into the typed password (ply-keyboard.c forwards every
+# unmatched key to both the password buffer AND this script's keyboard
+# callback -- there's no way to make it swallow the keystroke instead),
+# and drops a marker for scripts/local-premount/resume to honor. This
+# script never touches a file -- it can't; there's no file I/O in the
+# .script language.
+# ---------------------------------------------------------------------
+hibernation_pending = false;
+boot_fresh_selected = false;
+
+fun redraw_boot_fresh() {
+    if (!password_dialog.boot_fresh_sprite)
+        return;
+
+    if (!hibernation_pending) {
+        password_dialog.boot_fresh_sprite.SetOpacity(0);
+        return;
+    }
+
+    if (boot_fresh_selected) {
+        boot_fresh_text = "Boot Fresh (Ctrl+F) -- selected";
+        boot_fresh_dim = 1;
+    } else {
+        boot_fresh_text = "Boot Fresh (Ctrl+F)";
+        boot_fresh_dim = 0.6;
+    }
+    password_dialog.boot_fresh_image = Image.Text(boot_fresh_text,
+        text_red * boot_fresh_dim, text_green * boot_fresh_dim, text_blue * boot_fresh_dim,
+        1, NULL, "center");
+    password_dialog.boot_fresh_sprite.SetImage(password_dialog.boot_fresh_image);
+    password_dialog.boot_fresh_sprite.SetX(screen.w / 2 - password_dialog.boot_fresh_image.GetWidth() / 2);
+    password_dialog.boot_fresh_sprite.SetOpacity(1);
+}
+
+fun update_status_callback(status) {
+    hibernation_pending = (status == "cyberbeest-hibernated");
+    if (!hibernation_pending)
+        boot_fresh_selected = false;
+    redraw_boot_fresh();
+}
+Plymouth.SetUpdateStatusFunction(update_status_callback);
+
+fun keyboard_input_callback(input) {
+    if (!hibernation_pending)
+        return;
+    if (input == "") {
+        boot_fresh_selected = !boot_fresh_selected;
+        redraw_boot_fresh();
+    }
+}
+Plymouth.SetKeyboardInputFunction(keyboard_input_callback);
 
 fun quit_callback() {
 }
