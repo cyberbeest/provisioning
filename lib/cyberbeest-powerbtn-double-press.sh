@@ -8,13 +8,18 @@
 # dialog. See ../55-powerbtn-double-press.sh.
 set -uo pipefail
 
-# One physical press reaches acpid as two events ~150ms apart (the input
-# layer's "button/power PBTN" and the netlink "button/power LNXPWRBN"), so
-# anything closer together than DEBOUNCE_MS is the same press -- without
-# this, a single press counted as a double one and shut down immediately.
+# One physical press reaches acpid as two events (the input layer's
+# "button/power PBTN" and the netlink "button/power LNXPWRBN"), usually
+# ~150ms apart, so anything closer together than DEBOUNCE_MS is the same
+# press -- without this, a single press counted as a double one and shut
+# down immediately. 1000ms wasn't enough margin in practice: it happened
+# twice (2026-09-20, 2026-09-28) with systemd-logind logging only one real
+# "Power key pressed short" both times, so the gap between the two acpid
+# events can run well past 1s on this hardware. Bumped to 3000ms, still
+# leaving 3s of the WINDOW_MS below for a real second press.
 STATE_FILE=/run/cyberbeest-powerbtn-last-press
 WINDOW_MS=6000
-DEBOUNCE_MS=1000
+DEBOUNCE_MS=3000
 
 now=$(date +%s%3N)
 last=0
