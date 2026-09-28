@@ -86,6 +86,7 @@ CURTAIN_CLASS="CyberbeestCurtain"
 # and there's no real cosmetic reason to prefer black here -- the real
 # screensaver dialog is what's actually visible during a normal lock.
 CURTAIN_COLOR="blue"
+CURTAIN_MAX_UP=600   # seconds a lock may keep the curtain mapped before it is force-hidden
 WATCHDOG_INTERVAL=5   # seconds between fail-safe sanity checks
 
 POWER_SETTINGS="$HOME/.config/cyberbeest/power-settings.conf"
@@ -129,6 +130,38 @@ ensure_curtain() {
         flock -x 200
         ensure_curtain_impl
     ) 200>"$CURTAIN_LOCK_FILE"
+}
+
+apply_curtain_geometry() {
+    local id="$1"
+    xprop -id "$id" -f _MOTIF_WM_HINTS 32c -set _MOTIF_WM_HINTS "0x2, 0x0, 0x0, 0x0, 0x0"
+    # `xdotool getdisplaygeometry` returns the primary monitor's resolution,
+    # NOT the full virtual desktop -- confirmed live 2026-09-10 on tower's
+    # dual-monitor setup (2560x1440 primary + 1920x1080 secondary side by
+    # side): it reported just 2560x1440 while the real root window is
+    # 4480x1440, leaving most of the second monitor uncovered. `xwininfo
+    # -root` reports the actual root window size, which spans every output
+    # in a normal side-by-side/extended arrangement -- so one oversized
+    # curtain window still covers all monitors, no need for one per output.
+    local root_geom width height margin overshoot_w overshoot_h
+    root_geom=$(xwininfo -root 2>/dev/null)
+    width=$(printf '%s\n' "$root_geom" | sed -n 's/.*Width: *//p')
+    height=$(printf '%s\n' "$root_geom" | sed -n 's/.*Height: *//p')
+    margin=200
+    overshoot_w=$(( width + margin * 2 ))
+    overshoot_h=$(( height + margin * 2 ))
+    wmctrl -i -r "$id" -e "0,-${margin},-${margin},${overshoot_w},${overshoot_h}"
+    wmctrl -i -r "$id" -b add,skip_taskbar,skip_pager,sticky
+
+}
+
+# Width of the curtain window as the X server currently sees it.
+curtain_width() {
+    xwininfo -id "$1" 2>/dev/null | sed -n 's/.*Width: *//p'
+}
+
+curtain_mapped() {
+    xwininfo -id "$1" 2>/dev/null | grep -q 'Map State: IsViewable'
 }
 
 ensure_curtain_impl() {
@@ -175,24 +208,16 @@ ensure_curtain_impl() {
     # functionally "opaque with no gaps" matters here, not pixel-perfect
     # placement, and a window a few hundred px past the screen edge on
     # each side is harmless.
-    xprop -id "$id" -f _MOTIF_WM_HINTS 32c -set _MOTIF_WM_HINTS "0x2, 0x0, 0x0, 0x0, 0x0"
-    # `xdotool getdisplaygeometry` returns the primary monitor's resolution,
-    # NOT the full virtual desktop -- confirmed live 2026-09-10 on tower's
-    # dual-monitor setup (2560x1440 primary + 1920x1080 secondary side by
-    # side): it reported just 2560x1440 while the real root window is
-    # 4480x1440, leaving most of the second monitor uncovered. `xwininfo
-    # -root` reports the actual root window size, which spans every output
-    # in a normal side-by-side/extended arrangement -- so one oversized
-    # curtain window still covers all monitors, no need for one per output.
-    local root_geom width height margin overshoot_w overshoot_h
-    root_geom=$(xwininfo -root 2>/dev/null)
-    width=$(printf '%s\n' "$root_geom" | sed -n 's/.*Width: *//p')
-    height=$(printf '%s\n' "$root_geom" | sed -n 's/.*Height: *//p')
-    margin=200
-    overshoot_w=$(( width + margin * 2 ))
-    overshoot_h=$(( height + margin * 2 ))
-    wmctrl -i -r "$id" -e "0,-${margin},-${margin},${overshoot_w},${overshoot_h}"
-    wmctrl -i -r "$id" -b add,skip_taskbar,skip_pager,sticky
+    # Wait until xfwm4 has actually managed (reparented) the window --
+    # confirmed live 2026-09-28: applying hints/geometry right after the
+    # window appears can land before the WM knows about it and is silently
+    # ignored, leaving a stray 480x312 xterm mapped on screen.
+    local mw=0
+    while ! xprop -id "$id" WM_STATE 2>/dev/null | grep -q 'window state' && [ "$mw" -lt 50 ]; do
+        sleep 0.1
+        mw=$(( mw + 1 ))
+    done
+    apply_curtain_geometry "$id"
 
     # ICCCM input hint: tells the WM this window never wants keyboard
     # focus. xterm doesn't expose this as a CLI flag, so set it directly
@@ -259,6 +284,13 @@ curtain_down() {
     logger -t lock-screen-curtain "Curtain unmapped on unlock"
 }
 
+# At login the service can start before the X server accepts connections
+# (journal on tower: "curtain window never appeared" at nearly every boot).
+for _ in $(seq 1 120); do
+    xdotool getdisplaygeometry >/dev/null 2>&1 && break
+    sleep 0.5
+done
+
 # Create the curtain immediately at startup so the very first lock has
 # nothing to wait on.
 ensure_curtain >/dev/null
@@ -292,12 +324,35 @@ set_curtain_state() {
 # the guard against a stuck-up curtain locking the user out after a bug
 # in the dbus-signal handling below.
 watchdog() {
+    local up_since=0 id now
     while true; do
         sleep "$WATCHDOG_INTERVAL"
+        id=$(find_curtain_id)
+        now=$(date +%s)
         if is_locked; then
             [ "$(get_curtain_state)" = "down" ] && { curtain_up; set_curtain_state up; }
+            # Repair a curtain that came up at the wrong size.
+            if [ -n "$id" ] && curtain_mapped "$id"; then
+                [ "$up_since" -eq 0 ] && up_since=$now
+                root_w=$(xwininfo -root 2>/dev/null | sed -n 's/.*Width: *//p')
+                [ "$(curtain_width "$id")" -lt "${root_w:-0}" ] 2>/dev/null && apply_curtain_geometry "$id"
+                # Hard cap: the real lock dialog is override-redirect and sits
+                # above the curtain anyway, so never keep it up indefinitely.
+                if [ $(( now - up_since )) -gt "$CURTAIN_MAX_UP" ]; then
+                    curtain_down
+                    set_curtain_state expired
+                    logger -t lock-screen-curtain "Curtain force-unmapped after ${CURTAIN_MAX_UP}s"
+                fi
+            fi
         else
-            [ "$(get_curtain_state)" = "up" ] && { curtain_down; set_curtain_state down; }
+            up_since=0
+            [ "$(get_curtain_state)" != "down" ] && { curtain_down; set_curtain_state down; }
+            # Regardless of believed state: nothing is locked, so the
+            # curtain must not be visible.
+            if [ -n "$id" ] && curtain_mapped "$id"; then
+                xdotool windowunmap "$id" 2>/dev/null
+                logger -t lock-screen-curtain "Watchdog unmapped stray curtain while unlocked"
+            fi
         fi
     done
 }
