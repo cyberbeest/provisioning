@@ -1,5 +1,5 @@
 #!/bin/bash
-# Installs Cyberbeest Security Watch: a manually launched, tabbed Whisker
+# Installs Linux Security News: a manually launched, tabbed Whisker
 # menu app showing recent Debian Security Advisories, high/critical CVEs
 # (NVD), recent Exploit-DB entries, and this machine's own permanent record
 # of every package it has installed/upgraded (see lib/cyberbeest_security_watch_gui.py).
@@ -20,7 +20,7 @@ DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG="$DIR/42-security-watch.log"
 exec > >(tee -a "$LOG") 2>&1
 
-echo "=== $(date) : installing Cyberbeest Security Watch ==="
+echo "=== $(date) : installing Linux Security News ==="
 
 TARGET_USER="${SUDO_USER:?SUDO_USER not set -- run this via sudo, not as a raw root shell}"
 TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
@@ -44,7 +44,7 @@ install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.local/share/applic
 cat > "$TARGET_HOME/.local/share/applications/cyberbeest-security-watch.desktop" <<EOF
 [Desktop Entry]
 Type=Application
-Name=Cyberbeest Security Watch
+Name=Linux Security News
 Comment=Latest Debian security advisories, CVEs, exploits, and this machine's update history
 Exec=$TARGET_HOME/.local/bin/cyberbeest_security_watch_gui.py
 Icon=security-high
