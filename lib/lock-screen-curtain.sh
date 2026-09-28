@@ -78,6 +78,14 @@ set -uo pipefail
 export DISPLAY=:0
 export XAUTHORITY="$HOME/.Xauthority"
 
+# Every X/dbus call gets a hard timeout so a hung X server or dbus can't
+# freeze the watchdog loop. These shadow the real commands, so call sites
+# stay unchanged.
+for _cmd in xdotool xwininfo xprop wmctrl dbus-send; do
+    eval "$_cmd() { timeout 3 $_cmd \"\$@\"; }"
+done
+unset _cmd
+
 CURTAIN_CLASS="CyberbeestCurtain"
 # Blue, kept deliberately rather than switched to black once testing
 # confirmed the mechanism: black would be indistinguishable from the
@@ -86,7 +94,7 @@ CURTAIN_CLASS="CyberbeestCurtain"
 # and there's no real cosmetic reason to prefer black here -- the real
 # screensaver dialog is what's actually visible during a normal lock.
 CURTAIN_COLOR="blue"
-CURTAIN_MAX_UP=600   # seconds a lock may keep the curtain mapped before it is force-hidden
+CURTAIN_MAX_UP=30   # seconds a lock may keep the curtain mapped before it is force-hidden
 WATCHDOG_INTERVAL=5   # seconds between fail-safe sanity checks
 
 POWER_SETTINGS="$HOME/.config/cyberbeest/power-settings.conf"
