@@ -7,7 +7,10 @@ STRINGS = {
     "logout.lock": "Lock",
     "logout.restart": "Restart",
     "logout.shutdown": "Shut Down",
+    "logout.hibernate": "Hibernate",
     "logout.cancel": "Cancel",
+
+    "hibernate.splash_text": "HIBERNATING",
 
     "power.window_title": "Cyberbeest Power Settings",
     "power.heading": "Locked screen behavior",
@@ -40,6 +43,7 @@ STRINGS = {
     "timer.lock_now": "Lock now",
     "timer.restart_now": "Restart now",
     "timer.shutdown_now": "Shut down now",
+    "timer.hibernate_now": "Hibernate now",
     "timer.auto_shutdown_while_locked": "Auto-shutdown while locked",
     "timer.use_same_time": "Use the same time for AC and battery",
     "timer.important": "IMPORTANT",

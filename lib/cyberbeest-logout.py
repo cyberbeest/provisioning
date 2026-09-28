@@ -5,17 +5,53 @@ gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk, GdkPixbuf, Gdk, Gio
 import subprocess
 import sys
+import time
 
 from i18n import t
 
 
 LOGO_PATH = os.path.expanduser("~/.local/share/cyberbeest/icons/Cyberbeest-green.png")
 
+
+def hibernate_available():
+    # Masked (the default -- see 31-disable-sleep-states.sh) on every
+    # machine except ones that opted in via
+    # experimental/enable-hibernation.sh, so this button only shows up
+    # there. Same check xfce4-power-manager itself uses to decide whether
+    # to offer Hibernate.
+    try:
+        # This system's loginctl (systemd 257) has no manager-properties
+        # subcommand ("show"/"show-session"/"show-user" are all
+        # session/user-scoped and return nothing for a Manager-level
+        # property like CanHibernate) -- go straight to the D-Bus call
+        # logind itself exposes. Output is like: s "yes"
+        out = subprocess.run(
+            ["busctl", "call", "org.freedesktop.login1", "/org/freedesktop/login1",
+             "org.freedesktop.login1.Manager", "CanHibernate"],
+            capture_output=True, text=True, timeout=2,
+        ).stdout.strip()
+        return out == 's "yes"'
+    except Exception:
+        return False
+
+
+# Sentinel, not a real argv: on_action() special-cases this to launch the
+# hibernate splash and give it time to actually render *before* issuing
+# the real hibernate command, rather than after -- systemd-sleep freezes
+# the whole user session (X included) as its own first step, before any
+# systemd-sleep hook gets a chance to run, so a splash launched from a
+# hook process always loses that race. Launching it here instead, fully
+# under our own timing control, sidesteps that -- and Plymouth/DRM
+# hand-off -- entirely. See experimental/cyberbeest-hibernate-splash.py.
+HIBERNATE_ACTION = object()
+
 ACTIONS = [
     (t("logout.lock"), ["xflock4"]),
     (t("logout.restart"), ["xfce4-session-logout", "--reboot"]),
     (t("logout.shutdown"), ["xfce4-session-logout", "--halt"]),
 ]
+if hibernate_available():
+    ACTIONS.append((t("logout.hibernate"), HIBERNATE_ACTION))
 
 CSS = b"""
 window { background-color: #1a1a1a; }
@@ -36,7 +72,10 @@ class LogoutDialog(Gtk.ApplicationWindow):
         super().__init__(application=app, title=t("logout.title"))
         self.set_decorated(False)
         self.set_position(Gtk.WindowPosition.CENTER)
-        self.set_default_size(360, 260)
+        # +54 per action past the normal 3 (Lock/Restart/Shut Down), for
+        # the Hibernate button hibernate_available() adds on machines
+        # that opted into experimental/enable-hibernation.sh.
+        self.set_default_size(360, 260 + max(0, len(ACTIONS) - 3) * 54)
         self.set_keep_above(True)
         self.connect("key-press-event", self.on_key)
 
@@ -79,7 +118,12 @@ class LogoutDialog(Gtk.ApplicationWindow):
 
     def on_action(self, _widget, cmd):
         self.get_application().quit()
-        subprocess.Popen(cmd)
+        if cmd is HIBERNATE_ACTION:
+            subprocess.Popen([os.path.expanduser("~/.local/bin/cyberbeest-hibernate-splash.py")])
+            time.sleep(0.5)
+            subprocess.Popen(["xfce4-session-logout", "--hibernate"])
+        else:
+            subprocess.Popen(cmd)
 
 
 class LogoutApp(Gtk.Application):

@@ -28,7 +28,7 @@
 # themselves right before it.
 #
 # Bumped 2026-09-20: reserves plugin-19 (genmon) for 11a-clipboard-status.sh.
-# Also installs Cyberbeest Extended Power Options (lib/lock-power-saving-dialog.py):
+# Also installs Cyberbeest Extended Power Options (lib/cyberbeest-extended-power-options.py):
 # a small Whisker-menu app (Cyberbeest category) for the window-minimize-delay
 # and browser-CPU-throttle settings lock-shutdown-watcher.sh applies while
 # locked. shutdown-timer-menu.py's "Power saving while locked..." item opens
@@ -131,10 +131,10 @@ chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.local/bin/shutdown-timer-menu.p
 chmod 755 "$TARGET_HOME/.local/bin/shutdown-timer-menu.py"
 # The menu's "Power saving while locked..." item launches this as a
 # separate process (see shutdown-timer-menu.py's open_power_saving_dialog).
-sed "s|__GENMON_WIDGET__|genmon-211|g" "$DIR/lib/lock-power-saving-dialog.py" \
-	> "$TARGET_HOME/.local/bin/lock-power-saving-dialog.py"
-chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.local/bin/lock-power-saving-dialog.py"
-chmod 755 "$TARGET_HOME/.local/bin/lock-power-saving-dialog.py"
+sed "s|__GENMON_WIDGET__|genmon-211|g" "$DIR/lib/cyberbeest-extended-power-options.py" \
+	> "$TARGET_HOME/.local/bin/cyberbeest-extended-power-options.py"
+chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.local/bin/cyberbeest-extended-power-options.py"
+chmod 755 "$TARGET_HOME/.local/bin/cyberbeest-extended-power-options.py"
 # i18n.py does `from i18n import t`, which only resolves if i18n.py (and its
 # strings_*.py catalogs) sit next to the installed script -- see lib/i18n.py.
 install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 "$DIR/lib/i18n.py" "$TARGET_HOME/.local/bin/i18n.py"
@@ -167,7 +167,7 @@ Name=Cyberbeest Extended Power Options
 Name[de]=Cyberbeest Erweiterte Energieoptionen
 Comment=Window minimizing and browser CPU throttling while the screen is locked
 Comment[de]=Fenster minimieren und Browser-CPU begrenzen bei gesperrtem Bildschirm
-Exec=$TARGET_HOME/.local/bin/lock-power-saving-dialog.py
+Exec=$TARGET_HOME/.local/bin/cyberbeest-extended-power-options.py
 Icon=$ICONS_DIR/Cyberbeest-black.png
 Terminal=false
 Categories=Cyberbeest;Settings;

@@ -3,5 +3,6 @@ __pycache__/
 *.log
 *.failed
 *.i18n-hash
+*.bak-*
 *.so
 *.mo

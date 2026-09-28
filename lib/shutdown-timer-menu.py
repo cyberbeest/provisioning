@@ -30,7 +30,7 @@ DEFAULTS = {
     "AC_SHUTDOWN_MINUTES": "60",
     "BATTERY_SHUTDOWN_MINUTES": "60",
     "LINK_AC_BATTERY": "true",
-    # Not surfaced in this menu (see lock-power-saving-dialog.py instead) --
+    # Not surfaced in this menu (see cyberbeest-extended-power-options.py instead) --
     # kept here anyway so this menu's own write_settings() calls don't drop
     # them from the config file when saving an unrelated setting.
     "MINIMIZE_MINUTES": "1",
@@ -194,9 +194,38 @@ def restart_screensaver():
     )
 
 
+# Sentinel, not a real argv -- see cyberbeest-logout.py's copy of this for
+# why the splash is launched here, before the real hibernate command,
+# rather than from a systemd-sleep hook.
+HIBERNATE_ACTION = object()
+
+
 def run_logout_action(_item, cmd):
     Gtk.main_quit()
-    subprocess.Popen(cmd)
+    if cmd is HIBERNATE_ACTION:
+        subprocess.Popen([os.path.expanduser("~/.local/bin/cyberbeest-hibernate-splash.py")])
+        time.sleep(0.5)
+        subprocess.Popen(["xfce4-session-logout", "--hibernate"])
+    else:
+        subprocess.Popen(cmd)
+
+
+def hibernate_available():
+    # Same check cyberbeest-logout.py uses -- see its hibernate_available()
+    # for why this only ever returns True on a machine that opted in via
+    # experimental/enable-hibernation.sh.
+    try:
+        # loginctl has no manager-properties subcommand on this system
+        # (systemd 257) -- see cyberbeest-logout.py's copy of this
+        # function for why this goes straight to the D-Bus call instead.
+        out = subprocess.run(
+            ["busctl", "call", "org.freedesktop.login1", "/org/freedesktop/login1",
+             "org.freedesktop.login1.Manager", "CanHibernate"],
+            capture_output=True, text=True, timeout=2,
+        ).stdout.strip()
+        return out == 's "yes"'
+    except Exception:
+        return False
 
 
 def open_power_saving_dialog(_item):
@@ -206,7 +235,7 @@ def open_power_saving_dialog(_item):
     # that would tear down a nested dialog.run() loop started in the same
     # process before the user got to see it.
     Gtk.main_quit()
-    subprocess.Popen([os.path.expanduser("~/.local/bin/lock-power-saving-dialog.py")])
+    subprocess.Popen([os.path.expanduser("~/.local/bin/cyberbeest-extended-power-options.py")])
 
 
 def add_preset_section(menu, label, key, current, linked):
@@ -287,11 +316,14 @@ def build_menu():
     menu = Gtk.Menu()
 
     # Same actions/commands as the Power launcher's cyberbeest-logout dialog.
-    for label, cmd in (
+    logout_actions = [
         (t("timer.lock_now"), ["xflock4"]),
         (t("timer.restart_now"), ["xfce4-session-logout", "--reboot"]),
         (t("timer.shutdown_now"), ["xfce4-session-logout", "--halt"]),
-    ):
+    ]
+    if hibernate_available():
+        logout_actions.append((t("timer.hibernate_now"), HIBERNATE_ACTION))
+    for label, cmd in logout_actions:
         logout_item = Gtk.MenuItem(label=label)
         logout_item.connect("activate", run_logout_action, cmd)
         menu.append(logout_item)

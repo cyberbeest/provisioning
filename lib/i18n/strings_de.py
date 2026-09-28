@@ -9,7 +9,10 @@ STRINGS = {
     "logout.lock": "Sperren",
     "logout.restart": "Neu starten",
     "logout.shutdown": "Herunterfahren",
+    "logout.hibernate": "Ruhezustand",
     "logout.cancel": "Abbrechen",
+
+    "hibernate.splash_text": "RUHEZUSTAND",
 
     "power.window_title": "Cyberbeest-Energieeinstellungen",
     "power.heading": "Verhalten bei gesperrtem Bildschirm",
@@ -44,6 +47,7 @@ STRINGS = {
     "timer.lock_now": "Jetzt sperren",
     "timer.restart_now": "Jetzt neu starten",
     "timer.shutdown_now": "Jetzt herunterfahren",
+    "timer.hibernate_now": "Jetzt in den Ruhezustand",
     "timer.auto_shutdown_while_locked": "Automatisches Abschalten bei Sperrung",
     "timer.use_same_time": "Gleiche Zeit für Netz- und Akkubetrieb verwenden",
     "timer.important": "WICHTIG",

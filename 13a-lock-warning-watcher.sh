@@ -4,7 +4,7 @@
 # xfce4-screensaver's own idle timer locks the screen, so a still-present
 # user gets a chance to wiggle the mouse instead of getting locked out --
 # reading the setting from ~/.config/cyberbeest/power-settings.conf, the
-# file lock-power-saving-dialog.py's "Extended Power Options" window edits.
+# file cyberbeest-extended-power-options.py's "Extended Power Options" window edits.
 # See lib/lock-warning-watcher.sh.
 # Idempotent: safe to re-run.
 set -euo pipefail

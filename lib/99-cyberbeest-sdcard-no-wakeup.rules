@@ -1,0 +1,8 @@
+# The SD/MMC card reader's card-detect GPIO is wake-capable by default,
+# and fires spuriously (empty slot, floating pin) during the brief internal
+# hardware wake hibernate's image-write step needs -- aborting hibernation
+# right after it finishes writing the image. Matched by PCI vendor:device
+# (Intel N3350/N4200/E3900 SDXC/MMC Host Controller, 8086:5aca) rather than
+# bus address, since that's stable across this platform's board variants.
+# See ../44-sdcard-no-wakeup.sh.
+ACTION=="add|change", SUBSYSTEM=="pci", ATTR{vendor}=="0x8086", ATTR{device}=="0x5aca", ATTR{power/wakeup}="disabled"
