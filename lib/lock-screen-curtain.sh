@@ -94,7 +94,6 @@ CURTAIN_CLASS="CyberbeestCurtain"
 # and there's no real cosmetic reason to prefer black here -- the real
 # screensaver dialog is what's actually visible during a normal lock.
 CURTAIN_COLOR="blue"
-CURTAIN_MAX_UP=30   # seconds a lock may keep the curtain mapped before it is force-hidden
 WATCHDOG_FAST_WINDOW=60   # seconds after a lock/unlock event to keep ticking fast
 WATCHDOG_IDLE_INTERVAL=120   # slow safety-net tick otherwise
 WATCHDOG_INTERVAL=5   # seconds between fail-safe sanity checks
@@ -336,7 +335,7 @@ set_curtain_state() {
 # the guard against a stuck-up curtain locking the user out after a bug
 # in the dbus-signal handling below.
 watchdog() {
-    local up_since=0 id now last_event
+    local id last_event
     while true; do
         # Battery: tick fast only shortly after a lock/unlock event (when a
         # curtain can actually get stuck); otherwise idle at a slow safety-net
@@ -348,24 +347,14 @@ watchdog() {
             sleep "$WATCHDOG_IDLE_INTERVAL"
         fi
         id=$(find_curtain_id)
-        now=$(date +%s)
         if is_locked; then
             [ "$(get_curtain_state)" = "down" ] && { curtain_up; set_curtain_state up; }
             # Repair a curtain that came up at the wrong size.
             if [ -n "$id" ] && curtain_mapped "$id"; then
-                [ "$up_since" -eq 0 ] && up_since=$now
                 root_w=$(xwininfo -root 2>/dev/null | sed -n 's/.*Width: *//p')
                 [ "$(curtain_width "$id")" -lt "${root_w:-0}" ] 2>/dev/null && apply_curtain_geometry "$id"
-                # Hard cap: the real lock dialog is override-redirect and sits
-                # above the curtain anyway, so never keep it up indefinitely.
-                if [ $(( now - up_since )) -gt "$CURTAIN_MAX_UP" ]; then
-                    curtain_down
-                    set_curtain_state expired
-                    logger -t lock-screen-curtain "Curtain force-unmapped after ${CURTAIN_MAX_UP}s"
-                fi
             fi
         else
-            up_since=0
             [ "$(get_curtain_state)" != "down" ] && { curtain_down; set_curtain_state down; }
             # Regardless of believed state: nothing is locked, so the
             # curtain must not be visible.
