@@ -95,6 +95,8 @@ CURTAIN_CLASS="CyberbeestCurtain"
 # screensaver dialog is what's actually visible during a normal lock.
 CURTAIN_COLOR="blue"
 CURTAIN_MAX_UP=30   # seconds a lock may keep the curtain mapped before it is force-hidden
+WATCHDOG_FAST_WINDOW=60   # seconds after a lock/unlock event to keep ticking fast
+WATCHDOG_IDLE_INTERVAL=120   # slow safety-net tick otherwise
 WATCHDOG_INTERVAL=5   # seconds between fail-safe sanity checks
 
 POWER_SETTINGS="$HOME/.config/cyberbeest/power-settings.conf"
@@ -318,6 +320,8 @@ ensure_curtain >/dev/null
 # state instead of its own copy.
 CURTAIN_STATE_FILE="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/cyberbeest-lock-curtain.state"
 echo down > "$CURTAIN_STATE_FILE"
+CURTAIN_EVENT_FILE="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/cyberbeest-lock-curtain.event"
+touch "$CURTAIN_EVENT_FILE"
 
 get_curtain_state() {
     cat "$CURTAIN_STATE_FILE" 2>/dev/null || echo down
@@ -332,9 +336,17 @@ set_curtain_state() {
 # the guard against a stuck-up curtain locking the user out after a bug
 # in the dbus-signal handling below.
 watchdog() {
-    local up_since=0 id now
+    local up_since=0 id now last_event
     while true; do
-        sleep "$WATCHDOG_INTERVAL"
+        # Battery: tick fast only shortly after a lock/unlock event (when a
+        # curtain can actually get stuck); otherwise idle at a slow safety-net
+        # rate. The dbus-monitor below is event-driven and costs nothing idle.
+        last_event=$(stat -c %Y "$CURTAIN_EVENT_FILE" 2>/dev/null || echo 0)
+        if [ $(( $(date +%s) - last_event )) -lt "$WATCHDOG_FAST_WINDOW" ]; then
+            sleep "$WATCHDOG_INTERVAL"
+        else
+            sleep "$WATCHDOG_IDLE_INTERVAL"
+        fi
         id=$(find_curtain_id)
         now=$(date +%s)
         if is_locked; then
@@ -366,16 +378,18 @@ watchdog() {
 }
 watchdog &
 WATCHDOG_PID=$!
-trap 'kill "$WATCHDOG_PID" 2>/dev/null; rm -f "$CURTAIN_STATE_FILE"' EXIT
+trap 'kill "$WATCHDOG_PID" 2>/dev/null; rm -f "$CURTAIN_STATE_FILE" "$CURTAIN_EVENT_FILE"' EXIT
 
 dbus-monitor --session "type='signal',interface='org.xfce.ScreenSaver',member='ActiveChanged'" 2>/dev/null |
 while read -r line; do
     case "$line" in
         *"boolean true"*)
+            touch "$CURTAIN_EVENT_FILE"
             curtain_up
             set_curtain_state up
             ;;
         *"boolean false"*)
+            touch "$CURTAIN_EVENT_FILE"
             curtain_down
             set_curtain_state down
             ;;
