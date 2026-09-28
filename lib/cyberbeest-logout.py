@@ -2,7 +2,7 @@
 import os
 import gi
 gi.require_version("Gtk", "3.0")
-from gi.repository import Gtk, GdkPixbuf, Gdk
+from gi.repository import Gtk, GdkPixbuf, Gdk, Gio
 import subprocess
 import sys
 
@@ -31,9 +31,9 @@ button:hover { background: #3a3a3a; border-color: #7a5cff; }
 """
 
 
-class LogoutDialog(Gtk.Window):
-    def __init__(self):
-        super().__init__(title=t("logout.title"))
+class LogoutDialog(Gtk.ApplicationWindow):
+    def __init__(self, app):
+        super().__init__(application=app, title=t("logout.title"))
         self.set_decorated(False)
         self.set_position(Gtk.WindowPosition.CENTER)
         self.set_default_size(360, 260)
@@ -70,19 +70,37 @@ class LogoutDialog(Gtk.Window):
             grid.attach(btn, 0, i, 1, 1)
 
         cancel = Gtk.Button(label=t("logout.cancel"))
-        cancel.connect("clicked", lambda *_: Gtk.main_quit())
+        cancel.connect("clicked", lambda *_: self.get_application().quit())
         outer.pack_start(cancel, False, False, 0)
 
     def on_key(self, _widget, event):
         if event.keyval == Gdk.KEY_Escape:
-            Gtk.main_quit()
+            self.get_application().quit()
 
     def on_action(self, _widget, cmd):
-        Gtk.main_quit()
+        self.get_application().quit()
         subprocess.Popen(cmd)
 
 
+class LogoutApp(Gtk.Application):
+    # A single well-known application ID makes GTK/GIO handle repeat
+    # launches for us: a second `run()` while one is already open just
+    # forwards "activate" to the first instance over D-Bus and returns,
+    # instead of opening another window -- this is what used to stack up
+    # a dialog per power-button press (each press ran a brand new,
+    # independent process with no idea another one was already open).
+    def __init__(self):
+        super().__init__(application_id="com.cyberbeest.Logout",
+                          flags=Gio.ApplicationFlags.FLAGS_NONE)
+        self.window = None
+
+    def do_activate(self):
+        if self.window is None:
+            self.window = LogoutDialog(self)
+            self.window.show_all()
+        self.window.present()
+
+
 if __name__ == "__main__":
-    win = LogoutDialog()
-    win.show_all()
-    Gtk.main()
+    app = LogoutApp()
+    sys.exit(app.run(None))
