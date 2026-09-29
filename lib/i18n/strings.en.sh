@@ -13,6 +13,8 @@ Installing something here is at your own risk. For a curated, pre-approved list 
 	[plymouth.luks_success]="Hard drive unlocked"
 	[plymouth.shutdown_text]="Locking hard disk and shutting down"
 	[plymouth.grub_background]="grub-background-en.png"
+	[grub.menu_hint]="Enter to start   ·   arrow keys to choose"
+	[grub.countdown]="Starting in %d seconds"
 	[login.welcome_message]="Enter short password to unlock desktop"
 	[web_install.confirm_title]="Install app?"
 	[web_install.confirm_message]="A web page wants to install APPNAME on this computer.

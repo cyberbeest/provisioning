@@ -1,0 +1,43 @@
+title-text: ""
+desktop-image: "background.png"
+desktop-color: "#000000"
+terminal-font: "Lato Regular 16"
+message-font: "Lato Regular 16"
+message-color: "#9fd8a8"
+message-bg-color: "#000000"
+
++ boot_menu {
+  left = 30%
+  width = 40%
+  top = 54%
+  height = 36%
+  item_font = "Lato Regular 22"
+  selected_item_font = "Lato Bold 22"
+  item_color = "#7fbf8a"
+  selected_item_color = "#e8ffe8"
+  item_height = 44
+  item_padding = 14
+  item_spacing = 8
+  scrollbar = false
+}
+
++ label {
+  left = 0
+  top = 92%
+  width = 100%
+  align = "center"
+  font = "Lato Regular 16"
+  color = "#4f8a5a"
+  text = "__MENU_HINT__"
+}
+
++ label {
+  id = "__timeout__"
+  left = 0
+  top = 87%
+  width = 100%
+  align = "center"
+  font = "Lato Regular 16"
+  color = "#7fbf8a"
+  text = "__COUNTDOWN__"
+}

@@ -15,6 +15,8 @@ Die Installation hier erfolgt auf eigenes Risiko. Für eine kuratierte, freigege
 	[plymouth.luks_success]="Festplatte entsperrt"
 	[plymouth.shutdown_text]="Festplatte wird gesperrt und heruntergefahren"
 	[plymouth.grub_background]="grub-background-de.png"
+	[grub.menu_hint]="Eingabetaste zum Starten   ·   Pfeiltasten zum Auswählen"
+	[grub.countdown]="Start in %d Sekunden"
 	[login.welcome_message]="Kurzes Passwort eingeben, um den Desktop zu entsperren"
 	[web_install.confirm_title]="App installieren?"
 	[web_install.confirm_message]="Eine Webseite möchte APPNAME auf diesem Computer installieren.

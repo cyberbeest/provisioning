@@ -129,10 +129,22 @@ echo "--- Patching /etc/grub.d/10_linux to hide 'Loading Linux ...' text ---"
 GRUB_LINUX_SCRIPT="/etc/grub.d/10_linux"
 OLD_LINE='quiet_boot="0"'
 MARKER='# quiet_boot derived from cmdline (setup-grub-plymouth-theme.sh)'
+# The pristine copy must NOT live in /etc/grub.d: update-grub runs every
+# executable file there (only *.dpkg-*, *~ and a few similar suffixes are
+# skipped), so a "10_linux.pre-cyberbeest" backup generates every kernel
+# entry a second time. Keep it under /var/backups, and move out any copy an
+# earlier version of this script left in grub.d.
+script_backup="/var/backups/cyberbeest/10_linux.pre-cyberbeest"
+legacy_backup="${GRUB_LINUX_SCRIPT}.pre-cyberbeest"
+mkdir -p "$(dirname "$script_backup")"
+if [ -e "$legacy_backup" ]; then
+	[ -e "$script_backup" ] || cp -p "$legacy_backup" "$script_backup"
+	rm -f "$legacy_backup"
+	echo "Moved stray $legacy_backup out of /etc/grub.d (it duplicated the boot entries)."
+fi
 if grep -qF "$MARKER" "$GRUB_LINUX_SCRIPT" 2>/dev/null; then
 	echo "$GRUB_LINUX_SCRIPT: already patched."
 elif grep -qF "$OLD_LINE" "$GRUB_LINUX_SCRIPT" 2>/dev/null; then
-	script_backup="${GRUB_LINUX_SCRIPT}.pre-cyberbeest"
 	[ -e "$script_backup" ] || cp -p "$GRUB_LINUX_SCRIPT" "$script_backup"
 	insert="${OLD_LINE}\\n${MARKER}\\ncase \" \${GRUB_CMDLINE_LINUX} \${GRUB_CMDLINE_LINUX_DEFAULT} \" in\\n  *\" quiet \"*) quiet_boot=\"1\" ;;\\nesac"
 	sed -i "s|${OLD_LINE}|${insert}|" "$GRUB_LINUX_SCRIPT"
