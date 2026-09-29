@@ -110,7 +110,18 @@ TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
 # different board (see below), reported "347D:7640" instead. Good thing
 # this is derived fresh from the kernel's own device list every run rather
 # than hardcoded.
-TOUCHPAD_NAME="$(awk -F'"' '/^N: Name=/{name=$2} /^N: Name=/ && name ~ /[Tt]ouchpad/{print name; exit}' /proc/bus/input/devices)"
+# Detected by capability, not by name: kernel 6.12.111 (2026-09) dropped the
+# trailing " Touchpad" from this device's name ("SYNA3602:00 0911:5288"), so
+# matching /[Tt]ouchpad/ silently stopped finding it and the xfconf node no
+# longer matched after the upgrade. The touchpad's input node is the one with
+# absolute axes (ABS) and the BUTTONPAD/POINTER property bits (PROP=5); the
+# sibling node of the same chip is a relative-motion pointingstick.
+TOUCHPAD_NAME="$(awk -F'"' '
+	/^N: Name=/ {name=$2}
+	/^B: PROP=/ {prop=$0; sub(/^B: PROP=/, "", prop)}
+	/^B: ABS=/ {if (prop != "0" && prop != "") {print name; exit}}
+	/^$/ {prop=""}
+' /proc/bus/input/devices)"
 
 if [ -z "$TOUCHPAD_NAME" ]; then
 	echo "No touchpad device found in /proc/bus/input/devices -- skipping per-user xfconf tuning." | tee -a "$LOG"
