@@ -470,6 +470,7 @@ SCRIPT_DURATION_ESTIMATES = {
     "38-jail-messengers.sh": 4,
     "39-feather-tor-ondemand.sh": 4,
     "40-jail-wallets-viber.sh": 6,
+    "40a-jail-chrome.sh": 3,
     "41-bookmark-seeder.sh": 5,
     "42-security-watch.sh": 17,
     "43-intrusion-watch.sh": 5,

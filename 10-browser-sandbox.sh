@@ -94,6 +94,20 @@ update-alternatives --set x-www-browser "$TARGET_HOME/bin/browser-sandbox.sh"
 echo "--- Setting xdg-settings default-web-browser to the sandboxed wrapper ---"
 su - "$TARGET_USER" -c "DISPLAY='${DISPLAY:-:0}' xdg-settings set default-web-browser browser-sandbox.desktop" || true
 
+echo "--- Redirecting bare firefox / firefox-esr commands (terminal, scripts) to the sandboxed wrapper ---"
+# /usr/local/bin comes before /usr/bin in PATH, so these shadow the real
+# binaries for anything that calls them by name. The wrapper itself execs
+# /usr/bin/firefox-esr by absolute path, so there is no recursion.
+for name in firefox firefox-esr; do
+	cat > "/usr/local/bin/$name" <<'INNER'
+#!/bin/bash
+# Redirects the bare command to the firejail-sandboxed browser (see
+# 10-browser-sandbox.sh).
+exec "$HOME/bin/browser-sandbox.sh" "$@"
+INNER
+	chmod 755 "/usr/local/bin/$name"
+done
+
 echo "--- Hiding the stock 'Firefox ESR' Whisker menu entry (firejailed 'Firefox' above replaces it) ---"
 STOCK_DESKTOP="/usr/share/applications/firefox-esr.desktop"
 STOCK_OVERRIDE="$TARGET_HOME/.local/share/applications/firefox-esr.desktop"
