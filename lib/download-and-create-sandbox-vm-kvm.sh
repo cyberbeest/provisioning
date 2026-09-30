@@ -103,7 +103,8 @@ allocated() {
 if ! LC_ALL=C virsh --connect "$CONNECT" domcapabilities --virttype kvm >/dev/null 2>&1; then
 	echo "KVM isn't available (no usable /dev/kvm) -- stopping; the VM would be far too slow without it." >&2
 	echo "(Re-run 53a-qemu-kvm-virt-manager.sh, or check that virtualization is enabled in the firmware settings.)" >&2
-	exit 1
+	# 3 = "no KVM", which 56- treats as a clean skip rather than a failed step.
+	exit 3
 fi
 
 # A finished download is recorded as verified in $CACHE_PATH.sha256; any
