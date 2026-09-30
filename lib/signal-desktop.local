@@ -1,2 +1,4 @@
 whitelist ${HOME}/Downloads
-whitelist ${HOME}/Pictures
+# disable-xdg.inc blacklists ~/Pictures after this file is read, which would win over a plain whitelist.
+ignore blacklist ${PICTURES}
+whitelist ${PICTURES}

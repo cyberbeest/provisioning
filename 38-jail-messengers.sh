@@ -5,7 +5,7 @@
 # (see 10-browser-sandbox.sh and the manual's "Security decisions" chapter).
 #
 # Telegram's stock profile already whitelists ~/Downloads and is
-# seccomp/apparmor hardened as shipped; its ".local" override only adds
+# seccomp/apparmor hardened as shipped; its ".local" override only adds (plus an "ignore blacklist" for disable-xdg.inc)
 # ~/Pictures (lib/telegram-desktop.local). Signal and Element only whitelist
 # their own config dir by default, so their ".local" overrides add both
 # ~/Downloads and ~/Pictures (see lib/signal-desktop.local, lib/element-desktop.local).
