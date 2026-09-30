@@ -66,7 +66,17 @@ UPDATE_ARGS=()
 [ "${PROVISIONING_VM_UPDATE:-no}" = "yes" ] && UPDATE_ARGS=(--update)
 
 echo "--- Downloading and creating the sandbox VM as $TARGET_USER ---"
-sudo -u "$TARGET_USER" bash "$DIR/lib/download-and-create-sandbox-vm-kvm.sh" "${UPDATE_ARGS[@]}"
+vm_rc=0
+sudo -u "$TARGET_USER" bash "$DIR/lib/download-and-create-sandbox-vm-kvm.sh" "${UPDATE_ARGS[@]}" || vm_rc=$?
+if [ "$vm_rc" -eq 3 ]; then
+	# This laptop has no usable hardware virtualization (or it is switched
+	# off in the firmware settings): no sandbox VM and no launcher, but
+	# the rest of provisioning is unaffected, so this isn't a failed step.
+	echo "=== $(date) : done (skipped, no KVM on this machine) ==="
+	exit 0
+elif [ "$vm_rc" -ne 0 ]; then
+	exit "$vm_rc"
+fi
 
 echo "--- Giving the VM the host user's password ---"
 # The hash, not the password: /etc/shadow's yescrypt hash works unchanged in
