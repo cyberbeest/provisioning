@@ -260,6 +260,8 @@ STRINGS = {
         "Cyberbeest-Touchpad-Feinabstimmung anwenden (Tippen zum Klicken "
         "überall, Empfindlichkeit/Scrollen abgestimmt auf Referenz-Hardware)"
     ),
+    "run_gui.profile_sounds_label": "Töne:",
+    "run_gui.profile_sounds_checkbox": "Cyberbeest-Start- und Abschalt-Töne abspielen und die Lautstärke auf Maximum setzen",
     "run_gui.profile_vm_image_label": "VM-Image:",
     "run_gui.profile_vm_image_checkbox": "Cyberbeest-VM-Image herunterladen (KVM)",
     "run_gui.profile_vm_update_label": "VM-Update:",
