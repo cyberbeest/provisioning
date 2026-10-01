@@ -32,6 +32,12 @@ try:
 except ImportError:
     HAVE_GL = False
 
+# The GL path produced black flicker (whole image going black) under the
+# compositor, so the CPU path is the default for now. CYBERBEEST_IMAGE_VIEWER_GL=1
+# opts back into GL.
+if not os.environ.get("CYBERBEEST_IMAGE_VIEWER_GL"):
+    HAVE_GL = False
+
 # Leave room for window decorations / panel so a fit-to-screen image
 # doesn't end up exactly edge-to-edge.
 SCREEN_MARGIN_PX = 80
