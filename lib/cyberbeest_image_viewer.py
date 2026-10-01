@@ -425,12 +425,21 @@ def make_cpu_image_widget(frames):
 
 
 _BLACK_BG_CSS = Gtk.CssProvider()
-_BLACK_BG_CSS.load_from_data(b"window { background-color: black; }")
+# Only the image area is black, not the whole window: with a black window,
+# any partial redraw of the control bar (hover over a button, the zoom
+# label) could flash black through its transparent children.
+_BLACK_BG_CSS.load_from_data(b".image-backdrop, .image-backdrop viewport { background-color: black; }")
 
-# The window itself is black (image backdrop), so the control bar needs
-# the theme's normal background back to be readable.
 _BAR_CSS = Gtk.CssProvider()
 _BAR_CSS.load_from_data(b"box { background-color: @theme_bg_color; padding: 2px 4px; }")
+
+# GTK animates a button's transparent normal state to its hover color
+# through transparent black, which flashes dark over the black window.
+# Providers only style the widget they're added to, so this goes on
+# each button individually.
+_NO_TRANSITION_CSS = Gtk.CssProvider()
+_NO_TRANSITION_CSS.load_from_data(b"button { transition: none; }")
+
 
 CONFIG_DIR = os.path.expanduser("~/.config/cyberbeest")
 BAR_COLLAPSED_FILE = os.path.join(CONFIG_DIR, "image-viewer-bar-collapsed")
@@ -439,6 +448,7 @@ BAR_COLLAPSED_FILE = os.path.join(CONFIG_DIR, "image-viewer-bar-collapsed")
 def _icon_button(icon_name, tooltip, handler):
     button = Gtk.Button.new_from_icon_name(icon_name, Gtk.IconSize.BUTTON)
     button.set_relief(Gtk.ReliefStyle.NONE)
+    button.get_style_context().add_provider(_NO_TRANSITION_CSS, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
     button.set_tooltip_text(tooltip)
     # Keep keyboard focus off the bar, so arrow keys / Enter keep going
     # to the viewer instead of moving between or clicking bar buttons.
@@ -615,7 +625,7 @@ _clipboard_owner = None
 class ImageViewerWindow(Gtk.Window):
     def __init__(self, path):
         super().__init__()
-        self.get_style_context().add_provider(_BLACK_BG_CSS, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+        Gtk.StyleContext.add_provider_for_screen(Gdk.Screen.get_default(), _BLACK_BG_CSS, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
         self.folder_images = folder_images_by_date(path)
         path = os.path.abspath(path)
         try:
@@ -651,10 +661,12 @@ class ImageViewerWindow(Gtk.Window):
         vbox.reorder_child(self.control_bar, 0)
 
         overlay = Gtk.Overlay()
+        overlay.get_style_context().add_class("image-backdrop")
         vbox.pack_start(overlay, True, True, 0)
         overlay.show()
 
         self.scroller = Gtk.ScrolledWindow()
+        self.scroller.get_style_context().add_class("image-backdrop")
         self.scroller.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
         self.scroller.connect("size-allocate", self.on_viewport_allocate)
         overlay.add(self.scroller)
@@ -712,6 +724,7 @@ class ImageViewerWindow(Gtk.Window):
         menu.append(_menu_item_with_hotkey("Copy Image", "Ctrl+C", self.copy_image))
         menu.show_all()
         menu_button = Gtk.MenuButton(popup=menu, relief=Gtk.ReliefStyle.NONE, can_focus=False)
+        menu_button.get_style_context().add_provider(_NO_TRANSITION_CSS, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
         menu_button.set_image(Gtk.Image.new_from_icon_name("open-menu-symbolic", Gtk.IconSize.BUTTON))
         menu_button.set_tooltip_text("Menu")
         bar.pack_end(menu_button, False, False, 0)
