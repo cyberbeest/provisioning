@@ -54,7 +54,7 @@ Comment=View an image
 Exec=python3 $TARGET_HOME/.local/bin/cyberbeest_image_viewer.py %f
 Terminal=false
 NoDisplay=true
-Categories=Graphics;Viewer;
+Categories=AudioVideo;Viewer;
 MimeType=image/png;image/jpeg;image/gif;image/bmp;image/webp;image/tiff;
 EOF
 chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.local/share/applications/cyberbeest-image-viewer.desktop"
