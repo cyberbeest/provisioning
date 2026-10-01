@@ -445,6 +445,9 @@ CONFIG_DIR = os.path.expanduser("~/.config/cyberbeest")
 BAR_COLLAPSED_FILE = os.path.join(CONFIG_DIR, "image-viewer-bar-collapsed")
 
 
+TOOLTIP_TIMEOUT_MS = 4000
+
+
 def _icon_button(icon_name, tooltip, handler):
     button = Gtk.Button.new_from_icon_name(icon_name, Gtk.IconSize.BUTTON)
     button.set_relief(Gtk.ReliefStyle.NONE)
@@ -705,12 +708,12 @@ class ImageViewerWindow(Gtk.Window):
         # Zoom controls sit centered in the window; the menu and collapse
         # buttons stay at the right edge.
         zoom_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=2)
+        zoom_box.pack_start(_icon_button("zoom-original-symbolic", "Zoom 1:1 (0)", self.zoom_to_native), False, False, 0)
         zoom_box.pack_start(_icon_button("zoom-out-symbolic", "Zoom Out (-)", lambda: self.zoom_by(1 / ZOOM_STEP)), False, False, 0)
         # Fixed width so the buttons don't shift as the percentage changes.
         self.zoom_label = Gtk.Label(width_chars=10)
         zoom_box.pack_start(self.zoom_label, False, False, 0)
         zoom_box.pack_start(_icon_button("zoom-in-symbolic", "Zoom In (+)", lambda: self.zoom_by(ZOOM_STEP)), False, False, 0)
-        zoom_box.pack_start(_icon_button("zoom-original-symbolic", "Zoom 1:1 (0)", self.zoom_to_native), False, False, 0)
         zoom_box.pack_start(_icon_button("zoom-fit-best-symbolic", "Zoom Fit (f)", self.zoom_to_fit), False, False, 0)
         bar.set_center_widget(zoom_box)
 
@@ -796,9 +799,51 @@ class ImageViewerWindow(Gtk.Window):
         title_stem = filename.rsplit(".", 1)[0] if "." in filename else filename
         self.set_title(f"{title_stem} - Cyberbeest Images")
         native_w, native_h = self.native_size
-        self.image_widget.set_tooltip_text(
+        self._tooltip_text = (
             f"{path}\n{native_w} × {native_h}\n{human_file_size(os.path.getsize(path))}"
         )
+        self._show_tooltip()
+
+    def _show_tooltip(self):
+        if not getattr(self.image_widget, "_tooltip_hooked", False):
+            self.image_widget.connect("query-tooltip", self.on_query_tooltip)
+            self.image_widget._tooltip_hooked = True
+        self.image_widget.set_has_tooltip(True)
+
+    def on_query_tooltip(self, widget, x, y, keyboard_mode, tooltip):
+        label = Gtk.Label(label=self._tooltip_text)
+        label.set_xalign(0)
+        label.show()
+        # Make the tooltip window click-through, so the pointer moving over
+        # it still counts as being over the image and doesn't dismiss it.
+        label.connect("map", self._make_tooltip_input_transparent)
+        tooltip.set_custom(label)
+        return True
+
+    @staticmethod
+    def _make_tooltip_input_transparent(label):
+        try:
+            import cairo
+        except ImportError:
+            return
+        gdk_window = label.get_toplevel().get_window()
+        if gdk_window is not None:
+            gdk_window.input_shape_combine_region(cairo.Region(), 0, 0)
+
+    def _hide_tooltip(self):
+        self._tooltip_timer = None
+        self.image_widget.set_has_tooltip(False)
+        self.image_widget.trigger_tooltip_query()
+        return False
+
+    def _restart_tooltip_timer(self):
+        # Tooltip vanishes after a few seconds without pointer movement;
+        # any motion over the image brings it back and restarts the clock.
+        if getattr(self, "_tooltip_timer", None) is None:
+            self._show_tooltip()
+        else:
+            GLib.source_remove(self._tooltip_timer)
+        self._tooltip_timer = GLib.timeout_add(TOOLTIP_TIMEOUT_MS, self._hide_tooltip)
 
     def _update_rename_bar(self, path):
         fix = mismatched_extension_fix(path)
@@ -985,6 +1030,7 @@ class ImageViewerWindow(Gtk.Window):
         return False
 
     def on_image_motion(self, widget, event):
+        self._restart_tooltip_timer()
         if self.drag_state is None:
             return False
         start_x, start_y, h0, v0 = self.drag_state
