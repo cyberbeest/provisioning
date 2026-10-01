@@ -77,17 +77,19 @@ void main() {
 """
 
 
-def srgb_to_linear(u8):
-    a = u8.astype(np.float64) / 255.0
-    return np.where(a <= 0.04045, a / 12.92, ((a + 0.055) / 1.055) ** 2.4)
+def _build_srgb_luts():
+    # 8-bit sRGB -> 16-bit linear, and back. Done as lookup tables so the
+    # per-pixel pow() runs 256/65536 times instead of once per pixel.
+    a = np.arange(256) / 255.0
+    lin = np.where(a <= 0.04045, a / 12.92, ((a + 0.055) / 1.055) ** 2.4)
+    decode = np.round(lin * 65535).astype(np.uint16)
+    lin = np.arange(65536) / 65535.0
+    enc = np.where(lin <= 0.0031308, lin * 12.92, 1.055 * np.power(lin, 1.0 / 2.4) - 0.055)
+    encode = np.clip(np.round(enc * 255), 0, 255).astype(np.uint8)
+    return decode, encode
 
 
-def linear_to_srgb(lin):
-    lin = np.clip(lin, 0.0, 1.0)
-    a = np.where(
-        lin <= 0.0031308, lin * 12.92, 1.055 * np.power(lin, 1.0 / 2.4) - 0.055
-    )
-    return np.clip(a * 255.0 + 0.5, 0, 255).astype(np.uint8)
+_SRGB_DECODE_LUT, _SRGB_ENCODE_LUT = _build_srgb_luts()
 
 
 def resize_gamma_correct(img, target_w, target_h):
@@ -95,20 +97,23 @@ def resize_gamma_correct(img, target_w, target_h):
 
     Alpha (if present) is not gamma-encoded, so it's resized directly
     alongside the linearized color channels rather than through the
-    sRGB round-trip.
+    sRGB round-trip. The color channels are resized as 16-bit linear
+    ("I;16"), which Pillow does in C, far faster than float32.
+
+    Only downscaling averages pixels in a way that darkens, so upscaling
+    (zoom beyond native size) skips the linear-light round-trip.
     """
+    if target_w >= img.width and target_h >= img.height:
+        return img.resize((target_w, target_h), Image.LANCZOS)
     has_alpha = img.mode == "RGBA"
     arr = np.asarray(img)
-    rgb = arr[:, :, :3]
-    linear = srgb_to_linear(rgb)
 
     channels = []
     for c in range(3):
-        chan = Image.fromarray(linear[:, :, c].astype(np.float32), mode="F")
+        chan = Image.fromarray(_SRGB_DECODE_LUT[arr[:, :, c]])
         chan = chan.resize((target_w, target_h), Image.LANCZOS)
-        channels.append(np.asarray(chan))
-    linear_resized = np.stack(channels, axis=-1)
-    rgb_resized = linear_to_srgb(linear_resized)
+        channels.append(_SRGB_ENCODE_LUT[np.asarray(chan)])
+    rgb_resized = np.stack(channels, axis=-1)
 
     if has_alpha:
         alpha_img = Image.fromarray(arr[:, :, 3])
