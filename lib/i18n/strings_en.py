@@ -307,6 +307,11 @@ STRINGS = {
         "{count} scripts selected for VM install -- review below, then click \"Run selected\"."
     ),
     "run_gui.status_starting": "{label}: starting (enter sudo password if prompted)...",
+    "run_gui.menu_run_script": "Run {script}",
+    "run_gui.menu_run_scripts": "Run {count} selected scripts",
+    "run_gui.menu_mark_dones": "Mark {count} selected scripts as done",
+    "run_gui.menu_mark_done": "Mark {script} as done",
+    "run_gui.status_marked_done": "Marked {count} script(s) as done",
     "run_gui.label_run_single": "Run {script}",
     "run_gui.dismiss_button": "Dismiss",
     "run_gui.action_open_desktop_settings": "Open Desktop Settings",

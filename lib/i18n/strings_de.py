@@ -324,6 +324,11 @@ STRINGS = {
         "dann auf \"Auswahl ausführen\" klicken."
     ),
     "run_gui.status_starting": "{label}: startet (sudo-Passwort eingeben, falls gefragt)...",
+    "run_gui.menu_run_script": "{script} ausführen",
+    "run_gui.menu_run_scripts": "{count} ausgewählte Skripte ausführen",
+    "run_gui.menu_mark_dones": "{count} ausgewählte Skripte als erledigt markieren",
+    "run_gui.menu_mark_done": "{script} als erledigt markieren",
+    "run_gui.status_marked_done": "{count} Skript(e) als erledigt markiert",
     "run_gui.label_run_single": "{script} ausführen",
     "run_gui.dismiss_button": "Verwerfen",
     "run_gui.action_open_desktop_settings": "Desktop-Einstellungen öffnen",

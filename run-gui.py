@@ -638,6 +638,20 @@ def mark_script_result(script, succeeded):
         pass
 
 
+def mark_script_done(script):
+    # Same state a successful run leaves behind: a log newer than the script
+    # and its lib deps, no failed marker, and a fresh i18n fingerprint.
+    log = log_path_for(script)
+    try:
+        if not os.path.exists(log):
+            open(log, "w").close()
+        os.utime(log)
+    except OSError:
+        return False
+    mark_script_result(script, True)
+    return True
+
+
 def script_is_done(script):
     log = log_path_for(script)
     if not os.path.exists(log) or os.path.exists(failed_marker_for(script)):
@@ -1259,6 +1273,7 @@ class RunGuiWindow(Gtk.Window):
         self.listbox.set_activate_on_single_click(False)
         self.listbox.connect("row-activated", self.on_row_activated)
         self.listbox.connect("selected-rows-changed", self.on_selection_changed)
+        self.listbox.connect("button-press-event", self.on_listbox_button_press)
         self.listbox.set_filter_func(self._row_matches_filter)
         self.sidebar_scroller.add(self.listbox)
 
@@ -1700,6 +1715,45 @@ class RunGuiWindow(Gtk.Window):
                 count=len(self.listbox.get_selected_rows())
             )
         )
+
+    def on_listbox_button_press(self, listbox, event):
+        if event.type != Gdk.EventType.BUTTON_PRESS or event.button != 3:
+            return False
+        row = listbox.get_row_at_y(int(event.y))
+        if row is None:
+            return False
+        # Right-clicking inside a multi-selection acts on all of it;
+        # right-clicking outside it acts on just that row.
+        selected = listbox.get_selected_rows()
+        scripts = [r.script for r in selected] if row in selected else [row.script]
+        menu = Gtk.Menu()
+        run_item = Gtk.MenuItem(label=t("run_gui.menu_run_script" if len(scripts) == 1 else "run_gui.menu_run_scripts").format(count=len(scripts), script=scripts[0]))
+        run_item.set_sensitive(not self.busy)
+        run_item.connect("activate", lambda _i: self._run_scripts_from_menu(scripts))
+        menu.append(run_item)
+        done_item = Gtk.MenuItem(label=t("run_gui.menu_mark_done" if len(scripts) == 1 else "run_gui.menu_mark_dones").format(count=len(scripts), script=scripts[0]))
+        done_item.set_sensitive(not self.busy)
+        done_item.connect("activate", lambda _i: self._mark_done_from_menu(scripts))
+        menu.append(done_item)
+        menu.show_all()
+        menu.popup_at_pointer(event)
+        return True
+
+    def _run_scripts_from_menu(self, scripts):
+        if self.busy:
+            return
+        if len(scripts) == 1:
+            self._start_run(scripts, label=t("run_gui.label_run_single").format(script=scripts[0]), batch=False)
+        else:
+            self._start_run(scripts, label=t("run_gui.button_run_selected"), batch=True)
+
+    def _mark_done_from_menu(self, scripts):
+        if self.busy:
+            return
+        for script in scripts:
+            if mark_script_done(script):
+                self.set_row_status(script, "done")
+        self.status_label.set_text(t("run_gui.status_marked_done").format(count=len(scripts)))
 
     def on_row_activated(self, _listbox, row):
         if self.busy:
