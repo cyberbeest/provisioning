@@ -26,8 +26,10 @@ Idempotent: safe to re-run.
 
 import json
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
 import time
 
 HOME = os.path.expanduser("~")
@@ -544,17 +546,37 @@ def log(msg):
     print(f"[setup_i2p_extras] {msg}")
 
 
+XDG_PROFILES_INI = os.path.join(HOME, ".config", "mozilla", "firefox", "profiles.ini")
+
+
+def ensure_profiles_ini():
+    # Debian 13's Firefox keeps profiles.ini in ~/.config/mozilla/firefox only
+    # while ~/.mozilla/firefox doesn't exist; our absolute PROFILE_DIR creates
+    # that directory, after which Firefox looks for profiles.ini there instead
+    # and no longer knows the "i2p" profile (-P i2p then hangs, headless).
+    if os.path.exists(PROFILES_INI) or not os.path.exists(XDG_PROFILES_INI):
+        return
+    os.makedirs(os.path.dirname(PROFILES_INI), exist_ok=True)
+    shutil.copy(XDG_PROFILES_INI, PROFILES_INI)
+    log("Copied profiles.ini to ~/.mozilla/firefox so Firefox finds the i2p profile")
+
+
 def ensure_profile():
     if os.path.isdir(PROFILE_DIR):
         log("Firefox i2p profile already exists")
+        ensure_profiles_ini()
         return
     log("Creating Firefox i2p profile")
+    # Create the legacy directory first so -CreateProfile writes profiles.ini
+    # there from the start (see ensure_profiles_ini).
+    os.makedirs(os.path.dirname(PROFILE_DIR), exist_ok=True)
     subprocess.run(
         ["firefox", "-CreateProfile", f"i2p {PROFILE_DIR}"],
         capture_output=True, text=True, timeout=30,
     )
     if not os.path.isdir(PROFILE_DIR):
         raise RuntimeError("Firefox profile directory was not created")
+    ensure_profiles_ini()
 
 
 def write_user_js():
@@ -573,18 +595,24 @@ def ensure_theme_active():
     ext_json = os.path.join(PROFILE_DIR, "extensions.json")
     if not os.path.exists(ext_json):
         log("First-run Firefox once (headless) to populate addon state")
-        proc = subprocess.Popen(
-            ["firefox", "-no-remote", "-P", "i2p", "-headless"],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-        )
-        deadline = time.time() + 30
-        while time.time() < deadline and not os.path.exists(ext_json):
-            time.sleep(1)
-        subprocess.run(["pkill", "-f", "-P i2p -headless"], capture_output=True)
+        firefox_log_path = os.path.join(tempfile.gettempdir(), "i2p-firefox-first-run.log")
+        with open(firefox_log_path, "w") as firefox_log:
+            # -profile <dir> rather than -P i2p: no profiles.ini lookup involved.
+            proc = subprocess.Popen(
+                ["firefox", "-no-remote", "-profile", PROFILE_DIR, "-headless"],
+                stdout=firefox_log, stderr=subprocess.STDOUT,
+            )
+            # Normally takes about 5 s; the wide margin is for very slow machines.
+            deadline = time.time() + 90
+            while time.time() < deadline and not os.path.exists(ext_json):
+                if proc.poll() is not None:
+                    break
+                time.sleep(1)
+            proc.terminate()
         try:
             proc.wait(timeout=30)
         except subprocess.TimeoutExpired:
-            # SIGTERM (pkill's default) alone wasn't enough within 30s --
+            # SIGTERM alone wasn't enough within 30s --
             # headless Firefox shutdown can be slow flushing profile state,
             # but this has already gotten what it needs (extensions.json),
             # so don't let a slow exit fail the whole provisioning step.
@@ -592,7 +620,12 @@ def ensure_theme_active():
             proc.kill()
             proc.wait(timeout=15)
         if not os.path.exists(ext_json):
-            raise RuntimeError("extensions.json never appeared after headless first-run")
+            with open(firefox_log_path, encoding="utf-8", errors="replace") as f:
+                firefox_output = f.read()[-2000:]
+            raise RuntimeError(
+                "extensions.json never appeared after headless first-run; firefox output:\n"
+                + firefox_output
+            )
 
     with open(ext_json, encoding="utf-8") as f:
         data = json.load(f)
