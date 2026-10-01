@@ -702,6 +702,9 @@ class ImageViewerWindow(Gtk.Window):
         zoom_box.pack_start(_icon_button("zoom-fit-best-symbolic", "Zoom Fit (f)", self.zoom_to_fit), False, False, 0)
         bar.set_center_widget(zoom_box)
 
+        bar.pack_start(_icon_button("go-previous-symbolic", "Previous Image (Left)", lambda: self.show_offset(-1)), False, False, 0)
+        bar.pack_start(_icon_button("go-next-symbolic", "Next Image (Right)", lambda: self.show_offset(1)), False, False, 0)
+
         bar.pack_end(_icon_button("pan-up-symbolic", "Hide control bar", lambda: self.set_bar_collapsed(True)), False, False, 0)
 
         menu = Gtk.Menu()
