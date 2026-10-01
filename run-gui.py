@@ -475,6 +475,7 @@ SCRIPT_DURATION_ESTIMATES = {
     "42-security-watch.sh": 17,
     "43-intrusion-watch.sh": 5,
     "44-wipe-app-data.sh": 5,
+    "44a-shared-folders.sh": 4,
     "45-hide-redundant-terminals.sh": 1,
     "46-cyberbeest-keyboard-shortcuts.sh": 0,
     "47-set-max-volume.sh": 0,

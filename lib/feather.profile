@@ -8,6 +8,8 @@
 # talks to the system tor daemon on 127.0.0.1:9050, which stays reachable
 # since this profile doesn't put the process in its own net namespace.
 noblacklist ${HOME}/.config/feather
+# Shared-folder list managed by Cyberbeest Shared Folders (44a-shared-folders.sh).
+include globals.local
 
 include disable-common.inc
 include disable-devel.inc
@@ -16,7 +18,6 @@ include disable-programs.inc
 
 mkdir ${HOME}/.config/feather
 whitelist ${HOME}/.config/feather
-whitelist ${HOME}/Downloads
 include whitelist-common.inc
 include whitelist-var-common.inc
 

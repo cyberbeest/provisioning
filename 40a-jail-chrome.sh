@@ -23,7 +23,7 @@ TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
 echo "--- Installing firejail-profiles (in case earlier steps haven't run) ---"
 apt-get -o DPkg::Lock::Timeout=60 install -y firejail firejail-profiles
 
-echo "--- Installing Downloads/Pictures-access override for Chrome ---"
+echo "--- Installing (empty) per-app override for Chrome -- Downloads/Pictures sharing now lives in globals.local ---"
 install -m 644 "$DIR/lib/google-chrome-stable.local" /etc/firejail/google-chrome-stable.local
 
 echo "--- Allowing userns_create in the firejail-default AppArmor profile (needed by Chrome's own internal sandbox) ---"

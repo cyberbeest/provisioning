@@ -11,9 +11,11 @@
 #     `plugdev` group, which `nogroups` would strip from the sandboxed
 #     process even though the cyberbeest user is a plugdev member.
 # Everything else follows the same policy as the other jailed apps: only
-# Sparrow's own data dir plus Downloads is visible, caps are dropped, and
+# Sparrow's own data dir plus the shared folders (globals.local) is visible, caps are dropped, and
 # shells/interpreters/common escape vectors are disabled.
 noblacklist ${HOME}/.sparrow
+# Shared-folder list managed by Cyberbeest Shared Folders (44a-shared-folders.sh).
+include globals.local
 
 include disable-common.inc
 include disable-devel.inc
@@ -22,7 +24,6 @@ include disable-programs.inc
 
 mkdir ${HOME}/.sparrow
 whitelist ${HOME}/.sparrow
-whitelist ${HOME}/Downloads
 include whitelist-common.inc
 include whitelist-var-common.inc
 
