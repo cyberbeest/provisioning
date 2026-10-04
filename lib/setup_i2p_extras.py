@@ -52,6 +52,13 @@ USER_JS = """// I2P eepsite browsing profile — proxies *.i2p through i2pd's HT
 user_pref("network.proxy.type", 2);
 user_pref("network.proxy.autoconfig_url", "file://%s");
 user_pref("extensions.activeThemeID", "firefox-alpenglow@mozilla.org");
+// I2P traffic is end-to-end encrypted, but Firefox only sees http:// and
+// would label every eepsite "Not Secure". Hide that text label (the trust
+// panel gate is off because Firefox 153's new trust panel ignores the
+// insecure_connection_text prefs).
+user_pref("security.insecure_connection_text.enabled", false);
+user_pref("security.insecure_connection_text.pbmode.enabled", false);
+user_pref("browser.urlbar.trustPanel.featureGate", false);
 """ % PAC_FILE
 
 PAC_FILE_CONTENT = """// I2P eepsite browsing profile PAC: .i2p hosts are proxied through i2pd;

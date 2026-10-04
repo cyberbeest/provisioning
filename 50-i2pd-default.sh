@@ -66,6 +66,9 @@
 #
 # Bumped 2026-10-04: i2pd-menu.py gained tooltips on every item (why there's
 # an I2P Firefox / qBittorrent in the menu) and German labels/tooltips.
+#
+# Bumped 2026-10-04 (again): the I2P Firefox profile's user.js hides the
+# "Not Secure" label on http:// pages (eepsites are encrypted by I2P).
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG="$DIR/50-i2pd-default.log"
