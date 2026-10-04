@@ -425,6 +425,50 @@ from gi.repository import Gtk
 
 HOME_BIN = os.path.join(os.path.expanduser("~"), ".local", "bin")
 
+# Strings live here rather than in lib/i18n/: this script is written out by
+# setup_i2p_extras.py, which can run long after the checkout is gone, so it
+# can't ship the shared catalogs next to itself. Same locale source as
+# lib/i18n.py (/etc/default/locale, German uses informal du).
+STRINGS_DE = {
+    "Open I2P Firefox": "I2P-Firefox öffnen",
+    "A separate Firefox window for I2P sites (addresses ending in .i2p). "
+    "Your normal browser can't open them.":
+        "Ein eigenes Firefox-Fenster für I2P-Seiten (Adressen, die auf .i2p "
+        "enden). Dein normaler Browser kann sie nicht öffnen.",
+    "Start qBittorrent": "qBittorrent starten",
+    "Torrent downloads through I2P, so the people you download from "
+    "never see your IP address.":
+        "Torrent-Downloads über I2P, damit die Gegenseite deine "
+        "IP-Adresse nie sieht.",
+    "Install qBittorrent…": "qBittorrent installieren…",
+    "Not installed yet. Opens the Package Manager so you can add it.":
+        "Noch nicht installiert. Öffnet die Paketverwaltung, damit du es "
+        "hinzufügen kannst.",
+    "Stop i2pd": "i2pd beenden",
+    "Switches the I2P network connection off and removes this icon.":
+        "Schaltet die I2P-Netzwerkverbindung aus und entfernt dieses Symbol.",
+    "Start i2pd": "i2pd starten",
+    "I2P is not running. Starts the I2P network connection.":
+        "I2P läuft nicht. Startet die I2P-Netzwerkverbindung.",
+}
+
+
+def _is_german():
+    lang = None
+    try:
+        with open("/etc/default/locale") as f:
+            for line in f:
+                if line.startswith("LANG="):
+                    lang = line.split("=", 1)[1].strip().strip('"') or lang
+    except OSError:
+        pass
+    lang = lang or os.environ.get("LANG", "")
+    return lang.startswith("de")
+
+
+def t(text):
+    return STRINGS_DE.get(text, text) if _is_german() else text
+
 
 def launch(*args):
     subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -472,15 +516,30 @@ def install_qbittorrent(_item):
 def build_menu():
     menu = Gtk.Menu()
 
-    firefox_item = Gtk.MenuItem(label="Open I2P Firefox")
+    firefox_item = Gtk.MenuItem(label=t("Open I2P Firefox"))
+    firefox_item.set_tooltip_text(
+        t(
+            "A separate Firefox window for I2P sites (addresses ending in .i2p). "
+            "Your normal browser can't open them."
+        )
+    )
     firefox_item.connect("activate", start_firefox)
     menu.append(firefox_item)
 
     if shutil.which("qbittorrent"):
-        qbt_item = Gtk.MenuItem(label="Start qBittorrent")
+        qbt_item = Gtk.MenuItem(label=t("Start qBittorrent"))
+        qbt_item.set_tooltip_text(
+            t(
+                "Torrent downloads through I2P, so the people you download from "
+                "never see your IP address."
+            )
+        )
         qbt_item.connect("activate", start_qbittorrent)
     else:
-        qbt_item = Gtk.MenuItem(label="Install qBittorrent…")
+        qbt_item = Gtk.MenuItem(label=t("Install qBittorrent…"))
+        qbt_item.set_tooltip_text(
+            t("Not installed yet. Opens the Package Manager so you can add it.")
+        )
         qbt_item.connect("activate", install_qbittorrent)
     menu.append(qbt_item)
 
@@ -494,10 +553,16 @@ def build_menu():
     # stale icon shows an accurate, actionable item instead of one that
     # does nothing (systemctl stop on an already-stopped unit is a no-op).
     if i2pd_is_running():
-        toggle_item = Gtk.MenuItem(label="Stop i2pd")
+        toggle_item = Gtk.MenuItem(label=t("Stop i2pd"))
+        toggle_item.set_tooltip_text(
+            t("Switches the I2P network connection off and removes this icon.")
+        )
         toggle_item.connect("activate", stop_i2pd)
     else:
-        toggle_item = Gtk.MenuItem(label="Start i2pd")
+        toggle_item = Gtk.MenuItem(label=t("Start i2pd"))
+        toggle_item.set_tooltip_text(
+            t("I2P is not running. Starts the I2P network connection.")
+        )
         toggle_item.connect("activate", start_i2pd)
     menu.append(toggle_item)
 
