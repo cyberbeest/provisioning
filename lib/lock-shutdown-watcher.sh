@@ -139,6 +139,7 @@ restore_windows() {
     local tmpdir
     tmpdir=$(mktemp -d)
     local id
+    local -a pids=()
     while read -r id; do
         [ -z "$id" ] && continue
         (
@@ -157,8 +158,11 @@ restore_windows() {
             done
             is_hidden "$id" && echo failed > "$tmpdir/$id" || echo restored > "$tmpdir/$id"
         ) &
+        pids+=($!)
     done < "$MINIMIZED_STATE_FILE"
-    wait
+    # Wait on the restore jobs only: a bare `wait` also waits for the
+    # long-lived dbus-monitor process substitution (bash 5.2) and hangs forever.
+    [ "${#pids[@]}" -gt 0 ] && wait "${pids[@]}"
     local restored=0 failed=0 resultfile
     for resultfile in "$tmpdir"/*; do
         [ -f "$resultfile" ] || continue
