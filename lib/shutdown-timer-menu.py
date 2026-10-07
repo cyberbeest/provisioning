@@ -100,6 +100,21 @@ def fmt(mins):
     return f"{mins}m"
 
 
+def presets_including(presets, current):
+    """presets, plus `current` slotted in (before the trailing 0 "Never") if
+    it isn't one of them, so a hand-edited value shows up as the selected
+    entry. Without this no radio item matches, and GTK leaves the group's
+    first item active, which reads as if that preset were the setting."""
+    try:
+        current = int(current)
+    except (TypeError, ValueError):
+        return list(presets)
+    if current in presets:
+        return list(presets)
+    timed = sorted([m for m in presets if m != 0] + [current])
+    return timed + ([0] if 0 in presets else [])
+
+
 def get_idle_delay_minutes():
     # xfce4-screensaver 4.18 owns idle-lock timing through its own xfconf
     # channel (/saver/idle-activation/*), not through the GNOME
@@ -253,7 +268,7 @@ def add_preset_section(menu, label, key, current, linked):
     # actually persist whichever preset happened to be first (15m).
     items = []
     group = None
-    for preset in PRESETS:
+    for preset in presets_including(PRESETS, current):
         item = Gtk.RadioMenuItem.new_with_label_from_widget(group, fmt(preset))
         group = item
         item.set_active(preset == current)
@@ -286,7 +301,7 @@ def add_lock_delay_section(menu):
     # Same two-phase construction as add_preset_section, for the same reason.
     items = []
     group = None
-    for preset in LOCK_PRESETS:
+    for preset in presets_including(LOCK_PRESETS, current):
         item = Gtk.RadioMenuItem.new_with_label_from_widget(group, fmt(preset))
         group = item
         item.set_active(preset == current)
