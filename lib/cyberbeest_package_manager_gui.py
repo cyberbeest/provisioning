@@ -94,6 +94,19 @@ APPS = [
         "remove_pkg": "google-chrome-stable",
         "repo": "chrome",
     },
+    {
+        "id": "zoom",
+        "name": "Zoom",
+        "description": "Zoom Workplace video meetings, from Zoom's own .deb (no apt repo exists). A daily check installs new versions, downloading only when the version changed",
+        "category": "Communication",
+        "check_pkg": "zoom",
+        "install_pkg": "zoom",
+        "remove_pkg": "zoom",
+        "repo": None,
+        "deb_url": "https://zoom.us/client/latest/zoom_amd64.deb",
+        "extra_install_steps": ["setup-zoom-updater"],
+        "extra_remove_steps": ["teardown-zoom-updater"],
+    },
 ]
 
 LIST_HEIGHT = 100
@@ -489,7 +502,10 @@ class PackagesPage(Gtk.Box):
                 if repo and repo not in used_repos:
                     steps.append(f"setup-repo {repo}")
                     used_repos.add(repo)
-                steps.append(f"install {row.app['install_pkg']}")
+                if row.app.get("deb_url"):
+                    steps.append(f"install-deb-url {row.app['deb_url']}")
+                else:
+                    steps.append(f"install {row.app['install_pkg']}")
                 steps.extend(row.app.get("extra_install_steps", []))
             else:
                 steps.extend(row.app.get("extra_remove_steps", []))
