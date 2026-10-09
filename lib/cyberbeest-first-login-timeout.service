@@ -1,0 +1,11 @@
+[Unit]
+Description=Power off if nobody logs in within 15 minutes of boot
+After=systemd-logind.service
+Wants=systemd-logind.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/sbin/cyberbeest-first-login-timeout.sh
+
+[Install]
+WantedBy=multi-user.target
