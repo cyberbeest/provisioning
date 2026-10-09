@@ -9,12 +9,13 @@ read-only log view.
 """
 
 import os
+import re
 import subprocess
 
 import gi
 
 gi.require_version("Gtk", "3.0")
-from gi.repository import GLib, Gtk
+from gi.repository import Gio, GLib, Gtk
 
 from i18n import t
 
@@ -42,6 +43,27 @@ def _run_active():
     return _unit_active(CHECK_UNIT) or _unit_active(FORCE_UNIT)
 
 
+def _reboot_pending():
+    # Same two signals as update-genmon.sh: Debian's marker file, plus a
+    # newer installed kernel than the running one.
+    if os.path.exists("/var/run/reboot-required"):
+        return True
+    try:
+        out = subprocess.run(
+            ["dpkg-query", "-W", "-f", "${db:Status-Abbrev} ${Package}\\n", "linux-image-[0-9]*"],
+            capture_output=True, text=True, timeout=5,
+        ).stdout
+        running = os.uname().release
+        versions = [l.split()[-1][len("linux-image-"):]
+                    for l in out.splitlines() if l.startswith("ii ")]
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    if not versions:
+        return False
+    key = lambda v: [int(x) if x.isdigit() else x for x in re.split(r"(\d+)", v)]
+    return max(versions, key=key) != running
+
+
 def _info(parent, message):
     dialog = Gtk.MessageDialog(
         transient_for=parent,
@@ -62,7 +84,7 @@ def _read(path):
 
 
 class LogDialog:
-    def __init__(self):
+    def __init__(self, app):
         self.live = False
         self.live_offset = 0
         self.run_now_proc = None
@@ -71,9 +93,13 @@ class LogDialog:
         self.dialog.set_default_size(800, 600)
         self.run_now_button = self.dialog.add_button(
             t("update_genmon.run_now"), Gtk.ResponseType.APPLY)
+        self.reboot_button = self.dialog.add_button(
+            t("update_genmon.reboot_now"), Gtk.ResponseType.YES)
         self.dialog.add_button(t("update_genmon.close"), Gtk.ResponseType.CLOSE)
         self.dialog.connect("response", self._on_response)
-        self.dialog.connect("destroy", lambda _w: Gtk.main_quit())
+        # The application quits once its last window is gone.
+        app.add_window(self.dialog)
+        self.dialog.get_action_area().set_margin_top(12)
 
         box = self.dialog.get_content_area()
 
@@ -101,6 +127,7 @@ class LogDialog:
         box.pack_start(self.scroller, True, True, 0)
 
         self.dialog.show_all()
+        self._update_reboot_button()
         self._refresh()
         GLib.timeout_add(POLL_MS, self._poll)
 
@@ -172,7 +199,14 @@ class LogDialog:
         elif self.live or self.status_label.get_text() == "":
             self._show_final_log()
 
+    def _update_reboot_button(self):
+        self.reboot_button.set_visible(_reboot_pending())
+
+    def present(self):
+        self.dialog.present()
+
     def _poll(self):
+        self._update_reboot_button()
         self._check_run_now_proc()
         self._refresh()
         return True
@@ -193,6 +227,8 @@ class LogDialog:
     def _on_response(self, _dialog, response):
         if response == Gtk.ResponseType.APPLY:
             self._run_updates_now()
+        elif response == Gtk.ResponseType.YES:
+            subprocess.Popen(["xfce4-session-logout", "--reboot"])
         else:
             self.dialog.destroy()
 
@@ -217,6 +253,22 @@ class LogDialog:
         self.status_label.set_text(t("update_genmon.log_starting"))
 
 
+def main():
+    # One log window at a time: a second click on the panel icon finds the
+    # running instance over D-Bus and just raises its window.
+    app = Gtk.Application(application_id="com.cyberbeest.UpdateLog",
+                          flags=Gio.ApplicationFlags.FLAGS_NONE)
+    dialog = []
+
+    def on_activate(_app):
+        if dialog and dialog[0].dialog.get_realized():
+            dialog[0].present()
+        else:
+            dialog[:] = [LogDialog(app)]
+
+    app.connect("activate", on_activate)
+    app.run(None)
+
+
 if __name__ == "__main__":
-    LogDialog()
-    Gtk.main()
+    main()

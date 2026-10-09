@@ -210,6 +210,7 @@ STRINGS = {
     "update_genmon.log_live": "Updates are running -- live output:",
     "update_genmon.log_starting": "Starting the update run...",
     "update_genmon.close": "Close",
+    "update_genmon.reboot_now": "Restart now",
     "update_genmon.run_now": "Run updates now",
     "update_genmon.run_now_already_running": "An update check is already running.",
     "update_genmon.run_now_failed": "Couldn't start the update check.",
