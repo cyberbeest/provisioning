@@ -20,14 +20,19 @@
 # runs in that timeline: skipping resume means the kernel continues an
 # entirely fresh boot, abandoning the old frozen process tree this hook
 # would have been part of).
+LOG=/var/log/cyberbeest-boot-fresh-marker.log
+echo "$(date '+%Y-%m-%d %H:%M:%S') called with \$1=$1 \$2=$2" >> "$LOG"
+
 [ "$2" = "hibernate" ] || exit 0
 
 case "$1" in
 pre)
 	touch /boot/cyberbeest-hibernated
+	echo "$(date '+%Y-%m-%d %H:%M:%S') pre: touched marker, exists=$([ -e /boot/cyberbeest-hibernated ] && echo yes || echo no)" >> "$LOG"
 	;;
 post)
 	rm -f /boot/cyberbeest-hibernated
+	echo "$(date '+%Y-%m-%d %H:%M:%S') post: removed marker" >> "$LOG"
 	;;
 esac
 

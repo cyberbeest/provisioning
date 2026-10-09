@@ -6,19 +6,28 @@
 # path having been used at least once (this reuses the same substituted
 # theme location).
 #
-# Five pieces, tied together here:
+# Six pieces, tied together here:
 #  1. cyberbeest-boot-fresh-marker.hook (systemd-sleep): marks whether a
 #     hibernation image is pending, on /boot -- the one filesystem
-#     readable before LUKS unlock.
-#  2. cyberbeest-askpass-boot-fresh (crypttab keyscript): tells the theme
+#     readable before LUKS unlock (by GRUB -- see piece 2 for why that's
+#     not the same as being mounted in the initramfs).
+#  2. mount-boot-early.hook (initramfs local-top, NEW script, no stock
+#     equivalent): mounts /boot inside the initramfs itself. /boot being
+#     unencrypted does NOT mean the initramfs has it mounted at /boot by
+#     default -- it's a separate partition, normally only mounted later
+#     via fstab after pivoting to the real root. Discovered live
+#     2026-09-28: without this, every /boot check from pieces 1/3 was
+#     silently looking at an empty directory in the initramfs's own
+#     throwaway tmpfs, no error of any kind.
+#  3. cyberbeest-askpass-boot-fresh (crypttab keyscript): tells the theme
 #     about that marker before showing the prompt, and afterward detects
 #     Ctrl+F (embedded as a raw 0x06 byte in the typed password -- see
 #     that script's own comments for why) and records the choice.
-#  3. resume-boot-fresh (local-premount override): honors that choice by
+#  4. resume-boot-fresh (local-premount override): honors that choice by
 #     skipping the actual resume call.
-#  4. cyberbeest.script changes: the visible button + its keyboard toggle
-#     (purely cosmetic -- the functional effect is entirely pieces 2+3).
-#  5. /etc/crypttab: wires piece 2 in via the standard keyscript= option.
+#  5. cyberbeest.script changes: the visible button + its keyboard toggle
+#     (purely cosmetic -- the functional effect is entirely pieces 3+4).
+#  6. /etc/crypttab: wires piece 3 in via the standard keyscript= option.
 #
 # This touches the boot-critical LUKS/cryptsetup/resume path. Test via
 # plymouthd --tty=/dev/ttyN --mode=boot on a spare VT (see the
@@ -42,6 +51,17 @@ fi
 
 echo "--- installing systemd-sleep marker hook ---"
 install -m 755 "$DIR/lib/cyberbeest-boot-fresh-marker.hook" /usr/lib/systemd/system-sleep/cyberbeest-boot-fresh-marker
+
+echo "--- installing early /boot mount (initramfs local-top) ---"
+BOOT_UUID="$(findmnt /boot -no UUID)"
+if [ -z "$BOOT_UUID" ]; then
+	echo "ABORT: could not determine /boot's UUID via findmnt." >&2
+	exit 1
+fi
+echo "/boot UUID: $BOOT_UUID"
+install -d /etc/initramfs-tools/scripts/local-top
+sed "s|__BOOT_UUID__|$BOOT_UUID|" "$DIR/lib/mount-boot-early.hook" > /etc/initramfs-tools/scripts/local-top/cyberbeest-mount-boot
+chmod 755 /etc/initramfs-tools/scripts/local-top/cyberbeest-mount-boot
 
 echo "--- installing crypttab keyscript wrapper ---"
 install -d /lib/cryptsetup

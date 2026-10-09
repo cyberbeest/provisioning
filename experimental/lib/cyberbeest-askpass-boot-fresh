@@ -31,13 +31,34 @@
 # POSIX sh, no bashisms: dash is /bin/sh in the initramfs.
 set -eu
 
+DEBUG_LOG=/boot/cyberbeest-boot-fresh-debug.log
+log() { echo "$(date '+%H:%M:%S') $1" >> "$DEBUG_LOG" 2>/dev/null || true; }
+
+# $1 here is NOT always a friendly prompt: run_keyscript() in
+# /lib/cryptsetup/functions only substitutes its "Enter master password
+# to decrypt hard drive: " text in the no-keyscript-configured branch --
+# since crypttab has keyscript= pointing at this script, it instead
+# passes through $CRYPTTAB_KEY verbatim, which is crypttab's literal key
+# field ("none" for us). Confirmed by reading run_keyscript() directly
+# after a live boot showed "none" as the prompt text. Substitute our own
+# friendly text instead of forwarding that.
 PROMPT="$1"
+if [ "$PROMPT" = "none" ] || [ -z "$PROMPT" ]; then
+	PROMPT="Enter master password to decrypt hard drive: "
+fi
+
+log "start: raw arg='$1', marker_exists=$([ -e /boot/cyberbeest-hibernated ] && echo yes || echo no)"
 
 if [ -e /boot/cyberbeest-hibernated ]; then
-	plymouth update --status=cyberbeest-hibernated 2>/dev/null || true
+	if plymouth update --status=cyberbeest-hibernated 2>>"$DEBUG_LOG"; then
+		log "plymouth update: sent OK"
+	else
+		log "plymouth update: FAILED (exit $?)"
+	fi
 fi
 
 raw="$(/lib/cryptsetup/askpass "$PROMPT")"
+log "askpass returned, length=${#raw}"
 
 # 0x06 = Ctrl+F. No \x06-style escape in POSIX sh (same constraint as the
 # .script tokenizer -- see cyberbeest.script), so built the same way: a
@@ -46,6 +67,7 @@ ctrl_f="$(printf '\6')"
 
 case "$raw" in
 *"$ctrl_f"*)
+	log "Ctrl+F detected -- stripping and setting noresume"
 	rm -f /boot/cyberbeest-hibernated
 	touch /run/cyberbeest-noresume
 	printf '%s' "$raw" | tr -d "$ctrl_f"
