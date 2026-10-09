@@ -15,6 +15,14 @@ is_going_down = Plymouth.GetMode() == "shutdown" || Plymouth.GetMode() == "reboo
 bright_mode = "__BRIGHT_MODE__";
 bright_active = bright_mode == "1" && !is_going_down;
 
+# Substituted at install time to "1" by enable-passphrase-words.sh once the
+# crypttab keyscript that normalizes what is typed (cyberbeest-askpass-words:
+# lower case, any run of separators becomes one "-") is wired in. Only then
+# does the unlock prompt show "words typed + bullets for the current word"
+# instead of one bullet per key -- the display must never promise
+# normalization the keyscript does not actually perform.
+word_mode = "__WORD_MODE__";
+
 if (bright_active) {
     # Matches cyberbeest-for-print.png's own near-white background so the
     # logo blends in with no visible box around it.
@@ -197,18 +205,144 @@ fun password_dialog_setup(prompt) {
     global.password_dialog = local;
 }
 
-fun display_password_callback(prompt, bullets) {
-    throbber.sprite.SetOpacity(0);
+# ---------------------------------------------------------------------
+# Passphrase entry display
+#
+# plain_draw: stock behaviour, one bullet per typed character.
+#
+# word_draw: the passphrase is "word-word-word". The keyscript turns
+# whatever the owner types into exactly that (lower case; any run of
+# separator characters, i.e. space . , _ - and the other ASCII punctuation,
+# becomes a single "-"; leading and trailing separators are dropped), so
+# the field shows one check mark per COMPLETED word followed by one bullet per
+# character of the word being typed. Typing a separator turns the bullets
+# into a check mark, which is the feedback that the word boundary was accepted.
+#
+# The script only gets the bullet COUNT from Plymouth, never the text, and
+# Plymouth does not forward backspace / Ctrl+U to scripts at all. So the
+# typed keys are mirrored in word_typed[] from the keyboard callback and
+# truncated to the bullet count whenever Plymouth reports a shorter buffer
+# (backspace, line erase, Enter).
+# ---------------------------------------------------------------------
+word_sep_chars = " !\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~";
+# NOTE: this script language has no true/false keywords (they are undefined
+# names that evaluate to NULL), so flags and return values below are 1/0.
+# Defined here, at top level: assigning to an undefined name inside a
+# function makes a function-local variable that is gone on return.
+word_typed[0] = "";
+word_typed_n = 0;
+word_prompt_active = 0;
+word_ctrl_f = "";
 
-    if (!password_dialog.entry_sprite)
-        password_dialog_setup(prompt);
+fun word_is_sep(c) {
+    # Multi-byte (non-ASCII) keys are word characters, same as the keyscript.
+    if (c.Length() != 1)
+        return 0;
+    for (wsi = 0; wsi < word_sep_chars.Length(); wsi++) {
+        if (word_sep_chars.CharAt(wsi) == c)
+            return 1;
+    }
+    return 0;
+}
 
-    password_dialog.entry_sprite.SetOpacity(1);
-    password_dialog.prompt_sprite.SetOpacity(1);
-    password_dialog.lock_sprite.SetOpacity(1);
-    if (password_dialog.name_sprite)
-        password_dialog.name_sprite.SetOpacity(1);
+fun word_note_key(c) {
+    # Ctrl+F is forwarded to the script but never enters Plymouth's buffer.
+    if (c == word_ctrl_f)
+        return;
+    word_typed[word_typed_n] = c;
+    word_typed_n++;
+    # Plymouth calls the display-password callback (with the new bullet
+    # count) BEFORE it hands the key to this callback, so that redraw ran
+    # on a mirror one key short. Redraw again now that the key is in.
+    if (word_mode == "1" && word_prompt_active)
+        word_draw(word_typed_n);
+}
 
+fun word_sync(bullets) {
+    for (wsi = word_typed_n; wsi > bullets; wsi--)
+        word_typed[wsi - 1] = NULL;
+    if (word_typed_n > bullets)
+        word_typed_n = bullets;
+}
+
+fun word_draw(bullets) {
+    word_sync(bullets);
+
+    # Count completed words and the length of the word in progress.
+    done = 0;
+    cur = 0;
+    for (wi = 0; wi < word_typed_n; wi++) {
+        if (word_is_sep(word_typed[wi])) {
+            if (cur > 0) {
+                done++;
+                cur = 0;
+            }
+        } else {
+            cur++;
+        }
+    }
+
+    bw = password_dialog.bullet_image.GetWidth();
+    bh = password_dialog.bullet_image.GetHeight();
+    # Completed-word marker: a check mark (U+2713, in the initramfs font).
+    # Always white: the entry field is dark in bright mode too, so the
+    # theme's (black, in bright mode) text color would vanish on it.
+    # It only says "a word boundary was accepted" -- nothing about the word
+    # being correct, which is never known until the disk actually unlocks.
+    if (!password_dialog.pill_image)
+        password_dialog.pill_image = Image.Text("✓", 1, 1, 1, 1, "Sans Bold 15");
+    pill_w = password_dialog.pill_image.GetWidth();
+    pill_h = password_dialog.pill_image.GetHeight();
+    pill_gap = bw;
+
+    avail = password_dialog.entry_image.GetWidth() - 2 * bw;
+    # Never let the row outgrow the entry box: drop bullets of the current
+    # word first (the pills are the part worth keeping visible).
+    pills_w = done * (pill_w + pill_gap);
+    if (pills_w > avail) {
+        done = Math.Int(avail / (pill_w + pill_gap));
+        pills_w = done * (pill_w + pill_gap);
+    }
+    max_cur = Math.Int((avail - pills_w) / bw);
+    if (cur > max_cur)
+        cur = max_cur;
+
+    row_width = pills_w + cur * bw;
+    if (row_width > 0 && cur == 0)
+        row_width = row_width - pill_gap;
+    row_x = password_dialog.entry_x + password_dialog.entry_image.GetWidth() / 2 - row_width / 2;
+    mid_y = password_dialog.entry_y + password_dialog.entry_image.GetHeight() / 2;
+
+    for (wi = 0; password_dialog.pill_sprite[wi] || wi < done; wi++) {
+        if (!password_dialog.pill_sprite[wi]) {
+            password_dialog.pill_sprite[wi] = Sprite(password_dialog.pill_image);
+            password_dialog.pill_sprite[wi].SetZ(21);
+        }
+        if (wi < done) {
+            password_dialog.pill_sprite[wi].SetX(row_x + wi * (pill_w + pill_gap));
+            password_dialog.pill_sprite[wi].SetY(mid_y - pill_h / 2);
+            password_dialog.pill_sprite[wi].SetOpacity(1);
+        } else {
+            password_dialog.pill_sprite[wi].SetOpacity(0);
+        }
+    }
+
+    for (wi = 0; password_dialog.bullet_sprite[wi] || wi < cur; wi++) {
+        if (!password_dialog.bullet_sprite[wi]) {
+            password_dialog.bullet_sprite[wi] = Sprite(password_dialog.bullet_image);
+            password_dialog.bullet_sprite[wi].SetZ(21);
+        }
+        if (wi < cur) {
+            password_dialog.bullet_sprite[wi].SetX(row_x + pills_w + wi * bw);
+            password_dialog.bullet_sprite[wi].SetY(mid_y - bh / 2);
+            password_dialog.bullet_sprite[wi].SetOpacity(1);
+        } else {
+            password_dialog.bullet_sprite[wi].SetOpacity(0);
+        }
+    }
+}
+
+fun plain_draw(bullets) {
     bullet_w = password_dialog.bullet_image.GetWidth();
     max_bullets = Math.Int(password_dialog.entry_image.GetWidth() / bullet_w) - 1;
     if (bullets > max_bullets)
@@ -232,6 +366,25 @@ fun display_password_callback(prompt, bullets) {
             password_dialog.bullet_sprite[i].SetOpacity(0);
         }
     }
+}
+
+fun display_password_callback(prompt, bullets) {
+    throbber.sprite.SetOpacity(0);
+
+    if (!password_dialog.entry_sprite)
+        password_dialog_setup(prompt);
+
+    password_dialog.entry_sprite.SetOpacity(1);
+    password_dialog.prompt_sprite.SetOpacity(1);
+    password_dialog.lock_sprite.SetOpacity(1);
+    if (password_dialog.name_sprite)
+        password_dialog.name_sprite.SetOpacity(1);
+
+    word_prompt_active = 1;
+    if (word_mode == "1")
+        word_draw(bullets);
+    else
+        plain_draw(bullets);
 
     redraw_boot_fresh();
 }
@@ -248,6 +401,10 @@ fun display_normal_callback() {
             password_dialog.name_sprite.SetOpacity(0);
         for (i = 0; password_dialog.bullet_sprite[i]; i++)
             password_dialog.bullet_sprite[i].SetOpacity(0);
+        for (i = 0; password_dialog.pill_sprite[i]; i++)
+            password_dialog.pill_sprite[i].SetOpacity(0);
+        word_sync(0);
+        word_prompt_active = 0;
         if (password_dialog.boot_fresh_sprite)
             password_dialog.boot_fresh_sprite.SetOpacity(0);
     }
@@ -309,6 +466,7 @@ fun update_status_callback(status) {
 Plymouth.SetUpdateStatusFunction(update_status_callback);
 
 fun keyboard_input_callback(input) {
+    word_note_key(input);
     if (!hibernation_pending)
         return;
     if (input == "") {

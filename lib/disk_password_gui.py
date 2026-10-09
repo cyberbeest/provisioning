@@ -18,6 +18,7 @@ import argparse
 import glob
 import os
 import pty
+import re
 import secrets
 import select
 import shutil
@@ -128,6 +129,20 @@ def load_wordlist(lang):
             if len(parts) == 2:
                 words.append(parts[1])
     return words
+
+
+_UMLAUTS = {"ä": "ae", "ö": "oe", "ü": "ue", "ß": "ss", "ẞ": "ss",
+            "Ä": "ae", "Ö": "oe", "Ü": "ue"}
+
+
+def normalize_passphrase(text):
+    """Canonical form of a word passphrase: lower case, umlauts transliterated,
+    every run of separators (anything but letters and digits) one "-", no
+    leading or trailing "-". Must match lib/cyberbeest-askpass-words, which
+    applies the same rules to what is typed at the boot unlock prompt."""
+    for src, dst in _UMLAUTS.items():
+        text = text.replace(src, dst)
+    return re.sub(r"[^a-z0-9\u0080-\U0010ffff]+", "-", text.lower()).strip("-")
 
 
 def generate_passphrase(wordlist, word_count):
@@ -322,6 +337,9 @@ PASSWORD_TYPES = {
         "change": lambda old, new: change_luks_passphrase(DEVICE, 0, old, new),
         "word_count": 3,
         "min_length": 12,
+        # Stored in canonical word form so it matches whatever the boot
+        # prompt's keyscript turns the typed text into.
+        "normalize": True,
     },
     "short": {
         "title": t("pw.short_title"),
@@ -1067,6 +1085,9 @@ class PasswordWindow(Gtk.Window):
         current = self.current_entry.get_text()
         new = self.new_entry.get_text()
         confirm = self.confirm_entry.get_text()
+        if info.get("normalize"):
+            new = normalize_passphrase(new)
+            confirm = normalize_passphrase(confirm)
 
         if info["requires_current"] and not current:
             self.set_status(t("pw.fill_all_fields"))
