@@ -186,7 +186,19 @@ ensure_curtain_impl() {
     local prev_focus
     prev_focus=$(xdotool getactivewindow 2>/dev/null)
 
-    xterm -class "$CURTAIN_CLASS" -name "$CURTAIN_CLASS" -title "$CURTAIN_CLASS" \
+    # Never create the xterm before the window manager is up: without a WM
+    # `-iconic` is ignored and the raw xterm sits mapped at its default size
+    # until xfwm4 starts and adopts it -- confirmed 2026-09-29 (xterm PID
+    # older than xfwm4's) as the short blue flash right after login.
+    local wm=0
+    while ! xprop -root _NET_SUPPORTING_WM_CHECK 2>/dev/null | grep -q 'window id' && [ "$wm" -lt 300 ]; do
+        sleep 0.1
+        wm=$(( wm + 1 ))
+    done
+
+    # Created tiny and far off-screen as a second safety net; the real
+    # geometry is applied below once the WM manages the window.
+    xterm -iconic -geometry 10x2+30000+30000 -class "$CURTAIN_CLASS" -name "$CURTAIN_CLASS" -title "$CURTAIN_CLASS" \
         -bg "$CURTAIN_COLOR" -fg "$CURTAIN_COLOR" -cr "$CURTAIN_COLOR" \
         -xrm "${CURTAIN_CLASS}*internalBorder: 0" -bw 0 +sb \
         -e /bin/sh -c 'exec sleep infinity' &
