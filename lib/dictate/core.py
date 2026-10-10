@@ -218,6 +218,30 @@ def notify(msg, urgency="normal", timeout_ms=1500):
         pass
 
 
+def notify_sticky(msg):
+    """Show a notification that stays until close_notification(); returns its
+    id, or None if it could not be shown."""
+    try:
+        r = subprocess.run(["notify-send", "-p", "-t", "0", "Dictate", msg],
+                           check=False, capture_output=True, text=True)
+        return int(r.stdout.strip())
+    except (FileNotFoundError, ValueError):
+        return None
+
+
+def close_notification(nid):
+    if nid is None:
+        return
+    try:
+        subprocess.run(
+            ["gdbus", "call", "--session", "--dest", "org.freedesktop.Notifications",
+             "--object-path", "/org/freedesktop/Notifications",
+             "--method", "org.freedesktop.Notifications.CloseNotification", str(nid)],
+            check=False, capture_output=True)
+    except FileNotFoundError:
+        pass
+
+
 def _xdotool_segments(text):
     """Split text into (segment, is_special) pieces for xdotool.
 

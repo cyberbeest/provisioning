@@ -750,20 +750,22 @@ class MainWindow(QMainWindow):
         secs = len(audio) / core.SAMPLE_RATE
         peak = int(np.abs(audio).max())
         t0 = time.monotonic()
+        wait_note = None
         if self._local_model_available():
             import local_stt
             if local_stt.status()[0] != "loaded":
                 # Dictation ended before the model finished loading: say why
-                # the text is late.
-                threading.Thread(target=core.notify, args=(
-                    _("Loading the speech model, your text follows in a moment..."),
-                    "normal", 4000), daemon=True).start()
+                # the text is late, and take the message down when it is ready.
+                wait_note = core.notify_sticky(
+                    _("Loading the speech model, your text follows in a moment..."))
         try:
             text = core.transcribe(audio, self.cfg)
         except Exception as e:
             core.log.exception("transcribe failed: %.1fs audio, peak %d", secs, peak)
             self.bridge.error.emit(str(e))
             return
+        finally:
+            core.close_notification(wait_note)
         core.log.info("transcribed %.1fs audio, peak %d, %d chars in %.1fs",
                       secs, peak, len(text or ""), time.monotonic() - t0)
         if not text:
