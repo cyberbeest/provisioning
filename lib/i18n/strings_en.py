@@ -297,7 +297,7 @@ STRINGS = {
     "run_gui.more_actions_tooltip": "More actions",
     "run_gui.menu_disable_autostart": "Disable auto-provisioning on login",
     "run_gui.menu_select_vm_scripts": "Select scripts for VM install",
-    "run_gui.menu_switch_to_update": "Close and check for updates (Cyberbeest Update)",
+    "run_gui.menu_switch_to_update": "Update...",
     "run_gui.timing_summary": "{elapsed} | {remaining} | {total}",
     "run_gui.status_idle": "Idle. Double-click a script below to run just that one.",
     "run_gui.status_idle_changed": "{count} changed scripts. Double-click a script below to run just that one.",

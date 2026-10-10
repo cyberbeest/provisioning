@@ -311,7 +311,7 @@ STRINGS = {
     "run_gui.more_actions_tooltip": "Weitere Aktionen",
     "run_gui.menu_disable_autostart": "Automatisches Provisioning beim Anmelden deaktivieren",
     "run_gui.menu_select_vm_scripts": "Skripte für VM-Installation auswählen",
-    "run_gui.menu_switch_to_update": "Schließen und nach Updates suchen (Cyberbeest Update)",
+    "run_gui.menu_switch_to_update": "Aktualisieren...",
     "run_gui.timing_summary": "{elapsed} | {remaining} | {total}",
     "run_gui.status_idle": "Bereit. Doppelklick auf ein Skript unten, um nur dieses auszuführen.",
     "run_gui.status_idle_changed": "{count} geänderte Skripte. Doppelklick auf ein Skript unten, um nur dieses auszuführen.",
