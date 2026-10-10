@@ -7,7 +7,7 @@ import time
 
 import numpy as np
 from PyQt6.QtCore import Qt, QObject, QPointF, QTimer, QLibraryInfo, QLocale, QTranslator, pyqtSignal
-from PyQt6.QtGui import QAction, QColor, QIcon, QPainter, QPixmap
+from PyQt6.QtGui import QAction, QActionGroup, QColor, QIcon, QPainter, QPixmap
 from PyQt6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox,
     QFormLayout, QHBoxLayout, QLabel, QLineEdit, QMainWindow, QMenu,
@@ -17,7 +17,7 @@ from PyQt6.QtWidgets import (
 from pynput import keyboard
 
 import core
-from i18n import _, LANGUAGES, set_language
+from i18n import _, set_language
 
 
 def _make_listener(on_press, on_release):
@@ -123,14 +123,6 @@ class SettingsDialog(QDialog):
         ))
         self.form.addRow(_("Min hold to send:"), self.threshold_box)
 
-        self.language_box = QComboBox()
-        for code, name in LANGUAGES:
-            self.language_box.addItem(_("Automatic") if code == "auto" else name, code)
-        i = self.language_box.findData(self.cfg.get("language", "auto"))
-        self.language_box.setCurrentIndex(max(i, 0))
-        self.language_box.setToolTip(_("Applies after restarting Dictate."))
-        self.form.addRow(_("Language:"), self.language_box)
-
         self.start_hidden_box = QCheckBox(_("Start as a panel icon, without a window"))
         self.start_hidden_box.setChecked(bool(self.cfg.get("start_hidden", True)))
         self.form.addRow("", self.start_hidden_box)
@@ -173,13 +165,13 @@ class SettingsDialog(QDialog):
         import local_stt
         mid = self._selected_model()
         mb = local_stt._spec(mid)["size_mb"]
+        self.local_download_btn.setText(_("Download model (~{mb} MB)").format(mb=mb))
         if local_stt.model_installed(mid):
             self.local_status_label.setText(_("Installed and ready."))
-            self.local_download_btn.setText(_("Re-download model"))
+            self.local_download_btn.setEnabled(False)
         else:
             self.local_status_label.setText(_("Not installed. It is downloaded when you first dictate."))
-            self.local_download_btn.setText(_("Download model (~{mb} MB)").format(mb=mb))
-        self.local_download_btn.setEnabled(True)
+            self.local_download_btn.setEnabled(True)
 
     def on_download_model(self):
         self.local_download_btn.setEnabled(False)
@@ -199,8 +191,9 @@ class SettingsDialog(QDialog):
 
     def _on_download_done(self, ok, msg):
         self.local_status_label.setText(msg)
-        self.local_download_btn.setEnabled(True)
-        self.local_download_btn.setText(_("Re-download model") if ok else _("Retry download"))
+        self._refresh_local_status()
+        if not ok:
+            self.local_download_btn.setText(_("Retry download"))
 
     def values(self):
         return {
@@ -210,7 +203,6 @@ class SettingsDialog(QDialog):
             "threshold":             float(self.threshold_box.value()),
             "local_stt_num_threads": int(self.local_threads_box.value()),
             "local_stt_idle_minutes": int(self.local_idle_box.value()),
-            "language":              self.language_box.currentData(),
             "start_hidden":          self.start_hidden_box.isChecked(),
             "autostart":             self.autostart_box.isChecked(),
         }
@@ -354,6 +346,17 @@ class MainWindow(QMainWindow):
             a_quit.triggered.connect(QApplication.quit)
             menu.addAction(a_settings)
             menu.addSeparator()
+            self._model_actions = {}
+            group = QActionGroup(self)
+            for mid, name in (("nemo-de-fastconformer-int8", _("German only (faster)")),
+                              ("parakeet-primeline-int8", _("Multi-language (slower)"))):
+                act = QAction(name, self)
+                act.setCheckable(True)
+                act.setActionGroup(group)
+                act.triggered.connect(lambda _checked, m=mid: self.set_model(m))
+                menu.addAction(act)
+                self._model_actions[mid] = act
+            menu.addSeparator()
             menu.addAction(self.a_load)
             menu.addAction(self.a_unload)
             menu.addSeparator()
@@ -407,7 +410,22 @@ class MainWindow(QMainWindow):
         self.info_label.setText(_("Mode: {mode}     Hotkey: {key}     Model: {model}{thr}").format(
             mode=mode_name, key=self.cfg["key"].upper(), model=self._model_label(), thr=thr_str))
 
+    def set_model(self, model_id):
+        """Switch the speech model from the tray menu."""
+        import local_stt
+        if model_id == self.cfg.get("model"):
+            return
+        local_stt.unload()   # free the old model's memory now
+        self.cfg["model"] = local_stt.select_model(model_id)
+        core.save_config(self.cfg)
+        self.update_info()
+        self._refresh_tray()
+        if not local_stt.model_installed():
+            self._ensure_model()   # starts the one-time download
+
     def _update_model_actions(self):
+        for mid, act in self._model_actions.items():
+            act.setChecked(mid == self.cfg.get("model"))
         local = self._local_model_available()
         state = "not_loaded"
         if local:
@@ -432,6 +450,8 @@ class MainWindow(QMainWindow):
         if dlg.exec() == QDialog.DialogCode.Accepted:
             self.cfg.update(dlg.values())
             import local_stt
+            if self.cfg["model"] != local_stt._model_id:
+                local_stt.unload()
             local_stt.select_model(self.cfg["model"])
             core.set_autostart(self.cfg.pop("autostart"))
             core.save_config(self.cfg)

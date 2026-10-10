@@ -68,7 +68,7 @@ DEFAULT_CONFIG = {
     "threshold":             0.0,
     "local_stt_num_threads": 4,    # sherpa-onnx CPU thread count
     "start_hidden":          True,    # start as a panel icon only, no window (needs a tray)
-    "language":              "auto",  # UI language: auto (desktop locale), en, de
+    "language":              "auto",  # UI language: auto (desktop locale), en, de; no Settings field, provisioning sets the locale
     "local_stt_idle_minutes": 5,   # unload the model after this long idle when RAM is short (0 = keep loaded)
 }
 
