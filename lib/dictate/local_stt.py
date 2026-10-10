@@ -1,8 +1,8 @@
 """Local German STT via sherpa-onnx + parakeet-primeline (int8, CPU-only).
 
-Offline transducer. Loads once at first use, warmed up so subsequent decodes
-have consistent latency. Not thread-safe over a single recognizer instance —
-we serialize decode calls with a lock; for single-user dictation that's fine.
+Offline transducer. Loads once at first use. Not thread-safe over a single
+recognizer instance — we serialize decode calls with a lock; for single-user
+dictation that is fine.
 """
 import ctypes
 import gc
@@ -32,6 +32,24 @@ DEFAULT_THREADS = 4
 DEFAULT_IDLE_S = 300  # unload the model after this long without a dictation; 0 = never
 TARGET_PEAK = 0.5   # quiet pieces are raised to this peak before decoding
 MAX_GAIN = 30.0     # but never amplified more than this, so room noise stays noise
+
+
+# Idle unloading only happens when memory is short: with at least this much
+# available (MemAvailable already excludes what the model itself holds) the
+# model stays resident, so the next dictation starts instantly.
+KEEP_LOADED_MIN_AVAILABLE_MB = 1500
+RAM_RECHECK_S = 60
+
+
+def _ram_comfortable() -> bool:
+    try:
+        with open("/proc/meminfo") as f:
+            for line in f:
+                if line.startswith("MemAvailable:"):
+                    return int(line.split()[1]) // 1024 >= KEEP_LOADED_MIN_AVAILABLE_MB
+    except (OSError, ValueError, IndexError):
+        pass
+    return False  # cannot tell: fall back to the plain idle timeout
 
 
 def model_installed() -> bool:
@@ -125,7 +143,7 @@ def download_model(progress_cb: Optional[Callable[[str], None]] = None) -> None:
 
 
 class LocalRecognizer:
-    """Wraps sherpa_onnx.OfflineRecognizer with async load + warmup + decode lock."""
+    """Wraps sherpa_onnx.OfflineRecognizer with async load + decode lock."""
 
     def __init__(self, num_threads: int):
         self.num_threads = num_threads
@@ -148,12 +166,6 @@ class LocalRecognizer:
                 num_threads=self.num_threads,
                 decoding_method="greedy_search",
             )
-            # Warmup: two 1-second silences. First real decode is ~2x slower
-            # without this, and the user is waiting on the first one.
-            for _ in range(2):
-                s = rec.create_stream()
-                s.accept_waveform(TARGET_SR, np.zeros(TARGET_SR, dtype=np.float32))
-                rec.decode_stream(s)
             self._recognizer = rec
         except Exception as e:
             self._load_error = e
@@ -245,7 +257,7 @@ def _arm_idle_timer() -> None:
 
 
 def _unload_if_idle() -> None:
-    global _instance
+    global _instance, _idle_timer
     with _instance_lock:
         inst = _instance
         if inst is None:
@@ -254,6 +266,12 @@ def _unload_if_idle() -> None:
         if inst._decode_lock.locked() or not inst._ready.is_set() or left > 0:
             # Used (or still busy) since the timer started: wait out the rest.
             _arm_idle_timer()
+            return
+        if _ram_comfortable():
+            # Plenty of free memory: keep the model, look again in a minute.
+            _idle_timer = threading.Timer(RAM_RECHECK_S, _unload_if_idle)
+            _idle_timer.daemon = True
+            _idle_timer.start()
             return
         _instance = None
     del inst
@@ -274,7 +292,7 @@ def status():
             return "loading", None
         if inst._recognizer is None:
             return "not_loaded", None
-        if _idle_s <= 0:
+        if _idle_s <= 0 or _ram_comfortable():
             return "loaded", None
         return "loaded", max(0.0, _idle_s - (time.monotonic() - inst.last_used))
 
@@ -301,3 +319,4 @@ def get_recognizer(num_threads: int = DEFAULT_THREADS, idle_s: float = DEFAULT_I
 def preload(num_threads: int = DEFAULT_THREADS, idle_s: float = DEFAULT_IDLE_S) -> LocalRecognizer:
     """Kick off the model load in the background so the first real decode is fast."""
     return get_recognizer(num_threads, idle_s)
+

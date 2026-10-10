@@ -101,6 +101,7 @@ CATALOGS = {
         "Start as a panel icon, without a window": "Als Symbol im Panel starten, ohne Fenster",
         "Start Dictate when I log in": "Dictate beim Anmelden starten",
         "Downloading the speech model once (about 640 MB). Dictation works when it is done.": "Das Sprachmodell wird einmalig heruntergeladen (etwa 640 MB). Danach können Sie diktieren.",
+        "Loading the speech model, your text follows in a moment...": "Sprachmodell wird geladen, Ihr Text folgt gleich ...",
         "Speech model ready. Hold {key} and speak.": "Sprachmodell bereit. Halten Sie {key} und sprechen Sie.",
         "Model download failed: {err}": "Modell-Download fehlgeschlagen: {err}",
         "Microphone: {err}": "Mikrofon: {err}",

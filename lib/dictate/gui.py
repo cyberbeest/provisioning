@@ -492,9 +492,18 @@ class MainWindow(QMainWindow):
         if not core.provider_key(self.cfg):
             QTimer.singleShot(250, self.first_run)
 
+    def _local_model_available(self) -> bool:
+        if not core.PROVIDERS.get(self.cfg.get("provider"), {}).get("is_local"):
+            return False
+        try:
+            import local_stt
+        except ImportError:
+            return False
+        return local_stt.model_installed()
+
     def _preload_local_if_needed(self):
         """Kick off the parakeet recognizer load in the background so the first
-        real dictation isn't slowed by the ~0.8s model load + warmup."""
+        real dictation isn't slowed by the ~0.8s model load."""
         provider = self.cfg.get("provider")
         pdef = core.PROVIDERS.get(provider, {})
         if not pdef.get("is_local"):
@@ -713,6 +722,14 @@ class MainWindow(QMainWindow):
         secs = len(audio) / core.SAMPLE_RATE
         peak = int(np.abs(audio).max())
         t0 = time.monotonic()
+        if self._local_model_available():
+            import local_stt
+            if local_stt.status()[0] != "loaded":
+                # Dictation ended before the model finished loading: say why
+                # the text is late.
+                threading.Thread(target=core.notify, args=(
+                    _("Loading the speech model, your text follows in a moment..."),
+                    "normal", 4000), daemon=True).start()
         try:
             text = core.transcribe(audio, self.cfg)
         except Exception as e:

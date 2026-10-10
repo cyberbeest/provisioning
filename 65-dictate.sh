@@ -9,10 +9,10 @@
 # in plain words whether audio stays local.
 #
 # On by default: it autostarts at login as a panel icon with no window
-# (Settings has a checkbox to turn that off). The model is unloaded after
-# 5 idle minutes to give back ~800 MB of RAM. It is not loaded at login at
-# all: it loads while the user speaks on the first hotkey press, and again
-# on the next press after an idle unload.
+# (Settings has a checkbox to turn that off). The model is not loaded at
+# login: the first hotkey press loads it while the user speaks (~6 s of CPU on
+# the N3350, so little is left to wait for). It then stays in RAM while plenty
+# is free and is unloaded after 5 idle minutes only when memory gets short.
 #
 # Global hotkey (F9, hold to talk) is read through pynput/X11. The evdev
 # backend would need the account in group `input`, i.e. read access to every
