@@ -16,4 +16,11 @@ install -o "$TARGET_USER" -g "$TARGET_USER" -m 755 \
 sed "s|/home/cyberbeest/|$TARGET_HOME/|g" "$DIR/lib/cyberbeest-keymap-login.desktop" \
     > "$TARGET_HOME/.config/autostart/cyberbeest-keymap-login.desktop"
 chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.config/autostart/cyberbeest-keymap-login.desktop"
-echo "=== $(date) : done (takes effect at next login) ==="
+# Also fix the session that is already running: sessions here are only ever
+# started by booting, so waiting for the next login could mean days.
+if [ -S /tmp/.X11-unix/X0 ] && [ -f "$TARGET_HOME/.Xauthority" ]; then
+    sudo -u "$TARGET_USER" -H env DISPLAY=:0 XAUTHORITY="$TARGET_HOME/.Xauthority" \
+        "$TARGET_HOME/.local/bin/cyberbeest-keymap-login.sh" \
+        && echo "applied to the running session" || echo "WARNING: could not apply to the running session"
+fi
+echo "=== $(date) : done ==="
