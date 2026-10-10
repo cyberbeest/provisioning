@@ -372,19 +372,15 @@ def unload() -> bool:
     return True
 
 
-def status():
-    """('not_loaded' | 'loading' | 'loaded', seconds until idle unload or None)."""
+def status() -> str:
+    """'not_loaded', 'loading' or 'loaded' for the selected model."""
     with _instance_lock:
         inst = _instance
         if inst is None or inst.model_id != _model_id:
-            return "not_loaded", None
+            return "not_loaded"
         if not inst._ready.is_set():
-            return "loading", None
-        if inst._recognizer is None:
-            return "not_loaded", None
-        if _idle_s <= 0 or _ram_comfortable():
-            return "loaded", None
-        return "loaded", max(0.0, _idle_s - (time.monotonic() - inst.last_used))
+            return "loading"
+        return "loaded" if inst._recognizer is not None else "not_loaded"
 
 
 def get_recognizer(num_threads: int = DEFAULT_THREADS, idle_s: float = DEFAULT_IDLE_S) -> LocalRecognizer:

@@ -416,7 +416,7 @@ class MainWindow(QMainWindow):
         state = "not_loaded"
         if local:
             import local_stt
-            state = local_stt.status()[0]
+            state = local_stt.status()
         self.a_load.setVisible(local)
         self.a_unload.setVisible(local)
         self.a_load.setEnabled(state == "not_loaded")
@@ -630,7 +630,7 @@ class MainWindow(QMainWindow):
         wait_note = None
         if self._local_model_available():
             import local_stt
-            if local_stt.status()[0] != "loaded":
+            if local_stt.status() != "loaded":
                 # Dictation ended before the model finished loading: say why
                 # the text is late, and take the message down when it is ready.
                 wait_note = core.notify_sticky(
@@ -679,7 +679,7 @@ class MainWindow(QMainWindow):
         self._refresh_tray()
 
     def _local_state(self):
-        """(state, seconds until unload) of the speech model."""
+        """State of the speech model: not_loaded, loading or loaded."""
         import local_stt
         return local_stt.status()
 
@@ -691,7 +691,6 @@ class MainWindow(QMainWindow):
         if not self.tray:
             return
         state, msg = self._status
-        local = self._local_state()
         key = self.cfg["key"].upper().replace("_", " ")
         if state == "ready":
             german_only = self.cfg.get("model") == "nemo-de-fastconformer-int8"
@@ -707,7 +706,7 @@ class MainWindow(QMainWindow):
         if not (self.cfg.get("model") == "nemo-de-fastconformer-int8") and state == "ready":
             import textwrap
             lines += textwrap.wrap(_(LANGUAGE_LIST_EN), width=64)
-        mstate = local[0] if local else "not_loaded"
+        mstate = self._local_state()
         name = self._model_label()
         if mstate == "loaded":
             lines.append(_("Speech model: {name} (loaded)").format(name=name))
