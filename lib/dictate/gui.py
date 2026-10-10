@@ -208,8 +208,8 @@ class SettingsDialog(QDialog):
         }
 
 
-def make_mic_icon(color="#2b2b2b", outline=False, ring=None):
-    """Microphone icon: solid body, or just an outline when `outline` is set.
+def make_mic_icon(color="#2b2b2b", ring=None):
+    """Solid microphone icon.
 
     `ring` (0..1) adds a fading circle around the body, expanding as it grows;
     cycling it gives the pulse shown while recording or transcribing.
@@ -228,17 +228,9 @@ def make_mic_icon(color="#2b2b2b", outline=False, ring=None):
         p.setBrush(Qt.GlobalColor.transparent)
         r = 12 + 18 * ring
         p.drawEllipse(QPointF(32, 30), r, r)
-    if outline:
-        p.setBrush(Qt.GlobalColor.transparent)
-        body_pen = p.pen()
-        body_pen.setColor(QColor(color))
-        body_pen.setWidth(4)
-        p.setPen(body_pen)
-        p.drawRoundedRect(24, 10, 16, 28, 8, 8)
-    else:
-        p.setBrush(QColor(color))
-        p.setPen(Qt.PenStyle.NoPen)
-        p.drawRoundedRect(22, 8, 20, 32, 10, 10)
+    p.setBrush(QColor(color))
+    p.setPen(Qt.PenStyle.NoPen)
+    p.drawRoundedRect(22, 8, 20, 32, 10, 10)
     p.setPen(QColor(color))
     p.setBrush(Qt.GlobalColor.transparent)
     pen = p.pen()
@@ -277,6 +269,8 @@ class MainWindow(QMainWindow):
         self.bridge.model_progress.connect(lambda m: self.set_status("transcribing", m))
         self.bridge.model_done.connect(self.on_model_done)
         self._model_downloading = False
+        self._download_event = None     # set when the running download has finished
+        self._waiting_dictations = 0    # recordings waiting for that download
         self.key_held = False
         self.combo = False
         self.recording_active = False
@@ -457,6 +451,8 @@ class MainWindow(QMainWindow):
             core.save_config(self.cfg)
             self.restart_listener()
             self.update_info()
+            if not local_stt.model_installed():
+                self._ensure_model()   # a newly chosen model downloads right away
 
     def start_listener(self):
         keys = core.KEY_MAP.get(self.cfg["key"])
@@ -547,20 +543,22 @@ class MainWindow(QMainWindow):
         self.recording_active = False
 
     def _ensure_model(self) -> bool:
-        """True if recording can start. A missing local model (profile skipped
-        the download, or it failed) is fetched now, once, in the background."""
+        """True if the speech model is on disk. A missing one (profile skipped
+        the download, or it failed) is fetched now, once, in the background;
+        recordings made meanwhile wait for it and are typed when it arrives."""
         import local_stt
         if local_stt.model_installed():
             return True
         if not self._model_downloading:
             self._model_downloading = True
+            self._download_event = threading.Event()
             threading.Thread(target=self._model_download_worker, args=(local_stt,), daemon=True).start()
         return False
 
     def _model_download_worker(self, local_stt):
         # The notice stays up for the whole download and is taken down at the end.
         note = core.notify_sticky(
-            _("Downloading the speech model once (about {mb} MB). Dictation works when it is done.").format(
+            _("Downloading the speech model once (about {mb} MB). Whatever you dictate meanwhile is typed when it is done.").format(
                 mb=local_stt._spec()["size_mb"]))
         try:
             local_stt.download_model(progress_cb=self.bridge.model_progress.emit)
@@ -570,22 +568,23 @@ class MainWindow(QMainWindow):
             self.bridge.model_done.emit(False, str(e))
         finally:
             core.close_notification(note)
+            self._download_event.set()
 
     def on_model_done(self, ok, err):
         self._model_downloading = False
         if ok:
-            self.set_status("ready", _("Ready"))
-            threading.Thread(
-                target=core.notify,
-                args=(_("Speech model ready. Hold {key} and speak.").format(key=self.cfg["key"].upper()),
-                      "normal", 4000),
-                daemon=True).start()
+            if self._waiting_dictations == 0:   # otherwise the typed text says it
+                self.set_status("ready", _("Ready"))
+                threading.Thread(
+                    target=core.notify,
+                    args=(_("Speech model ready. Hold {key} and speak.").format(key=self.cfg["key"].upper()),
+                          "normal", 4000),
+                    daemon=True).start()
         else:
             self.on_error(_("Model download failed: {err}").format(err=err))
 
     def start_recording(self) -> bool:
-        if not self._ensure_model():
-            return False
+        self._ensure_model()   # a missing model downloads while the user speaks
         # Reload the model if it was unloaded while idle; the load runs while
         # the user speaks. Also restarts the idle countdown.
         self._preload_local_if_needed()
@@ -627,6 +626,17 @@ class MainWindow(QMainWindow):
         secs = len(audio) / core.SAMPLE_RATE
         peak = int(np.abs(audio).max())
         t0 = time.monotonic()
+        if not core.model_ready():
+            # First use: the model is still downloading. Keep the recording
+            # and transcribe it as soon as the download is done.
+            self._waiting_dictations += 1
+            try:
+                if self._download_event is not None:
+                    self._download_event.wait()
+            finally:
+                self._waiting_dictations -= 1
+            if not core.model_ready():
+                return   # the download failure has already been reported
         wait_note = None
         if self._local_model_available():
             import local_stt
@@ -711,12 +721,7 @@ class MainWindow(QMainWindow):
             lines.append(_("Speech model: {name} (not loaded)").format(name=name))
         lines.append(self._privacy_line())
         self.tray.setToolTip("\n".join(lines))
-        if state in ("recording", "transcribing"):
-            key = "active"
-        elif local and local[0] != "loaded":
-            key = "unloaded"
-        else:
-            key = "loaded"
+        key = "active" if state in ("recording", "transcribing") else "idle"
         if key != self._tray_icon_key:
             self._tray_icon_key = key
             if key == "active":
@@ -726,8 +731,7 @@ class MainWindow(QMainWindow):
             else:
                 self._anim_timer.stop()
                 if key not in self._tray_icons:
-                    self._tray_icons[key] = make_mic_icon(
-                        {"unloaded": "#8a8a8a", "loaded": "#2b2b2b"}[key], outline=(key == "unloaded"))
+                    self._tray_icons[key] = make_mic_icon()
                 self.tray.setIcon(self._tray_icons[key])
 
     ANIM_FRAMES = 8
