@@ -19,7 +19,10 @@ first hotkey press). Each is mirrored at https://cyberbeest.com/models/<name>/
   punctuation and does worse on technical terms and accented speech.
   Fallback: the sherpa-onnx release archive on GitHub.
 - "Multi-language (slower)", parakeet-primeline-int8: primeline's German
-  fine-tune of NVIDIA Parakeet (~600M parameters). Fallback: Hugging Face.
+  fine-tune of NVIDIA Parakeet TDT 0.6B v3 (~600M parameters). The tooltip
+  lists the base model's 25 European languages; the fine-tune's own card only
+  lists German, so non-German languages are not individually verified.
+  Fallback: Hugging Face.
 
 To publish a different model revision: upload the files to the mirror, then
 update the mirror URL and SHA-256 values in MODELS.

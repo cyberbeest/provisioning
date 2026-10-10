@@ -61,11 +61,13 @@ KEY_MAP.update({
     "mouse_task":    {("mouse", "task")},
 })
 
+# A hotkey press shorter than this is an accidental tap, not a dictation (push-to-talk).
+MIN_HOLD_S = 0.5
+
 DEFAULT_CONFIG = {
     "mode":                  "ptt",
     "key":                   "f9",
     "model":                 "nemo-de-fastconformer-int8",  # local_stt.MODELS key
-    "threshold":             0.0,
     "local_stt_num_threads": 4,    # sherpa-onnx CPU thread count
     "start_hidden":          True,    # start as a panel icon only, no window (needs a tray)
     "language":              "auto",  # UI language: auto (desktop locale), en, de; no Settings field, provisioning sets the locale
@@ -116,7 +118,7 @@ def load_config():
         except Exception:
             pass
     # Settings from versions that also offered cloud providers are dropped.
-    for k in ("provider", "api_key", "openai_api_key", "yorik_url", "yorik_token"):
+    for k in ("provider", "api_key", "openai_api_key", "yorik_url", "yorik_token", "threshold"):
         cfg.pop(k, None)
     try:
         import local_stt

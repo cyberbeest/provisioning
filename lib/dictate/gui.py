@@ -109,20 +109,6 @@ class SettingsDialog(QDialog):
         ))
         self.form.addRow(_("Unload when idle:"), self.local_idle_box)
 
-        self.threshold_box = QDoubleSpinBox()
-        self.threshold_box.setRange(0.0, 5.0)
-        self.threshold_box.setSingleStep(0.1)
-        self.threshold_box.setDecimals(1)
-        self.threshold_box.setSuffix(" s")
-        self.threshold_box.setValue(float(self.cfg.get("threshold", 0.0)))
-        self.threshold_box.setToolTip(_(
-            "Recording starts immediately on press; release sends for transcription.\n"
-            "If you release before this duration, the recording is discarded. 0 =\n"
-            "always send. Recommended ~2.0s when bound to Ctrl/Alt/Shift so brief\n"
-            "taps and shortcuts don't transcribe."
-        ))
-        self.form.addRow(_("Min hold to send:"), self.threshold_box)
-
         self.start_hidden_box = QCheckBox(_("Start as a panel icon, without a window"))
         self.start_hidden_box.setChecked(bool(self.cfg.get("start_hidden", True)))
         self.form.addRow("", self.start_hidden_box)
@@ -200,7 +186,6 @@ class SettingsDialog(QDialog):
             "mode":                  self.mode_box.currentData(),
             "key":                   self.key_box.currentData(),
             "model":                 self.model_box.currentData(),
-            "threshold":             float(self.threshold_box.value()),
             "local_stt_num_threads": int(self.local_threads_box.value()),
             "local_stt_idle_minutes": int(self.local_idle_box.value()),
             "start_hidden":          self.start_hidden_box.isChecked(),
@@ -241,6 +226,15 @@ def make_mic_icon(color="#2b2b2b", ring=None):
     p.drawLine(22, 58, 42, 58)
     p.end()
     return QIcon(pix)
+
+
+# The base NVIDIA Parakeet TDT 0.6B v3 model's languages (the multi-language
+# model is a German-optimised fine-tune of it); translated as one string so
+# each language has its own alphabetical order.
+LANGUAGE_LIST_EN = ("Supported languages: Bulgarian, Croatian, Czech, Danish, Dutch, English, "
+                    "Estonian, Finnish, French, German, Greek, Hungarian, Italian, Latvian, "
+                    "Lithuanian, Maltese, Polish, Portuguese, Romanian, Russian, Slovak, "
+                    "Slovenian, Spanish, Swedish, Ukrainian")
 
 
 STATUS_STYLES = {
@@ -399,10 +393,8 @@ class MainWindow(QMainWindow):
 
     def update_info(self):
         mode_name = _("Push-to-talk") if self.cfg["mode"] == "ptt" else _("Toggle")
-        thr = float(self.cfg.get("threshold", 0.0))
-        thr_str = _("     Min hold: {thr:.1f}s").format(thr=thr) if thr > 0 else ""
-        self.info_label.setText(_("Mode: {mode}     Hotkey: {key}     Model: {model}{thr}").format(
-            mode=mode_name, key=self.cfg["key"].upper(), model=self._model_label(), thr=thr_str))
+        self.info_label.setText(_("Mode: {mode}     Hotkey: {key}     Model: {model}").format(
+            mode=mode_name, key=self.cfg["key"].upper(), model=self._model_label()))
 
     def set_model(self, model_id):
         """Switch the speech model from the tray menu."""
@@ -520,8 +512,7 @@ class MainWindow(QMainWindow):
             core.log.info("cancelled after %.1fs by %s", held, self._last_other)
             # A shortcut like Ctrl+C cancels within a moment and needs no
             # message; a long hold was a dictation that just got thrown away.
-            min_hold = float(self.cfg.get("threshold", 0.0))
-            if held >= max(min_hold, 1.0):
+            if held >= 1.0:
                 core.notify(_("Recording cancelled after {held:.0f}s — another key or mouse button was pressed").format(held=held),
                             urgency="critical", timeout_ms=5000)
 
@@ -532,8 +523,7 @@ class MainWindow(QMainWindow):
         if not self.recording_active:
             return
         duration = time.monotonic() - self.press_time
-        min_hold = float(self.cfg.get("threshold", 0.0))
-        if min_hold > 0 and duration < min_hold:
+        if duration < core.MIN_HOLD_S:
             # Discard branch also blocks on recorder.stop() → freeze. Offload.
             self._discard_take()
             self.recording_active = False
@@ -704,13 +694,19 @@ class MainWindow(QMainWindow):
         local = self._local_state()
         key = self.cfg["key"].upper().replace("_", " ")
         if state == "ready":
+            german_only = self.cfg.get("model") == "nemo-de-fastconformer-int8"
             if self.cfg.get("mode") == "toggle":
-                first = _("Tap {key} to start and stop dictating").format(key=key)
+                first = (_("Tap {key} to start and stop dictating in German") if german_only else
+                         _("Tap {key} to start and stop dictating in any supported language")).format(key=key)
             else:
-                first = _("Hold {key} to dictate").format(key=key)
+                first = (_("Hold {key} to dictate in German") if german_only else
+                         _("Hold {key} to dictate in any supported language")).format(key=key)
         else:
             first = _("Dictate — {msg}").format(msg=msg)
         lines = [first]
+        if not (self.cfg.get("model") == "nemo-de-fastconformer-int8") and state == "ready":
+            import textwrap
+            lines += textwrap.wrap(_(LANGUAGE_LIST_EN), width=64)
         mstate = local[0] if local else "not_loaded"
         name = self._model_label()
         if mstate == "loaded":

@@ -78,7 +78,6 @@ if [ ! -f "$CONF" ]; then
   "mode": "ptt",
   "key": "f9",
   "model": "$MODEL",
-  "threshold": 0.0,
   "local_stt_num_threads": $THREADS,
   "local_stt_idle_minutes": 5,
   "start_hidden": true,
