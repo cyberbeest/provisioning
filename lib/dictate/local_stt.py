@@ -275,11 +275,33 @@ def _unload_if_idle() -> None:
             return
         _instance = None
     del inst
+    _release()
+
+
+def _release() -> None:
+    """Give freed model memory back; callers drop their reference first."""
     gc.collect()
     try:
         ctypes.CDLL("libc.so.6").malloc_trim(0)  # hand the freed weights back to the OS
     except OSError:
         pass
+
+
+def unload() -> bool:
+    """Drop the model now (tray menu). False if a dictation is decoding or
+    there is nothing to unload."""
+    global _instance, _idle_timer
+    with _instance_lock:
+        inst = _instance
+        if inst is None or inst._decode_lock.locked():
+            return False
+        _instance = None
+        if _idle_timer is not None:
+            _idle_timer.cancel()
+            _idle_timer = None
+    del inst
+    _release()
+    return True
 
 
 def status():

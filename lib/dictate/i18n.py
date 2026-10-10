@@ -68,6 +68,8 @@ CATALOGS = {
         "Last transcription:": "Letzte Transkription:",
         "Show window": "Fenster anzeigen",
         "Quit": "Beenden",
+        "Load dictation model": "Diktiermodell laden",
+        "Unload dictation model": "Diktiermodell entladen",
         "Welcome to Dictate": "Willkommen bei Dictate",
         "Open Settings to pick a transcription provider:\n\n  * Groq (cloud, free tier — console.groq.com)\n  * OpenAI (cloud — platform.openai.com)\n  * Local (offline, German, CPU — one-time 640 MB download)":
             "Öffnen Sie die Einstellungen und wählen Sie einen Transkriptionsanbieter:\n\n  * Groq (Cloud, kostenlose Stufe — console.groq.com)\n  * OpenAI (Cloud — platform.openai.com)\n  * Lokal (offline, Deutsch, CPU — einmaliger Download von 640 MB)",

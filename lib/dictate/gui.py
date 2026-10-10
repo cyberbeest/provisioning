@@ -471,13 +471,21 @@ class MainWindow(QMainWindow):
             self.tray = QSystemTrayIcon(make_mic_icon(), self)
             self.tray.setToolTip("Dictate")
             menu = QMenu()
-            a_show = QAction(_("Show window"), self)
-            a_show.triggered.connect(self.show_window)
+            a_settings = QAction(_("Settings"), self)
+            a_settings.triggered.connect(self.open_settings)
+            self.a_load = QAction(_("Load dictation model"), self)
+            self.a_load.triggered.connect(self.load_model_now)
+            self.a_unload = QAction(_("Unload dictation model"), self)
+            self.a_unload.triggered.connect(self.unload_model_now)
             a_quit = QAction(_("Quit"), self)
             a_quit.triggered.connect(QApplication.quit)
-            menu.addAction(a_show)
+            menu.addAction(a_settings)
+            menu.addSeparator()
+            menu.addAction(self.a_load)
+            menu.addAction(self.a_unload)
             menu.addSeparator()
             menu.addAction(a_quit)
+            menu.aboutToShow.connect(self._update_model_actions)
             self.tray.setContextMenu(menu)
             self.tray.activated.connect(self.on_tray)
             self.tray.show()
@@ -536,6 +544,26 @@ class MainWindow(QMainWindow):
         thr_str = _("     Min hold: {thr:.1f}s").format(thr=thr) if thr > 0 else ""
         self.info_label.setText(_("Mode: {mode}     Hotkey: {key}     Model: {model}{thr}").format(
             mode=mode_name, key=self.cfg["key"].upper(), model=self.cfg["model"], thr=thr_str))
+
+    def _update_model_actions(self):
+        local = self._local_model_available()
+        state = "not_loaded"
+        if local:
+            import local_stt
+            state = local_stt.status()[0]
+        self.a_load.setVisible(local)
+        self.a_unload.setVisible(local)
+        self.a_load.setEnabled(state == "not_loaded")
+        self.a_unload.setEnabled(state == "loaded")
+
+    def load_model_now(self):
+        if self._ensure_model():
+            self._preload_local_if_needed()
+
+    def unload_model_now(self):
+        import local_stt
+        local_stt.unload()
+        self._refresh_tray()
 
     def open_settings(self):
         dlg = SettingsDialog(self.cfg, self)
