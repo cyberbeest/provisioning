@@ -1,12 +1,13 @@
 #!/bin/bash
 # Installs Dictate (lib/dictate/, see PROVENANCE.md there): push-to-talk voice
 # dictation that types into whatever window has focus. Runs entirely on this
-# machine -- the speech model (parakeet-primeline, German + other European
-# languages, CPU-only via sherpa-onnx) is downloaded once here and nothing
-# is sent anywhere afterwards. The model comes from cyberbeest.com/models
-# (SHA-256-verified; Hugging Face is the fallback). Cloud providers (Groq/OpenAI) exist in the app
-# but are never configured by this script, and the panel icon's tooltip says
-# in plain words whether audio stays local.
+# machine -- the speech model is downloaded once here (CPU-only, sherpa-onnx)
+# and nothing is sent anywhere afterwards. Two models, picked in Dictate's
+# Settings: "German only (faster)" (~140 MB) and "Multi-language (slower)"
+# (parakeet-primeline, ~640 MB). A fresh install gets German-only on a German
+# machine (LANG=de_*) and multi-language otherwise. Models come from
+# cyberbeest.com/models (SHA-256-verified; Hugging Face / the sherpa-onnx
+# release are the fallbacks). There are no cloud providers in the app.
 #
 # On by default: it autostarts at login as a panel icon with no window
 # (Settings has a checkbox to turn that off). The model is not loaded at
@@ -67,12 +68,16 @@ CONF="$CONF_DIR/config.json"
 if [ ! -f "$CONF" ]; then
     install -d -o "$TARGET_USER" -g "$TARGET_USER" "$CONF_DIR"
     THREADS="$(nproc)"; [ "$THREADS" -gt 4 ] && THREADS=4
+    MODEL="parakeet-primeline-int8"
+    # The machine's language (set by 00-locale-keyboard-timezone.sh) picks the model.
+    case "$(sed -n 's/^LANG=//p' /etc/default/locale 2>/dev/null)" in
+        de_*|de) MODEL="nemo-de-fastconformer-int8" ;;
+    esac
     cat > "$CONF" <<EOF
 {
-  "provider": "parakeet_local",
   "mode": "ptt",
   "key": "f9",
-  "model": "parakeet-primeline-int8",
+  "model": "$MODEL",
   "threshold": 0.0,
   "local_stt_num_threads": $THREADS,
   "local_stt_idle_minutes": 5,
@@ -98,9 +103,10 @@ fi
 if [ "$PROVISIONING_DICTATION_MODEL" = "no" ]; then
     echo "--- Speech model download disabled in the provisioning profile -- skipping ---"
 else
-echo "--- Downloading the speech model (~640 MB, one-time) ---"
+echo "--- Downloading the speech model (one-time) ---"
 run_as_user bash -c "cd '$APP_DIR' && '$APP_DIR/.venv/bin/python' -c '
-import local_stt
+import core, local_stt
+core.load_config()   # selects the model named in config.json
 if local_stt.model_installed():
     print(\"model already installed\")
 else:

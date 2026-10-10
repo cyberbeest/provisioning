@@ -945,7 +945,7 @@ class ProvisioningProfileDialog(Gtk.Dialog):
         add_row(t("run_gui.profile_sounds_label"), self.sounds)
 
         # Dictation speech model (65-dictate.sh): Dictate itself always
-        # installs; this only controls the ~640 MB model download, so test
+        # installs; this only controls the 140-640 MB model download, so test
         # runs in VMs can skip it. Dictate fetches a missing model on first
         # use anyway. 65- reads the answer straight from the profile file.
         self.dictation_model = Gtk.CheckButton(label=t("run_gui.profile_dictation_model_checkbox"))

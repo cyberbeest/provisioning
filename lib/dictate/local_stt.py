@@ -1,4 +1,4 @@
-"""Local German STT via sherpa-onnx + parakeet-primeline (int8, CPU-only).
+"""Local speech-to-text via sherpa-onnx (NeMo transducers, int8, CPU-only).
 
 Offline transducer. Loads once at first use. Not thread-safe over a single
 recognizer instance — we serialize decode calls with a lock; for single-user
@@ -16,17 +16,66 @@ import numpy as np
 
 from i18n import _
 
-MODEL_DIR = Path.home() / ".local" / "share" / "dictate" / "models" / "parakeet-primeline-onnx"
-MODEL_REPO = "flozen1981/parakeet-primeline-onnx"
-# Pin the revision so users always get the exact bits we tested against.
-MODEL_REVISION = "d548e25b9bfe559aa274f361892dc4ed5d64743a"
-MODEL_FILES = [
-    "encoder.int8.onnx",
-    "encoder.int8.onnx.data",   # the 621 MB weight blob — MUST be next to encoder.int8.onnx
-    "decoder.int8.onnx",
-    "joiner.int8.onnx",
-    "tokens.txt",
-]
+_MODELS_ROOT = Path.home() / ".local" / "share" / "dictate" / "models"
+
+# The two speech models Dictate can use. Both are sherpa-onnx NeMo
+# transducers (int8, CPU-only) and both are fetched from our own server first,
+# every file checked against the SHA-256 below, so a changed or tampered
+# upstream/mirror file is rejected rather than loaded. Keys are what the
+# config's "model" setting holds; the first one is the default.
+MODELS = {
+    # German only: ~5x less computation per second of audio, ~140 MB.
+    "nemo-de-fastconformer-int8": {
+        "size_mb": 140,
+        "dir": _MODELS_ROOT / "nemo-de-fastconformer-onnx",
+        "mirror": "https://cyberbeest.com/models/nemo-de-fastconformer-onnx/int8-2026-05",
+        # NVIDIA stt_de_fastconformer_hybrid_large_pc, CC-BY-4.0, as packaged by sherpa-onnx.
+        "tar_url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/"
+                   "sherpa-onnx-nemo-transducer-stt_de_fastconformer_hybrid_large_pc-int8.tar.bz2",
+        "sha256": {
+            "encoder.int8.onnx": "10fbb959c36c461afb02ea87c109119eb001f30e91a130663bd6d5bbcba74ba9",
+            "decoder.int8.onnx": "4633a4b0a3f21f7ace4df02e772f5b5e63d45f84a71ee1e2660998fc4beb46ad",
+            "joiner.int8.onnx":  "bac3af36a9bd66bfcad2ae6a35f17c7853e034e497134a8b0cbe48a8e954bd9f",
+            "tokens.txt":        "abb1136142604d6d1766ad5060bd4f4b1048d7a096cd094b2d40eec3e666be9f",
+        },
+    },
+    # German and other European languages: ~650 MB.
+    "parakeet-primeline-int8": {
+        "size_mb": 640,
+        "dir": _MODELS_ROOT / "parakeet-primeline-onnx",
+        "mirror": "https://cyberbeest.com/models/parakeet-primeline-onnx/d548e25b9bfe",
+        "hf_repo": "flozen1981/parakeet-primeline-onnx",
+        # Pin the revision so users always get the exact bits we tested against.
+        "hf_revision": "d548e25b9bfe559aa274f361892dc4ed5d64743a",
+        "sha256": {
+            "encoder.int8.onnx":      "d4232f86718da0330167fb10789d1a35cffe6a60cd58239957943a8d9bc24c63",
+            "encoder.int8.onnx.data": "d3b0d27912043d38a3c2ce4f2c03124be30bc1ff57d976302908954b2e8fe7bb",  # the weight blob, must sit next to encoder.int8.onnx
+            "decoder.int8.onnx":      "fb4ddefe200706cabb27ee3fc1c81efa50555a4c8a8e00b663cc795216fb9369",
+            "joiner.int8.onnx":       "8220c0d117d81bdd0d8c770881932ac340f1ce4b36932941d561d11ad1aaffce",
+            "tokens.txt":             "ba8e4007c65f4bb4358ffe2ecc13d9ccc7a10351151065242b5c3a943e685742",
+        },
+    },
+}
+DEFAULT_MODEL = "nemo-de-fastconformer-int8"
+_model_id = DEFAULT_MODEL
+
+
+def select_model(model_id: str) -> str:
+    """Make `model_id` the model every function below works on (unknown ids
+    fall back to the default). Returns the id actually selected."""
+    global _model_id
+    _model_id = model_id if model_id in MODELS else DEFAULT_MODEL
+    return _model_id
+
+
+def _spec(model_id: Optional[str] = None) -> dict:
+    return MODELS[model_id or _model_id]
+
+
+def model_dir(model_id: Optional[str] = None) -> Path:
+    return _spec(model_id)["dir"]
+
+
 TARGET_SR = 16000
 DEFAULT_THREADS = 4
 DEFAULT_IDLE_S = 300  # unload the model after this long without a dictation; 0 = never
@@ -52,21 +101,9 @@ def _ram_comfortable() -> bool:
     return False  # cannot tell: fall back to the plain idle timeout
 
 
-def model_installed() -> bool:
-    return all((MODEL_DIR / f).exists() for f in MODEL_FILES)
-
-
-# Our own copy of the pinned revision, tried first; Hugging Face is the
-# fallback. Either way the files must match these hashes, so a changed or
-# tampered upstream/mirror file is rejected rather than loaded.
-MODEL_MIRROR = "https://cyberbeest.com/models/parakeet-primeline-onnx/d548e25b9bfe"
-MODEL_SHA256 = {
-    "encoder.int8.onnx":      "d4232f86718da0330167fb10789d1a35cffe6a60cd58239957943a8d9bc24c63",
-    "encoder.int8.onnx.data": "d3b0d27912043d38a3c2ce4f2c03124be30bc1ff57d976302908954b2e8fe7bb",
-    "decoder.int8.onnx":      "fb4ddefe200706cabb27ee3fc1c81efa50555a4c8a8e00b663cc795216fb9369",
-    "joiner.int8.onnx":       "8220c0d117d81bdd0d8c770881932ac340f1ce4b36932941d561d11ad1aaffce",
-    "tokens.txt":             "ba8e4007c65f4bb4358ffe2ecc13d9ccc7a10351151065242b5c3a943e685742",
-}
+def model_installed(model_id: Optional[str] = None) -> bool:
+    """Whether the given model (default: the selected one) is on disk."""
+    return all((model_dir(model_id) / f).exists() for f in _spec(model_id)["sha256"])
 
 
 def _sha256(path: Path) -> str:
@@ -77,14 +114,15 @@ def _sha256(path: Path) -> str:
     return h.hexdigest()
 
 
-def _download_from_mirror(progress_cb) -> None:
+def _download_from_mirror(progress_cb, model_id=None) -> None:
     import requests
-    for name in MODEL_FILES:
-        dest = MODEL_DIR / name
-        if dest.exists() and _sha256(dest) == MODEL_SHA256[name]:
+    spec = _spec(model_id)
+    for name, want in spec["sha256"].items():
+        dest = model_dir(model_id) / name
+        if dest.exists() and _sha256(dest) == want:
             continue
         part = dest.with_name(name + ".part")
-        url = f"{MODEL_MIRROR}/{name}"
+        url = f"{spec['mirror']}/{name}"
         have = part.stat().st_size if part.exists() else 0
         headers = {"Range": f"bytes={have}-"} if have else {}
         with requests.get(url, headers=headers, stream=True, timeout=30) as r:
@@ -103,41 +141,69 @@ def _download_from_mirror(progress_cb) -> None:
                         last = now
                         progress_cb(_("Downloading model: {name} ({done} / {total} MB)").format(
                             name=name, done=done >> 20, total=total >> 20))
-        if _sha256(part) != MODEL_SHA256[name]:
+        if _sha256(part) != want:
             part.unlink()
             raise RuntimeError(f"{name}: checksum mismatch")
         part.replace(dest)
 
 
-def download_model(progress_cb: Optional[Callable[[str], None]] = None) -> None:
-    """Download the pinned model into MODEL_DIR, checksum-verified.
-
-    Tries our own server first (resumable), then Hugging Face. Blocks. Raises
-    RuntimeError on failure. `progress_cb(msg)` gets short status strings for
-    GUI display.
-    """
-    MODEL_DIR.mkdir(parents=True, exist_ok=True)
-    if progress_cb:
-        progress_cb(_("Downloading model (~640 MB, one-time) ..."))
-    try:
-        _download_from_mirror(progress_cb)
-    except Exception as mirror_err:
-        if progress_cb:
-            progress_cb(_("Our server did not deliver the model, trying Hugging Face ..."))
+def _download_fallback(progress_cb, model_id=None) -> None:
+    """Second source if our own server did not deliver: Hugging Face for the
+    multi-language model, the sherpa-onnx release archive for the German one."""
+    spec = _spec(model_id)
+    if "hf_repo" in spec:
         try:
             from huggingface_hub import snapshot_download
         except ImportError as e:
-            raise RuntimeError(f"download failed ({mirror_err}) and huggingface_hub is not installed") from e
+            raise RuntimeError("huggingface_hub is not installed") from e
         snapshot_download(
-            repo_id=MODEL_REPO,
-            revision=MODEL_REVISION,
-            local_dir=str(MODEL_DIR),
-            allow_patterns=MODEL_FILES,
+            repo_id=spec["hf_repo"],
+            revision=spec["hf_revision"],
+            local_dir=str(model_dir(model_id)),
+            allow_patterns=list(spec["sha256"]),
         )
-        for name in MODEL_FILES:
-            if _sha256(MODEL_DIR / name) != MODEL_SHA256[name]:
-                (MODEL_DIR / name).unlink()
-                raise RuntimeError(f"{name}: checksum mismatch after Hugging Face download")
+    else:
+        import requests
+        import tarfile
+        import tempfile
+        with tempfile.TemporaryFile() as tmp:
+            with requests.get(spec["tar_url"], stream=True, timeout=30) as r:
+                r.raise_for_status()
+                for block in r.iter_content(1 << 20):
+                    tmp.write(block)
+            tmp.seek(0)
+            with tarfile.open(fileobj=tmp, mode="r:bz2") as tar:
+                for member in tar.getmembers():
+                    name = Path(member.name).name
+                    if member.isfile() and name in spec["sha256"]:
+                        # Written under our own name only, never the archive's path.
+                        (model_dir(model_id) / name).write_bytes(tar.extractfile(member).read())
+    for name, want in spec["sha256"].items():
+        if _sha256(model_dir(model_id) / name) != want:
+            (model_dir(model_id) / name).unlink()
+            raise RuntimeError(f"{name}: checksum mismatch after fallback download")
+
+
+def download_model(progress_cb: Optional[Callable[[str], None]] = None,
+                   model_id: Optional[str] = None) -> None:
+    """Download the selected model into its folder, checksum-verified.
+
+    Tries our own server first (resumable), then the fallback source. Blocks.
+    Raises RuntimeError on failure. `progress_cb(msg)` gets short status
+    strings for GUI display.
+    """
+    model_dir(model_id).mkdir(parents=True, exist_ok=True)
+    if progress_cb:
+        progress_cb(_("Downloading model (about {mb} MB, one-time) ...").format(mb=_spec(model_id)["size_mb"]))
+    try:
+        _download_from_mirror(progress_cb, model_id)
+    except Exception as mirror_err:
+        if progress_cb:
+            progress_cb(_("Our server did not deliver the model, trying another source ..."))
+        try:
+            _download_fallback(progress_cb, model_id)
+        except Exception as e:
+            raise RuntimeError(f"download failed ({mirror_err}); fallback failed too ({e})") from e
     if progress_cb:
         progress_cb(_("Model downloaded."))
 
@@ -147,6 +213,8 @@ class LocalRecognizer:
 
     def __init__(self, num_threads: int):
         self.num_threads = num_threads
+        self.model_id = _model_id
+        self._dir = model_dir()
         self._recognizer = None
         self._decode_lock = threading.Lock()
         self.last_used = time.monotonic()
@@ -158,10 +226,10 @@ class LocalRecognizer:
         try:
             import sherpa_onnx
             rec = sherpa_onnx.OfflineRecognizer.from_transducer(
-                encoder=str(MODEL_DIR / "encoder.int8.onnx"),
-                decoder=str(MODEL_DIR / "decoder.int8.onnx"),
-                joiner=str(MODEL_DIR / "joiner.int8.onnx"),
-                tokens=str(MODEL_DIR / "tokens.txt"),
+                encoder=str(self._dir / "encoder.int8.onnx"),
+                decoder=str(self._dir / "decoder.int8.onnx"),
+                joiner=str(self._dir / "joiner.int8.onnx"),
+                tokens=str(self._dir / "tokens.txt"),
                 model_type="nemo_transducer",
                 num_threads=self.num_threads,
                 decoding_method="greedy_search",
@@ -308,7 +376,7 @@ def status():
     """('not_loaded' | 'loading' | 'loaded', seconds until idle unload or None)."""
     with _instance_lock:
         inst = _instance
-        if inst is None:
+        if inst is None or inst.model_id != _model_id:
             return "not_loaded", None
         if not inst._ready.is_set():
             return "loading", None
@@ -331,7 +399,8 @@ def get_recognizer(num_threads: int = DEFAULT_THREADS, idle_s: float = DEFAULT_I
     global _instance, _idle_s
     with _instance_lock:
         _idle_s = idle_s
-        if _instance is None or _instance.num_threads != num_threads:
+        if (_instance is None or _instance.num_threads != num_threads
+                or _instance.model_id != _model_id):
             _instance = LocalRecognizer(num_threads)
         _instance.last_used = time.monotonic()
         _arm_idle_timer()
