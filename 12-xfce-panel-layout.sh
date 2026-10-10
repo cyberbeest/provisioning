@@ -190,6 +190,31 @@ install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 \
 	"$DIR"/lib/assets/icons-adwaita-symbolic-status/*.svg \
 	"$TARGET_HOME/.local/share/icons/Adwaita/symbolic/status/"
 
+# The pulseaudio plugin flashes a red microphone next to the volume icon
+# while any program records through the sound server (Dictate does on every
+# hotkey press). It does not cover programs that open the ALSA hardware
+# directly (Audacity), so it is no reliable mic-in-use warning, only noise.
+# The plugin has no setting to turn it off; zero-size CSS removes it without
+# leaving a gap. Kept in a marked block so a user's own gtk.css survives.
+echo "--- Hiding the panel's recording indicator (gtk.css) ---"
+GTK_CSS="$TARGET_HOME/.config/gtk-3.0/gtk.css"
+install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.config/gtk-3.0"
+touch "$GTK_CSS"
+sed -i '/^\/\* BEGIN cyberbeest-recording-indicator \*\/$/,/^\/\* END cyberbeest-recording-indicator \*\/$/d' "$GTK_CSS"
+cat >> "$GTK_CSS" <<'CSS'
+/* BEGIN cyberbeest-recording-indicator */
+.recording-indicator {
+	opacity: 0;
+	-gtk-icon-source: none;
+	min-width: 0;
+	min-height: 0;
+	margin: 0 -28px 0 0;
+	padding: 0;
+}
+/* END cyberbeest-recording-indicator */
+CSS
+chown "$TARGET_USER:$TARGET_USER" "$GTK_CSS"
+
 echo "--- Writing genmon-211.rc, kitt-scanner-214.rc, mem-liquid-215.rc ---"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.config/xfce4/panel"
 sed "s|__HOME__|$TARGET_HOME|g" "$LAYOUT/genmon.rc.template" > "$TARGET_HOME/.config/xfce4/panel/genmon-211.rc"
