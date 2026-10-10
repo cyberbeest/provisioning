@@ -11,10 +11,12 @@
 # no longer unlock. disk_password_gui.py generates and stores that form.
 # Check before rebooting:  echo -n 'the-words-here' | sudo cryptsetup open --test-passphrase <device>
 #
-# crypttab has room for ONE keyscript. This conflicts with
-# enable-boot-fresh.sh (cyberbeest-askpass-boot-fresh); the script refuses to
-# run when another keyscript is wired in -- merge the normalization step into
-# that wrapper instead.
+# crypttab has room for ONE keyscript. With Boot Fresh installed, its wrapper
+# (cyberbeest-askpass-boot-fresh) stays the keyscript and applies the shared
+# filter (lib/cyberbeest-passphrase-filter) itself; this script then only
+# installs the filter + its initramfs hook. enable-boot-fresh.sh does the
+# reverse switch when run on a machine that already has this feature. Any other
+# keyscript makes this script refuse to run.
 #
 # Verified 2026-10-09 in a Debian 13 UEFI LUKS test VM (tower, pwtest):
 # "TIGER  Lamp..OCEAN " unlocked a disk whose passphrase is
@@ -37,8 +39,11 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 KEYSCRIPT=/lib/cryptsetup/cyberbeest-askpass-words
+BOOT_FRESH_KEYSCRIPT=/lib/cryptsetup/cyberbeest-askpass-boot-fresh
 
-if grep -q keyscript= /etc/crypttab && ! grep -q "keyscript=$KEYSCRIPT" /etc/crypttab; then
+if grep -q keyscript= /etc/crypttab \
+   && ! grep -q "keyscript=$KEYSCRIPT" /etc/crypttab \
+   && ! grep -q "keyscript=$BOOT_FRESH_KEYSCRIPT" /etc/crypttab; then
 	echo "ABORT: /etc/crypttab already uses a different keyscript:" >&2
 	grep keyscript= /etc/crypttab >&2
 	exit 1
@@ -50,7 +55,7 @@ if [ -t 0 ] && [ -z "${PWWORDS_SKIP_CHECK:-}" ]; then
 	read -rsp "Type the current master passphrase to check it (Enter to skip): " PW; echo
 	if [ -n "$PW" ]; then
 		STUB="$(mktemp)"; printf '#!/bin/sh\nprintf %%s "$PW"\n' > "$STUB"; chmod 700 "$STUB"
-		NORM="$(PW="$PW" CYBERBEEST_ASKPASS="$STUB" sh "$DIR/../lib/cyberbeest-askpass-words" x)"; rm -f "$STUB"
+		NORM="$(PW="$PW" CYBERBEEST_ASKPASS="$STUB" CYBERBEEST_FILTER="$DIR/../lib/cyberbeest-passphrase-filter" sh "$DIR/../lib/cyberbeest-askpass-words" x)"; rm -f "$STUB"
 		if [ "$NORM" != "$PW" ]; then
 			echo "ABORT: that passphrase is not in canonical form (it would become '$NORM'); the disk would stop unlocking. Change it with disk_password_gui.py first." >&2
 			exit 1
@@ -65,22 +70,38 @@ if [ -t 0 ] && [ -z "${PWWORDS_SKIP_CHECK:-}" ]; then
 	unset PW
 fi
 
-echo "--- backing up current initrds to /boot/cyberbeest-words-backup ---"
+echo "--- backing up the running kernel's initrd to /boot/cyberbeest-words-backup ---"
 install -d /boot/cyberbeest-words-backup
-cp -n /boot/initrd.img-* /boot/cyberbeest-words-backup/
+cp -n "/boot/initrd.img-$(uname -r)" /boot/cyberbeest-words-backup/
 
-echo "--- installing keyscript ---"
+echo "--- installing the shared passphrase filter + its initramfs hook ---"
 install -d /lib/cryptsetup
-install -m 755 "$DIR/../lib/cyberbeest-askpass-words" "$KEYSCRIPT"
+install -m 644 "$DIR/../lib/cyberbeest-passphrase-filter" /lib/cryptsetup/cyberbeest-passphrase-filter
+install -d /etc/initramfs-tools/hooks
+install -m 755 "$DIR/../lib/cyberbeest-passphrase-filter.hook" /etc/initramfs-tools/hooks/cyberbeest-passphrase-filter
 
-echo "--- wiring the keyscript into /etc/crypttab ---"
-if grep -q "keyscript=$KEYSCRIPT" /etc/crypttab; then
-	echo "already wired, skipping"
+if grep -q "keyscript=$BOOT_FRESH_KEYSCRIPT" /etc/crypttab; then
+	echo "--- Boot Fresh keyscript already in /etc/crypttab: refreshing it (it applies the filter), leaving crypttab alone ---"
+	install -m 755 "$DIR/lib/cyberbeest-askpass-boot-fresh" "$BOOT_FRESH_KEYSCRIPT"
 else
-	cp /etc/crypttab "/etc/crypttab.bak-words-$(date +%s)"
-	sed -i -E "/keyscript=/! s#^(\S+[[:space:]]+\S+[[:space:]]+\S+[[:space:]]+)(\S+)\$#\1\2,keyscript=$KEYSCRIPT#" /etc/crypttab
-	cat /etc/crypttab
+	echo "--- installing keyscript ---"
+	install -m 755 "$DIR/../lib/cyberbeest-askpass-words" "$KEYSCRIPT"
+
+	echo "--- wiring the keyscript into /etc/crypttab ---"
+	if grep -q "keyscript=$KEYSCRIPT" /etc/crypttab; then
+		echo "already wired, skipping"
+	else
+		cp /etc/crypttab "/etc/crypttab.bak-words-$(date +%s)"
+		sed -i -E "/keyscript=/! s#^(\S+[[:space:]]+\S+[[:space:]]+\S+[[:space:]]+)(\S+)\$#\1\2,keyscript=$KEYSCRIPT#" /etc/crypttab
+		cat /etc/crypttab
+	fi
 fi
+
+# Read by every script that (re)generates the theme from its template, so
+# word mode survives them. The initramfs only reads the finished theme.
+install -d -m 755 /etc/cyberbeest
+printf '%s' "${WORD_MODE:-1}" > /etc/cyberbeest/word-passphrase-mode
+chmod 644 /etc/cyberbeest/word-passphrase-mode
 
 echo "--- rebuilding the Plymouth theme (preserving machine name / bright mode) ---"
 THEME_SRC="$DIR/../lib/plymouth-theme"

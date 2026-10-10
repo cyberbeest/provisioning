@@ -4,26 +4,17 @@
 # place of the default /lib/cryptsetup/askpass. Called exactly like askpass
 # (run_keyscript in /lib/cryptsetup/functions execs it with crypttab's key
 # field as $1 and pipes its stdout into cryptsetup), so it behaves as a
-# passthrough except for normalizing the typed passphrase:
+# passthrough except that the typed passphrase is normalized by the shared
+# filter (lib/cyberbeest-passphrase-filter): "Tiger  Lamp.ocean " unlocks a
+# disk whose passphrase is "tiger-lamp-ocean". The Plymouth theme
+# (cyberbeest.script, word_mode) draws the same rules as check marks +
+# bullets, so the two must stay in sync.
 #
-#   * German umlauts are transliterated: ae oe ue ss (also upper case)
-#   * upper case becomes lower case (ASCII; wordlists are plain a-z)
-#   * every run of characters other than a-z, 0-9 and non-ASCII bytes
-#     (space . , _ - ; and so on) becomes a single "-"
-#   * leading and trailing "-" are dropped
+# The passphrase stored in the LUKS header MUST already be in canonical
+# form -- disk_password_gui.py generates and normalizes it.
 #
-# so "Tiger  Lamp.ocean " unlocks a disk whose passphrase is
-# "tiger-lamp-ocean". The Plymouth theme (cyberbeest.script, word_mode)
-# draws the same rules as pills + bullets, so the two must stay in sync.
-# Remaining bytes >= 0x80 count as word characters (other UTF-8 letters
-# pass through untouched), matching word_is_sep() in the theme.
-#
-# The passphrase stored in the LUKS header MUST already be in this
-# canonical form -- disk_password_gui.py generates and normalizes it.
-#
-# Ctrl+F (0x06) is stripped like cyberbeest-askpass-boot-fresh does, in
-# case Plymouth's keyboard handling embedded one; it is not treated as a
-# separator. POSIX sh only: dash is /bin/sh in the initramfs.
+# Machines with Boot Fresh keep cyberbeest-askpass-boot-fresh as their
+# keyscript instead; it applies the same filter (crypttab holds only one).
 set -eu
 
 PROMPT="${1:-}"
@@ -31,36 +22,7 @@ if [ "$PROMPT" = "none" ] || [ -z "$PROMPT" ]; then
 	PROMPT="Enter master password to decrypt hard drive: "
 fi
 
-# CYBERBEEST_ASKPASS lets enable-passphrase-words.sh test this exact filter
-# against a candidate passphrase; unset (always, in the initramfs) = real askpass.
-raw="$(${CYBERBEEST_ASKPASS:-/lib/cryptsetup/askpass} "$PROMPT")"
-
-ctrl_f="$(printf '\6')"
-oct_hi="$(printf '\200')"
-oct_max="$(printf '\377')"
-
-# UTF-8 byte sequences, built with printf (no \x escapes in POSIX sed).
-a_uml="$(printf '\303\244')"; A_uml="$(printf '\303\204')"
-o_uml="$(printf '\303\266')"; O_uml="$(printf '\303\226')"
-u_uml="$(printf '\303\274')"; U_uml="$(printf '\303\234')"
-sz="$(printf '\303\237')"; SZ="$(printf '\341\272\236')"
-
-s="$(printf '%s' "$raw" | tr -d "$ctrl_f" |
-	sed -e "s/$a_uml/ae/g;s/$A_uml/Ae/g;s/$o_uml/oe/g;s/$O_uml/Oe/g" \
-	    -e "s/$u_uml/ue/g;s/$U_uml/Ue/g;s/$sz/ss/g;s/$SZ/SS/g" |
-	tr 'A-Z' 'a-z' | tr -c "a-z0-9${oct_hi}-${oct_max}" '-' | tr -s '-')"
-
-while :; do
-	case "$s" in
-	-*) s="${s#-}" ;;
-	*) break ;;
-	esac
-done
-while :; do
-	case "$s" in
-	*-) s="${s%-}" ;;
-	*) break ;;
-	esac
-done
-
-printf '%s' "$s"
+# The two overrides exist so enable-passphrase-words.sh can test this exact
+# code against a candidate passphrase; both are unset in the initramfs.
+. "${CYBERBEEST_FILTER:-/lib/cryptsetup/cyberbeest-passphrase-filter}"
+${CYBERBEEST_ASKPASS:-/lib/cryptsetup/askpass} "$PROMPT" | cyberbeest_normalize_passphrase

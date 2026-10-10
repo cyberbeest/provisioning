@@ -1,0 +1,49 @@
+# Sourced (not executed) by the crypttab keyscripts -- installed as
+# /lib/cryptsetup/cyberbeest-passphrase-filter and copied into the initramfs
+# by cyberbeest-passphrase-filter.hook. Defines one function:
+#
+#   cyberbeest_normalize_passphrase   reads the typed text on stdin, writes the
+#                                     canonical passphrase to stdout
+#
+# Rules (kept in sync with normalize_passphrase() in disk_password_gui.py and
+# the theme's word_is_sep() in cyberbeest.script):
+#   * German umlauts are transliterated: ae oe ue ss (also upper case)
+#   * upper case becomes lower case (ASCII; the wordlists are plain a-z)
+#   * every run of characters other than a-z, 0-9 and non-ASCII bytes
+#     (space . , _ - ; and so on) becomes a single "-"
+#   * leading and trailing "-" are dropped
+#   * a Ctrl+F byte (0x06) is removed and is not a separator
+# so "Tiger  Lamp.ocean " becomes "tiger-lamp-ocean". Remaining bytes >= 0x80
+# count as word characters, matching the theme.
+#
+# POSIX sh only: dash is /bin/sh in the initramfs; sed and tr come from
+# busybox there.
+cyberbeest_normalize_passphrase() {
+	_ctrl_f="$(printf '\6')"
+	_oct_hi="$(printf '\200')"
+	_oct_max="$(printf '\377')"
+	# UTF-8 byte sequences, built with printf (no \x escapes in POSIX sed).
+	_a_uml="$(printf '\303\244')"; _A_uml="$(printf '\303\204')"
+	_o_uml="$(printf '\303\266')"; _O_uml="$(printf '\303\226')"
+	_u_uml="$(printf '\303\274')"; _U_uml="$(printf '\303\234')"
+	_sz="$(printf '\303\237')"; _SZ="$(printf '\341\272\236')"
+
+	_s="$(tr -d "$_ctrl_f" |
+		sed -e "s/$_a_uml/ae/g;s/$_A_uml/Ae/g;s/$_o_uml/oe/g;s/$_O_uml/Oe/g" \
+		    -e "s/$_u_uml/ue/g;s/$_U_uml/Ue/g;s/$_sz/ss/g;s/$_SZ/SS/g" |
+		tr 'A-Z' 'a-z' | tr -c "a-z0-9${_oct_hi}-${_oct_max}" '-' | tr -s '-')"
+
+	while :; do
+		case "$_s" in
+		-*) _s="${_s#-}" ;;
+		*) break ;;
+		esac
+	done
+	while :; do
+		case "$_s" in
+		*-) _s="${_s%-}" ;;
+		*) break ;;
+		esac
+	done
+	printf '%s' "$_s"
+}

@@ -4,7 +4,7 @@
 # the default /lib/cryptsetup/askpass. Called exactly like askpass itself
 # (run_keyscript in /lib/cryptsetup/functions execs it with the prompt
 # text as $1, on the left side of a pipe into cryptsetup) -- so this must
-# behave as a transparent passthrough, differing only in the two things
+# behave as a transparent passthrough, differing only in the things
 # below.
 #
 # 1. Before showing the prompt, tells the Plymouth theme whether a
@@ -70,9 +70,19 @@ case "$raw" in
 	log "Ctrl+F detected -- stripping and setting noresume"
 	rm -f /boot/cyberbeest-hibernated
 	touch /run/cyberbeest-noresume
-	printf '%s' "$raw" | tr -d "$ctrl_f"
-	;;
-*)
-	printf '%s' "$raw"
+	raw="$(printf '%s' "$raw" | tr -d "$ctrl_f")"
 	;;
 esac
+
+# 3. Normalize the typed words (lower case, any separator -> "-", umlauts)
+#    when word passphrase entry is installed (enable-passphrase-words.sh puts
+#    the shared filter into the initramfs). Without it, pass the text through
+#    untouched, as before. crypttab holds one keyscript, so this wrapper
+#    carries the filter for machines that have both features.
+FILTER=/lib/cryptsetup/cyberbeest-passphrase-filter
+if [ -r "$FILTER" ]; then
+	. "$FILTER"
+	printf '%s' "$raw" | cyberbeest_normalize_passphrase
+else
+	printf '%s' "$raw"
+fi

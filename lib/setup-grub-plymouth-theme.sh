@@ -65,11 +65,16 @@ fi
 # also toggleable there, both rewriting the theme in place through
 # cyberbeest-set-boot-name / cyberbeest-set-boot-bright-mode (installed
 # below) rather than this script running again.
+# __WORD_MODE__ comes from the state file enable-passphrase-words.sh writes
+# (word passphrase entry is opt-in until it ships by default); the theme only
+# shows words + check marks when the keyscript that normalizes them is wired in.
+WORD_MODE="$(cat /etc/cyberbeest/word-passphrase-mode 2>/dev/null || echo 0)"
 sed -e "s|__LUKS_PROMPT__|$(t plymouth.luks_prompt)|" \
     -e "s|__LUKS_SUCCESS__|$(t plymouth.luks_success)|" \
     -e "s|__SHUTDOWN_TEXT__|$(t plymouth.shutdown_text)|" \
     -e "s|__MACHINE_NAME__||" \
     -e "s|__BRIGHT_MODE__|1|" \
+    -e "s|__WORD_MODE__|$WORD_MODE|" \
     "$THEME_SRC/cyberbeest.script" \
 	> "$THEME_DIR/cyberbeest.script"
 chmod 644 "$THEME_DIR/cyberbeest.script"

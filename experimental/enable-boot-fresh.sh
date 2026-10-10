@@ -73,8 +73,16 @@ install -m 755 "$DIR/lib/resume-boot-fresh" /etc/initramfs-tools/scripts/local-p
 
 echo "--- wiring the keyscript into /etc/crypttab ---"
 KEYSCRIPT=/lib/cryptsetup/cyberbeest-askpass-boot-fresh
+WORDS_KEYSCRIPT=/lib/cryptsetup/cyberbeest-askpass-words
 if grep -q "keyscript=$KEYSCRIPT" /etc/crypttab; then
 	echo "already wired, skipping"
+elif grep -q "keyscript=$WORDS_KEYSCRIPT" /etc/crypttab; then
+	# enable-passphrase-words.sh was run first. This wrapper applies the same
+	# shared filter (installed by that script), so just swap the keyscript.
+	echo "switching from the word-passphrase keyscript (this wrapper normalizes too)"
+	cp /etc/crypttab "/etc/crypttab.bak-$(date +%s)"
+	sed -i "s#keyscript=$WORDS_KEYSCRIPT#keyscript=$KEYSCRIPT#" /etc/crypttab
+	cat /etc/crypttab
 else
 	cp /etc/crypttab "/etc/crypttab.bak-$(date +%s)"
 	# Appends to the 4th (options) field of every crypttab line that
@@ -96,6 +104,7 @@ fi
 . "$DIR/../lib/i18n.sh"
 MACHINE_NAME="$(cat /etc/cyberbeest/machine-name 2>/dev/null || true)"
 BRIGHT_MODE="$(cat /etc/cyberbeest/plymouth-bright-mode 2>/dev/null || echo 1)"
+WORD_MODE="$(cat /etc/cyberbeest/word-passphrase-mode 2>/dev/null || echo 0)"
 sed_escape() {
 	local s="$1"
 	s="${s//\\/\\\\}"
@@ -107,6 +116,7 @@ sed -e "s|__LUKS_PROMPT__|$(sed_escape "$(t plymouth.luks_prompt)")|" \
     -e "s|__SHUTDOWN_TEXT__|$(sed_escape "$(t plymouth.shutdown_text)")|" \
     -e "s|__MACHINE_NAME__|$(sed_escape "$MACHINE_NAME")|" \
     -e "s|__BRIGHT_MODE__|$(sed_escape "$BRIGHT_MODE")|" \
+    -e "s|__WORD_MODE__|$(sed_escape "$WORD_MODE")|" \
     "$THEME_SRC/cyberbeest.script" > "$THEME_DIR/cyberbeest.script"
 chmod 644 "$THEME_DIR/cyberbeest.script"
 # -R (--rebuild-initrd) already calls plymouth-update-initrd internally
