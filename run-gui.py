@@ -491,6 +491,7 @@ SCRIPT_DURATION_ESTIMATES = {
     "58-cyberbeest-image-viewer.sh": 36,
     "59-cyberbeest-scanner.sh": 144,
     "60-xfce-panel-watchdog.sh": 1,
+    "65-dictate.sh": 240,
     "91-sandbox-vm.sh": 0,
 }
 
@@ -943,6 +944,14 @@ class ProvisioningProfileDialog(Gtk.Dialog):
         self.sounds.set_active(prev.get("PROVISIONING_SOUNDS", "yes") != "no")
         add_row(t("run_gui.profile_sounds_label"), self.sounds)
 
+        # Dictation speech model (65-dictate.sh): Dictate itself always
+        # installs; this only controls the ~640 MB model download, so test
+        # runs in VMs can skip it. Dictate fetches a missing model on first
+        # use anyway. 65- reads the answer straight from the profile file.
+        self.dictation_model = Gtk.CheckButton(label=t("run_gui.profile_dictation_model_checkbox"))
+        self.dictation_model.set_active(prev.get("PROVISIONING_DICTATION_MODEL", "yes") != "no")
+        add_row(t("run_gui.profile_dictation_model_label"), self.dictation_model)
+
         # VM image download (56-cyberbeest-sandbox-vm-kvm.sh): the
         # hypervisor itself (53a-qemu-kvm-virt-manager.sh, KVM -- the only one
         # provisioning ships, VirtualBox was dropped entirely 2026-09-19)
@@ -1057,6 +1066,7 @@ class ProvisioningProfileDialog(Gtk.Dialog):
             "PROVISIONING_TIMEZONE": self.tz_combo.get_child().get_text().strip() or "UTC",
             "PROVISIONING_TOUCHPAD_TUNING": "yes" if self.touchpad_tuning.get_active() else "no",
             "PROVISIONING_SOUNDS": "yes" if self.sounds.get_active() else "no",
+            "PROVISIONING_DICTATION_MODEL": "yes" if self.dictation_model.get_active() else "no",
             "PROVISIONING_VM_IMAGE": "yes" if self.vm_image.get_active() else "no",
             "PROVISIONING_VM_UPDATE": "yes" if self.vm_update and self.vm_update.get_active() else "no",
         }

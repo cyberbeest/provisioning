@@ -257,6 +257,8 @@ STRINGS = {
     ),
     "run_gui.profile_sounds_label": "Sounds:",
     "run_gui.profile_sounds_checkbox": "Play the Cyberbeest startup and shutdown sounds, and set the volume to maximum",
+    "run_gui.profile_dictation_model_label": "Dictation:",
+    "run_gui.profile_dictation_model_checkbox": "Download the speech model for voice dictation (~640 MB)",
     "run_gui.profile_vm_image_label": "VM image:",
     "run_gui.profile_vm_image_checkbox": "Download the Cyberbeest VM disk image (KVM)",
     "run_gui.profile_vm_update_label": "VM update:",

@@ -270,6 +270,8 @@ STRINGS = {
     ),
     "run_gui.profile_sounds_label": "Töne:",
     "run_gui.profile_sounds_checkbox": "Cyberbeest-Start- und Abschalt-Töne abspielen und die Lautstärke auf Maximum setzen",
+    "run_gui.profile_dictation_model_label": "Diktat:",
+    "run_gui.profile_dictation_model_checkbox": "Sprachmodell für das Diktieren herunterladen (~640 MB)",
     "run_gui.profile_vm_image_label": "VM-Image:",
     "run_gui.profile_vm_image_checkbox": "Cyberbeest-VM-Image herunterladen (KVM)",
     "run_gui.profile_vm_update_label": "VM-Update:",
