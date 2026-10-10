@@ -1120,6 +1120,7 @@ class RunGuiWindow(Gtk.Window):
         button_box.pack_start(button_row1, False, False, 0)
 
         self.run_changed_button = Gtk.Button(label=t("run_gui.button_run_changed"))
+        self.run_changed_button.get_style_context().add_class("suggested-action")
         self.run_changed_button.connect("clicked", lambda _b: self.start_sequence(changed_only=True))
         button_row1.pack_start(self.run_changed_button, False, False, 0)
 
@@ -1585,6 +1586,19 @@ class RunGuiWindow(Gtk.Window):
             t("run_gui.button_run_changed_count").format(count=changed_count)
         )
         self.run_changed_button.set_sensitive(not self.busy and changed_count > 0)
+        # The status line's resting text doubles as a hint about what to
+        # click; only swap it while it still shows one of the two idle texts.
+        idle_text = (
+            t("run_gui.status_idle_changed").format(count=changed_count)
+            if changed_count > 0
+            else t("run_gui.status_idle")
+        )
+        if self.status_label.get_text() in (
+            t("run_gui.status_idle"),
+            getattr(self, "_idle_changed_text", None),
+        ):
+            self.status_label.set_text(idle_text)
+            self._idle_changed_text = idle_text
 
     def _update_run_selected_sensitivity(self):
         has_selection = bool(self.listbox.get_selected_rows())

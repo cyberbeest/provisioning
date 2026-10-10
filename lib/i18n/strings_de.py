@@ -295,8 +295,8 @@ STRINGS = {
         "Die VM muss während des Updates ausgeschaltet sein. Dateien im Ordner "
         "VM-Shared sind nicht betroffen."
     ),
-    "run_gui.button_run_changed": "Nur Geändertes ausführen",
-    "run_gui.button_run_changed_count": "Nur Geändertes ausführen ({count})",
+    "run_gui.button_run_changed": "Geänderte Skripte ausführen",
+    "run_gui.button_run_changed_count": "Geänderte Skripte ausführen ({count})",
     "run_gui.button_run_all": "Alles ausführen",
     "run_gui.button_run_selected": "Auswahl ausführen",
     "run_gui.button_profile": "Profil...",
@@ -314,6 +314,7 @@ STRINGS = {
     "run_gui.menu_switch_to_update": "Schließen und nach Updates suchen (Cyberbeest Update)",
     "run_gui.timing_summary": "{elapsed} | {remaining} | {total}",
     "run_gui.status_idle": "Bereit. Doppelklick auf ein Skript unten, um nur dieses auszuführen.",
+    "run_gui.status_idle_changed": "{count} geänderte Skripte. Doppelklick auf ein Skript unten, um nur dieses auszuführen.",
     "run_gui.todo_frame_title": "Nach dem Provisioning noch zu erledigen",
     "run_gui.log_hasnt_run_this_session": (
         "-- {script} wurde in dieser Sitzung noch nicht ausgeführt; zeige das "

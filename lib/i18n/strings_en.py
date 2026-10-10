@@ -281,8 +281,8 @@ STRINGS = {
         "so nothing in it is lost. Only one backup is kept. The VM must be shut down "
         "during the update. Files in the VM-Shared folder are not affected."
     ),
-    "run_gui.button_run_changed": "Run changed only",
-    "run_gui.button_run_changed_count": "Run changed only ({count})",
+    "run_gui.button_run_changed": "Run changed scripts",
+    "run_gui.button_run_changed_count": "Run changed scripts ({count})",
     "run_gui.button_run_all": "Run all",
     "run_gui.button_run_selected": "Run selected",
     "run_gui.button_profile": "Profile...",
@@ -300,6 +300,7 @@ STRINGS = {
     "run_gui.menu_switch_to_update": "Close and check for updates (Cyberbeest Update)",
     "run_gui.timing_summary": "{elapsed} | {remaining} | {total}",
     "run_gui.status_idle": "Idle. Double-click a script below to run just that one.",
+    "run_gui.status_idle_changed": "{count} changed scripts. Double-click a script below to run just that one.",
     "run_gui.todo_frame_title": "Things to do after the provisioning completed",
     "run_gui.log_hasnt_run_this_session": (
         "-- {script} hasn't run in this session; showing its log from a previous run --\n\n"
