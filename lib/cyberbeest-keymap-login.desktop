@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Cyberbeest keyboard layout at login
+Comment=Loads the configured keyboard layout into X's main keyboard so programs that type text (Dictate) use it
+Exec=/home/cyberbeest/.local/bin/cyberbeest-keymap-login.sh
+NoDisplay=true
+OnlyShowIn=XFCE;
+X-XFCE-Autostart-Phase=Initialization
