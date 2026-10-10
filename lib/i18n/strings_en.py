@@ -214,6 +214,13 @@ STRINGS = {
     "update_genmon.run_now": "Run updates now",
     "update_genmon.run_now_already_running": "An update check is already running.",
     "update_genmon.run_now_failed": "Couldn't start the update check.",
+    "update_genmon.settings": "Settings...",
+    "update_genmon.settings_title": "Security Update Settings",
+    "update_genmon.settings_save_failed": "Couldn't save the setting.",
+    "update_genmon.delay_prompt": "Wait after startup before checking for updates:",
+    "update_genmon.delay_hint": "Updates are never installed in the first minutes after you switch the computer on. The next check afterwards picks them up.",
+    "update_genmon.save": "Save",
+    "update_genmon.cancel": "Cancel",
     "update_genmon.interrupted": (
         "The last update check was interrupted (likely a shutdown or reboot "
         "mid-run) -- it'll retry automatically on the usual schedule."

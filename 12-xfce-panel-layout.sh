@@ -110,6 +110,9 @@ install -o "$TARGET_USER" -g "$TARGET_USER" -m 755 \
 # shutdown-timer-menu.py.
 install -o "$TARGET_USER" -g "$TARGET_USER" -m 755 \
 	"$DIR/lib/update-genmon-view-log.py" "$TARGET_HOME/.local/bin/update-genmon-view-log.py"
+# Opened from that dialog's Settings... button.
+install -o "$TARGET_USER" -g "$TARGET_USER" -m 755 \
+	"$DIR/lib/update-genmon-settings.py" "$TARGET_HOME/.local/bin/update-genmon-settings.py"
 # update-genmon.sh sources i18n.sh relative to its own location, so that (and
 # its strings.*.sh catalogs) need to live next to it too -- see lib/i18n.sh.
 install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 "$DIR/lib/i18n.sh" "$TARGET_HOME/.local/bin/i18n.sh"

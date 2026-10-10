@@ -224,6 +224,13 @@ STRINGS = {
     "update_genmon.run_now": "Jetzt aktualisieren",
     "update_genmon.run_now_already_running": "Eine Update-Prüfung läuft bereits.",
     "update_genmon.run_now_failed": "Update-Prüfung konnte nicht gestartet werden.",
+    "update_genmon.settings": "Einstellungen...",
+    "update_genmon.settings_title": "Einstellungen für Sicherheitsupdates",
+    "update_genmon.settings_save_failed": "Die Einstellung konnte nicht gespeichert werden.",
+    "update_genmon.delay_prompt": "Nach dem Start warten, bevor nach Updates gesucht wird:",
+    "update_genmon.delay_hint": "In den ersten Minuten nach dem Einschalten werden keine Updates installiert. Die nächste Prüfung danach holt sie nach.",
+    "update_genmon.save": "Speichern",
+    "update_genmon.cancel": "Abbrechen",
     "update_genmon.interrupted": (
         "Die letzte Update-Prüfung wurde unterbrochen (vermutlich durch ein "
         "Herunterfahren oder einen Neustart mittendrin) -- sie wird "

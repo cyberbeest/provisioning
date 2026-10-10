@@ -95,6 +95,7 @@ class LogDialog:
             t("update_genmon.run_now"), Gtk.ResponseType.APPLY)
         self.reboot_button = self.dialog.add_button(
             t("update_genmon.reboot_now"), Gtk.ResponseType.YES)
+        self.dialog.add_button(t("update_genmon.settings"), Gtk.ResponseType.HELP)
         self.dialog.add_button(t("update_genmon.close"), Gtk.ResponseType.CLOSE)
         self.dialog.connect("response", self._on_response)
         # The application quits once its last window is gone.
@@ -229,6 +230,10 @@ class LogDialog:
             self._run_updates_now()
         elif response == Gtk.ResponseType.YES:
             subprocess.Popen(["xfce4-session-logout", "--reboot"])
+        elif response == Gtk.ResponseType.HELP:
+            # Separate window; this log dialog stays open behind it.
+            subprocess.Popen([os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                           "update-genmon-settings.py")])
         else:
             self.dialog.destroy()
 

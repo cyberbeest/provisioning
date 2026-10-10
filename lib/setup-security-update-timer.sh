@@ -23,6 +23,7 @@ set -uo pipefail
 
 STATUS_FILE=/var/lib/security-update-status
 APPS_STATUS_FILE=/var/lib/security-update-apps-status
+SETTINGS_FILE=/etc/cyberbeest/security-update.conf
 PHASE_FILE=/run/security-update-check.phase
 LOCK_FILE=/run/security-update-check.lock
 # Output of the run in progress, appended as it happens, so the panel icon's
@@ -148,6 +149,29 @@ if [ "${FORCE_CHECK:-0}" != 1 ] && [ -r "$STATUS_FILE" ]; then
     if [ -n "${LAST_CHECK_EPOCH:-}" ] \
        && [ $(( start_epoch - LAST_CHECK_EPOCH )) -lt $(( CHECK_INTERVAL_SECONDS - THROTTLE_SLACK_SECONDS )) ]; then
         echo "Last check was $(( (start_epoch - LAST_CHECK_EPOCH) / 60 )) min ago, under the ${CHECK_INTERVAL_SECONDS}s interval -- skipping."
+        exit 0
+    fi
+fi
+
+# "Wait after startup", at least 2 minutes (panel icon -> log dialog -> Settings). A
+# machine with a marginal PSU can reset in the first minutes after a cold
+# boot; if that lands mid-dpkg it leaves half-configured packages and empty apt
+# list files. Counted from when the timer unit started, not kernel start, so a
+# long LUKS prompt doesn't eat the delay. Skipped silently: the timer fires every
+# 15 minutes, so the first slot after the delay does the real check.
+if [ "${FORCE_CHECK:-0}" != 1 ]; then
+    # Never less than 2 minutes, whatever the file says (or if it's missing).
+    STARTUP_DELAY_MINUTES=2
+    # shellcheck disable=SC1090
+    [ -r "$SETTINGS_FILE" ] && . "$SETTINGS_FILE"
+    case "$STARTUP_DELAY_MINUTES" in ''|*[!0-9]*) STARTUP_DELAY_MINUTES=2 ;; esac
+    [ "$STARTUP_DELAY_MINUTES" -ge 2 ] || STARTUP_DELAY_MINUTES=2
+    uptime_s="$(cut -d. -f1 /proc/uptime)"
+    timer_mono_us="$(systemctl show -p ActiveEnterTimestampMonotonic --value security-update-check.timer 2>/dev/null)"
+    case "$timer_mono_us" in ''|*[!0-9]*) timer_mono_us=0 ;; esac
+    since_start=$(( uptime_s - timer_mono_us / 1000000 ))
+    if [ "$since_start" -lt $(( STARTUP_DELAY_MINUTES * 60 )) ]; then
+        echo "Only $(( since_start / 60 )) min since startup, waiting ${STARTUP_DELAY_MINUTES} min first -- skipping."
         exit 0
     fi
 fi
@@ -315,6 +339,33 @@ Environment=FORCE_CHECK=1
 ExecStart=/usr/local/sbin/security-update-check.sh
 EOF
 
+echo "--- Writing settings helper /usr/local/sbin/security-update-set-startup-delay ---"
+install -d -m 755 /etc/cyberbeest
+# Created only if missing, so a re-run keeps the user's choice (the wrapper
+# treats anything below 2 as 2).
+if [ ! -f /etc/cyberbeest/security-update.conf ]; then
+    echo "STARTUP_DELAY_MINUTES=2" > /etc/cyberbeest/security-update.conf
+    chmod 644 /etc/cyberbeest/security-update.conf
+fi
+# Earlier versions allowed 0 ("don't wait"); the minimum is 2 now.
+sed -i -E 's/^STARTUP_DELAY_MINUTES=[01]$/STARTUP_DELAY_MINUTES=2/' /etc/cyberbeest/security-update.conf
+cat > /usr/local/sbin/security-update-set-startup-delay <<'EOF'
+#!/bin/bash
+# Sets STARTUP_DELAY_MINUTES in /etc/cyberbeest/security-update.conf. Run via
+# sudo from the update panel icon's Settings dialog; the argument is
+# validated here because sudoers only scopes the command, not its argument.
+set -euo pipefail
+case "${1:-}" in
+    2|5|10|30|60) ;;
+    *) echo "usage: $0 {2|5|10|30|60}" >&2; exit 2 ;;
+esac
+tmp="$(mktemp /etc/cyberbeest/.security-update.conf.XXXXXX)"
+echo "STARTUP_DELAY_MINUTES=$1" > "$tmp"
+chmod 644 "$tmp"
+mv "$tmp" /etc/cyberbeest/security-update.conf
+EOF
+chmod 755 /usr/local/sbin/security-update-set-startup-delay
+
 echo "--- Installing scoped NOPASSWD sudoers rule for the 'Run updates now' button ---"
 SUDOERS_FILE=/etc/sudoers.d/security-update-check-force
 SUDOERS_TMP="$(mktemp)"
@@ -324,6 +375,8 @@ cat > "$SUDOERS_TMP" <<'EOF'
 # exactly this one unit -- no wildcard/general systemctl access. Written by
 # lib/setup-security-update-timer.sh.
 cyberbeest ALL=(root) NOPASSWD: /usr/bin/systemctl start security-update-check-force.service
+# ...and to change the post-startup delay from the same dialog's Settings.
+cyberbeest ALL=(root) NOPASSWD: /usr/local/sbin/security-update-set-startup-delay *
 EOF
 if visudo -c -f "$SUDOERS_TMP"; then
     install -m 0440 -o root -g root "$SUDOERS_TMP" "$SUDOERS_FILE"

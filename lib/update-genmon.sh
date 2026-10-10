@@ -98,9 +98,14 @@ timer_start_ts="$(systemctl show -p ActiveEnterTimestamp --value security-update
 if [ -n "$timer_start_ts" ] && [ "$timer_start_ts" != "n/a" ]; then
     timer_start_epoch="$(date -d "$timer_start_ts" +%s 2>/dev/null)"
 fi
+# Plus the user's optional wait-after-startup (see security-update-check.sh).
+startup_delay_minutes=2
+[ -r /etc/cyberbeest/security-update.conf ] && . /etc/cyberbeest/security-update.conf
+case "${STARTUP_DELAY_MINUTES:-2}" in ''|*[!0-9]*) ;; *) startup_delay_minutes="$STARTUP_DELAY_MINUTES" ;; esac
+[ "$startup_delay_minutes" -ge 2 ] || startup_delay_minutes=2
 awaiting_first_check=false
 if [ -n "$timer_start_epoch" ] \
-   && [ $(( now_epoch - timer_start_epoch )) -lt $(( SLOT_SECONDS + 60 )) ] \
+   && [ $(( now_epoch - timer_start_epoch )) -lt $(( SLOT_SECONDS + 60 + startup_delay_minutes * 60 )) ] \
    && { [ -z "$last_check_epoch" ] || [ "$last_check_epoch" -lt "$timer_start_epoch" ]; } \
    && [ "$due_epoch" -le "$now_epoch" ]; then
     awaiting_first_check=true
