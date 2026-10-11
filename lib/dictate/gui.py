@@ -772,7 +772,7 @@ class MainWindow(QMainWindow):
         # people typically finish the last syllable *after* they release the
         # hotkey. Without this the last word tends to get clipped.
         time.sleep(0.25)
-        audio = core.Recorder.finish(take)
+        audio, speech = core.Recorder.finish_take(take)
         if audio is None:
             core.log.warning("no audio captured (mic delivered no frames)")
             self.bridge.error.emit(_("No audio captured — check the microphone"))
@@ -802,7 +802,7 @@ class MainWindow(QMainWindow):
                 wait_note = core.notify_sticky(
                     _("Loading the speech model, your text follows in a moment..."))
         try:
-            text = core.transcribe(audio, self.cfg)
+            text = core.transcribe(audio, self.cfg, speech)
         except Exception as e:
             core.log.exception("transcribe failed: %.1fs audio, peak %d", secs, peak)
             self.bridge.error.emit(str(e))

@@ -49,7 +49,7 @@ apt-get -o DPkg::Lock::Timeout=60 install -y \
 echo "--- Installing the app to $APP_DIR ---"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" \
     "$TARGET_HOME/.local/share/dictate" "$APP_DIR"
-for f in core.py gui.py i18n.py local_stt.py evdev_listener.py LICENSE; do
+for f in core.py gui.py i18n.py local_stt.py evdev_listener.py silero_vad.onnx silero_vad.LICENSE LICENSE; do
     install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 "$DIR/lib/dictate/$f" "$APP_DIR/$f"
 done
 chmod 755 "$APP_DIR/gui.py"

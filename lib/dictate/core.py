@@ -73,6 +73,7 @@ DEFAULT_CONFIG = {
     "dictation_notifications": True,   # notification while dictating: Speak now / Transcribing
     "language":              "auto",  # UI language: auto (desktop locale), en, de; no Settings field, provisioning sets the locale
     "input_source":          "",     # PulseAudio source name; empty = automatic
+    "trim_silence":          True,   # cut pauses before decoding (local_stt silence trimming); no Settings field
     "local_stt_idle_minutes": 5,   # unload the model after this long idle when RAM is short (0 = keep loaded)
 }
 
@@ -125,6 +126,7 @@ def load_config():
     try:
         import local_stt
         cfg["model"] = local_stt.select_model(cfg.get("model"))
+        local_stt.set_trim(cfg.get("trim_silence", True))
     except ImportError:
         pass
     set_input_source(cfg.get("input_source", ""))
@@ -410,9 +412,18 @@ class Recorder:
                 return
             frames = []
             _select_microphone()
+            vad = None
+            try:
+                import local_stt
+                vad = local_stt.StreamingVad() if local_stt.trim_active() else None
+            except Exception:
+                log.exception("could not start the streaming voice detector")
 
             def callback(indata, n, time_info, status):
-                frames.append(indata.copy())
+                block = indata.copy()
+                frames.append(block)
+                if vad is not None:
+                    vad.feed(block)
 
             stream = sd.InputStream(
                 samplerate=SAMPLE_RATE,
@@ -421,7 +432,7 @@ class Recorder:
                 callback=callback,
             )
             stream.start()
-            self._take = (stream, frames)
+            self._take = (stream, frames, vad)
 
     def detach(self):
         """Non-blocking: give up the current take (or None). Safe on the GUI thread."""
@@ -433,28 +444,35 @@ class Recorder:
     def finish(take):
         """Close a detached take and return its audio, or None if it has none.
         Blocks for hundreds of ms on PipeWire close — call from a worker."""
+        return Recorder.finish_take(take)[0]
+
+    @staticmethod
+    def finish_take(take):
+        """Like finish(), but returns (audio, speech mask). The mask is what the
+        streaming voice detector found while recording, or None when the
+        transcription has to find the speech itself."""
         if take is None:
-            return None
-        stream, frames = take
+            return None, None
+        stream, frames, vad = take
         try:
             stream.stop()
             stream.close()
         except Exception:
             # A vanished mic must not lose what was already captured.
             log.exception("closing input stream failed")
-        if not frames:
-            return None
-        return np.concatenate(frames, axis=0)
+        audio = np.concatenate(frames, axis=0) if frames else None
+        mask = vad.finish(len(audio) if audio is not None else 0) if vad is not None else None
+        return audio, mask
 
     def stop(self):
         return self.finish(self.detach())
 
 
-def transcribe(audio, cfg):
+def transcribe(audio, cfg, speech=None):
     import local_stt
     threads = int(cfg.get("local_stt_num_threads", local_stt.DEFAULT_THREADS))
     idle_s = 60 * float(cfg.get("local_stt_idle_minutes", 5))
-    text = local_stt.get_recognizer(num_threads=threads, idle_s=idle_s).transcribe(audio)
+    text = local_stt.get_recognizer(num_threads=threads, idle_s=idle_s).transcribe(audio, speech)
     # The model ends every piece with a full stop, even a lone word or number.
     if text.endswith(".") and len(text.split()) == 1:
         text = text[:-1]
