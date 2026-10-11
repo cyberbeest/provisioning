@@ -15,6 +15,13 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 . "$SCRIPT_DIR/i18n.sh"
 
+# Single instance: a second launch (Whisker entry, Fast Track's panel icon or
+# watcher) while a dialog or run window is already open just exits. The lock
+# fd survives the `exec python3 run-gui.py` below, so it also covers the run
+# window; it is released when that closes.
+exec 8>"${XDG_RUNTIME_DIR:-/tmp}/cyberbeest-update.lock"
+flock -n 8 || exit 0
+
 # --fast-track (used by cyberbeest-fasttrack.sh, see
 # experimental/enable-cyberbeest-fast-track.sh): same dialog and same git
 # steps, but once the user has confirmed, run-gui.py starts "Run changed"
