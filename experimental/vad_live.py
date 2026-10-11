@@ -2,8 +2,10 @@
 """Live K.I.T.T.-style voice-box view of the Silero VAD that Dictate uses.
 
 A gated volume meter: while the VAD (Dictate's settings, threshold 0.5) hears
-speech, the bars show the audio level; otherwise there are no bars. Audio goes
-straight from the microphone into the detector, no normalization or boost.
+speech, the bars show the audio level; otherwise there are no bars. The detector,
+hum filter and normalization are Dictate's own (local_stt.LiveMeter), the same
+code that drives the meter window in Dictate; this viewer adds the replay delay,
+the timing figures and the toggles (F filter, N normalization).
 
 The verdict for a stretch of audio arrives ~100 ms after it was spoken, so the
 bars are replayed with a fixed delay (--delay, default 140 ms): every window
@@ -12,7 +14,6 @@ its first window instead of from when the VAD caught on.
 """
 import argparse
 import collections
-import queue
 import sys
 import threading
 import time
@@ -24,34 +25,23 @@ from PyQt6.QtGui import QColor, QFont, QPainter
 from PyQt6.QtWidgets import QApplication, QCheckBox, QWidget
 
 DICTATE = Path(__file__).resolve().parents[1] / "lib/dictate"
-VAD_MODEL = DICTATE / "silero_vad.onnx"
 sys.path.insert(0, str(DICTATE))
-import local_stt  # Dictate's own high-pass, so the viewer filters exactly like it does
+import local_stt  # Dictate's own meter, so the viewer shows exactly what Dictate's meter does
 SR, WINDOW = 16000, 512
-VAD_THRESHOLD = 0.5
 BACKFILL_WINDOWS = 3  # when the VAD turns on, the windows just before it count as speech too (it recognizes onsets late)
 ROWS = 21  # odd: one middle row, bars grow outward from it
-DB_FLOOR, DB_CEIL = -50.0, -10.0  # fixed level range mapped onto the bars (normalization off)
-NORM_SPEECH_S = 3.0               # floating normalization: the last this-many seconds of VAD-yes audio ...
-NORM_PERCENTILE = 90.0            # ... its 90th-percentile loudness is the reference
-NORM_TOP_DB, NORM_SPAN_DB = 3.0, 30.0  # top of the bars sits 3 dB above the reference, 30 dB of range
-NORM_MIN_WINDOWS = 15             # fewer speech windows than this: fall back to the fixed range
-NORM_ATTACK_S, NORM_RELEASE_S = 0.3, 1.0  # the reference moves slowly: it follows louder speech sooner than quieter
 RELEASE_DB_S = 100.0            # center column falls this fast, like a studio meter
 SIDE_SCALE = 0.5                # side columns are half the middle one, as on the original
 ATTACK_S = 0.025                # time constant of the rise
 
 
 class Detector:
+    """Dictate's own level meter (local_stt.LiveMeter: same detector, hum filter and
+    normalization) plus what the viewer adds: the timing figures, the small reference
+    level and the queue of windows for the delayed replay."""
+
     def __init__(self):
-        import sherpa_onnx
-        c = sherpa_onnx.VadModelConfig()
-        c.silero_vad.model = str(VAD_MODEL)
-        c.silero_vad.threshold = VAD_THRESHOLD
-        c.silero_vad.window_size = WINDOW
-        c.sample_rate = SR
-        c.num_threads = 1
-        self.model = sherpa_onnx.VadModel.create(c)
+        self.meter = local_stt.LiveMeter(filter=True, on_window=self._window)
         self.mic_ms = 0.0      # input device latency, set once the stream is open
         self.window_ms = 1000 * WINDOW / SR
         self.compute_ms = 0.0  # callback -> verdict
@@ -60,67 +50,35 @@ class Detector:
         self.events = collections.deque()  # (capture time, speech, level dB, top, span), oldest first
         self.lock = threading.Lock()
         self.prev_speech = False
-        self.q: "queue.SimpleQueue" = queue.SimpleQueue()
-        self.buf = np.zeros(0, np.float32)
-        self.hp = local_stt._HighPass(local_stt.VAD_HIGHPASS_HZ, SR)
-        self.filter_on = True  # the VAD and the level meter hear the high-passed audio
-        self.norm = True
-        self.speech_db = collections.deque(maxlen=int(NORM_SPEECH_S * SR / WINDOW))
-        self.ref_db = None  # smoothed 90th percentile of the speech windows
-        threading.Thread(target=self._run, daemon=True).start()
+
+    # the meter's state, as the window reads it
+    filter_on = property(lambda self: self.meter.filter_on)
+    ref_db = property(lambda self: self.meter.ref_db)
+    speech_db = property(lambda self: self.meter.speech_db)
+    norm = property(lambda self: self.meter.norm, lambda self, v: setattr(self.meter, "norm", v))
 
     def feed(self, indata, *_):
-        self.q.put((time.monotonic(), indata[:, 0].astype(np.float32) / 32768.0))
-
-    def _run(self):
-        while True:
-            t0, block = self.q.get()
-            self.buf = np.concatenate((self.buf, block))
-            while len(self.buf) >= WINDOW:
-                x, self.buf = self.buf[:WINDOW], self.buf[WINDOW:]
-                h = self.hp(x)  # always run, so the filter state is right when it is switched on
-                heard = h if self.filter_on else x
-                speech = bool(self.model.is_speech(heard))
-                db = 20 * np.log10(max(float(np.sqrt(np.mean(heard * heard))), 1e-5))
-                self.live_db = db
-                self.peak_db = max(db, self.peak_db - 0.6)
-                if speech:
-                    self.speech_db.append(db)
-                    self._update_ref()
-                if self.norm and self.ref_db is not None:
-                    hi, span = self.ref_db + NORM_TOP_DB, NORM_SPAN_DB
-                else:
-                    hi, span = DB_CEIL, DB_CEIL - DB_FLOOR
-                with self.lock:
-                    if speech and not self.prev_speech:
-                        # the VAD only noticed the onset now: the replay is delayed, so the
-                        # windows just before it that are still queued can be corrected
-                        for j in range(max(0, len(self.events) - BACKFILL_WINDOWS), len(self.events)):
-                            t, _sp, d_, hi_, sp_ = self.events[j]
-                            self.events[j] = (t, True, d_, hi_, sp_)
-                    self.events.append((t0, speech, db, hi, span))
-                self.prev_speech = speech
-                ms = 1000 * (time.monotonic() - t0)
-                self.compute_ms = ms if self.compute_ms == 0 else self.compute_ms * 0.9 + ms * 0.1
+        self.meter.feed(indata[:, 0])
 
     def set_filter(self, on):
-        """Switch the mains-hum filter. The levels change scale, so the normalization starts over."""
         with self.lock:
-            self.filter_on = on
-            self.speech_db.clear()
-            self.ref_db = None
-            self.model.reset()
+            self.meter.set_filter(on)
             self.prev_speech = False
 
-    def _update_ref(self):
-        if len(self.speech_db) < NORM_MIN_WINDOWS:
-            return
-        p = float(np.percentile(self.speech_db, NORM_PERCENTILE))
-        if self.ref_db is None:
-            self.ref_db = p
-            return
-        tc = NORM_ATTACK_S if p > self.ref_db else NORM_RELEASE_S
-        self.ref_db += (p - self.ref_db) * min(1.0, (WINDOW / SR) / tc)
+    def _window(self, t0, speech, db, hi, span):
+        self.live_db = db
+        self.peak_db = max(db, self.peak_db - 0.6)
+        with self.lock:
+            if speech and not self.prev_speech:
+                # the VAD only noticed the onset now: the replay is delayed, so the
+                # windows just before it that are still queued can be corrected
+                for j in range(max(0, len(self.events) - BACKFILL_WINDOWS), len(self.events)):
+                    t, _sp, d_, hi_, sp_ = self.events[j]
+                    self.events[j] = (t, True, d_, hi_, sp_)
+            self.events.append((t0, speech, db, hi, span))
+            self.prev_speech = speech
+        ms = 1000 * (time.monotonic() - t0)
+        self.compute_ms = ms if self.compute_ms == 0 else self.compute_ms * 0.9 + ms * 0.1
 
     @property
     def latency_ms(self):
@@ -142,7 +100,7 @@ class Kitt(QWidget):
         self.setWindowTitle("VAD live view")
         self.resize(380, 560)
         self.setStyleSheet("background:#000")
-        self.span = DB_CEIL - DB_FLOOR
+        self.span = local_stt.METER_DB_CEIL - local_stt.METER_DB_FLOOR
         self.target_db = -self.span  # level the replay asks for, in dB below the top of the bars (gate closed = bottom)
         self.speech = False
         self.center_db = -self.span

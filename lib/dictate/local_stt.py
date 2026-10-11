@@ -445,34 +445,50 @@ METER_REF_ATTACK_S, METER_REF_RELEASE_S = 0.3, 1.0
 
 class LiveMeter:
     """feed() int16 blocks from the audio callback; read speech / level_db / scale() any time.
-    Runs on its own thread; close() ends it."""
+    Runs on its own thread; close() ends it.
+
+    filter: True / False to force the hum filter, None to follow the setting.
+    on_window: optional callable(block_time, speech, level_db, top, span), called on the
+    meter's thread for every finished 32 ms window (block_time is when the block that
+    completed it arrived). The live viewer builds its delayed replay from that."""
 
     _last_ref = None   # the reference the previous dictation ended with: a good start for the next one
 
-    def __init__(self):
+    def __init__(self, filter=None, on_window=None):
         self._q: "queue.SimpleQueue" = queue.SimpleQueue()
+        self.filter_on = _vad_highpass if filter is None else bool(filter)
+        self.norm = True            # False: the fixed range
+        self.on_window = on_window
         self.speech = False
         self.level_db = -90.0
         self.ref_db = LiveMeter._last_ref
-        self._speech_db: "collections.deque" = collections.deque(maxlen=int(METER_NORM_S * TARGET_SR / VAD_WINDOW))
+        self.speech_db: "collections.deque" = collections.deque(maxlen=int(METER_NORM_S * TARGET_SR / VAD_WINDOW))
+        self._reset = False
         threading.Thread(target=self._run, daemon=True).start()
 
     def feed(self, block: np.ndarray) -> None:
-        self._q.put(block)
+        self._q.put((time.monotonic(), block))
 
     def close(self) -> None:
         self._q.put(None)
 
+    def set_filter(self, on: bool) -> None:
+        """Switch the hum filter. The levels change scale, so the normalization starts over."""
+        self.filter_on = bool(on)
+        self.speech_db.clear()
+        self.ref_db = None
+        self._reset = True   # the meter's thread restarts the detector
+
     def scale(self):
         """(top, span): dBFS of the top of the bars and the dB range below it."""
-        if self.ref_db is not None:
+        if self.norm and self.ref_db is not None:
             return self.ref_db + METER_NORM_TOP_DB, METER_NORM_SPAN_DB
         return METER_DB_CEIL, METER_DB_CEIL - METER_DB_FLOOR
 
     def _update_ref(self) -> None:
-        if len(self._speech_db) < METER_NORM_MIN_WINDOWS:
+        if len(self.speech_db) < METER_NORM_MIN_WINDOWS:
             return   # too little speech yet: the starting reference stays
-        p = float(np.percentile(self._speech_db, METER_NORM_PERCENTILE))
+        p = float(np.percentile(self.speech_db, METER_NORM_PERCENTILE))
         if self.ref_db is None:
             self.ref_db = p
         else:
@@ -490,21 +506,29 @@ class LiveMeter:
             c.sample_rate = TARGET_SR
             c.num_threads = 1
             model = sherpa_onnx.VadModel.create(c)
-            hp = _vad_filter()
+            hp = _HighPass(VAD_HIGHPASS_HZ, TARGET_SR)   # always runs, so its state is right when the filter is switched on
             buf = np.zeros(0, np.float32)
             while True:
-                block = self._q.get()
-                if block is None:
+                item = self._q.get()
+                if item is None:
                     break
+                t0, block = item
+                if self._reset:
+                    self._reset = False
+                    model.reset()
                 buf = np.concatenate((buf, block.reshape(-1).astype(np.float32) / 32768.0))
                 while len(buf) >= VAD_WINDOW:
                     x, buf = buf[:VAD_WINDOW], buf[VAD_WINDOW:]
-                    heard = hp(x) if hp is not None else x
+                    h = hp(x)
+                    heard = h if self.filter_on else x
                     self.speech = bool(model.is_speech(heard))
                     self.level_db = 20 * np.log10(max(float(np.sqrt(np.mean(heard * heard))), 1e-5))
                     if self.speech:
-                        self._speech_db.append(self.level_db)
+                        self.speech_db.append(self.level_db)
                         self._update_ref()
+                    if self.on_window is not None:
+                        top, span = self.scale()
+                        self.on_window(t0, self.speech, self.level_db, top, span)
         except Exception:
             import logging
             logging.getLogger("dictate").exception("level meter failed")
