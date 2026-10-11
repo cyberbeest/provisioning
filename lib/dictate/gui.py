@@ -273,6 +273,34 @@ class DictationNote:
 
 
 
+class TestDictationDialog(QDialog):
+    """A focused text box to try dictation in, with the hotkey instructions."""
+
+    def __init__(self, help_lines, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(_("Dictate — Test dictation"))
+        self.setMinimumSize(460, 260)
+        layout = QVBoxLayout(self)
+        hint = QLabel("\n".join(help_lines))
+        hint.setWordWrap(True)
+        layout.addWidget(hint)
+        self.edit = QTextEdit()
+        self.edit.setPlaceholderText(_("Your dictation appears here."))
+        layout.addWidget(self.edit)
+        row = QHBoxLayout()
+        row.addStretch()
+        clear_btn = QPushButton(_("Clear"))
+        close_btn = QPushButton(_("Close"))
+        # xdotool types into the focused window; if that is this one, a space
+        # or Enter in the dictated text would "press" a focused button.
+        for b in (clear_btn, close_btn):
+            b.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+            row.addWidget(b)
+        clear_btn.clicked.connect(self.edit.clear)
+        close_btn.clicked.connect(self.close)
+        layout.addLayout(row)
+
+
 class LastTranscriptDialog(QDialog):
     """The most recent dictation, for copying when it landed in the wrong place."""
 
@@ -355,6 +383,8 @@ class MainWindow(QMainWindow):
             self.a_hotkey.triggered.connect(self.set_hotkey_enabled)
             self.a_last = QAction(_("Show last transcript"), self)
             self.a_last.triggered.connect(self.show_last_transcript)
+            self.a_test = QAction(_("Test dictation"), self)
+            self.a_test.triggered.connect(self.show_test_dictation)
             a_settings = QAction(_("Dictation settings"), self)
             a_settings.triggered.connect(self.open_settings)
             self.a_load = QAction(_("Load dictation model"), self)
@@ -365,6 +395,7 @@ class MainWindow(QMainWindow):
             a_quit.triggered.connect(QApplication.quit)
             menu.addAction(self.a_hotkey)
             menu.addAction(self.a_last)
+            menu.addAction(self.a_test)
             menu.addSeparator()
             menu.addAction(a_settings)
             menu.addSeparator()
@@ -520,8 +551,23 @@ class MainWindow(QMainWindow):
             self._last_dialog.close()
             self._last_dialog = None
 
+    def show_test_dictation(self):
+        if getattr(self, "_test_dialog", None) is not None and self._test_dialog.isVisible():
+            self._test_dialog.raise_()
+            self._test_dialog.activateWindow()
+            return
+        self._test_dialog = TestDictationDialog(self._help_lines())
+        self._test_dialog.show()
+        self._test_dialog.raise_()
+        self._test_dialog.activateWindow()
+        self._test_dialog.edit.setFocus()
+
     def show_last_transcript(self):
         if not self.last_text:
+            return
+        if self._last_dialog is not None and self._last_dialog.isVisible():
+            self._last_dialog.raise_()
+            self._last_dialog.activateWindow()
             return
         self._last_dialog = LastTranscriptDialog(self.last_text, self.clear_last_transcript)
         self._last_dialog.show()
@@ -763,28 +809,33 @@ class MainWindow(QMainWindow):
         """Where the audio goes: the one thing the user must be able to see at a glance."""
         return _("Privacy: local, your voice never leaves this computer")
 
+    def _help_lines(self):
+        """How to dictate, as shown in the tooltip and the test window."""
+        if not self.cfg.get("hotkey_enabled", True):
+            return [_("Dictation is off. Turn the hotkey on in this menu.")]
+        key = self.cfg["key"].upper().replace("_", " ")
+        german_only = self.cfg.get("model") == "nemo-de-fastconformer-int8"
+        if self.cfg.get("mode") == "toggle":
+            first = (_("Tap {key} to start and stop dictating in German") if german_only else
+                     _("Tap {key} to start and stop dictating in any supported language")).format(key=key)
+        else:
+            first = (_("Hold {key} to dictate in German") if german_only else
+                     _("Hold {key} to dictate in any supported language")).format(key=key)
+        lines = [first]
+        if not german_only:
+            import textwrap
+            lines += textwrap.wrap(_(LANGUAGE_LIST_EN), width=64)
+        return lines
+
     def _refresh_tray(self):
         if not self.tray:
             return
         state, msg = self._status
-        key = self.cfg["key"].upper().replace("_", " ")
         hotkey_on = self.cfg.get("hotkey_enabled", True)
-        german_only = self.cfg.get("model") == "nemo-de-fastconformer-int8"
         if not hotkey_on:
-            lines = [_("Dictation is off. Turn the hotkey on in this menu.")]
+            lines = self._help_lines()
         else:
-            if state != "ready":
-                first = _("Dictate — {msg}").format(msg=msg)
-            elif self.cfg.get("mode") == "toggle":
-                first = (_("Tap {key} to start and stop dictating in German") if german_only else
-                         _("Tap {key} to start and stop dictating in any supported language")).format(key=key)
-            else:
-                first = (_("Hold {key} to dictate in German") if german_only else
-                         _("Hold {key} to dictate in any supported language")).format(key=key)
-            lines = [first]
-            if state == "ready" and not german_only:
-                import textwrap
-                lines += textwrap.wrap(_(LANGUAGE_LIST_EN), width=64)
+            lines = self._help_lines() if state == "ready" else [_("Dictate — {msg}").format(msg=msg)]
             mstate = self._local_state()
             name = self._model_label()
             if mstate == "loaded":
