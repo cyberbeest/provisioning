@@ -1,5 +1,5 @@
 #!/bin/bash
-# EXPERIMENTAL: Cyberbeest Fast Track -- for machines that follow the beta
+# EXPERIMENTAL: Cyberbeest Fast Track -- meant for machines that follow the beta
 # track (~/provisioning-bleeding, branch main) and should offer new commits
 # within minutes instead of waiting for someone to open Cyberbeest Update.
 #
