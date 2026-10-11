@@ -755,8 +755,8 @@ class MainWindow(QMainWindow):
             return _("Waiting for the speech model download")
         pasting = target is None or bool(target)
         if self._local_state() == "loaded":
-            return _("Transcribing and pasting") if pasting else _("Transcribing")
-        return _("Loading speech model, transcribing and pasting") if pasting else _("Loading speech model and transcribing")
+            return _("Transcribing & pasting") if pasting else _("Transcribing")
+        return _("Loading speech model, transcribing & pasting") if pasting else _("Loading speech model & transcribing")
 
     def _stop_and_transcribe_worker(self, take, note, target):
         try:
