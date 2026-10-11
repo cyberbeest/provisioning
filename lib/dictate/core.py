@@ -72,6 +72,7 @@ DEFAULT_CONFIG = {
     "hotkey_enabled":        True,    # tray menu switch for the dictation hotkey
     "dictation_notifications": True,   # notification while dictating: Speak now / Transcribing
     "language":              "auto",  # UI language: auto (desktop locale), en, de; no Settings field, provisioning sets the locale
+    "input_source":          "",     # PulseAudio source name; empty = automatic
     "local_stt_idle_minutes": 5,   # unload the model after this long idle when RAM is short (0 = keep loaded)
 }
 
@@ -126,10 +127,12 @@ def load_config():
         cfg["model"] = local_stt.select_model(cfg.get("model"))
     except ImportError:
         pass
+    set_input_source(cfg.get("input_source", ""))
     return cfg
 
 
 def save_config(cfg):
+    set_input_source(cfg.get("input_source", ""))
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     CONFIG_PATH.write_text(json.dumps(cfg, indent=2))
     try:
@@ -222,9 +225,65 @@ def _xdotool_type(text):
     return r
 
 
-def type_text(text):
+def _on_x11():
+    import os
+    return not (os.name == "nt" or sys.platform == "darwin") and os.environ.get("XDG_SESSION_TYPE") == "x11"
+
+
+def active_window():
+    """ID of the focused top-level window, "" if there is none, None if it
+    cannot be asked (not X11, xdotool missing)."""
+    if not _on_x11():
+        return None
+    try:
+        r = subprocess.run(["xdotool", "getactivewindow"], capture_output=True, text=True, timeout=2)
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return None
+    return r.stdout.strip() if r.returncode == 0 else ""
+
+
+def paste_target():
+    """Where a dictation started now should be typed. Returns the focused
+    window's ID, or "" when that is nowhere to type (no window has focus, or
+    the focus is on the desktop or a panel). None means it cannot tell, and
+    typing then goes to whatever has focus, as before."""
+    wid = active_window()
+    if not wid:
+        return wid
+    try:
+        p = subprocess.run(["xprop", "-id", wid, "_NET_WM_WINDOW_TYPE", "WM_CLASS"],
+                           capture_output=True, text=True, timeout=2).stdout
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return wid
+    if any(t in p for t in ("_NET_WM_WINDOW_TYPE_DESKTOP", "_NET_WM_WINDOW_TYPE_DOCK")):
+        return ""
+    if any(c in p.lower() for c in ('"xfdesktop"', '"xfce4-panel"')):
+        return ""
+    return wid
+
+
+def focus_window(wid):
+    """Bring a remembered window back into focus. False if it is gone or
+    refuses, in which case nothing may be typed."""
+    if active_window() == wid:
+        return True
+    try:
+        r = subprocess.run(["xdotool", "windowactivate", "--sync", wid],
+                           capture_output=True, timeout=3)
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return False
+    return r.returncode == 0 and active_window() == wid
+
+
+def type_text(text, target=None):
+    """Type into the focused window. With a target window ID, first bring that
+    window back to the front and type only if it really has focus; returns
+    False when it could not be reached, so the caller can keep the text."""
     if not text:
-        return
+        return True
+    if target and not focus_window(target):
+        log.warning("window %s is gone or would not take focus, text not typed", target)
+        return False
     # xdotool respects the active XKB layout (correct German umlauts, no y/z
     # swap on QWERTZ). Prefer it on X11 where it actually works. On Wayland,
     # native windows ignore XTEST so we must fall back to ydotool, which
@@ -236,7 +295,7 @@ def type_text(text):
         # Windows / macOS: no xdotool or ydotool; pynput types through the
         # OS input API and respects the active keyboard layout.
         keyboard.Controller().type(text)
-        return
+        return True
     on_x11 = os.environ.get("XDG_SESSION_TYPE") == "x11"
     tools = ["xdotool", "ydotool"] if on_x11 else ["ydotool", "xdotool"]
     for tool in tools:
@@ -252,9 +311,65 @@ def type_text(text):
             if r.returncode != 0:
                 log.error("%s exited with %s — text not typed", tool, r.returncode)
                 notify(_("Typing failed ({tool} exit {code})").format(tool=tool, code=r.returncode), urgency="critical", timeout_ms=5000)
-            return
+            return r.returncode == 0
         except FileNotFoundError:
             continue
+    return False
+
+
+_input_source = ""
+
+
+def set_input_source(name):
+    """The microphone chosen in Settings; empty means automatic."""
+    global _input_source
+    _input_source = name or ""
+
+
+def list_input_sources():
+    """Real microphones PulseAudio knows, as [(source name, description)].
+    Monitors (what the speakers play) are left out. Empty without pactl."""
+    import os
+    try:
+        out = subprocess.run(["pactl", "list", "sources"], capture_output=True, text=True,
+                             timeout=3, env={**os.environ, "LC_ALL": "C"}).stdout
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return []
+    sources, name = [], None
+    for line in out.splitlines():
+        line = line.strip()
+        if line.startswith("Name:"):
+            name = line[5:].strip()
+        elif line.startswith("Description:") and name:
+            if not name.endswith(".monitor"):
+                sources.append((name, line[12:].strip()))
+            name = None
+    return sources
+
+
+def _select_microphone():
+    """Point PulseAudio clients in this process at the right microphone: the
+    one chosen in Settings, else (automatic) the first real input when the
+    default source is a monitor. PulseAudio makes the speaker monitor the
+    default when the only microphone port is flagged unplugged (laptop jack
+    detection), and a monitor records silence. Does nothing on a healthy
+    automatic setup, or without pactl."""
+    import os
+    os.environ.pop("PULSE_SOURCE", None)
+    try:
+        sources = [n for n, _d in list_input_sources()]
+        if _input_source:
+            if _input_source in sources:
+                os.environ["PULSE_SOURCE"] = _input_source
+                return
+            log.info("chosen microphone %s is not available, using automatic", _input_source)
+        default = subprocess.run(["pactl", "get-default-source"], capture_output=True, text=True,
+                                 timeout=2, env={**os.environ, "LC_ALL": "C"}).stdout.strip()
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return
+    if default.endswith(".monitor") and sources:
+        os.environ["PULSE_SOURCE"] = sources[0]
+        log.info("default source %s is a monitor, recording from %s", default, sources[0])
 
 
 class Recorder:
@@ -276,6 +391,7 @@ class Recorder:
             if self._take is not None:
                 return
             frames = []
+            _select_microphone()
 
             def callback(indata, n, time_info, status):
                 frames.append(indata.copy())

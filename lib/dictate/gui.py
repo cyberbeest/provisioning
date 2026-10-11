@@ -40,8 +40,9 @@ class Bridge(QObject):
     hotkey_press = pyqtSignal()
     hotkey_release = pyqtSignal()
     other_press = pyqtSignal()
-    transcribed = pyqtSignal(str)
+    transcribed = pyqtSignal(str, object)   # text, window to type into (see core.paste_target)
     error = pyqtSignal(str)
+    paste_failed = pyqtSignal(str)
     model_progress = pyqtSignal(str)
     model_done = pyqtSignal(bool, str)
 
@@ -72,6 +73,17 @@ class SettingsDialog(QDialog):
         i = self.key_box.findData(self.cfg.get("key", "f9"))
         self.key_box.setCurrentIndex(max(i, 0))
         self.form.addRow(_("Hotkey:"), self.key_box)
+
+        self.input_box = QComboBox()
+        self.input_box.addItem(_("Automatic"), "")
+        for name, desc in core.list_input_sources():
+            self.input_box.addItem(desc, name)
+        i = self.input_box.findData(self.cfg.get("input_source", ""))
+        if i < 0:   # chosen microphone is unplugged right now: keep the choice visible
+            self.input_box.addItem(_("{name} (not connected)").format(name=self.cfg["input_source"]), self.cfg["input_source"])
+            i = self.input_box.count() - 1
+        self.input_box.setCurrentIndex(i)
+        self.form.addRow(_("Microphone:"), self.input_box)
 
         import local_stt
         self.model_box = QComboBox()
@@ -186,6 +198,7 @@ class SettingsDialog(QDialog):
         return {
             "mode":                  self.mode_box.currentData(),
             "key":                   self.key_box.currentData(),
+            "input_source":          self.input_box.currentData(),
             "model":                 self.model_box.currentData(),
             "local_stt_num_threads": int(self.local_threads_box.value()),
             "local_stt_idle_minutes": int(self.local_idle_box.value()),
@@ -343,6 +356,7 @@ class MainWindow(QMainWindow):
         self.bridge.other_press.connect(self.on_other_press)
         self.bridge.transcribed.connect(self.on_transcribed)
         self.bridge.error.connect(self.on_error)
+        self.bridge.paste_failed.connect(self.keep_in_test_window)
         self.bridge.model_progress.connect(lambda m: self.set_status("transcribing", m))
         self.bridge.model_done.connect(self.on_model_done)
         self._model_downloading = False
@@ -358,6 +372,7 @@ class MainWindow(QMainWindow):
         self.press_time = 0.0
 
         self._note = None            # DictationNote of the dictation in progress
+        self._target = None          # window the dictation in progress belongs to
         self.last_text = ""          # most recent dictation, kept in memory only
         self._last_dialog = None
         # For privacy the last transcript is forgotten after a while.
@@ -688,6 +703,9 @@ class MainWindow(QMainWindow):
             self.on_error(_("Microphone: {err}").format(err=e))
             return False
         self.set_status("recording", _("Recording..."))
+        # The window that has focus now is where this dictation belongs, however
+        # long transcribing takes and whatever the user opens or switches to meanwhile.
+        self._target = core.paste_target()
         if self.cfg.get("dictation_notifications"):
             self._note = DictationNote(_("Speak now"))
         return True
@@ -703,7 +721,8 @@ class MainWindow(QMainWindow):
         # instead of being swallowed by the worker's delayed stop.
         take = self.recorder.detach()
         note, self._note = self._note, None
-        threading.Thread(target=self._stop_and_transcribe_worker, args=(take, note), daemon=True).start()
+        target = self._target
+        threading.Thread(target=self._stop_and_transcribe_worker, args=(take, note, target), daemon=True).start()
 
     def _discard_take(self):
         note, self._note = self._note, None
@@ -712,23 +731,26 @@ class MainWindow(QMainWindow):
         take = self.recorder.detach()
         threading.Thread(target=core.Recorder.finish, args=(take,), daemon=True).start()
 
-    def _note_text(self):
+    def _note_text(self, target):
+        """What the notification says: with a window to type into, the text
+        will be pasted; without one it goes to the test window."""
         if not core.model_ready():
             return _("Waiting for the speech model download")
+        pasting = target is None or bool(target)
         if self._local_state() == "loaded":
-            return _("Transcribing")
-        return _("Loading speech model and transcribing")
+            return _("Transcribing and pasting") if pasting else _("Transcribing")
+        return _("Loading speech model, transcribing and pasting") if pasting else _("Loading speech model and transcribing")
 
-    def _stop_and_transcribe_worker(self, take, note):
+    def _stop_and_transcribe_worker(self, take, note, target):
         try:
-            self._transcribe_take(take, note)
+            self._transcribe_take(take, note, target)
         finally:
             if note:
                 note.close()
 
-    def _transcribe_take(self, take, note):
+    def _transcribe_take(self, take, note, target):
         if note:
-            note.update(self._note_text())   # the key is up: "Speak now" turns into the current step
+            note.update(self._note_text(target))   # the key is up: "Speak now" turns into the current step
         # Short trailing buffer: PipeWire has ~50-100ms input latency and
         # people typically finish the last syllable *after* they release the
         # hotkey. Without this the last word tends to get clipped.
@@ -753,7 +775,7 @@ class MainWindow(QMainWindow):
             if not core.model_ready():
                 return   # the download failure has already been reported
             if note:
-                note.update(self._note_text())
+                note.update(self._note_text(target))
         wait_note = None
         if self._local_model_available() and not note:
             import local_stt
@@ -776,19 +798,31 @@ class MainWindow(QMainWindow):
             # Peak is out of 32768; a live mic with speech is in the thousands.
             why = "microphone was silent" if peak < 300 else "no speech recognised"
             core.log.info("nothing transcribed (%.0fs) — %s", secs, why)
-            self.bridge.transcribed.emit("")
+            self.bridge.transcribed.emit("", target)
             return
-        self.bridge.transcribed.emit(text)
+        self.bridge.transcribed.emit(text, target)
 
-    def on_transcribed(self, text):
+    def on_transcribed(self, text, target):
         if text:
             # A finished sentence gets a trailing space so the next dictation
             # doesn't run into it.
             typed = text + " " if text.endswith((".", "!", "?")) else text
-            threading.Thread(target=core.type_text, args=(typed,), daemon=True).start()
+            if target == "":
+                self.keep_in_test_window(typed)   # nothing to type into
+            else:
+                threading.Thread(target=self._paste, args=(typed, target), daemon=True).start()
             self.last_text = text
             self._clear_timer.start()   # restarts the countdown
         self.set_status("ready", _("Ready"))
+
+    def _paste(self, typed, target):
+        if not core.type_text(typed, target):
+            self.bridge.paste_failed.emit(typed)   # the window is gone: keep the text
+
+    def keep_in_test_window(self, typed):
+        """The dictation had nowhere to go: show the test window and put the text there."""
+        self.show_test_dictation()
+        self._test_dialog.edit.insertPlainText(typed)
 
     def on_error(self, msg):
         self.set_status("error", _("Error: {msg}").format(msg=msg[:80]))

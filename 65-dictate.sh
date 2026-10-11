@@ -42,7 +42,7 @@ echo "--- Installing system packages ---"
 # the xcb libraries are what Qt's X11 platform plugin loads.
 apt-get -o DPkg::Lock::Timeout=60 update -qq
 apt-get -o DPkg::Lock::Timeout=60 install -y \
-    python3-venv xdotool libnotify-bin libportaudio2 libxcb-cursor0 \
+    python3-venv xdotool x11-utils libnotify-bin libportaudio2 libxcb-cursor0 \
     libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
     libxcb-render-util0 libxcb-shape0 libxcb-xinerama0 libxcb-xkb1
 
