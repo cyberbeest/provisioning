@@ -2262,7 +2262,12 @@ def main():
             sys.exit(1)
         print(version)
         return
-    RunGuiWindow()
+    window = RunGuiWindow()
+    # Used by Fast Track (cyberbeest-update.sh --fast-track): the user has
+    # already confirmed the update in its dialog, so start "Run changed"
+    # straight away instead of waiting for a click.
+    if "--run-changed" in sys.argv[1:]:
+        GLib.idle_add(lambda: window.start_sequence(changed_only=True) and False)
     Gtk.main()
 
 
