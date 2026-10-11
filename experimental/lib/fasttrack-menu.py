@@ -9,20 +9,11 @@ gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk
 
 BIN = os.path.expanduser("~/.local/bin")
-STATE = os.path.expanduser("~/.local/state/cyberbeest-fasttrack")
-PAUSED = os.path.join(STATE, "paused")
 
 
 def launch(*argv):
     subprocess.Popen(argv, start_new_session=True)
 
-
-def toggle_pause(_item):
-    if os.path.exists(PAUSED):
-        os.remove(PAUSED)
-    else:
-        os.makedirs(STATE, exist_ok=True)
-        open(PAUSED, "w").close()
 
 
 menu = Gtk.Menu()
@@ -33,8 +24,8 @@ item = Gtk.MenuItem(label="Open Cyberbeest Update")
 item.connect("activate", lambda _i: launch(os.path.join(BIN, "cyberbeest-update.sh")))
 menu.append(item)
 menu.append(Gtk.SeparatorMenuItem())
-item = Gtk.MenuItem(label="Resume Fast Track" if os.path.exists(PAUSED) else "Pause Fast Track")
-item.connect("activate", toggle_pause)
+item = Gtk.MenuItem(label="Stop Fast Track")
+item.connect("activate", lambda _i: launch(os.path.join(BIN, "fasttrack-stop.sh")))
 menu.append(item)
 menu.connect("deactivate", lambda _m: Gtk.main_quit())
 menu.show_all()

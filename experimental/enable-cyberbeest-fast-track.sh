@@ -3,7 +3,9 @@
 # track (~/provisioning-bleeding, branch main) and should offer new commits
 # within minutes instead of waiting for someone to open Cyberbeest Update.
 #
-# A small watcher (lib/cyberbeest-fasttrack.sh) starts at login, checks the
+# This script only installs. The Whisker entry "Cyberbeest Fast Track" turns it
+# on (starts the watcher, adds the panel icon, remembers "on" for next login);
+# the icon's menu has "Stop Fast Track". The watcher (lib/cyberbeest-fasttrack.sh) checks the
 # v-server's doorbell file once a minute and, when main has a commit this
 # checkout lacks, shows the Cyberbeest Update confirm dialog. After "Yes" the
 # changed scripts run automatically (run-gui.py --run-changed); the sudo
@@ -12,8 +14,8 @@
 #
 # Needs the normal Cyberbeest Update (52-cyberbeest-update.sh) installed.
 # Also adds a Whisker menu entry ("Cyberbeest Fast Track") and a panel icon
-# (genmon plugin-230: up to date / update available / paused; click menu with
-# check now, open Cyberbeest Update, pause/resume).
+# (genmon plugin-230: up to date / update available; click menu with check now,
+# open Cyberbeest Update, stop).
 #
 # Opt-out without uninstalling: sudo touch /etc/cyberbeest/fasttrack-disabled
 # Usage: sudo bash enable-cyberbeest-fast-track.sh
@@ -40,7 +42,7 @@ install -o "$TARGET_USER" -g "$TARGET_USER" -m 755 "$DIR/lib/cyberbeest-fasttrac
 # The update script and run-gui.py must carry the --fast-track/--run-changed
 # support, so refresh the installed copy too.
 install -o "$TARGET_USER" -g "$TARGET_USER" -m 755 "$DIR/../lib/cyberbeest-update.sh" "$BIN/cyberbeest-update.sh"
-for f in fasttrack-genmon.sh fasttrack-menu.py fasttrack-panel-icon.sh; do
+for f in fasttrack-genmon.sh fasttrack-menu.py fasttrack-panel-icon.sh fasttrack-start.sh fasttrack-stop.sh; do
 	install -o "$TARGET_USER" -g "$TARGET_USER" -m 755 "$DIR/lib/$f" "$BIN/$f"
 done
 install -d -m 755 /etc/cyberbeest
@@ -53,10 +55,10 @@ cat > "$APPS/cyberbeest-fast-track.desktop" <<EOT
 Type=Application
 Name=Cyberbeest Fast Track
 Name[de]=Cyberbeest Fast Track
-Comment=Check for new Cyberbeest updates now and apply them after confirmation
-Comment[de]=Jetzt nach neuen Cyberbeest-Updates suchen und sie nach Bestätigung anwenden
+Comment=Turn on Fast Track: confirmation box whenever there is new code
+Comment[de]=Fast Track einschalten: Bestätigungsfenster bei jedem neuen Code
 Icon=software-update-available
-Exec=$BIN/cyberbeest-update.sh --fast-track
+Exec=$BIN/fasttrack-start.sh
 Categories=Cyberbeest;Settings;
 Terminal=false
 StartupNotify=true
@@ -70,22 +72,11 @@ cat > "$AUTOSTART/cyberbeest-fasttrack.desktop" <<EOT
 [Desktop Entry]
 Type=Application
 Name=Cyberbeest Fast Track
-Exec=$BIN/cyberbeest-fasttrack.sh
+Exec=sh -c '[ -e "\$HOME/.local/state/cyberbeest-fasttrack/enabled" ] && exec "\$HOME/.local/bin/cyberbeest-fasttrack.sh"'
 Terminal=false
 NoDisplay=true
 X-GNOME-Autostart-enabled=true
 EOT
 chown "$TARGET_USER:$TARGET_USER" "$AUTOSTART/cyberbeest-fasttrack.desktop"
-
-echo "--- (Re)starting the watcher now ---"
-pkill -u "$TARGET_USER" -f '[c]yberbeest-fasttrack\.sh' || true
-sleep 1
-sudo -u "$TARGET_USER" env DISPLAY="${DISPLAY:-:0}" XAUTHORITY="$TARGET_HOME/.Xauthority" \
-	setsid -f "$BIN/cyberbeest-fasttrack.sh" >/dev/null 2>&1 || true
-
-echo "--- Panel icon (plugin-230) ---"
-sudo -u "$TARGET_USER" env DISPLAY="${DISPLAY:-:0}" XAUTHORITY="$TARGET_HOME/.Xauthority" \
-	DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u "$TARGET_USER")/bus" \
-	"$BIN/fasttrack-panel-icon.sh" add || echo "panel icon not added (no graphical session?)"
 
 echo "=== $(date) : done ==="

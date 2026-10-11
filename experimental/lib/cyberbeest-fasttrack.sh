@@ -15,8 +15,8 @@
 #
 # A commit that was shown once (confirmed or declined) isn't offered again;
 # the next push rings again. Only for a checkout on "main" (beta track).
-# Paused via the panel icon's menu (~/.local/state/cyberbeest-fasttrack/paused)
-# or system-wide with /etc/cyberbeest/fasttrack-disabled.
+# Started by the Whisker entry (fasttrack-start.sh), stopped from the panel icon's
+# menu (fasttrack-stop.sh); /etc/cyberbeest/fasttrack-disabled mutes it system-wide.
 set -uo pipefail
 
 URL="${CYBERBEEST_FASTTRACK_URL:-https://downloads.cyberbeest.com/fasttrack/main}"
@@ -38,7 +38,6 @@ find_repo() {
 while :; do
 	sleep "$INTERVAL"
 	[ -e /etc/cyberbeest/fasttrack-disabled ] && continue
-	[ -e "$STATE_DIR/paused" ] && continue
 	repo="$(find_repo)"
 	[ -n "$repo" ] || continue
 	[ "$(git -C "$repo" rev-parse --abbrev-ref HEAD 2>/dev/null)" = main ] || continue
