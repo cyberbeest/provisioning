@@ -85,6 +85,7 @@ sudo -u "$TARGET_USER" env DISPLAY="${DISPLAY:-:0}" XAUTHORITY="$TARGET_HOME/.Xa
 
 echo "--- Panel icon (plugin-230) ---"
 sudo -u "$TARGET_USER" env DISPLAY="${DISPLAY:-:0}" XAUTHORITY="$TARGET_HOME/.Xauthority" \
+	DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u "$TARGET_USER")/bus" \
 	"$BIN/fasttrack-panel-icon.sh" add || echo "panel icon not added (no graphical session?)"
 
 echo "=== $(date) : done ==="
