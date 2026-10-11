@@ -74,6 +74,7 @@ DEFAULT_CONFIG = {
     "language":              "auto",  # UI language: auto (desktop locale), en, de; no Settings field, provisioning sets the locale
     "input_source":          "",     # PulseAudio source name; empty = automatic
     "trim_silence":          True,   # cut pauses before decoding (local_stt silence trimming); no Settings field
+    "vad_highpass":          True,   # speech detection ignores hum below 150 Hz (mains buzz hides quiet speech from it)
     "local_stt_idle_minutes": 5,   # unload the model after this long idle when RAM is short (0 = keep loaded)
 }
 
@@ -127,6 +128,7 @@ def load_config():
         import local_stt
         cfg["model"] = local_stt.select_model(cfg.get("model"))
         local_stt.set_trim(cfg.get("trim_silence", True))
+        local_stt.set_vad_highpass(cfg.get("vad_highpass", True))
     except ImportError:
         pass
     set_input_source(cfg.get("input_source", ""))

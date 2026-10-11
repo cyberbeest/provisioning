@@ -126,6 +126,14 @@ class SettingsDialog(QDialog):
         self.notify_box.setChecked(bool(self.cfg.get("dictation_notifications", True)))
         self.notify_box.setToolTip(_("\"Speak now\" while you hold the key, then \"Transcribing\" until the text is typed."))
         self.form.addRow("", self.notify_box)
+        self.hum_box = QCheckBox(_("Filter mains hum"))
+        self.hum_box.setChecked(bool(self.cfg.get("vad_highpass", True)))
+        self.hum_box.setToolTip(_(
+            "Mains hum (a low buzz, often from the charger) can hide quiet words from the\n"
+            "speech detector, so they get cut out. This hides everything below 150 Hz from the\n"
+            "detector only; the recording itself is not changed."
+        ))
+        self.form.addRow("", self.hum_box)
         self.autostart_box = QCheckBox(_("Start Dictate when I log in"))
         self.autostart_box.setChecked(core.autostart_enabled())
         self.form.addRow("", self.autostart_box)
@@ -204,6 +212,7 @@ class SettingsDialog(QDialog):
             "local_stt_num_threads": int(self.local_threads_box.value()),
             "local_stt_idle_minutes": int(self.local_idle_box.value()),
             "dictation_notifications": self.notify_box.isChecked(),
+            "vad_highpass":          self.hum_box.isChecked(),
             "autostart":             self.autostart_box.isChecked(),
         }
 
@@ -534,6 +543,7 @@ class MainWindow(QMainWindow):
             if self.cfg["model"] != local_stt._model_id:
                 local_stt.unload()
             local_stt.select_model(self.cfg["model"])
+            local_stt.set_vad_highpass(self.cfg["vad_highpass"])
             core.set_autostart(self.cfg.pop("autostart"))
             core.save_config(self.cfg)
             self.restart_listener()

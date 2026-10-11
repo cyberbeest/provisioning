@@ -227,12 +227,50 @@ VAD_MAX_GAP_S = 0.4        # silence between segments longer than this ...
 VAD_KEEP_GAP_S = 0.15      # ... is shortened to this
 STREAM_TRUST_PEAK = 0.1    # -20 dBFS: streamed VAD results are trusted above this peak
 NO_SPEECH_DECODE_S = 2.0   # no speech found: shorter clips are still decoded (a lone short word)
+VAD_HIGHPASS_HZ = 150      # the detector hears the audio without anything below this (mains hum drowns quiet speech for it)
 _trim_enabled = True
+_vad_highpass = True
 
 
 def set_trim(on: bool) -> None:
     global _trim_enabled
     _trim_enabled = bool(on)
+
+
+def set_vad_highpass(on: bool) -> None:
+    global _vad_highpass
+    _vad_highpass = bool(on)
+
+
+class _HighPass:
+    """2nd-order Butterworth high-pass (RBJ biquad); the state carries over between blocks."""
+
+    def __init__(self, hz: float = VAD_HIGHPASS_HZ, sr: int = 16000):
+        w = 2 * np.pi * hz / sr
+        al = np.sin(w) / np.sqrt(2)
+        c = np.cos(w)
+        a0 = 1 + al
+        self.b = ((1 + c) / 2 / a0, -(1 + c) / a0, (1 + c) / 2 / a0)
+        self.a = (-2 * c / a0, (1 - al) / a0)
+        self.z1 = self.z2 = 0.0
+
+    def __call__(self, x: np.ndarray) -> np.ndarray:
+        b0, b1, b2 = self.b
+        a1, a2 = self.a
+        z1, z2 = self.z1, self.z2
+        out = []
+        for v in x.tolist():
+            y = b0 * v + z1
+            z1 = b1 * v - a1 * y + z2
+            z2 = b2 * v - a2 * y
+            out.append(y)
+        self.z1, self.z2 = z1, z2
+        return np.asarray(out, np.float32)
+
+
+def _vad_filter():
+    """A fresh high-pass for one stretch of audio, or None when the setting is off."""
+    return _HighPass(VAD_HIGHPASS_HZ, TARGET_SR) if _vad_highpass else None
 
 
 def trim_active() -> bool:
@@ -284,6 +322,9 @@ def _drain(vad, segments: list) -> None:
 def speech_mask(audio: np.ndarray):
     """Speech mask of a whole float32 clip, or None if the detector finds no speech."""
     vad = _vad_detector(len(audio) / TARGET_SR + 5)
+    hp = _vad_filter()
+    if hp is not None:
+        audio = hp(audio)
     audio = _boost(audio)
     segments: list = []
     for i in range(0, len(audio) - VAD_WINDOW + 1, VAD_WINDOW):
@@ -353,6 +394,7 @@ class StreamingVad:
     def _run(self) -> None:
         try:
             vad = _vad_detector(60)
+            hp = _vad_filter()
             buf = np.zeros(0, np.float32)
             while True:
                 block = self._q.get()
@@ -363,7 +405,8 @@ class StreamingVad:
                 buf = np.concatenate((buf, x))
                 n = len(buf) // VAD_WINDOW * VAD_WINDOW
                 for i in range(0, n, VAD_WINDOW):
-                    vad.accept_waveform(buf[i:i + VAD_WINDOW])
+                    win = buf[i:i + VAD_WINDOW]
+                    vad.accept_waveform(hp(win) if hp is not None else win)
                     _drain(vad, self._segments)
                 buf = buf[n:]
             vad.flush()

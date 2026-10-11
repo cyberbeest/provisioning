@@ -49,6 +49,8 @@ CATALOGS = {
         "Loading speech model & transcribing": "Lade Sprachmodell & transkribiere",
         "Transcribing": "Transkribiere",
         "Speak now": "Jetzt sprechen",
+        "Filter mains hum": "Netzbrummen filtern",
+        "Mains hum (a low buzz, often from the charger) can hide quiet words from the\nspeech detector, so they get cut out. This hides everything below 150 Hz from the\ndetector only; the recording itself is not changed.": "Netzbrummen (ein tiefes Summen, oft vom Netzteil) kann leise Wörter vor der\nSpracherkennung verbergen, sodass sie herausgeschnitten werden. Dies blendet alles\nunter 150 Hz nur für die Erkennung aus; die Aufnahme selbst bleibt unverändert.",
         "Show a notification while dictating": "Beim Diktieren eine Benachrichtigung anzeigen",
         "\"Speak now\" while you hold the key, then \"Transcribing\" until the text is typed.": "„Jetzt sprechen“, solange die Taste gehalten wird, danach „Transkribiere“, bis der Text getippt ist.",
         "Dictation settings": "Diktier-Einstellungen",
