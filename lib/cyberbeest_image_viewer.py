@@ -821,8 +821,27 @@ class ImageViewerWindow(Gtk.Window):
             self.image_widget._tooltip_hooked = True
         self.image_widget.set_has_tooltip(True)
 
+    def _pixel_rgb_at(self, widget, x, y):
+        # Pointer position in widget coords -> pixel of the native-size image.
+        if not self.frames or self.native_size is None:
+            return None
+        aw, ah = widget.get_allocated_width(), widget.get_allocated_height()
+        if not (0 <= x < aw and 0 <= y < ah):
+            return None
+        nw, nh = self.native_size
+        px = min(nw - 1, int(x * nw / aw))
+        py = min(nh - 1, int(y * nh / ah))
+        try:
+            return self.frames[0][0].getpixel((px, py))[:3]
+        except Exception:
+            return None
+
     def on_query_tooltip(self, widget, x, y, keyboard_mode, tooltip):
-        label = Gtk.Label(label=self._tooltip_text)
+        text = self._tooltip_text
+        rgb = self._pixel_rgb_at(widget, x, y)
+        if rgb is not None:
+            text += "\nRGB " + ", ".join(str(c) for c in rgb)
+        label = Gtk.Label(label=text)
         label.set_xalign(0)
         label.show()
         # Make the tooltip window click-through, so the pointer moving over
