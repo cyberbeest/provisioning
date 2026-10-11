@@ -250,7 +250,7 @@ def _xdotool_type(text):
 
 def _on_x11():
     import os
-    return not (os.name == "nt" or sys.platform == "darwin") and os.environ.get("XDG_SESSION_TYPE") == "x11"
+    return os.environ.get("XDG_SESSION_TYPE") == "x11"
 
 
 def active_window():
@@ -314,11 +314,6 @@ def type_text(text, target=None):
     # therefore wrong for non-US keyboards, but there is no better option
     # for global typing into native Wayland windows today.
     import os
-    if os.name == "nt" or sys.platform == "darwin":
-        # Windows / macOS: no xdotool or ydotool; pynput types through the
-        # OS input API and respects the active keyboard layout.
-        keyboard.Controller().type(text)
-        return True
     on_x11 = os.environ.get("XDG_SESSION_TYPE") == "x11"
     tools = ["xdotool", "ydotool"] if on_x11 else ["ydotool", "xdotool"]
     for tool in tools:
