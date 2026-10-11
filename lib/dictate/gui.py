@@ -6,9 +6,10 @@ import threading
 import time
 
 import numpy as np
-from PyQt6.QtCore import Qt, QObject, QPointF, QRect, QRectF, QTimer, QLibraryInfo, QLocale, QTranslator, pyqtSignal, pyqtSlot
+from PyQt6.QtCore import Qt, QObject, QPoint, QPointF, QRect, QRectF, QTimer, QLibraryInfo, QLocale, QTranslator, pyqtSignal, pyqtSlot
 from PyQt6.QtDBus import QDBusConnection
-from PyQt6.QtGui import QAction, QActionGroup, QColor, QCursor, QIcon, QPainter, QPixmap
+from PyQt6.QtGui import (QAction, QActionGroup, QBitmap, QColor, QCursor, QFont, QFontMetrics, QIcon, QImage,
+                         QPainter, QPixmap, QRegion)
 from PyQt6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox,
     QFormLayout, QHBoxLayout, QLabel, QLineEdit, QMainWindow, QMenu,
@@ -316,22 +317,33 @@ class DictationNote:
 
 class MeterWindow(QWidget):
     """Small K.I.T.T.-style window while recording: "Speak now" and a level meter.
-    Three columns of red segments grow from the middle; they stay empty unless the
-    voice detector hears speech, and then follow the loudness. Never takes the
-    keyboard focus (the text goes to the window that had it). After a click on the
-    tray icon it sits right under the icon and has a Stop button; after the hotkey it
-    sits in the top right corner and clicking it stops the dictation."""
+    The window has exactly the shape of what is drawn (a window mask: a pixel is there
+    or it is not, no partial transparency, which would need a compositor): every letter
+    and every lit LED has a one pixel outline and the desktop shows through everywhere
+    else. LEDs that are not lit are not there at all (SHOW_UNLIT).
+    Three columns of red LEDs grow from the middle; they stay empty unless the voice
+    detector hears speech, and then follow the loudness. Never takes the keyboard focus
+    (the text goes to the window that had it). After a click on the tray icon it sits
+    right under the icon and has a Stop button; after the hotkey it sits in the top
+    right corner and a click on it stops the dictation."""
 
     ROWS = 11
     ATTACK_S = 0.025
     RELEASE_DB_S = 100.0
     SIDE_SCALE = 0.5
+    SHOW_UNLIT = False
+    LED_W, LED_H, PITCH, COL_GAP = 14, 7, 10, 6   # LED size inside its outline, row pitch, gap between columns
+    LABEL_H = 22
+    WIDTH = 112
+    METER_H = 2 + ROWS * PITCH + 4
+    OUTLINE = QColor(240, 240, 240)     # around the letters
+    LED_OUTLINE = QColor(0, 0, 0)       # around the LEDs
+    LABEL_COLOR = QColor(220, 30, 30)
 
     def __init__(self, on_click):
         super().__init__(None, Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint
                          | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.WindowDoesNotAcceptFocus)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
         self.setFixedSize(self.WIDTH, self.LABEL_H + self.METER_H)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setToolTip(_("Click to stop dictating"))
@@ -345,25 +357,94 @@ class MeterWindow(QWidget):
         self.stop_btn.hide()
         self._meter = None
         self._level = 0.0     # dB below the top of the bars
+        self._span = 40.0
         self._last = 0.0
+        self._label = None    # (text, image, region): the outlined "Speak now"
+        self._mask_key = None
         self._timer = QTimer(self)
         self._timer.setInterval(33)
         self._timer.timeout.connect(self._tick)
 
-    METER_H = 84
-    LABEL_H = 22
-    WIDTH = 112
+    # -- shapes ---------------------------------------------------------------
+    def _label_parts(self):
+        text = _("Speak now")
+        if self._label is None or self._label[0] != text:
+            font = QFont(self.font())
+            font.setPointSize(9)
+            fm = QFontMetrics(font)
+            w, h = fm.horizontalAdvance(text) + 6, fm.height() + 4
+            img = QImage(w, h, QImage.Format.Format_ARGB32)
+            img.fill(0)
+            p = QPainter(img)
+            p.setFont(font)
+            p.setRenderHint(QPainter.RenderHint.TextAntialiasing, False)   # crisp glyphs: every pixel is in or out
+            box = QRect(3, 2, w - 6, h - 4)
+            p.setPen(self.OUTLINE)
+            for dx in (-1, 0, 1):
+                for dy in (-1, 0, 1):
+                    if dx or dy:
+                        p.drawText(box.translated(dx, dy), Qt.AlignmentFlag.AlignCenter, text)
+            p.setPen(self.LABEL_COLOR)
+            p.drawText(box, Qt.AlignmentFlag.AlignCenter, text)
+            p.end()
+            region = QRegion(QBitmap.fromImage(img.createAlphaMask()))
+            self._label = (text, img, region)
+        return self._label
 
+    def _label_pos(self):
+        img = self._label_parts()[1]
+        return QPoint((self.WIDTH - img.width()) // 2, max(0, (self.LABEL_H - img.height()) // 2))
+
+    def _led_rect(self, c, r):
+        """Outer rectangle (outline included) of the LED in column c, row r."""
+        cw = self.LED_W + 2
+        x0 = (self.WIDTH - (3 * cw + 2 * self.COL_GAP)) // 2
+        return QRect(x0 + c * (cw + self.COL_GAP), self.LABEL_H + 2 + r * self.PITCH, cw, self.LED_H + 2)
+
+    def _lit(self):
+        """Number of lit rows on each side of the middle, per column (left, middle, right)."""
+        mid = self.ROWS // 2
+        frac = min(max(1 + self._level / self._span, 0.0), 1.0)
+        out = []
+        for lvl in (frac * self.SIDE_SCALE, frac, frac * self.SIDE_SCALE):
+            lit = lvl * (mid + 0.999)
+            out.append(sum(1 for r in range(self.ROWS) if abs(r - mid) < lit))
+        return out
+
+    def _rows_shown(self, count):
+        mid = self.ROWS // 2
+        n = (count - 1) // 2   # rows lit on each side of the middle row
+        if self.SHOW_UNLIT:
+            return range(self.ROWS)
+        return range(mid - n, mid + n + 1) if count else range(0)
+
+    def _update_mask(self):
+        key = (tuple(self._lit()), self._with_button, self._label_parts()[0])
+        if key == self._mask_key:
+            return
+        self._mask_key = key
+        region = self._label_parts()[2].translated(self._label_pos())
+        for c, count in enumerate(self._lit()):
+            for r in self._rows_shown(count):
+                region = region.united(QRegion(self._led_rect(c, r)))
+        if self._with_button:
+            region = region.united(QRegion(self.stop_btn.geometry()))
+        self.setMask(region)
+
+    # -- show / hide ------------------------------------------------------------
     def start(self, meter, with_button=False, below=None):
         """with_button: also show a Stop button under the bars (a dictation started by a click).
         below: the tray icon's rectangle (or the click position) to sit under; None = top right corner."""
         self._meter = meter
         self._level = -meter.scale()[1]
+        self._span = meter.scale()[1]
         self._last = time.monotonic()
         self._with_button = with_button
+        self._mask_key = None
         self.setFixedSize(self.WIDTH, self.LABEL_H + self.METER_H + (30 if with_button else 0))
         self.stop_btn.setVisible(with_button)
         self.stop_btn.setGeometry(8, self.LABEL_H + self.METER_H, self.width() - 16, 22)
+        self._update_mask()
         self._place(below)
         self.show()
         self._timer.start()
@@ -402,6 +483,7 @@ class MeterWindow(QWidget):
         else:
             self._level = max(target, self._level - self.RELEASE_DB_S * dt)
         self._span = span
+        self._update_mask()
         self.update()
 
     def mousePressEvent(self, e):
@@ -410,31 +492,24 @@ class MeterWindow(QWidget):
 
     def paintEvent(self, event):
         g = QPainter(self)
-        g.fillRect(self.rect(), QColor(0, 0, 0))
-        m = self._meter
-        span = getattr(self, "_span", None) or (m.scale()[1] if m else 40.0)
-        frac = min(max(1 + self._level / span, 0.0), 1.0)
-        pad, gap, colgap = 8, 2, 6
-        colw = (72 - 2 * pad - 2 * colgap) / 3
-        x0 = (self.width() - 72) / 2 + pad
-        rowh = (self.METER_H - 2 * pad - gap * (self.ROWS - 1)) / self.ROWS
-        g.setPen(QColor(200, 70, 70))
-        f = g.font()
-        f.setPointSize(9)
-        g.setFont(f)
-        g.drawText(QRectF(0, 3, self.width(), self.LABEL_H - 3), Qt.AlignmentFlag.AlignCenter, _("Speak now"))
+        g.fillRect(self.rect(), self.LED_OUTLINE)   # what the mask keeps and nothing draws over is an LED's outline
+        # The label's own area is filled with its outline color first: the mask can keep pixels
+        # the text image leaves clear, and those must not turn up as black specks.
+        g.save()
+        g.setClipRegion(self._label_parts()[2].translated(self._label_pos()))
+        g.fillRect(self.rect(), self.OUTLINE)
+        g.restore()
+        g.drawImage(self._label_pos(), self._label_parts()[1])
         mid = self.ROWS // 2
-        for c, lvl in enumerate((frac * self.SIDE_SCALE, frac, frac * self.SIDE_SCALE)):
-            x = x0 + c * (colw + colgap)
-            lit = lvl * (mid + 0.999)
-            for r in range(self.ROWS):
+        for c, count in enumerate(self._lit()):
+            for r in self._rows_shown(count):
                 dist = abs(r - mid)
-                if dist < lit:
+                if (count - 1) // 2 >= dist and count:
                     k = 1.0 - 0.38 * dist / mid
                     col = QColor(int(255 * k), int(8 * k), int(8 * k))
                 else:
                     col = QColor(30, 30, 30)
-                g.fillRect(QRectF(x, self.LABEL_H + pad + r * (rowh + gap), colw, rowh), col)
+                g.fillRect(self._led_rect(c, r).adjusted(1, 1, -1, -1), col)
 
 
 class TestDictationDialog(QDialog):
