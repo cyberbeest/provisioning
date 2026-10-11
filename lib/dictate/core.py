@@ -151,16 +151,39 @@ def notify(msg, urgency="normal", timeout_ms=1500):
         pass
 
 
-def notify_sticky(msg, replace_id=None):
+def _gv_str(s):
+    """A Python string as a GVariant text-format string literal."""
+    return "'" + s.replace("\\", "\\\\").replace("'", "\\'") + "'"
+
+
+def notify_sticky(msg, replace_id=None, body=None, action=None):
     """Show a notification that stays until close_notification(); returns its
     id, or None if it could not be shown. With replace_id, that notification
-    changes its text in place."""
-    # The text is the summary and there is no body: no "Dictate" heading above it.
+    changes its text in place. With action, clicking the notification sends
+    the daemon's ActionInvoked signal for this id with the key "default".
+    (notify-send -A would do that too, but it implies --wait and blocks until
+    the notification is gone, which would stall the caller.)"""
+    if action:
+        try:
+            r = subprocess.run(
+                ["gdbus", "call", "--session", "--dest", "org.freedesktop.Notifications",
+                 "--object-path", "/org/freedesktop/Notifications",
+                 "--method", "org.freedesktop.Notifications.Notify",
+                 "Dictate", str(replace_id or 0), "", _gv_str(msg), _gv_str(body or ""),
+                 "[" + _gv_str("default") + "," + _gv_str(action) + "]", "@a{sv} {}", "0"],
+                check=False, capture_output=True, text=True, timeout=5)
+            return int(r.stdout.split()[1].rstrip(",)"))
+        except (FileNotFoundError, ValueError, IndexError, subprocess.TimeoutExpired):
+            return None
+    # The text is the summary; without a body there is no "Dictate" heading above it.
     cmd = ["notify-send", "-a", "Dictate", "-p", "-t", "0"]
     if replace_id is not None:
         cmd += ["-r", str(replace_id)]
+    cmd.append(msg)
+    if body:
+        cmd.append(body)
     try:
-        r = subprocess.run(cmd + [msg], check=False, capture_output=True, text=True)
+        r = subprocess.run(cmd, check=False, capture_output=True, text=True)
         return int(r.stdout.strip())
     except (FileNotFoundError, ValueError):
         return None

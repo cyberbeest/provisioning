@@ -6,7 +6,8 @@ import threading
 import time
 
 import numpy as np
-from PyQt6.QtCore import Qt, QObject, QPointF, QTimer, QLibraryInfo, QLocale, QTranslator, pyqtSignal
+from PyQt6.QtCore import Qt, QObject, QPointF, QTimer, QLibraryInfo, QLocale, QTranslator, pyqtSignal, pyqtSlot
+from PyQt6.QtDBus import QDBusConnection
 from PyQt6.QtGui import QAction, QActionGroup, QColor, QCursor, QIcon, QPainter, QPixmap
 from PyQt6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox,
@@ -262,26 +263,39 @@ LANGUAGE_LIST_EN = ("Supported languages: Bulgarian, Croatian, Czech, Danish, Du
 LAST_TRANSCRIPT_MINUTES = 5
 
 
+CANCELLED = object()   # stands in for the target window of a dictation the user cancelled
+
+
 class DictationNote:
     """One notification that follows a dictation: "Speak now" while the key is
     held, then "Transcribing ...", closed when the text is ready. Showing it
     runs on a thread so pressing the hotkey never waits for the notification
     daemon; update() and close() must not be called from the GUI thread."""
 
+    active = {}   # notification id -> DictationNote, so a click can find its dictation
+
     def __init__(self, msg):
         self.id = None
+        self.cancelled = threading.Event()   # the user clicked: do not paste this dictation
         self._thread = threading.Thread(target=self._show, args=(msg,), daemon=True)
         self._thread.start()
 
     def _show(self, msg):
         self.id = core.notify_sticky(msg)
 
-    def update(self, msg):
+    def update(self, msg, cancellable=False):
+        """cancellable: the notification can be clicked to cancel the pasting."""
         self._thread.join()
-        self.id = core.notify_sticky(msg, replace_id=self.id)
+        if self.cancelled.is_set():
+            return   # the user dismissed it: it must not come back
+        self.id = core.notify_sticky(
+            msg, replace_id=self.id, action=_("Cancel") if cancellable else None)
+        if self.id is not None:
+            DictationNote.active[self.id] = self
 
     def close(self):
         self._thread.join()
+        DictationNote.active.pop(self.id, None)
         core.close_notification(self.id)
 
 
@@ -356,6 +370,9 @@ class MainWindow(QMainWindow):
         self.bridge.other_press.connect(self.on_other_press)
         self.bridge.transcribed.connect(self.on_transcribed)
         self.bridge.error.connect(self.on_error)
+        QDBusConnection.sessionBus().connect(
+            "org.freedesktop.Notifications", "/org/freedesktop/Notifications",
+            "org.freedesktop.Notifications", "ActionInvoked", self.on_notification_action)
         self.bridge.paste_failed.connect(self.keep_in_test_window)
         self.bridge.model_progress.connect(lambda m: self.set_status("transcribing", m))
         self.bridge.model_done.connect(self.on_model_done)
@@ -750,7 +767,7 @@ class MainWindow(QMainWindow):
 
     def _transcribe_take(self, take, note, target):
         if note:
-            note.update(self._note_text(target))   # the key is up: "Speak now" turns into the current step
+            note.update(self._note_text(target), cancellable=target != "")   # the key is up: "Speak now" turns into the current step
         # Short trailing buffer: PipeWire has ~50-100ms input latency and
         # people typically finish the last syllable *after* they release the
         # hotkey. Without this the last word tends to get clipped.
@@ -775,7 +792,7 @@ class MainWindow(QMainWindow):
             if not core.model_ready():
                 return   # the download failure has already been reported
             if note:
-                note.update(self._note_text(target))
+                note.update(self._note_text(target), cancellable=target != "")
         wait_note = None
         if self._local_model_available() and not note:
             import local_stt
@@ -800,10 +817,15 @@ class MainWindow(QMainWindow):
             core.log.info("nothing transcribed (%.0fs) — %s", secs, why)
             self.bridge.transcribed.emit("", target)
             return
+        if note and note.cancelled.is_set():
+            target = CANCELLED
         self.bridge.transcribed.emit(text, target)
 
     def on_transcribed(self, text, target):
-        if text:
+        if text and target is CANCELLED:
+            self.last_text = text   # kept under "Show last transcript", not pasted
+            self._clear_timer.start()
+        elif text:
             # A finished sentence gets a trailing space so the next dictation
             # doesn't run into it.
             typed = text + " " if text.endswith((".", "!", "?")) else text
@@ -814,6 +836,14 @@ class MainWindow(QMainWindow):
             self.last_text = text
             self._clear_timer.start()   # restarts the countdown
         self.set_status("ready", _("Ready"))
+
+    @pyqtSlot("uint", "QString")
+    def on_notification_action(self, nid, key):
+        """The user clicked a Dictate notification: cancel that dictation's pasting."""
+        note = DictationNote.active.get(nid)
+        if note is not None and key == "default" and not note.cancelled.is_set():
+            note.cancelled.set()
+            threading.Thread(target=note.close, daemon=True).start()
 
     def _paste(self, typed, target):
         if not core.type_text(typed, target):

@@ -18,6 +18,7 @@ CATALOGS = {
         "Toggle (tap to start, tap to stop)": "Umschalten (tippen zum Starten, tippen zum Beenden)",
         "Mode:": "Modus:",
         "Hotkey:": "Tastenkürzel:",
+        "Cancel": "Abbrechen",
         "Transcribing and pasting": "Transkribiere und füge ein",
         "Loading speech model, transcribing and pasting": "Lade Sprachmodell, transkribiere und füge ein",
         "Microphone:": "Mikrofon:",
