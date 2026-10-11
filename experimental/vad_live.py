@@ -21,13 +21,14 @@ from pathlib import Path
 import numpy as np
 from PyQt6.QtCore import QRectF, Qt, QTimer
 from PyQt6.QtGui import QColor, QFont, QPainter
-from PyQt6.QtWidgets import QApplication, QWidget
+from PyQt6.QtWidgets import QApplication, QCheckBox, QWidget
 
 DICTATE = Path(__file__).resolve().parents[1] / "lib/dictate"
 VAD_MODEL = DICTATE / "silero_vad.onnx"
+sys.path.insert(0, str(DICTATE))
+import local_stt  # Dictate's own high-pass, so the viewer filters exactly like it does
 SR, WINDOW = 16000, 512
 VAD_THRESHOLD = 0.5
-LEVEL_HP_HZ = 150.0  # the level meter ignores mains hum and rumble below this; the VAD hears everything
 BACKFILL_WINDOWS = 3  # when the VAD turns on, the windows just before it count as speech too (it recognizes onsets late)
 ROWS = 21  # odd: one middle row, bars grow outward from it
 DB_FLOOR, DB_CEIL = -50.0, -10.0  # fixed level range mapped onto the bars (normalization off)
@@ -39,32 +40,6 @@ NORM_ATTACK_S, NORM_RELEASE_S = 0.3, 1.0  # the reference moves slowly: it follo
 RELEASE_DB_S = 100.0            # center column falls this fast, like a studio meter
 SIDE_SCALE = 0.5                # side columns are half the middle one, as on the original
 ATTACK_S = 0.025                # time constant of the rise
-
-
-class HighPass:
-    """2nd-order Butterworth high-pass (RBJ biquad), state kept across blocks."""
-
-    def __init__(self, hz, sr):
-        w = 2 * np.pi * hz / sr
-        al = np.sin(w) / np.sqrt(2)
-        c = np.cos(w)
-        a0 = 1 + al
-        self.b = ((1 + c) / 2 / a0, -(1 + c) / a0, (1 + c) / 2 / a0)
-        self.a = (-2 * c / a0, (1 - al) / a0)
-        self.z = [0.0, 0.0]
-
-    def __call__(self, x):
-        b0, b1, b2 = self.b
-        a1, a2 = self.a
-        z1, z2 = self.z
-        out = np.empty_like(x)
-        for i, v in enumerate(x.tolist()):
-            y = b0 * v + z1
-            z1 = b1 * v - a1 * y + z2
-            z2 = b2 * v - a2 * y
-            out[i] = y
-        self.z = [z1, z2]
-        return out
 
 
 class Detector:
@@ -87,7 +62,8 @@ class Detector:
         self.prev_speech = False
         self.q: "queue.SimpleQueue" = queue.SimpleQueue()
         self.buf = np.zeros(0, np.float32)
-        self.hp = HighPass(LEVEL_HP_HZ, SR)
+        self.hp = local_stt._HighPass(local_stt.VAD_HIGHPASS_HZ, SR)
+        self.filter_on = True  # the VAD and the level meter hear the high-passed audio
         self.norm = True
         self.speech_db = collections.deque(maxlen=int(NORM_SPEECH_S * SR / WINDOW))
         self.ref_db = None  # smoothed 90th percentile of the speech windows
@@ -102,9 +78,10 @@ class Detector:
             self.buf = np.concatenate((self.buf, block))
             while len(self.buf) >= WINDOW:
                 x, self.buf = self.buf[:WINDOW], self.buf[WINDOW:]
-                speech = bool(self.model.is_speech(x))
-                h = self.hp(x)
-                db = 20 * np.log10(max(float(np.sqrt(np.mean(h * h))), 1e-5))
+                h = self.hp(x)  # always run, so the filter state is right when it is switched on
+                heard = h if self.filter_on else x
+                speech = bool(self.model.is_speech(heard))
+                db = 20 * np.log10(max(float(np.sqrt(np.mean(heard * heard))), 1e-5))
                 self.live_db = db
                 self.peak_db = max(db, self.peak_db - 0.6)
                 if speech:
@@ -125,6 +102,15 @@ class Detector:
                 self.prev_speech = speech
                 ms = 1000 * (time.monotonic() - t0)
                 self.compute_ms = ms if self.compute_ms == 0 else self.compute_ms * 0.9 + ms * 0.1
+
+    def set_filter(self, on):
+        """Switch the mains-hum filter. The levels change scale, so the normalization starts over."""
+        with self.lock:
+            self.filter_on = on
+            self.speech_db.clear()
+            self.ref_db = None
+            self.model.reset()
+            self.prev_speech = False
 
     def _update_ref(self):
         if len(self.speech_db) < NORM_MIN_WINDOWS:
@@ -162,6 +148,11 @@ class Kitt(QWidget):
         self.center_db = -self.span
         self.last = time.monotonic()
         self.frames = collections.deque(maxlen=60)  # paint times, for the FPS readout
+        self.filter_box = QCheckBox("Filter mains hum  [F]", self)
+        self.filter_box.setChecked(det.filter_on)
+        self.filter_box.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.filter_box.setStyleSheet("QCheckBox { color: #aaa; } QCheckBox::indicator { width: 14px; height: 14px; }")
+        self.filter_box.toggled.connect(det.set_filter)
         t = QTimer(self)
         t.timeout.connect(self.tick)
         t.start(16)
@@ -186,9 +177,15 @@ class Kitt(QWidget):
         f = self.frames
         return (len(f) - 1) / (f[-1] - f[0]) if len(f) > 2 and f[-1] > f[0] else 0.0
 
+    def resizeEvent(self, _):
+        self.filter_box.adjustSize()
+        self.filter_box.move(28, self.height() - self.filter_box.height() - 8)
+
     def keyPressEvent(self, e):
         if e.key() in (Qt.Key.Key_Escape, Qt.Key.Key_Q):
             self.close()
+        elif e.key() == Qt.Key.Key_F:
+            self.filter_box.toggle()
         elif e.key() == Qt.Key.Key_N:
             self.det.norm = not self.det.norm
 
@@ -197,7 +194,7 @@ class Kitt(QWidget):
         g = QPainter(self)
         g.fillRect(self.rect(), QColor(0, 0, 0))
         w, h = self.width(), self.height()
-        foot = 118
+        foot = 140
         top, bottom = 24, h - foot - 12
         gap, colgap = 4, 22
         colw = (w - 2 * 28 - 2 * colgap) / 3
@@ -225,7 +222,7 @@ class Kitt(QWidget):
                    "SPEECH" if self.speech else "silence")
         g.setPen(QColor(100, 100, 100))
         g.drawText(28, h - foot + 6, w - 56, 18, Qt.AlignmentFlag.AlignRight,
-                   f"level {d.live_db:5.1f} dBFS (>{LEVEL_HP_HZ:.0f} Hz)")
+                   f"level {d.live_db:5.1f} dBFS" + (f" (>{local_stt.VAD_HIGHPASS_HZ} Hz)" if d.filter_on else " (unfiltered)"))
         bx, by, bw, bh = 28, h - foot + 30, w - 56, 6
         g.fillRect(QRectF(bx, by, bw, bh), QColor(28, 28, 28))
         frac = lambda db: min(max((db + 60) / 60, 0.0), 1.0)
@@ -256,7 +253,6 @@ def main():
     ap.add_argument("--delay", type=float, default=140, help="replay delay in ms (keep above the latency shown)")
     ap.add_argument("--wav", help="replay a 16 kHz mono clip in real time instead of using the microphone")
     args = ap.parse_args()
-    sys.path.insert(0, str(DICTATE))
     import sounddevice as sd
     import core
     core._select_microphone()
