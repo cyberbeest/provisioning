@@ -69,7 +69,8 @@ DEFAULT_CONFIG = {
     "key":                   "f9",
     "model":                 "nemo-de-fastconformer-int8",  # local_stt.MODELS key
     "local_stt_num_threads": 4,    # sherpa-onnx CPU thread count
-    "start_hidden":          True,    # start as a panel icon only, no window (needs a tray)
+    "hotkey_enabled":        True,    # tray menu switch for the dictation hotkey
+    "dictation_notifications": True,   # notification while dictating: Speak now / Transcribing
     "language":              "auto",  # UI language: auto (desktop locale), en, de; no Settings field, provisioning sets the locale
     "local_stt_idle_minutes": 5,   # unload the model after this long idle when RAM is short (0 = keep loaded)
 }
@@ -118,7 +119,7 @@ def load_config():
         except Exception:
             pass
     # Settings from versions that also offered cloud providers are dropped.
-    for k in ("provider", "api_key", "openai_api_key", "yorik_url", "yorik_token", "threshold"):
+    for k in ("provider", "api_key", "openai_api_key", "yorik_url", "yorik_token", "threshold", "start_hidden"):
         cfg.pop(k, None)
     try:
         import local_stt
@@ -147,12 +148,16 @@ def notify(msg, urgency="normal", timeout_ms=1500):
         pass
 
 
-def notify_sticky(msg):
+def notify_sticky(msg, replace_id=None):
     """Show a notification that stays until close_notification(); returns its
-    id, or None if it could not be shown."""
+    id, or None if it could not be shown. With replace_id, that notification
+    changes its text in place."""
+    # The text is the summary and there is no body: no "Dictate" heading above it.
+    cmd = ["notify-send", "-a", "Dictate", "-p", "-t", "0"]
+    if replace_id is not None:
+        cmd += ["-r", str(replace_id)]
     try:
-        r = subprocess.run(["notify-send", "-p", "-t", "0", "Dictate", msg],
-                           check=False, capture_output=True, text=True)
+        r = subprocess.run(cmd + [msg], check=False, capture_output=True, text=True)
         return int(r.stdout.strip())
     except (FileNotFoundError, ValueError):
         return None

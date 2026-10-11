@@ -80,7 +80,6 @@ if [ ! -f "$CONF" ]; then
   "model": "$MODEL",
   "local_stt_num_threads": $THREADS,
   "local_stt_idle_minutes": 5,
-  "start_hidden": true,
   "language": "auto"
 }
 EOF

@@ -7,7 +7,7 @@ import time
 
 import numpy as np
 from PyQt6.QtCore import Qt, QObject, QPointF, QTimer, QLibraryInfo, QLocale, QTranslator, pyqtSignal
-from PyQt6.QtGui import QAction, QActionGroup, QColor, QIcon, QPainter, QPixmap
+from PyQt6.QtGui import QAction, QActionGroup, QColor, QCursor, QIcon, QPainter, QPixmap
 from PyQt6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox,
     QFormLayout, QHBoxLayout, QLabel, QLineEdit, QMainWindow, QMenu,
@@ -109,9 +109,10 @@ class SettingsDialog(QDialog):
         ))
         self.form.addRow(_("Unload when idle:"), self.local_idle_box)
 
-        self.start_hidden_box = QCheckBox(_("Start as a panel icon, without a window"))
-        self.start_hidden_box.setChecked(bool(self.cfg.get("start_hidden", True)))
-        self.form.addRow("", self.start_hidden_box)
+        self.notify_box = QCheckBox(_("Show a notification while dictating"))
+        self.notify_box.setChecked(bool(self.cfg.get("dictation_notifications", True)))
+        self.notify_box.setToolTip(_("\"Speak now\" while you hold the key, then \"Transcribing\" until the text is typed."))
+        self.form.addRow("", self.notify_box)
         self.autostart_box = QCheckBox(_("Start Dictate when I log in"))
         self.autostart_box.setChecked(core.autostart_enabled())
         self.form.addRow("", self.autostart_box)
@@ -188,13 +189,13 @@ class SettingsDialog(QDialog):
             "model":                 self.model_box.currentData(),
             "local_stt_num_threads": int(self.local_threads_box.value()),
             "local_stt_idle_minutes": int(self.local_idle_box.value()),
-            "start_hidden":          self.start_hidden_box.isChecked(),
+            "dictation_notifications": self.notify_box.isChecked(),
             "autostart":             self.autostart_box.isChecked(),
         }
 
 
-def make_mic_icon(color="#2b2b2b", ring=None):
-    """Solid microphone icon.
+def make_mic_icon(color="#2b2b2b", outline=False, ring=None):
+    """Microphone icon: solid body, or just an outline when `outline` is set.
 
     `ring` (0..1) adds a fading circle around the body, expanding as it grows;
     cycling it gives the pulse shown while recording or transcribing.
@@ -213,9 +214,17 @@ def make_mic_icon(color="#2b2b2b", ring=None):
         p.setBrush(Qt.GlobalColor.transparent)
         r = 12 + 18 * ring
         p.drawEllipse(QPointF(32, 30), r, r)
-    p.setBrush(QColor(color))
-    p.setPen(Qt.PenStyle.NoPen)
-    p.drawRoundedRect(22, 8, 20, 32, 10, 10)
+    if outline:
+        p.setBrush(Qt.GlobalColor.transparent)
+        body_pen = p.pen()
+        body_pen.setColor(QColor(color))
+        body_pen.setWidth(4)
+        p.setPen(body_pen)
+        p.drawRoundedRect(24, 10, 16, 28, 8, 8)
+    else:
+        p.setBrush(QColor(color))
+        p.setPen(Qt.PenStyle.NoPen)
+        p.drawRoundedRect(22, 8, 20, 32, 10, 10)
     p.setPen(QColor(color))
     p.setBrush(Qt.GlobalColor.transparent)
     pen = p.pen()
@@ -237,19 +246,65 @@ LANGUAGE_LIST_EN = ("Supported languages: Bulgarian, Croatian, Czech, Danish, Du
                     "Slovenian, Spanish, Swedish, Ukrainian")
 
 
-STATUS_STYLES = {
-    "ready":        ("#f3f3f3", "#222"),
-    "recording":    ("#fde2e2", "#a00000"),
-    "transcribing": ("#fff3cc", "#8a6d00"),
-    "error":        ("#ffd6d6", "#9a0000"),
-}
+LAST_TRANSCRIPT_MINUTES = 5
+
+
+class DictationNote:
+    """One notification that follows a dictation: "Speak now" while the key is
+    held, then "Transcribing ...", closed when the text is ready. Showing it
+    runs on a thread so pressing the hotkey never waits for the notification
+    daemon; update() and close() must not be called from the GUI thread."""
+
+    def __init__(self, msg):
+        self.id = None
+        self._thread = threading.Thread(target=self._show, args=(msg,), daemon=True)
+        self._thread.start()
+
+    def _show(self, msg):
+        self.id = core.notify_sticky(msg)
+
+    def update(self, msg):
+        self._thread.join()
+        self.id = core.notify_sticky(msg, replace_id=self.id)
+
+    def close(self):
+        self._thread.join()
+        core.close_notification(self.id)
+
+
+
+class LastTranscriptDialog(QDialog):
+    """The most recent dictation, for copying when it landed in the wrong place."""
+
+    def __init__(self, text, on_clear, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(_("Dictate — Last transcript"))
+        self.setMinimumSize(460, 220)
+        layout = QVBoxLayout(self)
+        # Editable, so a misheard word can be fixed before copying the text out.
+        self.edit = QTextEdit()
+        self.edit.setPlainText(text)
+        layout.addWidget(self.edit)
+        row = QHBoxLayout()
+        row.addStretch()
+        copy_btn = QPushButton(_("Copy"))
+        clear_btn = QPushButton(_("Clear"))
+        close_btn = QPushButton(_("Close"))
+        # xdotool types into the focused window; if that is this one, a space
+        # or Enter in the dictated text would "press" a focused button.
+        for b in (copy_btn, clear_btn, close_btn):
+            b.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+            row.addWidget(b)
+        copy_btn.clicked.connect(lambda: QApplication.clipboard().setText(self.edit.toPlainText()))
+        clear_btn.clicked.connect(on_clear)
+        close_btn.clicked.connect(self.close)
+        layout.addLayout(row)
 
 
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Dictate")
-        self.resize(500, 380)
         self.setWindowIcon(make_mic_icon())
 
         self.cfg = core.load_config()
@@ -274,43 +329,14 @@ class MainWindow(QMainWindow):
 
         self.press_time = 0.0
 
-        central = QWidget()
-        self.setCentralWidget(central)
-        v = QVBoxLayout(central)
-        v.setContentsMargins(20, 18, 20, 18)
-        v.setSpacing(12)
-
-        header = QHBoxLayout()
-        title = QLabel("Dictate")
-        title.setStyleSheet("font-size: 20px; font-weight: 600;")
-        header.addWidget(title)
-        header.addStretch()
-        self.settings_btn = QPushButton(_("Settings"))
-        self.settings_btn.clicked.connect(self.open_settings)
-        # xdotool types into the focused window; if that is this one, a space
-        # or Enter in the dictated text would "press" a focused button.
-        self.settings_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        header.addWidget(self.settings_btn)
-        v.addLayout(header)
-
-        self.status_label = QLabel(_("Ready"))
-        self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        v.addWidget(self.status_label)
-
-        self.info_label = QLabel()
-        self.info_label.setStyleSheet("color: #666; padding: 2px 0;")
-        v.addWidget(self.info_label)
-
-        v.addWidget(QLabel(_("Last transcription:")))
-        self.last = QTextEdit()
-        self.last.setReadOnly(True)
-        self.last.setMaximumHeight(110)
-        self.last.setStyleSheet(
-            "QTextEdit { background: #fafafa; border: 1px solid #ddd; border-radius: 6px; padding: 6px; }"
-        )
-        v.addWidget(self.last)
-
-        v.addStretch()
+        self._note = None            # DictationNote of the dictation in progress
+        self.last_text = ""          # most recent dictation, kept in memory only
+        self._last_dialog = None
+        # For privacy the last transcript is forgotten after a while.
+        self._clear_timer = QTimer(self)
+        self._clear_timer.setSingleShot(True)
+        self._clear_timer.setInterval(LAST_TRANSCRIPT_MINUTES * 60 * 1000)
+        self._clear_timer.timeout.connect(self.clear_last_transcript)
 
         self.tray = None
         self._status = ("ready", _("Ready"))
@@ -324,7 +350,12 @@ class MainWindow(QMainWindow):
             self.tray = QSystemTrayIcon(make_mic_icon(), self)
             self.tray.setToolTip("Dictate")
             menu = QMenu()
-            a_settings = QAction(_("Settings"), self)
+            self.a_hotkey = QAction("", self)
+            self.a_hotkey.setCheckable(True)
+            self.a_hotkey.triggered.connect(self.set_hotkey_enabled)
+            self.a_last = QAction(_("Show last transcript"), self)
+            self.a_last.triggered.connect(self.show_last_transcript)
+            a_settings = QAction(_("Dictation settings"), self)
             a_settings.triggered.connect(self.open_settings)
             self.a_load = QAction(_("Load dictation model"), self)
             self.a_load.triggered.connect(self.load_model_now)
@@ -332,6 +363,9 @@ class MainWindow(QMainWindow):
             self.a_unload.triggered.connect(self.unload_model_now)
             a_quit = QAction(_("Quit"), self)
             a_quit.triggered.connect(QApplication.quit)
+            menu.addAction(self.a_hotkey)
+            menu.addAction(self.a_last)
+            menu.addSeparator()
             menu.addAction(a_settings)
             menu.addSeparator()
             self._model_actions = {}
@@ -349,7 +383,8 @@ class MainWindow(QMainWindow):
             menu.addAction(self.a_unload)
             menu.addSeparator()
             menu.addAction(a_quit)
-            menu.aboutToShow.connect(self._update_model_actions)
+            menu.aboutToShow.connect(self._update_menu)
+            self.menu = menu
             self.tray.setContextMenu(menu)
             self.tray.activated.connect(self.on_tray)
             self.tray.show()
@@ -358,7 +393,6 @@ class MainWindow(QMainWindow):
             self._tray_timer.start(2000)
 
         self.set_status("ready", _("Ready"))
-        self.update_info()
         self.start_listener()
 
         if not core.model_ready():
@@ -391,11 +425,6 @@ class MainWindow(QMainWindow):
         return {"nemo-de-fastconformer-int8": _("German only (faster)"),
                 "parakeet-primeline-int8": _("Multi-language (slower)")}.get(self.cfg.get("model"), "?")
 
-    def update_info(self):
-        mode_name = _("Push-to-talk") if self.cfg["mode"] == "ptt" else _("Toggle")
-        self.info_label.setText(_("Mode: {mode}     Hotkey: {key}     Model: {model}").format(
-            mode=mode_name, key=self.cfg["key"].upper(), model=self._model_label()))
-
     def set_model(self, model_id):
         """Switch the speech model from the tray menu."""
         import local_stt
@@ -404,12 +433,15 @@ class MainWindow(QMainWindow):
         local_stt.unload()   # free the old model's memory now
         self.cfg["model"] = local_stt.select_model(model_id)
         core.save_config(self.cfg)
-        self.update_info()
         self._refresh_tray()
         if not local_stt.model_installed():
             self._ensure_model()   # starts the one-time download
 
-    def _update_model_actions(self):
+    def _update_menu(self):
+        key = self.cfg["key"].upper().replace("_", " ")
+        self.a_hotkey.setText(_("Hotkey {key} enabled").format(key=key))
+        self.a_hotkey.setChecked(self.cfg.get("hotkey_enabled", True))
+        self.a_last.setEnabled(bool(self.last_text))
         for mid, act in self._model_actions.items():
             act.setChecked(mid == self.cfg.get("model"))
         local = self._local_model_available()
@@ -442,11 +474,12 @@ class MainWindow(QMainWindow):
             core.set_autostart(self.cfg.pop("autostart"))
             core.save_config(self.cfg)
             self.restart_listener()
-            self.update_info()
             if not local_stt.model_installed():
                 self._ensure_model()   # a newly chosen model downloads right away
 
     def start_listener(self):
+        if not self.cfg.get("hotkey_enabled", True):
+            return   # hotkey switched off from the tray menu: no key hook at all
         keys = core.KEY_MAP.get(self.cfg["key"])
         if not keys:
             return
@@ -470,6 +503,30 @@ class MainWindow(QMainWindow):
                 pass
 
         self.listener = _make_listener(on_press, on_release)
+
+    def set_hotkey_enabled(self, on):
+        """Tray menu switch: turns the dictation hotkey on or off."""
+        if self.recording_active:
+            self._discard_take()
+        self.cfg["hotkey_enabled"] = bool(on)
+        core.save_config(self.cfg)
+        self.restart_listener()
+        self.set_status("ready", _("Ready"))
+
+    def clear_last_transcript(self):
+        self.last_text = ""
+        self._clear_timer.stop()
+        if self._last_dialog is not None:
+            self._last_dialog.close()
+            self._last_dialog = None
+
+    def show_last_transcript(self):
+        if not self.last_text:
+            return
+        self._last_dialog = LastTranscriptDialog(self.last_text, self.clear_last_transcript)
+        self._last_dialog.show()
+        self._last_dialog.raise_()
+        self._last_dialog.activateWindow()
 
     def restart_listener(self):
         if self.listener:
@@ -585,6 +642,8 @@ class MainWindow(QMainWindow):
             self.on_error(_("Microphone: {err}").format(err=e))
             return False
         self.set_status("recording", _("Recording..."))
+        if self.cfg.get("dictation_notifications"):
+            self._note = DictationNote(_("Speak now"))
         return True
 
     def stop_and_transcribe(self):
@@ -597,13 +656,33 @@ class MainWindow(QMainWindow):
         # so pressing the hotkey again right away starts a fresh recording
         # instead of being swallowed by the worker's delayed stop.
         take = self.recorder.detach()
-        threading.Thread(target=self._stop_and_transcribe_worker, args=(take,), daemon=True).start()
+        note, self._note = self._note, None
+        threading.Thread(target=self._stop_and_transcribe_worker, args=(take, note), daemon=True).start()
 
     def _discard_take(self):
+        note, self._note = self._note, None
+        if note:
+            threading.Thread(target=note.close, daemon=True).start()
         take = self.recorder.detach()
         threading.Thread(target=core.Recorder.finish, args=(take,), daemon=True).start()
 
-    def _stop_and_transcribe_worker(self, take):
+    def _note_text(self):
+        if not core.model_ready():
+            return _("Waiting for the speech model download")
+        if self._local_state() == "loaded":
+            return _("Transcribing")
+        return _("Loading speech model and transcribing")
+
+    def _stop_and_transcribe_worker(self, take, note):
+        try:
+            self._transcribe_take(take, note)
+        finally:
+            if note:
+                note.close()
+
+    def _transcribe_take(self, take, note):
+        if note:
+            note.update(self._note_text())   # the key is up: "Speak now" turns into the current step
         # Short trailing buffer: PipeWire has ~50-100ms input latency and
         # people typically finish the last syllable *after* they release the
         # hotkey. Without this the last word tends to get clipped.
@@ -627,8 +706,10 @@ class MainWindow(QMainWindow):
                 self._waiting_dictations -= 1
             if not core.model_ready():
                 return   # the download failure has already been reported
+            if note:
+                note.update(self._note_text())
         wait_note = None
-        if self._local_model_available():
+        if self._local_model_available() and not note:
             import local_stt
             if local_stt.status() != "loaded":
                 # Dictation ended before the model finished loading: say why
@@ -659,7 +740,8 @@ class MainWindow(QMainWindow):
             # doesn't run into it.
             typed = text + " " if text.endswith((".", "!", "?")) else text
             threading.Thread(target=core.type_text, args=(typed,), daemon=True).start()
-            self.last.setPlainText(text)
+            self.last_text = text
+            self._clear_timer.start()   # restarts the countdown
         self.set_status("ready", _("Ready"))
 
     def on_error(self, msg):
@@ -669,12 +751,6 @@ class MainWindow(QMainWindow):
         threading.Thread(target=core.notify, args=(msg[:200], "critical", 5000), daemon=True).start()
 
     def set_status(self, state, msg):
-        bg, fg = STATUS_STYLES.get(state, STATUS_STYLES["ready"])
-        self.status_label.setText(msg)
-        self.status_label.setStyleSheet(
-            f"font-size: 24px; padding: 28px; border-radius: 10px;"
-            f"background: {bg}; color: {fg};"
-        )
         self._status = (state, msg)
         self._refresh_tray()
 
@@ -692,42 +768,51 @@ class MainWindow(QMainWindow):
             return
         state, msg = self._status
         key = self.cfg["key"].upper().replace("_", " ")
-        if state == "ready":
-            german_only = self.cfg.get("model") == "nemo-de-fastconformer-int8"
-            if self.cfg.get("mode") == "toggle":
+        hotkey_on = self.cfg.get("hotkey_enabled", True)
+        german_only = self.cfg.get("model") == "nemo-de-fastconformer-int8"
+        if not hotkey_on:
+            lines = [_("Dictation is off. Turn the hotkey on in this menu.")]
+        else:
+            if state != "ready":
+                first = _("Dictate — {msg}").format(msg=msg)
+            elif self.cfg.get("mode") == "toggle":
                 first = (_("Tap {key} to start and stop dictating in German") if german_only else
                          _("Tap {key} to start and stop dictating in any supported language")).format(key=key)
             else:
                 first = (_("Hold {key} to dictate in German") if german_only else
                          _("Hold {key} to dictate in any supported language")).format(key=key)
-        else:
-            first = _("Dictate — {msg}").format(msg=msg)
-        lines = [first]
-        if not (self.cfg.get("model") == "nemo-de-fastconformer-int8") and state == "ready":
-            import textwrap
-            lines += textwrap.wrap(_(LANGUAGE_LIST_EN), width=64)
-        mstate = self._local_state()
-        name = self._model_label()
-        if mstate == "loaded":
-            lines.append(_("Speech model: {name} (loaded)").format(name=name))
-        elif mstate == "loading":
-            lines.append(_("Speech model: {name} (loading ...)").format(name=name))
-        else:
-            lines.append(_("Speech model: {name} (not loaded)").format(name=name))
+            lines = [first]
+            if state == "ready" and not german_only:
+                import textwrap
+                lines += textwrap.wrap(_(LANGUAGE_LIST_EN), width=64)
+            mstate = self._local_state()
+            name = self._model_label()
+            if mstate == "loaded":
+                lines.append(_("Speech model: {name} (loaded)").format(name=name))
+            elif mstate == "loading":
+                lines.append(_("Speech model: {name} (loading ...)").format(name=name))
+            else:
+                lines.append(_("Speech model: {name} (not loaded)").format(name=name))
         lines.append(self._privacy_line())
         self.tray.setToolTip("\n".join(lines))
-        key = "active" if state in ("recording", "transcribing") else "idle"
-        if key != self._tray_icon_key:
-            self._tray_icon_key = key
-            if key == "active":
+        if state in ("recording", "transcribing"):
+            icon = "active"
+        elif not hotkey_on:
+            icon = "off"
+        else:
+            icon = "idle"
+        if icon != self._tray_icon_key:
+            self._tray_icon_key = icon
+            if icon == "active":
                 self._anim_frame = 0
                 self._set_active_frame()
                 self._anim_timer.start()
             else:
                 self._anim_timer.stop()
-                if key not in self._tray_icons:
-                    self._tray_icons[key] = make_mic_icon()
-                self.tray.setIcon(self._tray_icons[key])
+                if icon not in self._tray_icons:
+                    self._tray_icons[icon] = (make_mic_icon("#8a8a8a", outline=True) if icon == "off"
+                                              else make_mic_icon())
+                self.tray.setIcon(self._tray_icons[icon])
 
     ANIM_FRAMES = 8
 
@@ -742,25 +827,9 @@ class MainWindow(QMainWindow):
         self._set_active_frame()
 
     def on_tray(self, reason):
+        # Left-click opens the same menu as right-click.
         if reason == QSystemTrayIcon.ActivationReason.Trigger:
-            if self.isVisible() and not self.isMinimized():
-                self.hide()
-            else:
-                self.show_window()
-
-    def show_window(self):
-        self.showNormal()
-        self.raise_()
-        self.activateWindow()
-
-    def closeEvent(self, event):
-        if self.tray:
-            # With a panel icon, closing the window just hides it; the tray
-            # menu's Quit ends the app.
-            event.ignore()
-            self.hide()
-        else:
-            QApplication.quit()
+            self.menu.popup(QCursor.pos())
 
 
 _LOCK_FD = None
@@ -799,11 +868,10 @@ def main():
     if i18n._lang != "en" and qt_tr.load(
             QLocale(i18n._lang), "qtbase", "_", QLibraryInfo.path(QLibraryInfo.LibraryPath.TranslationsPath)):
         app.installTranslator(qt_tr)
-    has_tray = QSystemTrayIcon.isSystemTrayAvailable()
-    app.setQuitOnLastWindowClosed(not has_tray)
-    win = MainWindow()
-    if not (has_tray and win.cfg.get("start_hidden", True)):
-        win.show()
+    app.setQuitOnLastWindowClosed(False)   # the panel icon is the whole UI
+    if not QSystemTrayIcon.isSystemTrayAvailable():
+        core.log.warning("no system tray: Dictate works through its hotkey only")
+    win = MainWindow()  # noqa: F841 (kept alive by the event loop)
     sys.exit(app.exec())
 
 
