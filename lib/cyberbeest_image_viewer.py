@@ -925,6 +925,18 @@ class ImageViewerWindow(Gtk.Window):
             self.set_frames = set_frames
             self.scroller.add(image_widget)
             image_widget.show()
+            # Gtk.Image (CPU path) has no GdkWindow of its own and never
+            # sees pointer events; they land on the Viewport around it.
+            viewport = self.scroller.get_child()
+            if viewport is not image_widget:
+                viewport.add_events(
+                    Gdk.EventMask.BUTTON_PRESS_MASK
+                    | Gdk.EventMask.BUTTON_RELEASE_MASK
+                    | Gdk.EventMask.POINTER_MOTION_MASK
+                )
+                viewport.connect("button-press-event", self.on_image_button_press)
+                viewport.connect("button-release-event", self.on_image_button_release)
+                viewport.connect("motion-notify-event", self.on_image_motion)
 
         self._set_title_and_tooltip(path)
         self._update_rename_bar(path)
