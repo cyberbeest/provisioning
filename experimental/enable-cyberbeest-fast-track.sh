@@ -46,6 +46,8 @@ for f in fasttrack-genmon.sh fasttrack-menu.py fasttrack-panel-icon.sh fasttrack
 	install -o "$TARGET_USER" -g "$TARGET_USER" -m 755 "$DIR/lib/$f" "$BIN/$f"
 done
 install -d -m 755 /etc/cyberbeest
+install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.local/share/cyberbeest-fasttrack"
+install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 "$DIR"/lib/fasttrack-icons/*.png "$TARGET_HOME/.local/share/cyberbeest-fasttrack/"
 
 echo "--- Whisker menu entry ---"
 APPS="$TARGET_HOME/.local/share/applications"
@@ -57,7 +59,7 @@ Name=Cyberbeest Fast Track
 Name[de]=Cyberbeest Fast Track
 Comment=Turn on Fast Track: confirmation box whenever there is new code
 Comment[de]=Fast Track einschalten: Bestätigungsfenster bei jedem neuen Code
-Icon=software-update-available
+Icon=$TARGET_HOME/.local/share/cyberbeest-fasttrack/fasttrack-ok.png
 Exec=$BIN/fasttrack-start.sh
 Categories=Cyberbeest;Settings;
 Terminal=false

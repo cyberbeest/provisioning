@@ -3,10 +3,10 @@
 # State comes from the watcher's files in ~/.local/state/cyberbeest-fasttrack:
 # "remote" = newest main commit seen on the v-server, 
 STATE="$HOME/.local/state/cyberbeest-fasttrack"
-ICON_OK=/usr/share/icons/gnome/24x24/status/network-transmit-receive.png
-ICON_NEW=/usr/share/icons/gnome/24x24/status/software-update-available.png
-ICON_OFF=/usr/share/icons/gnome/24x24/status/network-offline.png
-[ -e "$ICON_NEW" ] || ICON_NEW=/usr/share/icons/Adwaita/symbolic/status/software-update-available-symbolic.svg
+ICON_DIR="$HOME/.local/share/cyberbeest-fasttrack"
+ICON_OK="$ICON_DIR/fasttrack-ok.png"
+ICON_NEW="$ICON_DIR/fasttrack-update.png"
+ICON_OFF="$ICON_DIR/fasttrack-off.png"
 
 repo=""
 for d in "$HOME/provisioning-bleeding" "$HOME/provisioning"; do [ -d "$d/.git" ] && { repo="$d"; break; }; done
