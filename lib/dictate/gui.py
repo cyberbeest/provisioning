@@ -856,6 +856,14 @@ def main():
         sys.exit(0)
     core.setup_logging()
     core.log.info("started")
+    # Name the process "dictate" for the kernel (/proc/<pid>/comm, 15 chars max).
+    # Resource monitors such as the panel's memory and CPU lists read that name,
+    # and for a Python program it would otherwise just be "python".
+    try:
+        import ctypes
+        ctypes.CDLL("libc.so.6").prctl(15, b"dictate", 0, 0, 0)   # 15 = PR_SET_NAME
+    except (OSError, AttributeError):
+        pass
     # Let Ctrl+C in the terminal actually kill us — Qt's C++ event loop
     # otherwise never yields to Python's SIGINT handler.
     import signal
