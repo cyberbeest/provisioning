@@ -4,6 +4,7 @@ Offline transducer. Loads once at first use. Not thread-safe over a single
 recognizer instance — we serialize decode calls with a lock; for single-user
 dictation that is fine.
 """
+import collections
 import ctypes
 import gc
 import hashlib
@@ -425,6 +426,88 @@ class StreamingVad:
         if self._thread.is_alive() or self._failed or self._peak < STREAM_TRUST_PEAK:
             return None
         return _mask_from_segments(self._segments, n_samples)
+
+
+# ---------------------------------------------------------------------------
+# Live level meter shown while recording. The detector says speech or not for
+# every 32 ms window (the same model and threshold as the trimming) and the
+# level is measured on the same hum-filtered audio, so the bars show what the
+# detector hears: they stay empty unless it hears speech. The loudness
+# reference is the 90th percentile of the last few seconds of speech, so the
+# bars use their range whatever the microphone level.
+METER_DB_FLOOR, METER_DB_CEIL = -50.0, -10.0   # fixed range until there is speech to normalize on
+METER_NORM_S = 3.0
+METER_NORM_PERCENTILE = 90.0
+METER_NORM_TOP_DB, METER_NORM_SPAN_DB = 3.0, 30.0
+METER_NORM_MIN_WINDOWS = 15
+METER_REF_ATTACK_S, METER_REF_RELEASE_S = 0.3, 1.0
+
+
+class LiveMeter:
+    """feed() int16 blocks from the audio callback; read speech / level_db / scale() any time.
+    Runs on its own thread; close() ends it."""
+
+    _last_ref = None   # the reference the previous dictation ended with: a good start for the next one
+
+    def __init__(self):
+        self._q: "queue.SimpleQueue" = queue.SimpleQueue()
+        self.speech = False
+        self.level_db = -90.0
+        self.ref_db = LiveMeter._last_ref
+        self._speech_db: "collections.deque" = collections.deque(maxlen=int(METER_NORM_S * TARGET_SR / VAD_WINDOW))
+        threading.Thread(target=self._run, daemon=True).start()
+
+    def feed(self, block: np.ndarray) -> None:
+        self._q.put(block)
+
+    def close(self) -> None:
+        self._q.put(None)
+
+    def scale(self):
+        """(top, span): dBFS of the top of the bars and the dB range below it."""
+        if self.ref_db is not None:
+            return self.ref_db + METER_NORM_TOP_DB, METER_NORM_SPAN_DB
+        return METER_DB_CEIL, METER_DB_CEIL - METER_DB_FLOOR
+
+    def _update_ref(self) -> None:
+        if len(self._speech_db) < METER_NORM_MIN_WINDOWS:
+            return   # too little speech yet: the starting reference stays
+        p = float(np.percentile(self._speech_db, METER_NORM_PERCENTILE))
+        if self.ref_db is None:
+            self.ref_db = p
+        else:
+            tc = METER_REF_ATTACK_S if p > self.ref_db else METER_REF_RELEASE_S
+            self.ref_db += (p - self.ref_db) * min(1.0, (VAD_WINDOW / TARGET_SR) / tc)
+        LiveMeter._last_ref = self.ref_db
+
+    def _run(self) -> None:
+        try:
+            import sherpa_onnx
+            c = sherpa_onnx.VadModelConfig()
+            c.silero_vad.model = str(VAD_MODEL)
+            c.silero_vad.threshold = VAD_THRESHOLD
+            c.silero_vad.window_size = VAD_WINDOW
+            c.sample_rate = TARGET_SR
+            c.num_threads = 1
+            model = sherpa_onnx.VadModel.create(c)
+            hp = _vad_filter()
+            buf = np.zeros(0, np.float32)
+            while True:
+                block = self._q.get()
+                if block is None:
+                    break
+                buf = np.concatenate((buf, block.reshape(-1).astype(np.float32) / 32768.0))
+                while len(buf) >= VAD_WINDOW:
+                    x, buf = buf[:VAD_WINDOW], buf[VAD_WINDOW:]
+                    heard = hp(x) if hp is not None else x
+                    self.speech = bool(model.is_speech(heard))
+                    self.level_db = 20 * np.log10(max(float(np.sqrt(np.mean(heard * heard))), 1e-5))
+                    if self.speech:
+                        self._speech_db.append(self.level_db)
+                        self._update_ref()
+        except Exception:
+            import logging
+            logging.getLogger("dictate").exception("level meter failed")
 
 
 class LocalRecognizer:

@@ -6,7 +6,7 @@ import threading
 import time
 
 import numpy as np
-from PyQt6.QtCore import Qt, QObject, QPointF, QTimer, QLibraryInfo, QLocale, QTranslator, pyqtSignal, pyqtSlot
+from PyQt6.QtCore import Qt, QObject, QPointF, QRect, QRectF, QTimer, QLibraryInfo, QLocale, QTranslator, pyqtSignal, pyqtSlot
 from PyQt6.QtDBus import QDBusConnection
 from PyQt6.QtGui import QAction, QActionGroup, QColor, QCursor, QIcon, QPainter, QPixmap
 from PyQt6.QtWidgets import (
@@ -122,6 +122,10 @@ class SettingsDialog(QDialog):
         ))
         self.form.addRow(_("Unload when idle:"), self.local_idle_box)
 
+        self.meter_box = QCheckBox(_("Show a level meter while dictating"))
+        self.meter_box.setChecked(bool(self.cfg.get("recording_meter", True)))
+        self.meter_box.setToolTip(_("A small meter in the top right corner that moves while the program hears you speak.\nClick it to stop dictating."))
+        self.form.addRow("", self.meter_box)
         self.notify_box = QCheckBox(_("Show a notification while dictating"))
         self.notify_box.setChecked(bool(self.cfg.get("dictation_notifications", True)))
         self.notify_box.setToolTip(_("\"Speak now\" while you hold the key, then \"Transcribing\" until the text is typed."))
@@ -212,6 +216,7 @@ class SettingsDialog(QDialog):
             "local_stt_num_threads": int(self.local_threads_box.value()),
             "local_stt_idle_minutes": int(self.local_idle_box.value()),
             "dictation_notifications": self.notify_box.isChecked(),
+            "recording_meter":       self.meter_box.isChecked(),
             "vad_highpass":          self.hum_box.isChecked(),
             "autostart":             self.autostart_box.isChecked(),
         }
@@ -309,6 +314,129 @@ class DictationNote:
 
 
 
+class MeterWindow(QWidget):
+    """Small K.I.T.T.-style window while recording: "Speak now" and a level meter.
+    Three columns of red segments grow from the middle; they stay empty unless the
+    voice detector hears speech, and then follow the loudness. Never takes the
+    keyboard focus (the text goes to the window that had it). After a click on the
+    tray icon it sits right under the icon and has a Stop button; after the hotkey it
+    sits in the top right corner and clicking it stops the dictation."""
+
+    ROWS = 11
+    ATTACK_S = 0.025
+    RELEASE_DB_S = 100.0
+    SIDE_SCALE = 0.5
+
+    def __init__(self, on_click):
+        super().__init__(None, Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint
+                         | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.WindowDoesNotAcceptFocus)
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
+        self.setFixedSize(self.WIDTH, self.LABEL_H + self.METER_H)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setToolTip(_("Click to stop dictating"))
+        self._on_click = on_click
+        self._with_button = False
+        self.stop_btn = QPushButton(_("Stop"), self)
+        self.stop_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.stop_btn.setStyleSheet("QPushButton { background: #b01010; color: white; border: none; padding: 3px 0; }"
+                                    "QPushButton:hover { background: #d32f2f; }")
+        self.stop_btn.clicked.connect(on_click)
+        self.stop_btn.hide()
+        self._meter = None
+        self._level = 0.0     # dB below the top of the bars
+        self._last = 0.0
+        self._timer = QTimer(self)
+        self._timer.setInterval(33)
+        self._timer.timeout.connect(self._tick)
+
+    METER_H = 84
+    LABEL_H = 22
+    WIDTH = 112
+
+    def start(self, meter, with_button=False, below=None):
+        """with_button: also show a Stop button under the bars (a dictation started by a click).
+        below: the tray icon's rectangle (or the click position) to sit under; None = top right corner."""
+        self._meter = meter
+        self._level = -meter.scale()[1]
+        self._last = time.monotonic()
+        self._with_button = with_button
+        self.setFixedSize(self.WIDTH, self.LABEL_H + self.METER_H + (30 if with_button else 0))
+        self.stop_btn.setVisible(with_button)
+        self.stop_btn.setGeometry(8, self.LABEL_H + self.METER_H, self.width() - 16, 22)
+        self._place(below)
+        self.show()
+        self._timer.start()
+
+    def stop(self):
+        self._timer.stop()
+        self._meter = None
+        self.hide()
+
+    def _place(self, below):
+        """Under the icon, centred on it (above it if the icon is in the lower half of the screen);
+        without an icon position, the top right corner."""
+        screen = (QApplication.screenAt(below.center()) if below is not None else None) or QApplication.primaryScreen()
+        area = screen.availableGeometry()
+        if below is None:
+            self.move(area.right() - self.width() - 16, area.top() + 16)
+            return
+        x = below.center().x() - self.width() // 2
+        if below.center().y() < area.center().y():
+            y = below.bottom() + 4
+        else:
+            y = below.top() - self.height() - 4
+        self.move(min(max(x, area.left() + 4), area.right() - self.width() - 4),
+                  min(max(y, area.top() + 4), area.bottom() - self.height() - 4))
+
+    def _tick(self):
+        m = self._meter
+        if m is None:
+            return
+        now = time.monotonic()
+        dt, self._last = now - self._last, now
+        top, span = m.scale()
+        target = max(m.level_db - top, -span) if m.speech else -span
+        if target > self._level:
+            self._level += (target - self._level) * min(1.0, dt / self.ATTACK_S)
+        else:
+            self._level = max(target, self._level - self.RELEASE_DB_S * dt)
+        self._span = span
+        self.update()
+
+    def mousePressEvent(self, e):
+        if e.button() == Qt.MouseButton.LeftButton and not self._with_button:
+            self._on_click()
+
+    def paintEvent(self, event):
+        g = QPainter(self)
+        g.fillRect(self.rect(), QColor(0, 0, 0))
+        m = self._meter
+        span = getattr(self, "_span", None) or (m.scale()[1] if m else 40.0)
+        frac = min(max(1 + self._level / span, 0.0), 1.0)
+        pad, gap, colgap = 8, 2, 6
+        colw = (72 - 2 * pad - 2 * colgap) / 3
+        x0 = (self.width() - 72) / 2 + pad
+        rowh = (self.METER_H - 2 * pad - gap * (self.ROWS - 1)) / self.ROWS
+        g.setPen(QColor(200, 70, 70))
+        f = g.font()
+        f.setPointSize(9)
+        g.setFont(f)
+        g.drawText(QRectF(0, 3, self.width(), self.LABEL_H - 3), Qt.AlignmentFlag.AlignCenter, _("Speak now"))
+        mid = self.ROWS // 2
+        for c, lvl in enumerate((frac * self.SIDE_SCALE, frac, frac * self.SIDE_SCALE)):
+            x = x0 + c * (colw + colgap)
+            lit = lvl * (mid + 0.999)
+            for r in range(self.ROWS):
+                dist = abs(r - mid)
+                if dist < lit:
+                    k = 1.0 - 0.38 * dist / mid
+                    col = QColor(int(255 * k), int(8 * k), int(8 * k))
+                else:
+                    col = QColor(30, 30, 30)
+                g.fillRect(QRectF(x, self.LABEL_H + pad + r * (rowh + gap), colw, rowh), col)
+
+
 class TestDictationDialog(QDialog):
     """A focused text box to try dictation in, with the hotkey instructions."""
 
@@ -397,6 +525,9 @@ class MainWindow(QMainWindow):
 
         self.press_time = 0.0
 
+        self._meter = None           # LiveMeter feeding the meter window while recording
+        self._meter_window = MeterWindow(self.stop_by_click)
+        self._click_session = False  # the recording was started by clicking the icon
         self._note = None            # DictationNote of the dictation in progress
         self._target = None          # window the dictation in progress belongs to
         self.last_text = ""          # most recent dictation, kept in memory only
@@ -623,6 +754,8 @@ class MainWindow(QMainWindow):
         self.key_held = False
         self.combo = False
         self.recording_active = False
+        self._click_session = False
+        self._hide_meter()
         self.start_listener()
 
     def on_press(self):
@@ -630,6 +763,9 @@ class MainWindow(QMainWindow):
             return
         self.key_held = True
         self.combo = False
+        if self._click_session and self.recording_active:
+            self.stop_by_click()   # started with a click on the icon: the hotkey stops it too
+            return
         self.press_time = time.monotonic()
         if self.cfg["mode"] == "ptt":
             if self.start_recording():
@@ -648,7 +784,7 @@ class MainWindow(QMainWindow):
         # Only abort if this hold started the recording (PTT). In toggle mode
         # a combo while pressing the hotkey shouldn't kill an ongoing session
         # that was started by a previous tap.
-        if self.cfg["mode"] == "ptt" and self.recording_active:
+        if self.cfg["mode"] == "ptt" and self.recording_active and not self._click_session:
             # Offload PipeWire close to keep the GUI thread responsive.
             self._discard_take()
             self.recording_active = False
@@ -718,24 +854,61 @@ class MainWindow(QMainWindow):
         else:
             self.on_error(_("Model download failed: {err}").format(err=err))
 
-    def start_recording(self) -> bool:
+    def start_recording(self, click=False) -> bool:
         self._ensure_model()   # a missing model downloads while the user speaks
         # Reload the model if it was unloaded while idle; the load runs while
         # the user speaks. Also restarts the idle countdown.
         self._preload_local_if_needed()
+        meter = None
+        if self.cfg.get("recording_meter", True) and self._meter_available():
+            import local_stt
+            meter = local_stt.LiveMeter()
         try:
-            self.recorder.start()
+            self.recorder.start(tap=meter.feed if meter else None)
         except Exception as e:
             core.log.exception("could not open the microphone")
+            if meter:
+                meter.close()
             self.on_error(_("Microphone: {err}").format(err=e))
             return False
+        if meter:
+            self._meter = meter   # before the status change below, so the tray tooltip is left alone
+            self._meter_window.start(meter, with_button=click, below=self._tray_anchor() if click else None)
         self.set_status("recording", _("Recording..."))
         # The window that has focus now is where this dictation belongs, however
         # long transcribing takes and whatever the user opens or switches to meanwhile.
         self._target = core.paste_target()
-        if self.cfg.get("dictation_notifications"):
-            self._note = DictationNote(_("Speak now"))
+        if self.cfg.get("dictation_notifications") and not meter:
+            self._note = DictationNote(_("Speak now"))   # with the meter window, "Speak now" is in it
         return True
+
+    def _tray_anchor(self):
+        """Rectangle of the tray icon, or of the cursor (it just clicked the icon) when the tray does not tell."""
+        r = self.tray.geometry() if self.tray else QRect()
+        if r.isValid() and not r.isEmpty():
+            return r
+        p = QCursor.pos()
+        return QRect(p.x() - 12, p.y() - 12, 24, 24)
+
+    def _meter_available(self):
+        import local_stt
+        return local_stt.VAD_MODEL.exists()
+
+    def _hide_meter(self):
+        self._meter_window.stop()
+        meter, self._meter = self._meter, None
+        if meter:
+            meter.close()
+            self._refresh_tray()   # the tray tooltip is back
+
+    def stop_by_click(self):
+        """Stop the dictation in progress (click on the icon or on the meter, or the hotkey after a click start).
+        A second click right on the heels of the first is a double click, not a stop."""
+        if not self.recording_active or time.monotonic() - self.press_time < core.MIN_HOLD_S:
+            return
+        self.stop_and_transcribe()
+        self.recording_active = False
+        self._click_session = False
 
     def stop_and_transcribe(self):
         # recorder.stop() can block for hundreds of ms on PipeWire close,
@@ -749,9 +922,13 @@ class MainWindow(QMainWindow):
         take = self.recorder.detach()
         note, self._note = self._note, None
         target = self._target
+        if note is None and self._meter is not None and self.cfg.get("dictation_notifications"):
+            note = DictationNote(self._note_text(target))   # the meter window said "Speak now"; the notification starts here
+        self._hide_meter()
         threading.Thread(target=self._stop_and_transcribe_worker, args=(take, note, target), daemon=True).start()
 
     def _discard_take(self):
+        self._hide_meter()
         note, self._note = self._note, None
         if note:
             threading.Thread(target=note.close, daemon=True).start()
@@ -895,7 +1072,7 @@ class MainWindow(QMainWindow):
         else:
             first = (_("Hold {key} to dictate in German") if german_only else
                      _("Hold {key} to dictate in any supported language")).format(key=key)
-        lines = [first]
+        lines = [first, _("Or click this icon to start, and click it again to stop")]
         if not german_only:
             import textwrap
             lines += textwrap.wrap(_(LANGUAGE_LIST_EN), width=64)
@@ -919,7 +1096,10 @@ class MainWindow(QMainWindow):
             else:
                 lines.append(_("Speech model: {name} (not loaded)").format(name=name))
         lines.append(self._privacy_line())
-        self.tray.setToolTip("\n".join(lines))
+        # Changing the tooltip text makes the panel show it again, right on top of the meter window
+        # that appears under the icon: while the meter is up the text stays as it was.
+        if self._meter is None:
+            self.tray.setToolTip("\n".join(lines))
         if state in ("recording", "transcribing"):
             icon = "active"
         elif not hotkey_on:
@@ -952,9 +1132,15 @@ class MainWindow(QMainWindow):
         self._set_active_frame()
 
     def on_tray(self, reason):
-        # Left-click opens the same menu as right-click.
-        if reason == QSystemTrayIcon.ActivationReason.Trigger:
-            self.menu.popup(QCursor.pos())
+        # Left-click starts a dictation and the next left-click stops it; the menu is on right-click.
+        if reason != QSystemTrayIcon.ActivationReason.Trigger:
+            return
+        if self.recording_active:
+            self.stop_by_click()
+        elif self.start_recording(click=True):
+            self.recording_active = True
+            self._click_session = True
+            self.press_time = time.monotonic()
 
 
 _LOCK_FD = None

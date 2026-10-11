@@ -74,6 +74,7 @@ DEFAULT_CONFIG = {
     "language":              "auto",  # UI language: auto (desktop locale), en, de; no Settings field, provisioning sets the locale
     "input_source":          "",     # PulseAudio source name; empty = automatic
     "trim_silence":          True,   # cut pauses before decoding (local_stt silence trimming); no Settings field
+    "recording_meter":       True,   # small level meter while recording (replaces the "Speak now" notification)
     "vad_highpass":          True,   # speech detection ignores hum below 150 Hz (mains buzz hides quiet speech from it)
     "local_stt_idle_minutes": 5,   # unload the model after this long idle when RAM is short (0 = keep loaded)
 }
@@ -408,7 +409,8 @@ class Recorder:
     def recording(self):
         return self._take is not None
 
-    def start(self):
+    def start(self, tap=None):
+        """tap: optional callable that gets every audio block (int16), from the audio thread."""
         with self.lock:
             if self._take is not None:
                 return
@@ -426,6 +428,8 @@ class Recorder:
                 frames.append(block)
                 if vad is not None:
                     vad.feed(block)
+                if tap is not None:
+                    tap(block)
 
             stream = sd.InputStream(
                 samplerate=SAMPLE_RATE,
