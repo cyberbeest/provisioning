@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Dictate GUI — PyQt6 tray app for voice dictation via Groq Whisper."""
 import fcntl
+import math
 import sys
 import threading
 import time
@@ -333,18 +334,21 @@ class MeterWindow(QWidget):
     SIDE_SCALE = 0.5
     SHOW_UNLIT = False
     LED_W, LED_H, PITCH, COL_GAP = 14, 7, 10, 6   # LED size inside its outline, row pitch, gap between columns
-    LABEL_H = 22
-    WIDTH = 112
+    LABEL_H = 34
+    MIN_WIDTH = 112
+    LABEL_PT = 15
+    PULSE_S = 1.1                       # one slow pulse of the label's red
+    PULSE_DARK, PULSE_LIGHT = QColor(185, 15, 15), QColor(255, 85, 60)
     METER_H = 2 + ROWS * PITCH + 4
     OUTLINE = QColor(240, 240, 240)     # around the letters
     LED_OUTLINE = QColor(0, 0, 0)       # around the LEDs
-    LABEL_COLOR = QColor(220, 30, 30)
 
     def __init__(self, on_click):
         super().__init__(None, Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint
                          | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.WindowDoesNotAcceptFocus)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
-        self.setFixedSize(self.WIDTH, self.LABEL_H + self.METER_H)
+        self._w = self.MIN_WIDTH
+        self.setFixedSize(self._w, self.LABEL_H + self.METER_H)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setToolTip(_("Click to stop dictating"))
         self._on_click = on_click
@@ -360,45 +364,66 @@ class MeterWindow(QWidget):
         self._span = 40.0
         self._last = 0.0
         self._label = None    # (text, image, region): the outlined "Speak now"
+        self._label_images = {}   # pulse step -> image
         self._mask_key = None
         self._timer = QTimer(self)
         self._timer.setInterval(33)
         self._timer.timeout.connect(self._tick)
 
     # -- shapes ---------------------------------------------------------------
+    def _render_label(self, text, color):
+        font = QFont(self.font())
+        font.setPointSize(self.LABEL_PT)
+        font.setBold(True)
+        fm = QFontMetrics(font)
+        w, h = fm.horizontalAdvance(text) + 8, fm.height() + 4
+        img = QImage(w, h, QImage.Format.Format_ARGB32)
+        img.fill(0)
+        p = QPainter(img)
+        p.setFont(font)
+        p.setRenderHint(QPainter.RenderHint.TextAntialiasing, False)   # crisp glyphs: every pixel is in or out
+        box = QRect(4, 2, w - 8, h - 4)
+        p.setPen(self.OUTLINE)
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                if dx or dy:
+                    p.drawText(box.translated(dx, dy), Qt.AlignmentFlag.AlignCenter, text)
+        p.setPen(color)
+        p.drawText(box, Qt.AlignmentFlag.AlignCenter, text)
+        p.end()
+        return img
+
     def _label_parts(self):
+        """(text, image, region) of the outlined label; the region does not depend on the colour."""
         text = _("Speak now")
         if self._label is None or self._label[0] != text:
-            font = QFont(self.font())
-            font.setPointSize(9)
-            fm = QFontMetrics(font)
-            w, h = fm.horizontalAdvance(text) + 6, fm.height() + 4
-            img = QImage(w, h, QImage.Format.Format_ARGB32)
-            img.fill(0)
-            p = QPainter(img)
-            p.setFont(font)
-            p.setRenderHint(QPainter.RenderHint.TextAntialiasing, False)   # crisp glyphs: every pixel is in or out
-            box = QRect(3, 2, w - 6, h - 4)
-            p.setPen(self.OUTLINE)
-            for dx in (-1, 0, 1):
-                for dy in (-1, 0, 1):
-                    if dx or dy:
-                        p.drawText(box.translated(dx, dy), Qt.AlignmentFlag.AlignCenter, text)
-            p.setPen(self.LABEL_COLOR)
-            p.drawText(box, Qt.AlignmentFlag.AlignCenter, text)
-            p.end()
-            region = QRegion(QBitmap.fromImage(img.createAlphaMask()))
-            self._label = (text, img, region)
+            img = self._render_label(text, self.PULSE_DARK)
+            self._label = (text, img, QRegion(QBitmap.fromImage(img.createAlphaMask())))
+            self._label_images = {}
         return self._label
+
+    PULSE_STEPS = 12
+
+    def _label_image(self):
+        """The label in the current colour of its pulse (images cached per step)."""
+        text = self._label_parts()[0]
+        phase = 0.5 - 0.5 * math.cos(2 * math.pi * time.monotonic() / self.PULSE_S)
+        step = int(phase * (self.PULSE_STEPS - 1) + 0.5)
+        img = self._label_images.get(step)
+        if img is None:
+            k, d, l = step / (self.PULSE_STEPS - 1), self.PULSE_DARK, self.PULSE_LIGHT
+            img = self._render_label(text, QColor(*(int(d.getRgb()[i] + (l.getRgb()[i] - d.getRgb()[i]) * k) for i in range(3))))
+            self._label_images[step] = img
+        return img
 
     def _label_pos(self):
         img = self._label_parts()[1]
-        return QPoint((self.WIDTH - img.width()) // 2, max(0, (self.LABEL_H - img.height()) // 2))
+        return QPoint((self._w - img.width()) // 2, max(0, (self.LABEL_H - img.height()) // 2))
 
     def _led_rect(self, c, r):
         """Outer rectangle (outline included) of the LED in column c, row r."""
         cw = self.LED_W + 2
-        x0 = (self.WIDTH - (3 * cw + 2 * self.COL_GAP)) // 2
+        x0 = (self._w - (3 * cw + 2 * self.COL_GAP)) // 2
         return QRect(x0 + c * (cw + self.COL_GAP), self.LABEL_H + 2 + r * self.PITCH, cw, self.LED_H + 2)
 
     def _lit(self):
@@ -441,7 +466,8 @@ class MeterWindow(QWidget):
         self._last = time.monotonic()
         self._with_button = with_button
         self._mask_key = None
-        self.setFixedSize(self.WIDTH, self.LABEL_H + self.METER_H + (30 if with_button else 0))
+        self._w = max(self.MIN_WIDTH, self._label_parts()[1].width() + 12)
+        self.setFixedSize(self._w, self.LABEL_H + self.METER_H + (30 if with_button else 0))
         self.stop_btn.setVisible(with_button)
         self.stop_btn.setGeometry(8, self.LABEL_H + self.METER_H, self.width() - 16, 22)
         self._update_mask()
@@ -499,7 +525,7 @@ class MeterWindow(QWidget):
         g.setClipRegion(self._label_parts()[2].translated(self._label_pos()))
         g.fillRect(self.rect(), self.OUTLINE)
         g.restore()
-        g.drawImage(self._label_pos(), self._label_parts()[1])
+        g.drawImage(self._label_pos(), self._label_image())
         mid = self.ROWS // 2
         for c, count in enumerate(self._lit()):
             for r in self._rows_shown(count):
