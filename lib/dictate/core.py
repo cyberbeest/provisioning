@@ -2,6 +2,7 @@
 import json
 import logging
 import logging.handlers
+import os
 import subprocess
 import threading
 import time
@@ -418,6 +419,37 @@ def _select_microphone():
 
 
 STREAM_CLOSE_TIMEOUT_S = 3.0   # a healthy stop()+close() takes hundreds of ms
+FIRST_FRAME_TIMEOUT_S = 1.0    # a healthy stream delivers its first block within ~100 ms
+
+
+def _heal_silent_microphone(frames, source):
+    """Watchdog for one take. The laptop's SOF/es8336 capture can stall (the PCM
+    stays RUNNING but its pointer freezes, the source latency grows by the
+    second), and then every stream gets zero frames and PortAudio's stop() hangs
+    (seen 2026-10-13). Suspending and resuming the source makes PulseAudio
+    reopen the device, and the stream already attached to it carries on, so a
+    nudge a second into the take usually saves it, losing under a second of
+    speech. `source` is the chosen source name, or None for the default."""
+    time.sleep(FIRST_FRAME_TIMEOUT_S)
+    if frames or frames.closed:
+        return
+    try:
+        env = {**os.environ, "LC_ALL": "C"}
+        name = source or subprocess.run(["pactl", "get-default-source"], capture_output=True, text=True,
+                                        timeout=2, env=env).stdout.strip()
+        if not name:
+            return
+        log.warning("microphone %s delivered no audio for %.0fs, restarting it", name, FIRST_FRAME_TIMEOUT_S)
+        subprocess.run(["pactl", "suspend-source", name, "1"], timeout=3, check=False)
+        time.sleep(0.5)
+        subprocess.run(["pactl", "suspend-source", name, "0"], timeout=3, check=False)
+        time.sleep(1.0)
+        if frames:
+            log.info("microphone is delivering audio again (%d blocks)", len(frames))
+        else:
+            log.warning("microphone still delivers nothing after the restart")
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
 
 
 class _Frames(list):
@@ -471,6 +503,8 @@ class Recorder:
             )
             stream.start()
             self._take = (stream, frames, vad)
+            threading.Thread(target=_heal_silent_microphone,
+                             args=(frames, os.environ.get("PULSE_SOURCE")), daemon=True).start()
 
     def detach(self):
         """Non-blocking: give up the current take (or None). Safe on the GUI thread."""
