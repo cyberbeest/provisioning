@@ -58,4 +58,4 @@ chosen in Cyberbeest Settings > Panel); cyberbeest-whisker-key.sh is the Windows
   (right click = pavucontrol). `gopanel calendar|volume` toggles them, e.g. for testing.
 - Helpers also pause while the screensaver (lock screen) is active, not just in DPMS standby.
 - Not done: power popup (brightness), per-plugin settings dialogs,
-  translations, screensaver-aware pausing (only DPMS standby pauses helpers).
+  translations.
