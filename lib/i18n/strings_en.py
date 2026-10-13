@@ -70,6 +70,7 @@ STRINGS = {
     "panel.bg_1h": "Slow color drift, a full cycle in 1 hour",
     "panel.bg_5m": "Slow color drift, a full cycle in 5 minutes",
     "panel.bg_1m": "Slow color drift, a full cycle in 1 minute",
+    "panel.bg_10s": "Color drift, a full cycle in 10 seconds",
     "panel.bg_note": "Cyberbeest panel only. The colors drift through light pastels; 24 hours follows the time of day.",
     "panel.monitor_label": "Show the Cyberbeest panel on:",
     "panel.monitor_auto": "Automatic (primary monitor)",

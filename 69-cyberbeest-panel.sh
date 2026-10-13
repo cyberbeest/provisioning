@@ -28,9 +28,9 @@ exec > >(tee -a "$LOG") 2>&1
 
 echo "=== $(date) : installing the Cyberbeest panel ==="
 
-GOPANEL_VERSION="0.21.20"
-GOPANEL_SHA256="6d25f30f5453d50b03760dd05c31cc0a56ef1d30ae2599e0fdb7fae61e9cf49c"
-GOPANEL_BYTES=8449539
+GOPANEL_VERSION="0.21.23"
+GOPANEL_SHA256="3dbcb0b7d274a6195f09023c5c7d932a71086467151c1b28d91bfb0fb5468b8b"
+GOPANEL_BYTES=8449649
 GOPANEL_URL="https://cyberbeest.com/gopanel/gopanel-${GOPANEL_SHA256:0:12}.tar.gz"
 
 TARGET_USER="${SUDO_USER:?SUDO_USER not set -- run this via sudo, not as a raw root shell}"

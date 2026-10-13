@@ -31,7 +31,7 @@ import (
 	"gopanel/proto"
 )
 
-const version = "0.21.20"
+const version = "0.21.23"
 
 var ctlCmds chan<- string // control commands into the main loop
 
@@ -548,7 +548,7 @@ func main() {
 		case xproto.ButtonPressEvent:
 			cancelTip()
 			it := hit(e.EventX)
-			if e.Detail == 3 && (it == nil || it.kind == "separator" || it.kind == "launcher" || it.kind == "clock" || it.kind == "helper" || it.kind == "genmon") {
+			if e.Detail == 3 && (it == nil || it.kind == "separator" || it.kind == "launcher" || it.kind == "whisker" || it.kind == "clock" || it.kind == "helper" || it.kind == "genmon") {
 				panelMenu(int(e.EventX), cmds, it)
 			} else if it != nil && it.click != nil {
 				it.click(int(e.EventX)-it.x, int(e.EventY), int(e.Detail))
@@ -874,7 +874,7 @@ func panelMenu(x int, cmds chan<- string, over *item) {
 	if xfcePanelRunning() {
 		xfce = &menuItem{id: 1, label: tr("Stop XFCE panel")}
 	}
-	items := []*menuItem{xfce, {sep: true}, {id: 2, label: tr("Restart this panel")}, {id: 3, label: tr("Quit this panel")}}
+	items := []*menuItem{{id: 4, label: tr("Panel settings…")}, {sep: true}, xfce, {sep: true}, {id: 2, label: tr("Restart this panel")}, {id: 3, label: tr("Quit this panel")}}
 	if over != nil && over.kind == "launcher" && over.lid != "" {
 		items = append([]*menuItem{{id: 20, label: tr("Remove from panel")}, {sep: true}}, items...)
 	}
@@ -894,6 +894,8 @@ func panelMenu(x int, cmds chan<- string, over *item) {
 					title = filepath.Base(over.rc)
 				}
 				run(exec.Command(os.ExpandEnv("$HOME/.local/bin/cyberbeest-settings.py"), "--rc", over.rc, "--title", title, "--kind", over.ptype))
+			case 4:
+				run(exec.Command(os.ExpandEnv("$HOME/.local/bin/cyberbeest-settings.py"), "--tab=panel"))
 			case 1:
 				go toggleXfcePanel()
 			case 2:

@@ -30,6 +30,7 @@ var deStrings = map[string]string{
 	"Start XFCE panel":              "XFCE-Leiste starten",
 	"Stop XFCE panel":               "XFCE-Leiste beenden",
 	"Restart this panel":            "Diese Leiste neu starten",
+	"Panel settings…":               "Leisten-Einstellungen …",
 	"Remove from panel":             "Aus der Leiste entfernen",
 	"Remove \"%s\" from the panel?": "„%s“ aus der Leiste entfernen?",
 	"Remove":                        "Entfernen",

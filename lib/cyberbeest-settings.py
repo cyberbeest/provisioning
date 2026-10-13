@@ -27,6 +27,7 @@ family of scripts already uses.
 import argparse
 import os
 import re
+import shutil
 import subprocess
 
 import gi
@@ -44,6 +45,16 @@ CONFIG_PATH = os.path.join(CONFIG_DIR, "power-settings.conf")
 # the merged security-status/shutdown-timer widget -- see panel-status-genmon.sh).
 GENMON_WIDGET_NAME = "__GENMON_WIDGET__"
 
+def gopanel_exe():
+    """The gopanel binary: installed link, PATH, or the dev checkout."""
+    for p in (os.path.expanduser("~/.local/bin/gopanel"), shutil.which("gopanel") or "",
+              os.path.expanduser("~/claude/provisioning/experimental/gopanel/gopanel"),
+              os.path.expanduser("~/claude/gopanel/gopanel")):
+        if p and os.access(p, os.X_OK):
+            return p
+    return None
+
+
 def refresh_genmon():
     """Ask the running panel to re-run the status genmon now: gopanel's own refresh when it is
     the panel, else XFCE's plugin event, nothing when neither runs (xfce4-panel would pop up an
@@ -51,8 +62,9 @@ def refresh_genmon():
     def running(name):
         return subprocess.run(["pgrep", "-x", name], capture_output=True).returncode == 0
     if running("gopanel"):
-        subprocess.Popen([os.path.expanduser("~/.local/bin/gopanel"), "refresh"],
-                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        exe = gopanel_exe()
+        if exe:
+            subprocess.Popen([exe, "refresh"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     elif running("xfce4-panel"):
         subprocess.Popen(["xfce4-panel", f"--plugin-event={GENMON_WIDGET_NAME}:refresh:bool:true"])
 
@@ -259,7 +271,7 @@ def current_panel():
     return "xfce"
 
 
-BG_CYCLES = ["off", "24h", "1h", "5m", "1m"]
+BG_CYCLES = ["off", "24h", "1h", "5m", "1m", "10s"]
 
 
 class PanelPage(Gtk.Box):
@@ -357,15 +369,15 @@ class PanelPage(Gtk.Box):
     def poll_set(self, panel):
         if self.proc.poll() is None:
             return True
-        if panel == "gopanel":
+        exe = gopanel_exe() if panel == "gopanel" else None
+        if exe:
             # a running panel re-reads the settings on reload and moves/copies/recolours itself
-            for exe in (os.path.expanduser("~/.local/bin/gopanel"), "gopanel"):
-                try:
-                    self.proc = subprocess.Popen([exe, "reload"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                    GLib.timeout_add(100, self.poll_reload)
-                    return False
-                except OSError:
-                    continue
+            try:
+                self.proc = subprocess.Popen([exe, "reload"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                GLib.timeout_add(100, self.poll_reload)
+                return False
+            except OSError:
+                pass
         self.finish()
         return False
 

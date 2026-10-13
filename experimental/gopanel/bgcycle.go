@@ -10,7 +10,7 @@ import (
 )
 
 // An optional slow drift of the panel background through the pastels (Settings > Panel,
-// BG_CYCLE= in panel.conf: off | 24h | 1h | 5m | 1m). The hue follows the wall clock, so it
+// BG_CYCLE= in panel.conf: off | 24h | 1h | 5m | 1m | 10s). The hue follows the wall clock, so it
 // is continuous across restarts and the same on every monitor: with 24h it is the time of
 // day (local midnight = hue 0), otherwise the Unix time modulo the cycle. Lightness stays
 // high so the black text keeps its contrast. Everything that is painted over the background
@@ -51,6 +51,8 @@ func bgPeriodOf(s string) time.Duration {
 		return 5 * time.Minute
 	case "1m":
 		return time.Minute
+	case "10s":
+		return 10 * time.Second
 	}
 	return 0
 }
