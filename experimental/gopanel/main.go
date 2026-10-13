@@ -9,8 +9,11 @@ import (
 	"encoding/binary"
 	"fmt"
 	"log"
+	"net"
 	"os"
+	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"runtime/debug"
 	"syscall"
 	"time"
@@ -22,7 +25,7 @@ import (
 	"gopanel/proto"
 )
 
-const version = "0.7.2"
+const version = "0.8.0"
 
 var (
 	xc            *xgb.Conn // shared X connection (goroutine-safe)
@@ -93,6 +96,11 @@ func main() {
 	iconSize = min(atoi(cfg["/panels/panel-1/icon-size"], iconSize), panelH-2)
 	if iconSize < 8 {
 		iconSize = panelH - 2
+	}
+
+	if conn, err := net.Dial("unix", sockPath()); err == nil { // before touching X
+		conn.Close()
+		log.Fatal("gopanel already running")
 	}
 
 	c, err := xgb.NewConn()
@@ -402,7 +410,10 @@ func main() {
 			setHover(nil)
 		case xproto.ButtonPressEvent:
 			cancelTip()
-			if it := hit(e.EventX); it != nil && it.click != nil {
+			it := hit(e.EventX)
+			if e.Detail == 3 && (it == nil || it.kind == "separator" || it.kind == "launcher" || it.kind == "clock" || it.kind == "helper") {
+				panelMenu(int(e.EventX), cmds)
+			} else if it != nil && it.click != nil {
 				it.click(int(e.EventX)-it.x, int(e.EventY), int(e.Detail))
 			}
 		}
@@ -583,4 +594,58 @@ func unbindHelper(it *item) {
 	it.hc = nil
 	it.conn.Store(false)
 	it.w, it.img, it.tip, it.click, it.hover = 0, nil, "", nil, nil
+}
+
+// xfcePanelRunning reports whether the stock xfce4-panel is up.
+func xfcePanelRunning() bool {
+	return exec.Command("pgrep", "-x", "xfce4-panel").Run() == nil
+}
+
+// panelMenu is the right-click menu of the panel background: switch the stock
+// XFCE panel on or off, restart or quit this panel.
+func panelMenu(x int, cmds chan<- string) {
+	xfce := &menuItem{id: 1, label: "Start XFCE panel"}
+	if xfcePanelRunning() {
+		xfce = &menuItem{id: 1, label: "Stop XFCE panel"}
+	}
+	menuReqs <- menuReq{
+		items:   []*menuItem{xfce, {sep: true}, {id: 2, label: "Restart this panel"}, {id: 3, label: "Quit this panel"}},
+		anchorX: x,
+		onSelect: func(mi *menuItem) {
+			switch mi.id {
+			case 1:
+				go toggleXfcePanel()
+			case 2:
+				go func() { cmds <- "restart" }()
+			case 3:
+				go func() { cmds <- "quit" }()
+			}
+		},
+	}
+}
+
+// toggleXfcePanel stops or starts the stock panel. The xfce-panel-watchdog user
+// service relaunches a dead panel within seconds, so a stop leaves a marker file
+// it respects; a start removes the marker and lets the watchdog bring the panel
+// up with the proper session environment, launching it directly only if the
+// watchdog (not installed everywhere) does not.
+func toggleXfcePanel() {
+	dir := os.Getenv("XDG_RUNTIME_DIR")
+	if dir == "" {
+		dir = os.TempDir()
+	}
+	marker := filepath.Join(dir, "cyberbeest-xfce-panel-stopped")
+	if xfcePanelRunning() {
+		os.WriteFile(marker, nil, 0o600)
+		exec.Command("xfce4-panel", "--quit").Run()
+		return
+	}
+	os.Remove(marker)
+	for i := 0; i < 14; i++ {
+		time.Sleep(500 * time.Millisecond)
+		if xfcePanelRunning() {
+			return
+		}
+	}
+	exec.Command("systemd-run", "--user", "--collect", "--quiet", "xfce4-panel").Run()
 }

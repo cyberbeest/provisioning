@@ -32,6 +32,17 @@ restarts if they die. They never talk to X: they send frames or text over a unix
 See PROTOCOL.md. Shared code: `scanner/` (vertical LED scanners), `procinfo/` (top CPU/RAM),
 `gfx/` (text with Pango-lite markup), `proto/` (helper-side client library).
 
+## Running next to the XFCE panel
+
+Right-click on empty panel space (separators, launchers, clock) opens a menu: Start/Stop XFCE
+panel, Restart/Quit this panel. `xfce-panel-watchdog` (lib/xfce-panel-watchdog.sh) relaunches
+a dead xfce4-panel, so Stop writes `$XDG_RUNTIME_DIR/cyberbeest-xfce-panel-stopped`, which the
+watchdog respects until Start removes it (or the next login). Scripts that reload the panel
+(lib/xfce-panel-reload.sh, panel-icon toggles) ignore the marker. The Whisker entry
+"Cyberbeest Panel (experimental)" (cyberbeest-gopanel.desktop) starts this panel; a second
+instance refuses to start. Which panel starts at login is not wired up yet.
+StatusNotifier icons need the watcher that xfce4-panel owns, so they vanish while it is stopped.
+
 ## Notes
 
 - Version lives in `main.go` (`const version`); bump it on every behaviour change.

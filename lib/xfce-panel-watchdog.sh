@@ -23,6 +23,10 @@
 set -uo pipefail
 
 POLL_INTERVAL=5
+# While this file exists the panel was stopped on purpose (gopanel's right-click
+# "Stop XFCE panel"), so do not bring it back. Lives in the runtime dir, so a
+# reboot/login clears it and the watchdog is back on duty by itself.
+PANEL_STOPPED_MARKER="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/cyberbeest-xfce-panel-stopped"
 export DISPLAY=:0
 export XAUTHORITY="$HOME/.Xauthority"
 PANEL_RELOAD_LOCK_FILE="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/cyberbeest-panel-reload.lock"
@@ -189,6 +193,8 @@ restart_panel() {
 
 echo "xfce-panel-watchdog: watching xfce4-panel (poll every ${POLL_INTERVAL}s)" >&2
 while true; do
-    panel_alive || restart_panel
+    if ! panel_alive && [ ! -e "$PANEL_STOPPED_MARKER" ]; then
+        restart_panel
+    fi
     sleep "$POLL_INTERVAL"
 done

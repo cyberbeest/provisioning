@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Cyberbeest Panel (experimental)
+Comment=Start the experimental Go panel (does nothing if it is already running)
+Exec=/home/cyberbeest/claude/gopanel/gopanel
+Icon=preferences-desktop
+Terminal=false
+Categories=Cyberbeest;Settings;
+StartupNotify=false
