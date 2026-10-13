@@ -31,8 +31,8 @@ type item struct {
 	dead     chan struct{} // closed when the item is discarded (reload)
 	stop     func()
 	conn     atomic.Bool // helper items: a helper is currently connected
-	ptype    string // xfce plugin type of that rc file (kitt-scanner, genmon, ...)
-	title    string // friendly plugin name for menus
+	ptype    string      // xfce plugin type of that rc file (kitt-scanner, genmon, ...)
+	title    string      // friendly plugin name for menus
 	rc       string      // the plugin's xfce rc file (settings the Properties dialog edits), if any
 	drawBuf  []byte      // scratch for draw()
 	reserved bool        // w is a cached guess from the last run, not yet confirmed
