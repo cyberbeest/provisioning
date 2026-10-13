@@ -44,6 +44,19 @@ CONFIG_PATH = os.path.join(CONFIG_DIR, "power-settings.conf")
 # the merged security-status/shutdown-timer widget -- see panel-status-genmon.sh).
 GENMON_WIDGET_NAME = "__GENMON_WIDGET__"
 
+def refresh_genmon():
+    """Ask the running panel to re-run the status genmon now: gopanel's own refresh when it is
+    the panel, else XFCE's plugin event, nothing when neither runs (xfce4-panel would pop up an
+    error dialog instead)."""
+    def running(name):
+        return subprocess.run(["pgrep", "-x", name], capture_output=True).returncode == 0
+    if running("gopanel"):
+        subprocess.Popen([os.path.expanduser("~/.local/bin/gopanel"), "refresh"],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    elif running("xfce4-panel"):
+        subprocess.Popen(["xfce4-panel", f"--plugin-event={GENMON_WIDGET_NAME}:refresh:bool:true"])
+
+
 DEFAULTS = {
     "AC_SHUTDOWN_MINUTES": "60",
     "BATTERY_SHUTDOWN_MINUTES": "60",
@@ -79,7 +92,7 @@ def write_setting(key, value):
         for k in DEFAULTS:
             f.write(f"{k}={settings[k]}\n")
     # Otherwise the panel icon only catches up at its next 30s poll.
-    subprocess.Popen(["xfce4-panel", f"--plugin-event={GENMON_WIDGET_NAME}:refresh:bool:true"])
+    refresh_genmon()
 
 
 def fmt_minutes_output(spin):

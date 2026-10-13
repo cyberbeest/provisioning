@@ -173,7 +173,13 @@ classify_and_write() {
     # same pattern, which only ever fires from a menu click, i.e. only
     # when a panel is already known to be up. Caught on a fresh
     # provisioning run + reboot, both hitting this exact race.
-    if pgrep -x xfce4-panel >/dev/null 2>&1; then
+    # With the Cyberbeest panel (gopanel) running there is no xfce4-panel to relay to -- and
+    # while panels are being switched, xfce4-panel may be on its way out right here -- so
+    # gopanel's own refresh wins whenever gopanel is up.
+    if pgrep -x gopanel >/dev/null 2>&1; then
+        { gopanel refresh || "$HOME/.local/bin/gopanel" refresh; } >/dev/null 2>&1 &
+        disown
+    elif pgrep -x xfce4-panel >/dev/null 2>&1; then
         xfce4-panel "--plugin-event=${GENMON_WIDGET_NAME}:refresh:bool:true" >/dev/null 2>&1 &
         disown
     fi

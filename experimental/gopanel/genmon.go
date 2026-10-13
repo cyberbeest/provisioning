@@ -174,10 +174,33 @@ func newGenmonItem(command string, periodMs int) *item {
 			refresh()
 			select {
 			case <-time.After(time.Duration(periodMs) * time.Millisecond):
+			case <-genmonKicked(): // `gopanel refresh`
 			case <-it.dead:
 				return
 			}
 		}
 	}()
 	return it
+}
+
+// `gopanel refresh` makes every genmon item run its command now. It replaces
+// `xfce4-panel --plugin-event=genmon-N:refresh:bool:true` (the callers pick the right one for
+// the running panel): scripts that learn something changed (clipboard type, shutdown timer)
+// need not wait for the item's poll period.
+var (
+	kickMu sync.Mutex
+	kickCh = make(chan struct{})
+)
+
+func genmonKicked() <-chan struct{} {
+	kickMu.Lock()
+	defer kickMu.Unlock()
+	return kickCh
+}
+
+func kickGenmons() {
+	kickMu.Lock()
+	close(kickCh)
+	kickCh = make(chan struct{})
+	kickMu.Unlock()
 }

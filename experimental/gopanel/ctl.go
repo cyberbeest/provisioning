@@ -58,6 +58,9 @@ func ctlServer(cmds chan<- string) {
 		case "reload", "restart", "quit", "menu", "yield", "calendar", "volume", "power", "dismiss", "unreserve", "profile", "layout":
 			cmds <- cmd
 			fmt.Fprintln(conn, "ok")
+		case "refresh":
+			kickGenmons()
+			fmt.Fprintln(conn, "ok")
 		default:
 			fmt.Fprintln(conn, "unknown command; try: reload restart quit menu")
 		}
