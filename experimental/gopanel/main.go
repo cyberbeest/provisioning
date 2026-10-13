@@ -22,7 +22,7 @@ import (
 	"gopanel/proto"
 )
 
-const version = "0.3.0"
+const version = "0.4.0"
 
 var (
 	panelH   = 35 // overridden from the xfce4-panel config
@@ -412,6 +412,21 @@ func main() {
 				if it := itemFor(items, he.hc); it != nil {
 					it.img = he.img
 					draw(it)
+				}
+			case "label":
+				if it := itemFor(items, he.hc); it != nil {
+					it.img = renderLabel(he.text)
+					w := 0
+					if it.img != nil {
+						w = it.img.Bounds().Dx() + 2*labelEdge
+					}
+					if w != it.w {
+						it.w = w
+						relayout()
+						redrawAll()
+					} else {
+						draw(it)
+					}
 				}
 			case "tooltip":
 				if it := itemFor(items, he.hc); it != nil {

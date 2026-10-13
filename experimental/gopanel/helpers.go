@@ -34,7 +34,7 @@ func (hc *helperConn) send(line string) {
 
 type helperEvent struct {
 	hc   *helperConn
-	kind string // "hello", "image", "tooltip", "bye"
+	kind string // "hello", "image", "tooltip", "label", "bye"
 	img  *image.RGBA
 	text string
 }
@@ -75,7 +75,7 @@ func serveHelper(conn net.Conn, ev chan<- helperEvent) {
 		return
 	}
 	w, err := strconv.Atoi(f[2])
-	if err != nil || w < 1 || w > 4096 {
+	if err != nil || w < 0 || w > 4096 {
 		return
 	}
 	hc := &helperConn{name: f[1], w: w, h: panelH, out: make(chan string, 16), done: make(chan struct{}), kill: func() { conn.Close() }}
@@ -99,17 +99,20 @@ func serveHelper(conn net.Conn, ev chan<- helperEvent) {
 	ev <- helperEvent{hc: hc, kind: "hello"}
 	defer func() { ev <- helperEvent{hc: hc, kind: "bye"} }()
 
+lines:
 	for {
 		line, err := r.ReadString('\n')
 		if err != nil {
 			return
 		}
-		if strings.HasPrefix(line, "tooltip ") || line == "tooltip\n" {
-			text := strings.TrimSuffix(strings.TrimPrefix(line, "tooltip"), "\n")
-			text = strings.TrimPrefix(text, " ")
-			text = strings.NewReplacer(`\n`, "\n", `\\`, `\`).Replace(text)
-			ev <- helperEvent{hc: hc, kind: "tooltip", text: text}
-			continue
+		for _, kind := range []string{"tooltip", "label"} {
+			if line == kind+"\n" || strings.HasPrefix(line, kind+" ") {
+				text := strings.TrimSuffix(strings.TrimPrefix(line, kind), "\n")
+				text = strings.TrimPrefix(text, " ")
+				text = strings.NewReplacer(`\n`, "\n", `\\`, `\`).Replace(text)
+				ev <- helperEvent{hc: hc, kind: kind, text: text}
+				continue lines
+			}
 		}
 		f := strings.Fields(line)
 		if len(f) == 3 && f[0] == "image" {

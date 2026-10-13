@@ -88,16 +88,22 @@ func (c *Client) SendImage(img *image.RGBA) error {
 	return err
 }
 
-// SetTooltip sets the tooltip shown when the pointer rests on the slot (Pango-lite
-// markup, newlines allowed).
-func (c *Client) SetTooltip(markup string) error {
+func (c *Client) sendText(kind, markup string) error {
 	esc := strings.NewReplacer(`\`, `\\`, "\n", `\n`).Replace(markup)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.conn.SetWriteDeadline(time.Now().Add(2 * time.Second))
-	_, err := fmt.Fprintf(c.conn, "tooltip %s\n", esc)
+	_, err := fmt.Fprintf(c.conn, "%s %s\n", kind, esc)
 	return err
 }
+
+// SetLabel makes the slot a one-line text label (Pango-lite markup); the panel
+// renders it and sizes the slot to fit. An empty label hides the slot.
+func (c *Client) SetLabel(markup string) error { return c.sendText("label", markup) }
+
+// SetTooltip sets the tooltip shown when the pointer rests on the slot (Pango-lite
+// markup, newlines allowed).
+func (c *Client) SetTooltip(markup string) error { return c.sendText("tooltip", markup) }
 
 // ParentAlive reports whether the panel that spawned this helper (GOPANEL_PARENT)
 // still exists; helpers started by hand have no parent and always report true.
