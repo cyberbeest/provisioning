@@ -14,7 +14,8 @@
 #     window, spawn-claude-session.sh, claude-stop.sh, wait-for-runme.sh
 #   - spoken replies: speak-replies mod + Piper TTS (runs locally), /voice toggles
 #   - a "Claude Code" menu entry that opens a terminal in ~/claude
-# Idempotent: safe to re-run (repairs/updates the extras, keeps settings).
+# Idempotent: safe to re-run. Adds only what is missing (icons, launchers, voices,
+# venv, CLAUDE.md, settings entries); the scripts we ship are refreshed.
 set -uo pipefail
 DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
 . "$DIR/../i18n.sh"
@@ -66,9 +67,17 @@ install_all() {
 		claude-sudo-helper-gui.sh claude-sudo-helper-confirm-toggle.sh wait-for-runme.sh \
 		> "$STATE/claude-code-files.txt"
 
-	echo "--- Autostart + menu entries ---"
-	install -d "$HOME/.config/autostart" "$APPS"
-	cat > "$HOME/.config/autostart/claude-sudo-helper-gui.desktop" <<EOF
+	echo "--- Icons, autostart + menu entries (each only if missing) ---"
+	ICONS="$HOME/.local/share/icons/hicolor/256x256/apps"
+	install -d "$HOME/.config/autostart" "$APPS" "$ICONS"
+	for i in claude-code claude-sessions; do
+		[ -e "$ICONS/$i.png" ] || install -m 644 "$DIR/icons/$i.png" "$ICONS/$i.png"
+	done
+	# put_if_missing FILE < content: never overwrites (a deleted launcher comes back, an existing one stays)
+	put_if_missing() {
+		if [ -e "$1" ]; then cat >/dev/null; echo "have $(basename "$1")"; else cat > "$1"; echo "added $(basename "$1")"; fi
+	}
+	put_if_missing "$HOME/.config/autostart/claude-sudo-helper-gui.desktop" <<EOF
 [Desktop Entry]
 Type=Application
 Name=Claude sudo helper (GUI)
@@ -77,23 +86,23 @@ Exec=$WORK/claude-sudo-helper-gui.sh
 X-GNOME-Autostart-Phase=Application
 NoDisplay=true
 EOF
-	cat > "$APPS/cyberbeest-claude-code.desktop" <<EOF
+	put_if_missing "$APPS/cyberbeest-claude-code.desktop" <<EOF
 [Desktop Entry]
 Type=Application
 Name=Claude Code
 Comment=Cloud AI assistant (sends your work to Anthropic)
 Exec=xfce4-terminal --working-directory=$WORK --title="Claude Code" -e "bash -ic claude"
-Icon=utilities-terminal
+Icon=claude-code
 Terminal=false
 Categories=Utility;
 EOF
-	cat > "$APPS/cyberbeest-claude-sessions.desktop" <<EOF
+	put_if_missing "$APPS/cyberbeest-claude-sessions.desktop" <<EOF
 [Desktop Entry]
 Type=Application
 Name=Claude Sessions
 Comment=Live list of all Claude Code sessions with their last message
 Exec=$WORK/claude-sessions-gui.py
-Icon=utilities-system-monitor
+Icon=claude-sessions
 Terminal=false
 Categories=Utility;
 EOF
@@ -105,7 +114,7 @@ EOF
 	if [ ! -x "$TTS/venv/bin/python" ]; then
 		python3 -m venv "$TTS/venv"
 	fi
-	"$TTS/venv/bin/pip" install --quiet 'piper-tts==1.8.0'
+	"$TTS/venv/bin/python" -c 'import piper' 2>/dev/null || "$TTS/venv/bin/pip" install --quiet 'piper-tts==1.8.0'
 	for v in en/en_GB/alan/medium/en_GB-alan-medium de/de_DE/thorsten/medium/de_DE-thorsten-medium; do
 		n="$(basename "$v")"
 		for ext in onnx onnx.json; do

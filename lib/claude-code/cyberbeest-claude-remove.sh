@@ -117,6 +117,8 @@ PY
 	rm -rf --one-file-system -- "$HOME/.local/share/claude-tts"
 	rm -f -- "$HOME/.config/autostart/claude-sudo-helper-gui.desktop" \
 		"$APPS/cyberbeest-claude-code.desktop" "$APPS/cyberbeest-claude-sessions.desktop" \
+		"$HOME/.local/share/icons/hicolor/256x256/apps/claude-code.png" \
+		"$HOME/.local/share/icons/hicolor/256x256/apps/claude-sessions.png" \
 		"$STATE/claude-code-files.txt"
 	# x-scheme-handler/claude-cli association Claude Code registered
 	for m in "$HOME/.config/mimeapps.list" "$APPS/mimeapps.list"; do
