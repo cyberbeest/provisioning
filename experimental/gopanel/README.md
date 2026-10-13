@@ -69,6 +69,14 @@ chosen in Cyberbeest Settings > Panel); cyberbeest-whisker-key.sh is the Windows
   plugin of xfce4-panel normally grabs these; gopanel grabs them too and loses harmlessly if it runs alongside.
 - Whisker: right-click on an app = add/remove favorite, add to desktop.
 - Helpers also pause while the screensaver (lock screen) is active, not just in DPMS standby.
+- Layout: launchers sit directly after the menu button (before the expanding taskbar), so they never move
+  while the rest fills in. Item widths of the last run are cached (~/.cache/gopanel/widths.tsv) and reserved at
+  startup, so tray/helpers/genmon appear in place instead of pushing things around; unconfirmed reservations
+  are released after 3 s.
+- Helpers: duplicates (a restarted panel racing a surviving helper) are told to `quit` and exit instead of
+  reconnecting forever; the supervisor waits 4 s for survivors before spawning; zombie helpers from before an
+  exec-restart are reaped.
+- Volume keys show an OSD notification (speaker + bar).
 - Memory (2026-10-13, PSS): gopanel with its 5 helper processes ~64 MB; xfce4-panel with its 15 plugin
   wrappers ~108 MB (idle, 25 s after start). PSS splits shared libraries across their users, so GTK's share
   in the XFCE number is flattered by other GTK apps running.

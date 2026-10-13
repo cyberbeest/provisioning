@@ -4,7 +4,10 @@ import (
 	"fmt"
 	"log"
 	"os/exec"
+	"strconv"
 	"strings"
+	"sync/atomic"
+	"time"
 
 	"github.com/godbus/dbus/v5"
 	"github.com/jezek/xgb/xproto"
@@ -23,10 +26,12 @@ const (
 var mediaKeycodes = []xproto.Keycode{kcMute, kcVolDown, kcVolUp, kcNext, kcPlay, kcPrev, kcMicMute}
 
 func grabMediaKeys() {
-	// with and without NumLock (Mod2) and CapsLock (Lock)
+	// whatever modifiers are active (NumLock, CapsLock, AltGr, ...)
 	for _, kc := range mediaKeycodes {
-		for _, mods := range []uint16{0, xproto.ModMaskLock, xproto.ModMask2, xproto.ModMaskLock | xproto.ModMask2} {
-			xproto.GrabKeyChecked(xc, true, xroot, mods, kc, xproto.GrabModeAsync, xproto.GrabModeAsync).Check()
+		for _, mods := range []uint16{xproto.ModMaskAny} {
+			if err := xproto.GrabKeyChecked(xc, true, xroot, mods, kc, xproto.GrabModeAsync, xproto.GrabModeAsync).Check(); err != nil {
+				log.Printf("media key %d (mods %#x) not grabbed: %v", kc, mods, err)
+			}
 		}
 	}
 }
@@ -34,6 +39,12 @@ func grabMediaKeys() {
 // mediaKey handles a grabbed key press; false if it is not a media key.
 func mediaKey(kc xproto.Keycode) bool {
 	log.Println("media key", kc)
+	defer func() {
+		switch kc {
+		case kcMute, kcVolUp, kcVolDown:
+			go volumeOSD()
+		}
+	}()
 	switch kc {
 	case kcMute:
 		go exec.Command("pactl", "set-sink-mute", "@DEFAULT_SINK@", "toggle").Run()
@@ -82,5 +93,44 @@ func mprisCall(method string) {
 	}
 	if target != "" {
 		conn.Object(target, "/org/mpris/MediaPlayer2").Call("org.mpris.MediaPlayer2.Player."+method, 0)
+	}
+}
+
+var osdID atomic.Uint32
+
+// volumeOSD shows the new volume as a notification (replacing the previous one), like the
+// pulseaudio plugin does for its keys.
+func volumeOSD() {
+	time.Sleep(120 * time.Millisecond) // let pactl finish
+	vol, muted := 0, pactl("get-sink-mute", "@DEFAULT_SINK@") == "Mute: yes\n"
+	if f := strings.Fields(pactl("get-sink-volume", "@DEFAULT_SINK@")); len(f) > 4 {
+		vol, _ = strconv.Atoi(strings.TrimSuffix(f[4], "%"))
+	}
+	icon, body := "audio-volume-high", fmt.Sprintf("%d%%", vol)
+	switch {
+	case muted || vol == 0:
+		icon = "audio-volume-muted"
+		if muted {
+			body = tr("Volume muted")
+		}
+	case vol < 34:
+		icon = "audio-volume-low"
+	case vol < 67:
+		icon = "audio-volume-medium"
+	}
+	conn, err := dbus.ConnectSessionBus()
+	if err != nil {
+		return
+	}
+	defer conn.Close()
+	hints := map[string]dbus.Variant{
+		"value":                           dbus.MakeVariant(int32(min(vol, 100))),
+		"x-canonical-private-synchronous": dbus.MakeVariant("gopanel-volume"),
+	}
+	var id uint32
+	call := conn.Object("org.freedesktop.Notifications", "/org/freedesktop/Notifications").Call(
+		"org.freedesktop.Notifications.Notify", 0, "gopanel", osdID.Load(), icon, tr("Volume"), body, []string{}, hints, int32(1500))
+	if call.Store(&id) == nil {
+		osdID.Store(id)
 	}
 }

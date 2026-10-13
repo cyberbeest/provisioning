@@ -105,7 +105,29 @@ func buildItems(cfg map[string][]string) []*item {
 			log.Printf("plugin-%s (%s): skipped, %s", id, t, why)
 		}
 	}
-	return items
+	return launchersLeft(items)
+}
+
+// launchersLeft puts the fixed launchers right after the menu button, before the expanding
+// taskbar. Everything left of an expanding item keeps its x while the rest of the panel
+// fills in, so the launchers do not jump around during startup.
+func launchersLeft(items []*item) []*item {
+	var head, launchers, rest []*item
+	seenWhisker := false
+	for _, it := range items {
+		switch {
+		case it.kind == "launcher":
+			launchers = append(launchers, it)
+		case !seenWhisker && it.kind == "whisker":
+			seenWhisker = true
+			head = append(head, it)
+		case !seenWhisker:
+			head = append(head, it)
+		default:
+			rest = append(rest, it)
+		}
+	}
+	return append(append(head, launchers...), rest...)
 }
 
 func newLauncherItem(path string) *item {

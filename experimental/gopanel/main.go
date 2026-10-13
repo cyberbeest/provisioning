@@ -28,7 +28,7 @@ import (
 	"gopanel/proto"
 )
 
-const version = "0.16.0"
+const version = "0.18.0"
 
 var ctlCmds chan<- string // control commands into the main loop
 
@@ -188,6 +188,7 @@ func main() {
 			x += it.w
 		}
 		xt.place()
+		saveWidths(items)
 	}
 
 	// draw composites the item's image (premultiplied RGBA, centred) over the panel or
@@ -337,8 +338,10 @@ func main() {
 			sups[it.name] = s
 			go s.run()
 		}
+		reserveWidths(items)
 		relayout()
 		redrawAll()
+		time.AfterFunc(3*time.Second, func() { ctlCmds <- "unreserve" })
 	}
 
 	cmds := make(chan string, 4)
@@ -369,6 +372,7 @@ func main() {
 		}
 	}()
 
+	go reapZombies()
 	install(cfg)
 	whReady := make(chan whiskerData, 1)
 	go preloadWhisker(whReady)
@@ -509,6 +513,7 @@ func main() {
 			if it.isDead() {
 				continue
 			}
+			it.reserved = false
 			if u.img != nil {
 				it.img = u.img
 			}
@@ -543,8 +548,9 @@ func main() {
 						break
 					}
 				}
-				if target == nil {
-					he.hc.kill() // not in the panel configuration
+				if target == nil { // not in the panel configuration, or a duplicate: tell it to exit
+					he.hc.send("quit")
+					go func(hc *helperConn) { time.Sleep(300 * time.Millisecond); hc.kill() }(he.hc)
 					continue
 				}
 				helpers = append(helpers, he.hc)
@@ -630,6 +636,11 @@ func main() {
 				wh.close()
 				menus.close()
 				closePopup()
+			case "unreserve": // cached widths that nobody confirmed: give the space back
+				if unreserve(items) {
+					relayout()
+					redrawAll()
+				}
 			case "yield":
 				xt.yieldTray()
 			case "quit":
@@ -654,7 +665,7 @@ func itemFor(items []*item, hc *helperConn) *item {
 
 // bindHelper attaches a connected helper to its panel item.
 func bindHelper(it *item, hc *helperConn) {
-	it.hc = hc
+	it.hc, it.reserved = hc, false
 	it.conn.Store(true)
 	it.w, it.img, it.hl = hc.w, hc.img, false
 	it.click = func(x, y, btn int) { hc.send(fmt.Sprintf("click %d %d %d", x, y, btn)) }

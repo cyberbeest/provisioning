@@ -68,6 +68,9 @@ func Dial(name string, widthFor func(panelH int) int) (*Client, error) {
 			if err != nil {
 				return
 			}
+			if strings.TrimSpace(l) == "quit" { // duplicate or no longer configured: do not reconnect forever
+				os.Exit(0)
+			}
 			select {
 			case c.Events <- strings.TrimSpace(l):
 			default: // helper too slow to read events: drop

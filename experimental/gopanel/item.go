@@ -14,22 +14,23 @@ const (
 // item is one thing in the panel. Only the main goroutine touches its fields;
 // widget goroutines change it by posting an itemUpdate.
 type item struct {
-	kind   string
-	name   string // helper name, for kind "helper"
-	x, w   int
-	expand bool
-	img    *image.RGBA         // current frame, centred in the item box
-	tip    string              // tooltip (Pango-lite markup)
-	hl     bool                // highlight while hovered
-	click  func(x, y, btn int) // main goroutine; must not block
-	tipAt  func(x int) string  // optional: tooltip depends on the pointer position within the item
-	hover  func(on bool)
-	motion func(x int) // pointer moved inside the item (x local to the item)
-	resize func(w int) // expanding items: the layout assigned a new width
-	hc     *helperConn
-	dead   chan struct{} // closed when the item is discarded (reload)
-	stop   func()
-	conn   atomic.Bool // helper items: a helper is currently connected
+	kind     string
+	name     string // helper name, for kind "helper"
+	x, w     int
+	expand   bool
+	img      *image.RGBA         // current frame, centred in the item box
+	tip      string              // tooltip (Pango-lite markup)
+	hl       bool                // highlight while hovered
+	click    func(x, y, btn int) // main goroutine; must not block
+	tipAt    func(x int) string  // optional: tooltip depends on the pointer position within the item
+	hover    func(on bool)
+	motion   func(x int) // pointer moved inside the item (x local to the item)
+	resize   func(w int) // expanding items: the layout assigned a new width
+	hc       *helperConn
+	dead     chan struct{} // closed when the item is discarded (reload)
+	stop     func()
+	conn     atomic.Bool // helper items: a helper is currently connected
+	reserved bool        // w is a cached guess from the last run, not yet confirmed
 }
 
 func newItem(kind string) *item {

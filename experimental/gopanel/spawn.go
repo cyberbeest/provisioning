@@ -6,6 +6,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -37,7 +39,7 @@ func helperPath(name string) string {
 
 func (s *supervisor) run() {
 	select {
-	case <-time.After(1500 * time.Millisecond):
+	case <-time.After(4 * time.Second): // old helpers reconnect after a restart; do not spawn duplicates
 	case <-s.stop:
 		return
 	}
@@ -85,6 +87,32 @@ func (s *supervisor) run() {
 		}
 		if backoff < 30*time.Second {
 			backoff *= 2
+		}
+	}
+}
+
+// reapZombies collects exited helpers that this process image never started: after
+// `gopanel restart` (exec) the children of the previous image are ours, but nobody Wait()s
+// for them, so a killed or exited one would stay a zombie.
+func reapZombies() {
+	for range time.Tick(5 * time.Second) {
+		me := strconv.Itoa(os.Getpid())
+		ents, _ := os.ReadDir("/proc")
+		for _, e := range ents {
+			pid, err := strconv.Atoi(e.Name())
+			if err != nil {
+				continue
+			}
+			b, err := os.ReadFile("/proc/" + e.Name() + "/stat")
+			if err != nil {
+				continue
+			}
+			// "pid (comm) S ppid ..." -- comm may contain spaces/parens, so cut after the last ')'
+			s := string(b)
+			f := strings.Fields(s[strings.LastIndex(s, ")")+1:])
+			if len(f) > 1 && f[0] == "Z" && f[1] == me {
+				syscall.Wait4(pid, nil, syscall.WNOHANG, nil)
+			}
 		}
 	}
 }
