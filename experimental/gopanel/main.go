@@ -30,7 +30,7 @@ import (
 	"gopanel/proto"
 )
 
-const version = "0.21.5"
+const version = "0.21.6"
 
 var ctlCmds chan<- string // control commands into the main loop
 
@@ -702,6 +702,13 @@ func main() {
 			case "layout": // debugging: log every item's position
 				for i, it := range items {
 					log.Printf("layout %2d %-9s %-14s x=%4d w=%4d expand=%v reserved=%v", i, it.kind, it.name, it.x, it.w, it.expand, it.reserved)
+				}
+				if sniTray != nil {
+					sniTray.mu.Lock()
+					for _, ic := range sniTray.icons {
+						log.Printf("tray id=%q title=%q tip=%q status=%s rank=%d", ic.id, ic.title, ic.tip, ic.status, trayRank(ic, trayOrder))
+					}
+					sniTray.mu.Unlock()
 				}
 			case "dismiss": // close every open popup (Dictate asks before it types)
 				wh.close()

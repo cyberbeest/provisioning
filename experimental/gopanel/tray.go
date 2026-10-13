@@ -373,6 +373,7 @@ func (t *tray) visible() []*trayIcon {
 			out = append(out, ic)
 		}
 	}
+	sortTray(out, trayOrder)
 	return out
 }
 
