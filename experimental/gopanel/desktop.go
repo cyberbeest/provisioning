@@ -350,10 +350,21 @@ func FlushIconCache() {
 func fileExists(p string) bool { _, err := os.Stat(p); return err == nil }
 
 func loadIcon(name string) *image.RGBA {
-	img := loadIconSized(name, iconSize)
-	if strings.HasSuffix(name, "-symbolic") {
-		tintSymbolic(img)
+	if !strings.HasSuffix(name, "-symbolic") {
+		return loadIconSized(name, iconSize)
 	}
+	// GTK resolves symbolic icons from Adwaita before hicolor, and the provisioned
+	// panel overrides some there (padded volume icon, see 12-xfce-panel-layout.sh).
+	var img *image.RGBA
+	for _, base := range themeBases() {
+		if img = loadIconFile(filepath.Join(base, "Adwaita/symbolic/status", name+".svg"), iconSize); img != nil {
+			break
+		}
+	}
+	if img == nil {
+		img = loadIconSized(name, iconSize)
+	}
+	tintSymbolic(img)
 	return img
 }
 
