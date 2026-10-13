@@ -240,19 +240,21 @@ func argbToRGBA(p pixmap) *image.RGBA {
 	return img
 }
 
-func fitIcon(src image.Image) *image.RGBA {
+func fitIcon(src image.Image) *image.RGBA { return fitIconSized(src, iconSize) }
+
+func fitIconSized(src image.Image, size int) *image.RGBA {
 	b := src.Bounds()
 	if b.Dx() == 0 || b.Dy() == 0 {
 		return nil
 	}
-	w, h := iconSize, iconSize
+	w, h := size, size
 	if b.Dx() > b.Dy() {
-		h = max(b.Dy()*iconSize/b.Dx(), 1)
+		h = max(b.Dy()*size/b.Dx(), 1)
 	} else if b.Dy() > b.Dx() {
-		w = max(b.Dx()*iconSize/b.Dy(), 1)
+		w = max(b.Dx()*size/b.Dy(), 1)
 	}
-	dst := image.NewRGBA(image.Rect(0, 0, iconSize, iconSize))
-	r := image.Rect((iconSize-w)/2, (iconSize-h)/2, (iconSize-w)/2+w, (iconSize-h)/2+h)
+	dst := image.NewRGBA(image.Rect(0, 0, size, size))
+	r := image.Rect((size-w)/2, (size-h)/2, (size-w)/2+w, (size-h)/2+h)
 	xdraw.CatmullRom.Scale(dst, r, src, b, draw.Over, nil)
 	return dst
 }

@@ -21,7 +21,6 @@ var helperNames = map[string]string{
 // notYet lists xfce plugins gopanel does not replace (yet).
 var notYet = map[string]string{
 	"whiskermenu": "menu button (next session)",
-	"tasklist":    "taskbar (next session)",
 }
 
 func atoi(vals []string, def int) int {
@@ -76,6 +75,8 @@ func buildItems(cfg map[string][]string) []*item {
 				it.w = 8
 			}
 			items = append(items, it)
+		case t == "tasklist":
+			items = append(items, newTaskbarItem())
 		case t == "systray":
 			items = append(items, newTrayItem())
 		case t == "power-manager-plugin":

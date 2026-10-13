@@ -24,6 +24,8 @@ type item struct {
 	click  func(x, y, btn int) // main goroutine; must not block
 	tipAt  func(x int) string  // optional: tooltip depends on the pointer position within the item
 	hover  func(on bool)
+	motion func(x int) // pointer moved inside the item (x local to the item)
+	resize func(w int) // expanding items: the layout assigned a new width
 	hc     *helperConn
 	dead   chan struct{} // closed when the item is discarded (reload)
 	stop   func()

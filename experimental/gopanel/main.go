@@ -22,9 +22,13 @@ import (
 	"gopanel/proto"
 )
 
-const version = "0.5.1"
+const version = "0.6.0"
 
 var (
+	xc           *xgb.Conn // shared X connection (goroutine-safe)
+	xroot        xproto.Window
+	drawItem     func(*item) // set by main: repaint one item (main goroutine only)
+	taskbars     []*taskbar
 	panelH       = 35 // overridden from the xfce4-panel config
 	iconSize     = 28
 	panelScreenY uint16 // screen y of the panel's top edge
@@ -97,6 +101,7 @@ func main() {
 	sw, sh := scr.WidthInPixels, scr.HeightInPixels
 
 	panelScreenY = sh - uint16(panelH)
+	xc, xroot = c, scr.Root
 	wid, _ := xproto.NewWindowId(c)
 	xproto.CreateWindow(c, scr.RootDepth, wid, scr.Root,
 		0, int16(int(sh)-panelH), sw, uint16(panelH), 0,
@@ -145,7 +150,12 @@ func main() {
 		for _, it := range items {
 			it.x = x
 			if it.expand {
-				it.w = extra / nexp
+				if nw := extra / nexp; nw != it.w {
+					it.w = nw
+					if it.resize != nil {
+						it.resize(nw)
+					}
+				}
 			}
 			x += it.w
 		}
@@ -188,6 +198,7 @@ func main() {
 		}
 		putBGRX(c, xproto.Drawable(wid), gc, scr.RootDepth, it.x, 0, it.w, panelH, buf)
 	}
+	drawItem = draw
 	redrawAll := func() {
 		xproto.ClearArea(c, false, wid, 0, 0, 0, 0)
 		for _, it := range items {
@@ -261,6 +272,10 @@ func main() {
 		for _, it := range items {
 			it.discard()
 		}
+		for _, tb := range taskbars {
+			tb.close()
+		}
+		taskbars = nil
 		items = buildItems(cfg)
 		want := map[string]bool{}
 		for _, it := range items {
@@ -351,10 +366,17 @@ func main() {
 			if e.Count == 0 {
 				redrawAll()
 			}
+		case xproto.PropertyNotifyEvent:
+			for _, tb := range taskbars {
+				tb.onProperty(e)
+			}
 		case xproto.MotionNotifyEvent:
 			ptrX = int(e.EventX)
 			it := hit(e.EventX)
 			setHover(it)
+			if it != nil && it.motion != nil {
+				it.motion(ptrX - it.x)
+			}
 			if it != nil && it.tipAt != nil && tip.shown && tip.forIt == it { // moved to another icon
 				if txt := tipText(it); txt == "" {
 					tip.hide()
