@@ -77,7 +77,8 @@ type whisker struct {
 	listScroll                   int
 	catScroll                    int
 	hoverRow, hoverCat, hoverBtn int
-	selRow                       int // keyboard selection in the app list
+	selRow                       int         // keyboard selection in the app list
+	ctx                          *whiskerCtx // right-click menu of an app row, drawn inside the window
 
 	icons    map[string]*image.RGBA
 	userName string
@@ -241,6 +242,7 @@ func (w *whisker) close() {
 	xproto.UngrabKeyboard(w.c, xproto.TimeCurrentTime)
 	xproto.DestroyWindow(w.c, w.win)
 	w.isOpen = false
+	w.ctx = nil
 }
 
 // ---- data for the app pane ----------------------------------------------------------
@@ -651,6 +653,12 @@ func (w *whisker) keysymFor(code xproto.Keycode, state uint16) xproto.Keysym {
 
 func (w *whisker) key(code xproto.Keycode, state uint16) {
 	ks := w.keysymFor(code, state)
+	if w.ctx != nil {
+		w.closeCtx()
+		if ks == 0xff1b {
+			return
+		}
+	}
 	switch ks {
 	case 0xff1b: // Escape
 		if len(w.query) > 0 {
@@ -743,6 +751,17 @@ func (w *whisker) motion(px, py int) {
 	if px < 0 || py < 0 || px >= whW || py >= whH {
 		return
 	}
+	if c := w.ctx; c != nil {
+		h := -1
+		if px >= c.x && px < c.x+c.w && py >= c.y+3 && py < c.y+c.h-3 {
+			h = (py - c.y - 3) / ctxRowH
+		}
+		if h != c.hover {
+			c.hover = h
+			w.paintCtx()
+		}
+		return
+	}
 	row, cat, btn := -1, -1, -1
 	switch {
 	case py < whHeaderH:
@@ -787,6 +806,10 @@ func (w *whisker) press(px, py, btn int) {
 		w.close() // click outside
 		return
 	}
+	if w.ctx != nil {
+		w.ctxPress(px, py, btn)
+		return
+	}
 	inList := px >= whListX && px < whListX+whListW && py >= whListTop && py < whListBottom
 	inCats := px >= whCatX && px < whCatX+whCatW && py >= whListTop && py < whListBottom
 	switch btn {
@@ -802,6 +825,12 @@ func (w *whisker) press(px, py, btn int) {
 			w.scrollList(d)
 			w.hoverRow = w.listRowAt(py)
 			w.put(w.paintList(), whListX, whListTop)
+		}
+	case 3:
+		if inList {
+			if r := w.listRowAt(py); r >= 0 {
+				w.openCtx(px, py, w.list[r])
+			}
 		}
 	case 1:
 		switch {
@@ -825,4 +854,111 @@ func (w *whisker) press(px, py, btn int) {
 			}
 		}
 	}
+}
+
+// whiskerCtx is the small right-click menu of an application row. It is painted inside
+// the Whisker window (the pointer grab is ours, a separate popup would fight over it).
+type whiskerCtx struct {
+	x, y, w, h int
+	e          *appmenu.Entry
+	labels     []string
+	hover      int
+}
+
+const ctxRowH = 26
+
+func (w *whisker) isFavorite(id string) bool {
+	for _, f := range w.favIDs {
+		if f == id {
+			return true
+		}
+	}
+	return false
+}
+
+func (w *whisker) openCtx(px, py int, e *appmenu.Entry) {
+	fav := "Add to Favorites"
+	if w.isFavorite(e.ID) {
+		fav = "Remove from Favorites"
+	}
+	c := &whiskerCtx{e: e, labels: []string{fav, "Add to Desktop"}, hover: -1}
+	for _, l := range c.labels {
+		c.w = max(c.w, textWidth(l, 13)+28)
+	}
+	c.h = len(c.labels)*ctxRowH + 6
+	c.x = min(px, whW-c.w-2)
+	c.y = min(py, whH-c.h-2)
+	w.ctx = c
+	w.paintCtx()
+}
+
+func (w *whisker) closeCtx() {
+	if w.ctx != nil {
+		w.ctx = nil
+		w.paintAll()
+	}
+}
+
+func (w *whisker) paintCtx() {
+	c := w.ctx
+	img := image.NewRGBA(image.Rect(0, 0, c.w, c.h))
+	rect(img, img.Bounds(), whBg)
+	frame(img, img.Bounds(), whBorder)
+	for i, l := range c.labels {
+		y := 3 + i*ctxRowH
+		ink := whInk
+		if i == c.hover {
+			rect(img, image.Rect(2, y, c.w-2, y+ctxRowH), menuHilite)
+			ink = menuWhite
+		}
+		textAt(img, 14, y+5, l, ink, false, 13, 0)
+	}
+	w.put(img, c.x, c.y)
+}
+
+// ctxPress handles a click while the context menu is open; always consumes it.
+func (w *whisker) ctxPress(px, py, btn int) {
+	c := w.ctx
+	if btn == 1 && px >= c.x && px < c.x+c.w && py >= c.y+3 && py < c.y+c.h-3 {
+		i := (py - c.y - 3) / ctxRowH
+		if i >= 0 && i < len(c.labels) {
+			w.ctx = nil
+			w.ctxAction(c.e, i)
+			return
+		}
+	}
+	w.closeCtx()
+}
+
+func (w *whisker) ctxAction(e *appmenu.Entry, i int) {
+	switch i {
+	case 0:
+		var ids []string
+		if w.isFavorite(e.ID) {
+			for _, f := range w.favIDs {
+				if f != e.ID {
+					ids = append(ids, f)
+				}
+			}
+		} else {
+			ids = append(append(ids, w.favIDs...), e.ID)
+		}
+		w.favIDs = ids
+		go setXfconfArray("/plugins/plugin-"+whiskerID+"/favorites", ids)
+		if len(w.query) == 0 && w.catIdx == catFav {
+			w.rebuildList()
+		}
+	case 1:
+		home, _ := os.UserHomeDir()
+		dst := filepath.Join(home, "Desktop", filepath.Base(e.File))
+		if data, err := os.ReadFile(e.File); err == nil {
+			os.MkdirAll(filepath.Dir(dst), 0o755)
+			os.WriteFile(dst, data, 0o755)
+		}
+	}
+	w.paintAll()
+}
+
+func textWidth(s string, px float64) int {
+	return gfx.Measure([]gfx.Span{{Text: s, Scale: 1, Color: whInk}}, px).W
 }

@@ -27,7 +27,7 @@ import (
 	"gopanel/proto"
 )
 
-const version = "0.12.0"
+const version = "0.13.1"
 
 var ctlCmds chan<- string // control commands into the main loop
 
@@ -713,7 +713,7 @@ func toggleXfcePanel() {
 			return
 		}
 	}
-	exec.Command("systemd-run", "--user", "--collect", "--quiet",
+	exec.Command("systemd-run", "--user", "--collect", "--quiet", "-p", "KillMode=process", // see cyberbeest-panel-choice.sh
 		"--setenv=DISPLAY", "--setenv=XAUTHORITY", "--setenv=XDG_CURRENT_DESKTOP", "--setenv=XDG_SESSION_TYPE",
 		"xfce4-panel").Run()
 }

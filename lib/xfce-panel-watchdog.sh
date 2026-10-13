@@ -143,7 +143,10 @@ restart_panel_impl() {
     # relaunch attempt with `setsid xfce4-panel` here silently produced no
     # running process and no journal output at all -- dropping `setsid`
     # fixed it immediately.
-    systemd-run --user --collect --quiet \
+    # KillMode=process: every app launched from the relaunched panel (Firefox, ...) lives in
+    # this unit's cgroup, and the default would SIGKILL all of them as soon as the panel
+    # exits again (another crash, or being stopped on purpose) -- confirmed 2026-10-13.
+    systemd-run --user --collect --quiet -p KillMode=process \
         --unit="xfce-panel-relaunch-$(date +%s%N)" \
         --description="xfce4-panel (relaunched by xfce-panel-watchdog)" \
         "${setenv_args[@]}" \

@@ -24,8 +24,11 @@ gopanel_bin() {
 
 # Own transient unit, so the panel outlives whoever launched us (settings window,
 # autostart) -- same reason xfce-panel-watchdog uses systemd-run.
+# KillMode=process is essential: every app started from the panel (Firefox, ...) lives in
+# this unit's cgroup, and the default (control-group) SIGKILLs all of them the moment the
+# panel exits -- on a panel switch, a crash, or a restart.
 launch() {
-	systemd-run --user --collect --quiet --unit="panel-choice-$(date +%s%N)" \
+	systemd-run --user --collect --quiet --unit="panel-choice-$(date +%s%N)" -p KillMode=process \
 		--setenv=DISPLAY --setenv=XAUTHORITY --setenv=XDG_CURRENT_DESKTOP --setenv=XDG_SESSION_TYPE \
 		-- "$@"
 }
