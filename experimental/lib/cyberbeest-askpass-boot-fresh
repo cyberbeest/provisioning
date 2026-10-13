@@ -47,6 +47,32 @@ if [ "$PROMPT" = "none" ] || [ -z "$PROMPT" ]; then
 	PROMPT="Enter master password to decrypt hard drive: "
 fi
 
+# 0. One-shot bypass (luks-bypass-once). If /boot holds a bypass key, consume
+#    it unconditionally: move it into /run (tmpfs, survives into the real
+#    root so the cleanup service can remove the temporary LUKS key slot),
+#    delete it from /boot, sync, and only THEN decide whether to use it. If
+#    it is still fresh, print it as the passphrase and skip the prompt. Any
+#    failure or an expired key falls through to the normal prompt.
+BYPASS_KEY=/boot/cyberbeest-bypass.key
+BYPASS_UNTIL=/boot/cyberbeest-bypass.until
+if [ -f "$BYPASS_KEY" ]; then
+	bypass_key="$(cat "$BYPASS_KEY" 2>/dev/null || true)"
+	bypass_until="$(cat "$BYPASS_UNTIL" 2>/dev/null || true)"
+	rm -f "$BYPASS_KEY" "$BYPASS_UNTIL"
+	sync
+	case "$bypass_until" in '' | *[!0-9]*) bypass_until=0 ;; esac
+	if [ -n "$bypass_key" ]; then
+		(umask 077; printf '%s' "$bypass_key" > /run/cyberbeest-bypass.key) 2>/dev/null || true
+		bypass_now="$(date +%s)"
+		if [ "$bypass_until" -gt "$bypass_now" ]; then
+			echo "$(date '+%H:%M:%S') one-shot bypass used" >> "$DEBUG_LOG" 2>/dev/null || true
+			printf '%s' "$bypass_key"
+			exit 0
+		fi
+		echo "$(date '+%H:%M:%S') one-shot bypass expired, prompting" >> "$DEBUG_LOG" 2>/dev/null || true
+	fi
+fi
+
 log "start: raw arg='$1', marker_exists=$([ -e /boot/cyberbeest-hibernated ] && echo yes || echo no)"
 
 if [ -e /boot/cyberbeest-hibernated ]; then
