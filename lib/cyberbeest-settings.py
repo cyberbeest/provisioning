@@ -312,43 +312,63 @@ class PanelPage(Gtk.Box):
         buttons.pack_start(self.apply_btn, False, False, 0)
         buttons.pack_start(self.ok_btn, False, False, 0)
         self.pack_end(buttons, False, False, 0)
-        for w in (self.xfce_radio, self.go_radio, self.mon_combo, self.bg_combo):
-            if w is not None:
-                w.connect("toggled" if isinstance(w, Gtk.RadioButton) else "changed", lambda *_: self.refresh_apply())
-        self.refresh_apply()
 
     def chosen(self):
         panel = "gopanel" if self.go_radio.get_active() else "xfce"
         return (panel, self.mon_combo.get_active_id() if self.mon_combo else None, self.bg_combo.get_active_id())
 
-    def refresh_apply(self):
-        # Apply is always available: it also repairs a state that differs from what is chosen
-        # (e.g. the Cyberbeest panel chosen but not running).
-        self.apply_btn.set_sensitive(True)
+    def set_busy(self, busy):
+        # grey while the panels are being switched (a few seconds), so a second click cannot
+        # start another switch on top of the running one
+        self.apply_btn.set_sensitive(not busy)
+        self.ok_btn.set_sensitive(not busy)
 
-    def apply(self):
+    def apply(self, then=None):
         panel, monitor, bg = self.chosen()
         # the settings go first: a panel that starts below reads them at startup
         if monitor is not None:
             write_panel_conf("MONITOR", monitor or "auto")
         write_panel_conf("BG_CYCLE", bg or "off")
+        self.applied = (panel, monitor, bg)
+        self.set_busy(True)
+        self.then = then
         # Always (re)apply the chosen panel, changed or not: `set` starts it if it is not
         # running and stops the other one -- a no-op when everything already is as chosen.
-        # Switching takes a few seconds (starts one panel, then stops the other).
-        subprocess.Popen([self.script, "set", panel])
+        try:
+            self.proc = subprocess.Popen([self.script, "set", panel])
+        except OSError:
+            self.finish()
+            return
+        GLib.timeout_add(200, self.poll_set, panel)
+
+    def poll_set(self, panel):
+        if self.proc.poll() is None:
+            return True
         if panel == "gopanel":
             # a running panel re-reads the settings on reload and moves/copies/recolours itself
             for exe in (os.path.expanduser("~/.local/bin/gopanel"), "gopanel"):
                 try:
-                    subprocess.Popen([exe, "reload"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                    break
+                    self.proc = subprocess.Popen([exe, "reload"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    GLib.timeout_add(100, self.poll_reload)
+                    return False
                 except OSError:
                     continue
-        self.applied = (panel, monitor, bg)
+        self.finish()
+        return False
+
+    def poll_reload(self):
+        if self.proc.poll() is None:
+            return True
+        self.finish()
+        return False
+
+    def finish(self):
+        self.set_busy(False)
+        if self.then:
+            self.then()
 
     def on_ok(self, button):
-        self.apply()
-        self.get_toplevel().destroy()
+        self.apply(then=lambda: self.get_toplevel().destroy())
 
 
 # Texts for the Properties page of the Go panel's plugins (taken from the XFCE plugins' own
