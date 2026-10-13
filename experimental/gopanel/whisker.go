@@ -62,6 +62,7 @@ type whisker struct {
 	gc  xproto.Gcontext
 
 	win    xproto.Window
+	back   xproto.Pixmap // off-screen copy of the window: paints go here, then one CopyArea
 	x, y   int
 	isOpen bool
 
@@ -88,6 +89,9 @@ type whisker struct {
 	kpc      int // keysyms per keycode
 	minKC    xproto.Keycode
 	cfg      map[string][]string
+
+	superArmed bool             // Super was released since opening, so pressing it again closes the menu
+	superRel   xproto.Timestamp // time of the last Super release (auto-repeat sends release+press with equal times)
 }
 
 func newWhisker(c *xgb.Conn, scr *xproto.ScreenInfo, gc xproto.Gcontext) *whisker {
@@ -225,9 +229,12 @@ func (w *whisker) open(anchorX int) {
 	wid, _ := xproto.NewWindowId(w.c)
 	xproto.CreateWindow(w.c, w.scr.RootDepth, wid, w.scr.Root, int16(w.x), int16(w.y), whW, whH, 0,
 		xproto.WindowClassInputOutput, w.scr.RootVisual,
-		xproto.CwOverrideRedirect|xproto.CwEventMask, []uint32{1, xproto.EventMaskExposure | xproto.EventMaskKeyPress})
+		xproto.CwOverrideRedirect|xproto.CwEventMask, []uint32{1, xproto.EventMaskExposure | xproto.EventMaskKeyPress | xproto.EventMaskKeyRelease})
 	xproto.MapWindow(w.c, wid)
 	w.win, w.isOpen = wid, true
+	w.back, _ = xproto.NewPixmapId(w.c)
+	xproto.CreatePixmap(w.c, w.scr.RootDepth, w.back, xproto.Drawable(wid), whW, whH)
+	w.superArmed, w.superRel = !w.superHeld(), 0
 	xproto.GrabPointer(w.c, false, wid, xproto.EventMaskButtonPress|xproto.EventMaskButtonRelease|xproto.EventMaskPointerMotion,
 		xproto.GrabModeAsync, xproto.GrabModeAsync, xproto.WindowNone, xproto.CursorNone, xproto.TimeCurrentTime)
 	xproto.GrabKeyboard(w.c, false, wid, xproto.TimeCurrentTime, xproto.GrabModeAsync, xproto.GrabModeAsync)
@@ -241,6 +248,7 @@ func (w *whisker) close() {
 	xproto.UngrabPointer(w.c, xproto.TimeCurrentTime)
 	xproto.UngrabKeyboard(w.c, xproto.TimeCurrentTime)
 	xproto.DestroyWindow(w.c, w.win)
+	xproto.FreePixmap(w.c, w.back)
 	w.isOpen = false
 	w.ctx = nil
 }
@@ -518,25 +526,37 @@ func (w *whisker) paintCats() *image.RGBA {
 	return img
 }
 
+// put paints img into the back pixmap and copies just that area to the window.
 func (w *whisker) put(img *image.RGBA, x, y int) {
+	w.putBack(img, x, y)
+	b := img.Bounds()
+	w.flush(x, y, b.Dx(), b.Dy())
+}
+
+func (w *whisker) flush(x, y, wd, ht int) {
+	xproto.CopyArea(w.c, xproto.Drawable(w.back), xproto.Drawable(w.win), w.gc, int16(x), int16(y), int16(x), int16(y), uint16(wd), uint16(ht))
+}
+
+func (w *whisker) putBack(img *image.RGBA, x, y int) {
 	b := img.Bounds()
 	buf := make([]byte, b.Dx()*b.Dy()*4)
 	for i := 0; i < b.Dx()*b.Dy(); i++ {
 		p := img.Pix[i*4:]
 		buf[i*4], buf[i*4+1], buf[i*4+2] = p[2], p[1], p[0]
 	}
-	putBGRX(w.c, xproto.Drawable(w.win), w.gc, w.scr.RootDepth, x, y, b.Dx(), b.Dy(), buf)
+	putBGRX(w.c, xproto.Drawable(w.back), w.gc, w.scr.RootDepth, x, y, b.Dx(), b.Dy(), buf)
 }
 
 func (w *whisker) paintAll() {
 	bg := image.NewRGBA(image.Rect(0, 0, whW, whH))
 	rect(bg, bg.Bounds(), whBg)
 	frame(bg, bg.Bounds(), whBorder)
-	w.put(bg, 0, 0)
-	w.put(w.paintHeader(), 0, 0)
-	w.put(w.paintSearch(), 0, whSearchY)
-	w.put(w.paintList(), whListX, whListTop)
-	w.put(w.paintCats(), whCatX, whListTop)
+	w.putBack(bg, 0, 0)
+	w.putBack(w.paintHeader(), 0, 0)
+	w.putBack(w.paintSearch(), 0, whSearchY)
+	w.putBack(w.paintList(), whListX, whListTop)
+	w.putBack(w.paintCats(), whCatX, whListTop)
+	w.flush(0, 0, whW, whH) // one copy, so the user never sees a half-painted frame
 	go FlushIconCache()
 }
 
@@ -728,11 +748,24 @@ func (w *whisker) handle(ev xgb.Event) bool {
 	}
 	switch e := ev.(type) {
 	case xproto.ExposeEvent:
-		if e.Window == w.win && e.Count == 0 {
-			w.paintAll()
+		if e.Window == w.win {
+			if e.Count == 0 {
+				w.flush(0, 0, whW, whH) // the back pixmap is always current; no repaint
+			}
 			return true
 		}
+	case xproto.KeyReleaseEvent:
+		if w.isSuper(e.Detail) {
+			w.superArmed, w.superRel = true, e.Time
+		}
+		return true
 	case xproto.KeyPressEvent:
+		if w.isSuper(e.Detail) {
+			if w.superArmed && e.Time != w.superRel {
+				w.close() // the Windows key toggles the menu
+			}
+			return true
+		}
 		w.key(e.Detail, e.State)
 		return true
 	case xproto.MotionNotifyEvent:
@@ -961,4 +994,28 @@ func (w *whisker) ctxAction(e *appmenu.Entry, i int) {
 
 func textWidth(s string, px float64) int {
 	return gfx.Measure([]gfx.Span{{Text: s, Scale: 1, Color: whInk}}, px).W
+}
+
+func (w *whisker) isSuper(code xproto.Keycode) bool {
+	i := int(code-w.minKC) * w.kpc
+	if w.kpc == 0 || i < 0 || i >= len(w.keymap) {
+		return false
+	}
+	ks := w.keymap[i]
+	return ks == 0xffeb || ks == 0xffec // Super_L, Super_R
+}
+
+// superHeld reports whether a Super key is physically down right now (the menu was
+// probably opened by it, and that press must not close it again).
+func (w *whisker) superHeld() bool {
+	r, err := xproto.QueryKeymap(w.c).Reply()
+	if err != nil {
+		return false
+	}
+	for code := int(w.minKC); code < 256; code++ {
+		if r.Keys[code/8]&(1<<(code%8)) != 0 && w.isSuper(xproto.Keycode(code)) {
+			return true
+		}
+	}
+	return false
 }

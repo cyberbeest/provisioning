@@ -30,7 +30,7 @@ import (
 	"gopanel/proto"
 )
 
-const version = "0.21.4"
+const version = "0.21.5"
 
 var ctlCmds chan<- string // control commands into the main loop
 
