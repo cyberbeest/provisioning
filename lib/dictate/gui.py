@@ -915,7 +915,7 @@ class MainWindow(QMainWindow):
             # message; a long hold was a dictation that just got thrown away.
             if held >= 1.0:
                 core.notify(_("Recording cancelled after {held:.0f}s — another key or mouse button was pressed").format(held=held),
-                            urgency="critical", timeout_ms=5000)
+                            urgency="normal", timeout_ms=5000)   # critical never expires
 
     def on_release(self):
         self.key_held = False

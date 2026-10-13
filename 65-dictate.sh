@@ -25,6 +25,10 @@
 # Idempotent: safe to re-run. Needs network (apt, PyPI, Hugging Face); if the
 # model download fails the app still installs and offers a "Download model"
 # button in its Settings.
+# Bumped 2026-10-13: clip_viewer.py joins the installed files (tray "Replay last
+# recording" opens it); core.py/gui.py gained the microphone-stall watchdog, the
+# last-clip timing log and the thread cap. A running Dictate keeps the old code
+# until it is quit and started again (or at next login).
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG="$DIR/65-dictate.log"
@@ -51,7 +55,7 @@ apt-get -o DPkg::Lock::Timeout=60 install -y \
 echo "--- Installing the app to $APP_DIR ---"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" \
     "$TARGET_HOME/.local/share/dictate" "$APP_DIR"
-for f in core.py gui.py i18n.py local_stt.py evdev_listener.py silero_vad.onnx silero_vad.LICENSE LICENSE; do
+for f in core.py gui.py i18n.py local_stt.py evdev_listener.py clip_viewer.py silero_vad.onnx silero_vad.LICENSE LICENSE; do
     install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 "$DIR/lib/dictate/$f" "$APP_DIR/$f"
 done
 chmod 755 "$APP_DIR/gui.py"
