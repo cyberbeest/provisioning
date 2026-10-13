@@ -26,9 +26,9 @@ func newClockItem() *item {
 				w = m.W
 			}
 		}
-		img := image.NewRGBA(image.Rect(0, 0, w, 2*h))
+		img := image.NewRGBA(image.Rect(0, 0, w+6, 2*h)) // 6px blank on the left: the item centres the image, so this moves the text right
 		for i := range lines {
-			gfx.Draw(img, w-ws[i], i*h, spans[i], px)
+			gfx.Draw(img, w+6-ws[i], i*h, spans[i], px)
 		}
 		return img, longDate(now)
 	}
@@ -42,7 +42,7 @@ func newClockItem() *item {
 		for {
 			now := time.Now()
 			img, tip := render(now)
-			it.post(itemUpdate{img: img, tip: &tip, w: img.Bounds().Dx() + 10})
+			it.post(itemUpdate{img: img, tip: &tip, w: img.Bounds().Dx() + 4})
 			next := now.Truncate(time.Minute).Add(time.Minute + 50*time.Millisecond)
 			select {
 			case <-time.After(time.Until(next)):
