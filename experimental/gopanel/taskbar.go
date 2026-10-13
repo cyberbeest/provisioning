@@ -232,6 +232,13 @@ func (tb *taskbar) windowIcon(tw *twin) *image.RGBA {
 			return fitIconSized(argbToRGBA(*best), tbIcon)
 		}
 	}
+	keys := []string{propString(tw.id, "_GTK_APPLICATION_ID"), tw.class}
+	if r := getProp(tw.id, "WM_CLASS", 256); r != nil {
+		keys = append(keys, strings.Split(strings.TrimRight(string(r.Value), "\x00"), "\x00")...)
+	}
+	if ic := appIconFor(keys...); ic != "" && findIcon(ic) != "" {
+		return loadIconSized(ic, tbIcon)
+	}
 	for _, name := range []string{strings.ToLower(tw.class), "application-x-executable"} {
 		if name == "" {
 			continue
