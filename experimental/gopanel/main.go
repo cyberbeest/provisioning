@@ -1,22 +1,27 @@
 // gopanel: a minimal X11 panel in pure Go (no cgo, no toolkit).
 // Two jobs: (1) reserve a strip at the screen bottom via _NET_WM_STRUT_PARTIAL
-// so the WM keeps other windows out of it, (2) draw launcher icons in it.
+// so the WM keeps other windows out of it, (2) lay out items in it: launcher icons, and frames sent by helper processes.
 package main
 
 import (
 	"encoding/binary"
 	"fmt"
+	"image"
 	"log"
 	"os"
 	"os/signal"
 	"runtime/debug"
 	"syscall"
+	"time"
 
 	"github.com/jezek/xgb"
+	"github.com/jezek/xgb/dpms"
 	"github.com/jezek/xgb/xproto"
+
+	"gopanel/proto"
 )
 
-const version = "0.1.0"
+const version = "0.2.0"
 
 const (
 	panelH = 56
@@ -27,6 +32,20 @@ const (
 )
 
 var launchers []*launcher
+
+// item is one thing in the panel: a launcher icon or a helper's frame.
+type item struct {
+	x, w, h int
+	l       *launcher
+	hc      *helperConn
+}
+
+func (it *item) image() *image.RGBA {
+	if it.l != nil {
+		return it.l.img
+	}
+	return it.hc.img
+}
 
 // vcsRevision returns the git revision Go embedded at build time, if any.
 func vcsRevision() string {
@@ -50,8 +69,6 @@ func vcsRevision() string {
 	}
 	return rev + dirty
 }
-
-func slotX(i int) int { return pad + i*(slot+pad) }
 
 func atom(c *xgb.Conn, name string) xproto.Atom {
 	r, err := xproto.InternAtom(c, false, uint16(len(name)), name).Reply()
@@ -116,47 +133,95 @@ func main() {
 	xproto.CreateGC(c, gc, xproto.Drawable(wid), 0, nil)
 	xproto.MapWindow(c, wid)
 
-	hover := -1
-	draw := func(i int) {
+	var (
+		items   []*item
+		helpers []*helperConn
+		hover   *item
+		paused  bool
+	)
+	relayout := func() {
+		items = items[:0]
+		x := pad
+		for _, l := range launchers {
+			items = append(items, &item{x: x, w: slot, h: slot, l: l})
+			x += slot + pad
+		}
+		for _, hc := range helpers {
+			items = append(items, &item{x: x, w: hc.w, h: hc.h, hc: hc})
+			x += hc.w + pad
+		}
+		hover = nil
+	}
+	relayout()
+
+	// draw composites the item's premultiplied RGBA over the panel (or hover)
+	// colour and pushes it to the window, in row chunks to stay under the X
+	// request size limit.
+	draw := func(it *item) {
 		bg := uint32(bgCol)
-		if i == hover {
+		if it == hover && it.l != nil {
 			bg = hiCol
 		}
-		br, bgn, bb := byte(bg>>16), byte(bg>>8), byte(bg)
-		buf := make([]byte, slot*slot*4)
-		b := launchers[i].img.Bounds()
-		for y := 0; y < slot; y++ {
-			for x := 0; x < slot; x++ {
-				r, g, bl, a := launchers[i].img.At(b.Min.X+x, b.Min.Y+y).RGBA() // premultiplied, 16-bit
-				o := (y*slot + x) * 4
-				inv := 0xffff - a
-				buf[o] = byte((bl + uint32(bb)*257*inv/0xffff) >> 8)
-				buf[o+1] = byte((g + uint32(bgn)*257*inv/0xffff) >> 8)
-				buf[o+2] = byte((r + uint32(br)*257*inv/0xffff) >> 8)
+		br, bgn, bb := uint32(byte(bg>>16)), uint32(byte(bg>>8)), uint32(byte(bg))
+		img := it.image()
+		buf := make([]byte, it.w*it.h*4)
+		for y := 0; y < it.h; y++ {
+			src := img.Pix[y*img.Stride : y*img.Stride+it.w*4]
+			dst := buf[y*it.w*4:]
+			for x := 0; x < it.w; x++ {
+				p, o := src[x*4:], x*4
+				inv := 255 - uint32(p[3])
+				dst[o] = byte(uint32(p[2]) + bb*inv/255)
+				dst[o+1] = byte(uint32(p[1]) + bgn*inv/255)
+				dst[o+2] = byte(uint32(p[0]) + br*inv/255)
 			}
 		}
-		xproto.PutImage(c, xproto.ImageFormatZPixmap, xproto.Drawable(wid), gc,
-			slot, slot, int16(slotX(i)), (panelH-slot)/2, 0, scr.RootDepth, buf)
+		rows := 200000 / (it.w * 4)
+		if rows < 1 {
+			rows = 1
+		}
+		y0 := (panelH - it.h) / 2
+		for y := 0; y < it.h; y += rows {
+			n := rows
+			if y+n > it.h {
+				n = it.h - y
+			}
+			xproto.PutImage(c, xproto.ImageFormatZPixmap, xproto.Drawable(wid), gc,
+				uint16(it.w), uint16(n), int16(it.x), int16(y0+y), 0, scr.RootDepth,
+				buf[y*it.w*4:(y+n)*it.w*4])
+		}
 	}
-	hit := func(x int16) int {
-		for i := range launchers {
-			if int(x) >= slotX(i) && int(x) < slotX(i)+slot {
-				return i
+	redrawAll := func() {
+		xproto.ClearArea(c, false, wid, 0, 0, 0, 0)
+		for _, it := range items {
+			draw(it)
+		}
+	}
+	hit := func(x int16) *item {
+		for _, it := range items {
+			if int(x) >= it.x && int(x) < it.x+it.w {
+				return it
 			}
 		}
-		return -1
+		return nil
 	}
-	setHover := func(i int) {
-		if i == hover {
+	setHover := func(it *item) {
+		if it == hover {
 			return
 		}
 		old := hover
-		hover = i
-		if old >= 0 {
+		hover = it
+		if old != nil {
+			if old.hc != nil {
+				old.hc.send("hover off")
+			}
 			draw(old)
 		}
-		if i >= 0 {
-			draw(i)
+		if it != nil {
+			if it.hc != nil {
+				it.hc.send("hover on")
+			}
+			draw(it)
 		}
 	}
 
@@ -164,6 +229,9 @@ func main() {
 	ctlServer(cmds)
 	watchConfig(cmds)
 	defer os.Remove(sockPath())
+	hev := make(chan helperEvent, 16)
+	helperServer(hev)
+	defer os.Remove(proto.SockPath())
 	go func() {
 		for range sig {
 			cmds <- "reload"
@@ -184,19 +252,37 @@ func main() {
 		}
 	}()
 
+	// Helpers are told to pause while the display is in standby: nothing to see,
+	// and animation would only burn battery. (A locked-but-lit screen is not
+	// detected yet; the C plugins also asked the screensaver over D-Bus.)
+	dpmsOK := dpms.Init(c) == nil
+	tick := time.NewTicker(2 * time.Second)
+	defer tick.Stop()
+	pauseLine := func() string {
+		if paused {
+			return "pause"
+		}
+		return "resume"
+	}
+
 	handle := func(ev xgb.Event) {
 		switch e := ev.(type) {
 		case xproto.ExposeEvent:
-			for i := range launchers {
-				draw(i)
+			if e.Count == 0 {
+				redrawAll()
 			}
 		case xproto.MotionNotifyEvent:
 			setHover(hit(e.EventX))
 		case xproto.LeaveNotifyEvent:
-			setHover(-1)
+			setHover(nil)
 		case xproto.ButtonPressEvent:
-			if i := hit(e.EventX); i >= 0 && e.Detail == 1 {
-				cmd := launchers[i].command()
+			it := hit(e.EventX)
+			switch {
+			case it == nil:
+			case it.hc != nil:
+				it.hc.send(fmt.Sprintf("click %d %d %d", int(e.EventX)-it.x, int(e.EventY)-(panelH-it.h)/2, e.Detail))
+			case e.Detail == 1:
+				cmd := it.l.command()
 				cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 				if err := cmd.Start(); err != nil {
 					log.Println(err)
@@ -214,16 +300,56 @@ func main() {
 				return
 			}
 			handle(ev)
+		case he := <-hev:
+			switch he.kind {
+			case "hello":
+				helpers = append(helpers, he.hc)
+				he.hc.send(pauseLine())
+				relayout()
+				redrawAll()
+			case "image":
+				he.hc.img = he.img
+				for _, it := range items {
+					if it.hc == he.hc {
+						draw(it)
+					}
+				}
+			case "bye":
+				for i, hc := range helpers {
+					if hc == he.hc {
+						helpers = append(helpers[:i], helpers[i+1:]...)
+						break
+					}
+				}
+				relayout()
+				redrawAll()
+			}
+		case <-tick.C:
+			if !dpmsOK {
+				continue
+			}
+			info, err := dpms.Info(c).Reply()
+			if err != nil {
+				continue
+			}
+			if off := info.State && info.PowerLevel != dpms.DPMSModeOn; off != paused {
+				paused = off
+				for _, hc := range helpers {
+					hc.send(pauseLine())
+				}
+			}
 		case cmd := <-cmds:
 			switch cmd {
 			case "reload": // re-read panel config and .desktop files, redraw
 				log.Println("reload")
 				if l := loadPanelLaunchers(); len(l) > 0 {
-					launchers, hover = l, -1
-					xproto.ClearArea(c, true, wid, 0, 0, 0, 0) // exposes -> redraw
+					launchers = l
+					relayout()
+					redrawAll()
 				}
 			case "restart": // replace this process with the (possibly rebuilt) binary
 				os.Remove(sockPath())
+				os.Remove(proto.SockPath())
 				exe, _ := os.Executable()
 				log.Fatal(syscall.Exec(exe, []string{exe}, os.Environ()))
 			case "quit":

@@ -23,7 +23,7 @@ type launcher struct {
 	exec string
 	dir  string
 	term bool
-	img  image.Image
+	img  *image.RGBA
 }
 
 var fieldCode = regexp.MustCompile(`%[fFuUdDnNickvm]`)
@@ -184,7 +184,7 @@ func iconScore(p string) int {
 	return sz
 }
 
-func loadIcon(name string) image.Image {
+func loadIcon(name string) *image.RGBA {
 	dst := image.NewRGBA(image.Rect(0, 0, slot, slot))
 	p := findIcon(name)
 	if p == "" {
