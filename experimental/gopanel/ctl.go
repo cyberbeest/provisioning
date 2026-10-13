@@ -57,7 +57,7 @@ func ctlServer(cmds chan<- string) {
 				defer conn.Close()
 				line, _ := bufio.NewReader(conn).ReadString('\n')
 				switch cmd := strings.TrimSpace(line); cmd {
-				case "reload", "restart", "quit", "menu", "yield", "calendar", "volume", "power", "dismiss", "unreserve":
+				case "reload", "restart", "quit", "menu", "yield", "calendar", "volume", "power", "dismiss", "unreserve", "profile":
 					cmds <- cmd
 					fmt.Fprintln(conn, "ok")
 				default:

@@ -18,6 +18,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime/debug"
+	"runtime/pprof"
 	"syscall"
 	"time"
 
@@ -28,7 +29,7 @@ import (
 	"gopanel/proto"
 )
 
-const version = "0.19.1"
+const version = "0.19.4"
 
 var ctlCmds chan<- string // control commands into the main loop
 
@@ -229,9 +230,14 @@ func main() {
 			bg = hoverBg
 		}
 		br, bgn, bb := uint32(byte(bg>>16)), uint32(byte(bg>>8)), uint32(byte(bg))
-		buf := make([]byte, it.w*panelH*4)
-		for i := 0; i < it.w*panelH; i++ {
-			buf[i*4], buf[i*4+1], buf[i*4+2] = byte(bb), byte(bgn), byte(br)
+		need := it.w * panelH * 4
+		if cap(it.drawBuf) < need { // reused between frames: animated items draw 20-40 times a second
+			it.drawBuf = make([]byte, need)
+		}
+		buf := it.drawBuf[:need]
+		buf[0], buf[1], buf[2], buf[3] = byte(bb), byte(bgn), byte(br), 0
+		for n := 4; n < need; n *= 2 { // fill with the background colour by doubling copies
+			copy(buf[n:], buf[:n])
 		}
 		if img := it.img; img != nil {
 			ib := img.Bounds()
@@ -401,6 +407,7 @@ func main() {
 
 	go reapZombies()
 	install(cfg)
+	xt.tryAcquire() // right away: while nobody owns the tray, apps show their icon as a stray window
 	whReady := make(chan whiskerData, 1)
 	go preloadWhisker(whReady)
 
@@ -643,6 +650,7 @@ func main() {
 				log.Println("reload")
 				install(xfconfAll())
 			case "restart": // replace this process with the (possibly rebuilt) binary
+				xt.parkIcons()
 				os.Remove(sockPath())
 				os.Remove(proto.SockPath())
 				exe, _ := os.Executable()
@@ -659,6 +667,17 @@ func main() {
 				} else {
 					openVolumePopup(monW - 400)
 				}
+			case "profile": // 10 s CPU profile -> $XDG_RUNTIME_DIR/gopanel.prof (go tool pprof)
+				go func() {
+					f, err := os.Create(filepath.Join(os.Getenv("XDG_RUNTIME_DIR"), "gopanel.prof"))
+					if err != nil {
+						return
+					}
+					pprof.StartCPUProfile(f)
+					time.Sleep(10 * time.Second)
+					pprof.StopCPUProfile()
+					f.Close()
+				}()
 			case "dismiss": // close every open popup (Dictate asks before it types)
 				wh.close()
 				menus.close()
@@ -671,6 +690,7 @@ func main() {
 			case "yield":
 				xt.yieldTray()
 			case "quit":
+				xt.parkIcons()
 				for _, s := range sups {
 					close(s.stop)
 				}

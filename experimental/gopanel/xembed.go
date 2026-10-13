@@ -12,7 +12,7 @@ import (
 // does (the xfce4-panel systray plugin does while it runs), announce it with a
 // MANAGER message so running apps dock again, and reparent each icon window into
 // the panel window. Everything runs on the main goroutine, driven by X events and a
-// 2 s tick that tries to take over a free selection.
+// 0.5 s tick that tries to take over a free selection.
 
 const (
 	xtGap  = 4
@@ -194,4 +194,16 @@ func (x *xtray) handle(ev interface{}) bool {
 	return false
 }
 
-func xtrayTick() <-chan time.Time { return time.NewTicker(2 * time.Second).C }
+func xtrayTick() <-chan time.Time { return time.NewTicker(500 * time.Millisecond).C }
+
+// parkIcons hides the docked icons before we exit or exec: the save-set would otherwise hand
+// them back to the root window *mapped*, and they would show up as tiny stray windows (in
+// the middle of the screen) until the next panel docks them again.
+func (x *xtray) parkIcons() {
+	for _, w := range x.icons {
+		xproto.UnmapWindow(xc, w)
+		xproto.ReparentWindow(xc, w, xroot, -200, -200)
+	}
+	x.icons = nil
+	xproto.GetInputFocus(xc).Reply() // round trip: make sure the requests went out before exec
+}
