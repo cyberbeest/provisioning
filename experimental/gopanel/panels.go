@@ -42,6 +42,7 @@ var (
 	allMons         []monRect
 	panelItems      []*item
 	curHover        func() *item
+	hoverPanel      *replica // the panel the hovered item is on (nil: the main panel)
 	activeRep       *replica // the replica whose event is being handled, else nil
 	swapped         bool     // inside withReplica: relayouts wait until the swap is undone
 	pendingRelayout bool
@@ -196,12 +197,12 @@ func (r *replica) drawItem(it *item, copyOut bool) {
 		return
 	}
 	bg := uint32(panelBg)
-	if curHover != nil && curHover() == it && it.hl {
+	if curHover != nil && curHover() == it && it.hl && hoverPanel == r {
 		bg = hoverBg
 	}
 	img := it.img
 	if it.imgAt != nil {
-		img = it.imgAt(w)
+		img = it.imgAt(w, r)
 	}
 	need := w * panelH * 4
 	if cap(r.buf) < need {

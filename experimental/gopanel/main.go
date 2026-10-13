@@ -31,7 +31,7 @@ import (
 	"gopanel/proto"
 )
 
-const version = "0.21.15"
+const version = "0.21.16"
 
 var ctlCmds chan<- string // control commands into the main loop
 
@@ -215,7 +215,7 @@ func main() {
 			return
 		}
 		bg := uint32(panelBg)
-		if it == hover && it.hl {
+		if it == hover && it.hl && hoverPanel == nil {
 			bg = hoverBg
 		}
 		need := it.w * panelH * 4
@@ -313,11 +313,11 @@ func main() {
 	}
 	cancelTipFn = cancelTip
 	setHover := func(it *item) {
-		if it == hover {
+		if it == hover && activeRep == hoverPanel {
 			return
 		}
 		old := hover
-		hover = it
+		hover, hoverPanel = it, activeRep // highlighted on the panel the pointer is on only
 		cancelTip()
 		if old != nil {
 			if old.hover != nil {
@@ -340,7 +340,7 @@ func main() {
 	install := func(cfg map[string][]string) {
 		applyMonitorChoice(cfg)
 		reposition() // no-op unless the monitor setup or the choice changed
-		hover = nil
+		hover, hoverPanel = nil, nil
 		cancelTip()
 		for _, it := range items {
 			it.discard()

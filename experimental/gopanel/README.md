@@ -66,9 +66,9 @@ tarball (with LICENSE and the licences of the Go modules inside) as `gopanel-<sh
 to cyberbeest.com/gopanel/, checks the download hashes the same, and rewrites the three pins
 (`GOPANEL_VERSION/SHA256/BYTES`) in `../../69-cyberbeest-panel.sh`. Committing that change rolls the
 new version out: 69- downloads it, verifies the pinned SHA-256, unpacks it to `~/.local/lib/gopanel`,
-links `~/.local/bin/gopanel`, installs the switcher, the autostart entry and (via 46-) the Windows-key
-script, writes `PANEL=gopanel` unless a choice already exists, and `gopanel restart`s a running panel.
-The switch from the XFCE panel itself happens at login. On the dev machine the source build runs;
+links `~/.local/bin/gopanel`, installs the switcher and the autostart entry, and `gopanel restart`s a running panel.
+It never switches panels or writes `panel.conf`; the user picks the panel in Settings > Panel.
+On the dev machine the source build runs;
 installing 69- there would put the released build first in `~/.local/bin`, so don't (or remove the link).
 
 ## Notes

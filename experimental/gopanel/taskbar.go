@@ -90,13 +90,14 @@ type twin struct {
 }
 
 type taskbar struct {
-	lastN   int
-	it      *item
-	wins    []*twin // client list order
-	active  xproto.Window
-	desktop uint32
-	hover   int
-	w       int
+	lastN    int
+	it       *item
+	wins     []*twin // client list order
+	active   xproto.Window
+	desktop  uint32
+	hover    int
+	hoverRep *replica // the panel (nil: main) whose taskbar the pointer is over
+	w        int
 }
 
 func newTaskbarItem() *item {
@@ -112,8 +113,8 @@ func newTaskbarItem() *item {
 	it.imgAt = tb.renderImg
 	it.ctxW = func(w int) { tb.w = w }
 	it.motion = func(x int) {
-		if i := tb.indexAt(x); i != tb.hover {
-			tb.hover = i
+		if i := tb.indexAt(x); i != tb.hover || tb.hoverRep != activeRep {
+			tb.hover, tb.hoverRep = i, activeRep
 			tb.render()
 		}
 	}
@@ -341,14 +342,18 @@ func (tb *taskbar) render() {
 	if tb.w <= 0 {
 		return
 	}
-	tb.it.img = tb.renderImg(tb.w)
+	tb.it.img = tb.renderImg(tb.w, nil)
 	if drawItem != nil && tb.it.w > 0 {
 		drawItem(tb.it)
 	}
 }
 
 // renderImg draws the buttons for a taskbar w px wide (the panel's own, or a replica's).
-func (tb *taskbar) renderImg(w int) *image.RGBA {
+func (tb *taskbar) renderImg(w int, rep *replica) *image.RGBA {
+	hover := -1
+	if tb.hoverRep == rep {
+		hover = tb.hover // the highlighted button shows on the panel the pointer is on only
+	}
 	vis := tb.shown()
 	img := image.NewRGBA(image.Rect(0, 0, w, panelH))
 	bw := tb.buttonWidthFor(w, len(vis))
@@ -359,7 +364,7 @@ func (tb *taskbar) renderImg(w int) *image.RGBA {
 		switch {
 		case w.id == tb.active && !w.minimized:
 			fill = tbActive
-		case i == tb.hover:
+		case i == hover:
 			fill = tbHover
 		}
 		border := tbBorder

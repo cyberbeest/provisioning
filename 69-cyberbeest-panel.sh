@@ -3,10 +3,11 @@
 # replaces the XFCE panel -- same layout and plugins (it reads the xfce4-panel config), but no
 # flicker at startup, a faster menu and far lower memory use.
 #
-# It is the default panel: this script switches the running session over (and at every login
-# cyberbeest-panel-choice.sh, autostart, starts the chosen panel and stops the other). Cyberbeest Settings > Panel switches back; that choice is kept in
-# ~/.config/cyberbeest/panel.conf and this script never overrides it once it exists. The XFCE
-# panel stays installed and is what xfce-panel-watchdog brings back if gopanel ever dies.
+# Installing does not switch anything: the XFCE panel stays the panel until the user picks the
+# Cyberbeest panel in Cyberbeest Settings > Panel (Apply/OK). That choice is kept in
+# ~/.config/cyberbeest/panel.conf, which this script never writes or overrides; at every login
+# cyberbeest-panel-choice.sh (autostart) starts the chosen panel (XFCE when there is no choice).
+# The XFCE panel stays installed and is what xfce-panel-watchdog brings back if gopanel dies.
 #
 # The binaries are not built here: release.sh (experimental/gopanel) builds them on the dev
 # machine and publishes a tarball at cyberbeest.com/gopanel/, named after its own hash. The
@@ -19,7 +20,7 @@
 # "XFCE panel stopped on purpose" marker). Needs network for the download; if it fails, the
 # XFCE panel simply stays the panel.
 # Idempotent: safe to re-run. A running gopanel is restarted into a new version (`gopanel
-# restart`, helpers keep running).
+# restart`, helpers keep running); that is an update, not a switch.
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG="$DIR/69-cyberbeest-panel.log"
@@ -27,9 +28,9 @@ exec > >(tee -a "$LOG") 2>&1
 
 echo "=== $(date) : installing the Cyberbeest panel ==="
 
-GOPANEL_VERSION="0.21.15"
-GOPANEL_SHA256="fa6d91b37a736c87ed904bb602017e1aff6a829376106acf03f52ea963fb951d"
-GOPANEL_BYTES=8432375
+GOPANEL_VERSION="0.21.16"
+GOPANEL_SHA256="1623653ae07f3f16c7efdd420bd81c101a6e625484b6ebcd39e831f2b4d988c3"
+GOPANEL_BYTES=8434004
 GOPANEL_URL="https://cyberbeest.com/gopanel/gopanel-${GOPANEL_SHA256:0:12}.tar.gz"
 
 TARGET_USER="${SUDO_USER:?SUDO_USER not set -- run this via sudo, not as a raw root shell}"
@@ -102,41 +103,13 @@ X-GNOME-Autostart-enabled=true
 EOF
 chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.config/autostart/cyberbeest-panel-choice.desktop"
 
-echo "--- Default panel ---"
-if [ -e "$CONF_DIR/panel.conf" ]; then
-	echo "keeping the existing choice: $(tr '\n' ' ' < "$CONF_DIR/panel.conf")"
-else
-	echo "PANEL=gopanel" > "$CONF_DIR/panel.conf"
-	chown "$TARGET_USER:$TARGET_USER" "$CONF_DIR/panel.conf"
-	echo "no choice yet: gopanel it is"
-fi
-
-# Switching: a panel that is already running restarts into the new binary (exec: same pid,
-# helpers keep running and reconnect). Otherwise, if the saved choice is gopanel and the XFCE
-# panel is what the user is looking at, switch right now rather than leaving "after the next
-# login" for them to puzzle over: cyberbeest-panel-choice.sh starts gopanel, waits until it has
-# its window up, and only then stops the XFCE panel. Session environment comes from
-# xfce4-session, as lib/xfce-panel-reload.sh does.
-run_as_user() {
-	local pid env_args=() line
-	pid="$(pgrep -u "$TARGET_USER" -x xfce4-session | head -1)" || true
-	if [ -n "$pid" ]; then
-		while IFS= read -r -d '' line; do
-			case "$line" in
-				DISPLAY=*|XAUTHORITY=*|DBUS_SESSION_BUS_ADDRESS=*|XDG_*=*|DESKTOP_SESSION=*) env_args+=("$line") ;;
-			esac
-		done < "/proc/$pid/environ"
-	fi
-	env_args+=("XDG_RUNTIME_DIR=/run/user/$TARGET_UID")
-	sudo -u "$TARGET_USER" env "${env_args[@]}" "$@"
-}
-
+# A panel that is already running restarts into the new binary (exec: same pid, helpers keep
+# running and reconnect). Nothing is started or stopped otherwise -- switching panels is the
+# user's choice in Settings, never done by provisioning.
 if pgrep -u "$TARGET_USER" -x gopanel >/dev/null; then
 	echo "--- Restarting the running panel into the new version ---"
-	run_as_user "$LIBDIR/gopanel" restart || echo "restart failed (it will pick up the new version at next login)" >&2
-elif pgrep -u "$TARGET_USER" -x xfce4-panel >/dev/null && [ "$(sed -n 's/^PANEL=//p' "$CONF_DIR/panel.conf")" = gopanel ]; then
-	echo "--- Switching the running session from the XFCE panel to the Cyberbeest panel ---"
-	run_as_user "$BINDIR/cyberbeest-panel-choice.sh" login || echo "switch failed; the XFCE panel stays" >&2
+	env_args=("XDG_RUNTIME_DIR=/run/user/$TARGET_UID" "DISPLAY=${DISPLAY:-:0}")
+	sudo -u "$TARGET_USER" env "${env_args[@]}" "$LIBDIR/gopanel" restart || echo "restart failed (it will pick up the new version at next login)" >&2
 fi
 
 echo "=== done ==="
