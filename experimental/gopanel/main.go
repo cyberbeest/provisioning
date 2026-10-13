@@ -31,7 +31,7 @@ import (
 	"gopanel/proto"
 )
 
-const version = "0.21.16"
+const version = "0.21.17"
 
 var ctlCmds chan<- string // control commands into the main loop
 
@@ -818,6 +818,9 @@ func panelMenu(x int, cmds chan<- string, over *item) {
 		xfce = &menuItem{id: 1, label: tr("Stop XFCE panel")}
 	}
 	items := []*menuItem{xfce, {sep: true}, {id: 2, label: tr("Restart this panel")}, {id: 3, label: tr("Quit this panel")}}
+	if over != nil && over.kind == "launcher" && over.lid != "" {
+		items = append([]*menuItem{{id: 20, label: tr("Remove from panel")}, {sep: true}}, items...)
+	}
 	if over != nil && over.rc != "" { // the plugin's own entry, like the XFCE panel's plugin menu
 		items = append([]*menuItem{{id: 10, label: propsLabel(over.title)}, {sep: true}}, items...)
 	}
@@ -826,6 +829,8 @@ func panelMenu(x int, cmds chan<- string, over *item) {
 		anchorX: x,
 		onSelect: func(mi *menuItem) {
 			switch mi.id {
+			case 20:
+				go removeLauncher(over.lid, over.lfile, over.title, cmds)
 			case 10:
 				title := over.title
 				if title == "" {

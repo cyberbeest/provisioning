@@ -62,6 +62,7 @@ func buildItems(cfg map[string][]string) []*item {
 					path = filepath.Join("/usr/share/applications", file)
 				}
 				if it := newLauncherItem(path); it != nil {
+					it.lid, it.lfile = id, file
 					items = append(items, it)
 				}
 			}
@@ -152,7 +153,7 @@ func newLauncherItem(path string) *item {
 	it.w = panelH
 	it.img = loadIcon(icon)
 	it.hl = true
-	it.tip = l.name
+	it.tip, it.title = l.name, l.name
 	if l.comment != "" && l.comment != l.name {
 		it.tip += "\n" + l.comment
 	}

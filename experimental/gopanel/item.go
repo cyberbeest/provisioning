@@ -16,6 +16,8 @@ const (
 type item struct {
 	kind     string
 	name     string // helper name, for kind "helper"
+	lid      string // launcher: id of its xfce4-panel plugin, and its entry in that plugin's items
+	lfile    string
 	x, w     int
 	expand   bool
 	want     func() int          // expanding items: widest useful width (nil = takes whatever is left)
