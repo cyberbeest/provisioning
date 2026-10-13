@@ -13,13 +13,14 @@ const INSTRUCTION =
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
-    await $.command.register({ name: 'speak', description: 'Toggle spoken replies on or off' })
+    await $.command.register({ name: 'speak', description: 'Toggle spoken replies, or set volume: /speak 0-100' })
 
     return next(e)
   })
 
-  on('command.run', { command: 'speak' }, async $ => {
-    const ran = await $.process.run(['python3', SPEAK, '--toggle'])
+  on('command.run', { command: 'speak' }, async ($, e) => {
+    const arg = String((e as any).args ?? (e as any).arguments ?? '').trim()
+    const ran = await $.process.run(['python3', SPEAK, ...(arg ? ['--volume', arg] : ['--toggle'])])
 
     return { text: `Spoken replies: ${ran.stdout.trim() || 'toggled'}.` }
   }).catch(() => ({ text: 'Could not toggle spoken replies.' }))

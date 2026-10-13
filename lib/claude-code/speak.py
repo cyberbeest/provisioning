@@ -9,12 +9,21 @@ import os, re, signal, struct, subprocess, sys, threading, time
 HOME = os.path.expanduser("~/.local/share/claude-tts")
 PIDFILE = os.path.join(HOME, "speaking.pid")
 MUTE = os.path.join(HOME, "muted")
+VOLFILE = os.path.join(HOME, "volume")  # percent, 100 = full
 MAX_CHARS = 220
 BEEP_PAUSE = 1.0  # seconds of silence between the beep and the speech
 LENGTH_SCALE = 0.81  # below 1.0 speaks faster
 
 GERMAN_HINTS = {"der", "die", "das", "und", "ist", "nicht", "ich", "ein", "eine", "mit",
                 "für", "auf", "zu", "den", "dem", "wir", "sie", "es", "aber", "auch", "wie"}
+
+
+def volume_arg():
+    try:
+        pct = max(0, min(100, int(open(VOLFILE).read().strip())))
+    except (OSError, ValueError):
+        pct = 100
+    return f"--volume={pct * 65536 // 100}"
 
 
 def log(line):
@@ -175,12 +184,12 @@ def play_reply(kind, text):
             return
     path = os.path.join(HOME, "sounds", kind + ".wav")
     if os.path.exists(path):  # the beep comes just before the speech, not while Piper is still working
-        done = subprocess.run(["paplay", path], capture_output=True, text=True)
+        done = subprocess.run(["paplay", volume_arg(), path], capture_output=True, text=True)
         log(f"earcon {kind}: rc={done.returncode} {done.stderr.strip()}")
         time.sleep(BEEP_PAUSE)
     started = time.time() - t0
 
-    play = subprocess.Popen(["paplay", "--raw", "--format=s16le", f"--rate={state['rate']}", "--channels=1"],
+    play = subprocess.Popen(["paplay", volume_arg(), "--raw", "--format=s16le", f"--rate={state['rate']}", "--channels=1"],
                             stdin=subprocess.PIPE)
 
     def feeder():
@@ -219,6 +228,14 @@ def play_reply(kind, text):
 def main():
     if "--stop" in sys.argv:
         stop_previous()
+        return
+    if "--volume" in sys.argv:
+        i = sys.argv.index("--volume")
+        try:
+            pct = max(0, min(100, int(sys.argv[i + 1])))
+        except (IndexError, ValueError):
+            print("usage: --volume 0-100"); return
+        open(VOLFILE, "w").write(str(pct)); print(f"volume {pct}%")
         return
     if "--toggle" in sys.argv:
         if os.path.exists(MUTE):
