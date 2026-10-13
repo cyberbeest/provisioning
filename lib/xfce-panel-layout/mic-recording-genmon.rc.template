@@ -1,0 +1,5 @@
+Command=__HOME__/.local/bin/mic-recording-genmon.sh
+UpdatePeriod=500
+UseLabel=0
+Text=(genmon)
+Font=Sans 10

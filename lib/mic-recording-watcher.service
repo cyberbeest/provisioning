@@ -1,0 +1,10 @@
+[Unit]
+Description=Watch for apps recording from the microphone (panel indicator)
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/mic-recording-watcher.sh
+Restart=on-failure
+
+[Install]
+WantedBy=default.target

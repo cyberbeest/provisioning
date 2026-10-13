@@ -441,6 +441,7 @@ SCRIPT_DURATION_ESTIMATES = {
     "10-browser-sandbox.sh": 23,
     "11-xfce-panel-plugins.sh": 99,
     "11a-clipboard-status.sh": 19,
+    "11b-mic-recording-indicator.sh": 8,
     "12-xfce-panel-layout.sh": 20,
     "13-lock-shutdown-watcher.sh": 16,
     "13a-lock-warning-watcher.sh": 6,
