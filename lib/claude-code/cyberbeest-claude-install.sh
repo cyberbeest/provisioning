@@ -12,7 +12,7 @@
 #   - ~/claude: working folder with a CLAUDE.md for the sudo-helper convention
 #     (RUNME markers), the sudo helper daemon (autostarted), Claude Sessions
 #     window, spawn-claude-session.sh, claude-stop.sh, wait-for-runme.sh
-#   - spoken replies: speak-replies mod + Piper TTS (runs locally), /voice toggles
+#   - spoken replies: speak-replies mod + Piper TTS (runs locally), /speak toggles
 #   - a "Claude Code" menu entry that opens a terminal in ~/claude
 # Idempotent: safe to re-run. Adds only what is missing (icons, launchers, voices,
 # venv, CLAUDE.md, settings entries); the scripts we ship are refreshed.

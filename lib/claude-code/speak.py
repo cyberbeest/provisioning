@@ -10,6 +10,7 @@ HOME = os.path.expanduser("~/.local/share/claude-tts")
 PIDFILE = os.path.join(HOME, "speaking.pid")
 MUTE = os.path.join(HOME, "muted")
 MAX_CHARS = 220
+BEEP_PAUSE = 1.0  # seconds of silence between the beep and the speech
 LENGTH_SCALE = 0.81  # below 1.0 speaks faster
 
 GERMAN_HINTS = {"der", "die", "das", "und", "ist", "nicht", "ich", "ein", "eine", "mit",
@@ -160,15 +161,9 @@ def play_reply(kind, text):
 
     threading.Thread(target=reader, daemon=True).start()
 
-    earcon = None
-    path = os.path.join(HOME, "sounds", kind + ".wav")
-    if os.path.exists(path):  # starts at once, while Piper is still loading
-        earcon = subprocess.Popen(["paplay", path], stderr=subprocess.PIPE, text=True)
-
     def abort():
-        for proc in (synth, earcon):
-            if proc and proc.poll() is None:
-                proc.kill()
+        if synth.poll() is None:
+            synth.kill()
 
     while time.time() - t0 < 90:  # the limit is only a safety net
         with cond:
@@ -178,10 +173,12 @@ def play_reply(kind, text):
         if capturing():
             abort()
             return
+    path = os.path.join(HOME, "sounds", kind + ".wav")
+    if os.path.exists(path):  # the beep comes just before the speech, not while Piper is still working
+        done = subprocess.run(["paplay", path], capture_output=True, text=True)
+        log(f"earcon {kind}: rc={done.returncode} {done.stderr.strip()}")
+        time.sleep(BEEP_PAUSE)
     started = time.time() - t0
-    if earcon:
-        earcon.wait()
-        log(f"earcon {kind}: rc={earcon.returncode} {earcon.stderr.read().strip()}")
 
     play = subprocess.Popen(["paplay", "--raw", "--format=s16le", f"--rate={state['rate']}", "--channels=1"],
                             stdin=subprocess.PIPE)
