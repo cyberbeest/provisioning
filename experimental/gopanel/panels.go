@@ -2,8 +2,6 @@ package main
 
 import (
 	"image"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -56,15 +54,8 @@ var (
 
 // readMonitorChoice returns the MONITOR setting from panel.conf ("" when absent or auto).
 func readMonitorChoice() string {
-	home, _ := os.UserHomeDir()
-	b, err := os.ReadFile(filepath.Join(home, ".config/cyberbeest/panel.conf"))
-	if err != nil {
-		return ""
-	}
-	for _, l := range strings.Split(string(b), "\n") {
-		if v, ok := strings.CutPrefix(strings.TrimSpace(l), "MONITOR="); ok && v != "auto" {
-			return v
-		}
+	if v := readPanelConf()["MONITOR"]; v != "auto" {
+		return v
 	}
 	return ""
 }
@@ -196,9 +187,9 @@ func (r *replica) drawItem(it *item, copyOut bool) {
 	if w <= 0 {
 		return
 	}
-	bg := uint32(panelBg)
+	bg := curBg
 	if curHover != nil && curHover() == it && it.hl && hoverPanel == r {
-		bg = hoverBg
+		bg = curHoverBg
 	}
 	img := it.img
 	if it.imgAt != nil {
@@ -259,7 +250,7 @@ func rebuildReplicas(own monRect) {
 		r.win, _ = xproto.NewWindowId(g.c)
 		xproto.CreateWindow(g.c, g.scr.RootDepth, r.win, g.scr.Root, int16(m.x), int16(m.y+m.h-panelH), uint16(m.w), uint16(panelH), 0,
 			xproto.WindowClassInputOutput, g.scr.RootVisual, xproto.CwBackPixel|xproto.CwEventMask,
-			[]uint32{panelBg, xproto.EventMaskExposure | xproto.EventMaskButtonPress | xproto.EventMaskPointerMotion | xproto.EventMaskLeaveWindow})
+			[]uint32{curBg, xproto.EventMaskExposure | xproto.EventMaskButtonPress | xproto.EventMaskPointerMotion | xproto.EventMaskLeaveWindow})
 		xproto.ChangeProperty(g.c, xproto.PropModeReplace, r.win, atom(g.c, "_NET_WM_WINDOW_TYPE"),
 			xproto.AtomAtom, 32, 1, u32(uint32(atom(g.c, "_NET_WM_WINDOW_TYPE_DOCK"))))
 		bottom := uint32(rootH - (m.y + m.h) + panelH)

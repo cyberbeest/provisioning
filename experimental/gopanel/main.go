@@ -31,7 +31,7 @@ import (
 	"gopanel/proto"
 )
 
-const version = "0.21.17"
+const version = "0.21.19"
 
 var ctlCmds chan<- string // control commands into the main loop
 
@@ -130,7 +130,7 @@ func main() {
 		int16(monX), int16(panelTopY()), sw, uint16(panelH), 0,
 		xproto.WindowClassInputOutput, scr.RootVisual,
 		xproto.CwBackPixel|xproto.CwEventMask,
-		[]uint32{panelBg, xproto.EventMaskExposure | xproto.EventMaskButtonPress |
+		[]uint32{curBg, xproto.EventMaskExposure | xproto.EventMaskButtonPress |
 			xproto.EventMaskPointerMotion | xproto.EventMaskLeaveWindow})
 
 	// Window type DOCK + strut: this is "where the rest of the desktop is".
@@ -160,7 +160,7 @@ func main() {
 	back, _ := xproto.NewPixmapId(c)
 	xproto.CreatePixmap(c, scr.RootDepth, back, xproto.Drawable(wid), uint16(backW), uint16(panelH))
 	bgGC, _ := xproto.NewGcontextId(c)
-	xproto.CreateGC(c, bgGC, xproto.Drawable(back), xproto.GcForeground, []uint32{panelBg})
+	xproto.CreateGC(c, bgGC, xproto.Drawable(back), xproto.GcForeground, []uint32{curBg})
 	panelGCs.c, panelGCs.scr, panelGCs.gc, panelGCs.bgGC = c, scr, gc, bgGC
 	tip := newTooltip(c, scr, gc)
 	noticeTip = newTooltip(c, scr, gc)
@@ -214,9 +214,9 @@ func main() {
 		if it.w <= 0 {
 			return
 		}
-		bg := uint32(panelBg)
+		bg := curBg
 		if it == hover && it.hl && hoverPanel == nil {
-			bg = hoverBg
+			bg = curHoverBg
 		}
 		need := it.w * panelH * 4
 		if cap(it.drawBuf) < need { // reused between frames: animated items draw 20-40 times a second
@@ -248,6 +248,50 @@ func main() {
 	}
 	// reposition moves the panel to the monitor pickMonitor chooses now (a no-op when that
 	// monitor's rectangle is the one it is already on).
+	// pushBg gives the windows and the fill GC the current background and redraws everything.
+	pushBg := func() {
+		xproto.ChangeGC(c, bgGC, xproto.GcForeground, []uint32{curBg})
+		xproto.ChangeWindowAttributes(c, wid, xproto.CwBackPixel, []uint32{curBg})
+		for _, r := range replicas {
+			xproto.ChangeWindowAttributes(c, r.win, xproto.CwBackPixel, []uint32{curBg})
+		}
+		for _, tb := range taskbars { // its button colours come from the background too
+			if tb.w > 0 {
+				tb.it.img = tb.renderImg(tb.w, nil)
+			}
+		}
+		redrawAll()
+	}
+	// bgStep/setBgCycle run the background colour drift (bgcycle.go).
+	bgStep := func(force bool) {
+		if bgPeriod == 0 {
+			return
+		}
+		bg, hover := pastelAt(time.Now(), bgPeriod)
+		if bg == curBg && !force {
+			return
+		}
+		applyBgColors(bg, hover, false)
+		pushBg()
+	}
+	setBgCycle := func(d time.Duration) {
+		if d == bgPeriod {
+			return
+		}
+		bgPeriod = d
+		if bgTicker != nil {
+			bgTicker.Stop()
+			bgTick = nil
+		}
+		if d == 0 {
+			applyBgColors(panelBg, hoverBg, true)
+			pushBg()
+			return
+		}
+		bgTicker = time.NewTicker(max(d/360, 200*time.Millisecond)) // one degree of hue per step
+		bgTick = bgTicker.C
+		bgStep(true)
+	}
 	lastSig := ""
 	reposition := func() {
 		queryMonitor(c, scr)
@@ -340,6 +384,7 @@ func main() {
 	install := func(cfg map[string][]string) {
 		applyMonitorChoice(cfg)
 		reposition() // no-op unless the monitor setup or the choice changed
+		setBgCycle(bgPeriodOf(readPanelConf()["BG_CYCLE"]))
 		hover, hoverPanel = nil, nil
 		cancelTip()
 		for _, it := range items {
@@ -671,9 +716,16 @@ func main() {
 				relayout()
 				redrawAll()
 			}
+		case <-bgTick:
+			if !paused { // nobody is looking: no redraws while the screen is off or locked
+				bgStep(false)
+			}
 		case off := <-dpmsC:
 			if off != paused {
 				paused = off
+				if !paused {
+					bgStep(false) // catch up with the time that passed
+				}
 				for _, hc := range helpers {
 					hc.send(pauseLine())
 				}
@@ -692,11 +744,16 @@ func main() {
 				log.Println("reload")
 				install(xfconfAll())
 			case "restart": // replace this process with the (possibly rebuilt) binary
+				// Check before tearing anything down: a failed exec after that leaves no panel.
+				exe := restartExe()
+				if exe == "" {
+					log.Printf("restart: cannot find the binary, keeping this panel running")
+					continue
+				}
 				xt.parkIcons()
 				killSubscribers()
 				os.Remove(sockPath())
 				os.Remove(proto.SockPath())
-				exe, _ := os.Executable()
 				log.Fatal(syscall.Exec(exe, []string{exe}, os.Environ()))
 			case "menu":
 				toggleWhisker()

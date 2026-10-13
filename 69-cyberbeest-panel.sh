@@ -28,9 +28,9 @@ exec > >(tee -a "$LOG") 2>&1
 
 echo "=== $(date) : installing the Cyberbeest panel ==="
 
-GOPANEL_VERSION="0.21.17"
-GOPANEL_SHA256="c88de948a3038e7e03698926f4a9517c8e0cb98b8f670452d48e21f55e8eb159"
-GOPANEL_BYTES=8443981
+GOPANEL_VERSION="0.21.19"
+GOPANEL_SHA256="85486775d51a3e2f3d07eb236c5b2973fb684977d91e717c745870b029e6574f"
+GOPANEL_BYTES=8449428
 GOPANEL_URL="https://cyberbeest.com/gopanel/gopanel-${GOPANEL_SHA256:0:12}.tar.gz"
 
 TARGET_USER="${SUDO_USER:?SUDO_USER not set -- run this via sudo, not as a raw root shell}"
@@ -40,6 +40,7 @@ LIBDIR="$TARGET_HOME/.local/lib/gopanel"
 BINDIR="$TARGET_HOME/.local/bin"
 CONF_DIR="$TARGET_HOME/.config/cyberbeest"
 SRC="$DIR/experimental/gopanel"
+OLD_VERSION="$(cat "$LIBDIR/VERSION" 2>/dev/null || true)" # what is installed now, before this run replaces it
 
 if [ "$GOPANEL_SHA256" = "$(printf '0%.0s' $(seq 64))" ]; then
 	echo "No release is pinned in this script yet (run experimental/gopanel/release.sh --publish) -- nothing to install." >&2
@@ -103,13 +104,33 @@ X-GNOME-Autostart-enabled=true
 EOF
 chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.config/autostart/cyberbeest-panel-choice.desktop"
 
-# A panel that is already running restarts into the new binary (exec: same pid, helpers keep
-# running and reconnect). Nothing is started or stopped otherwise -- switching panels is the
-# user's choice in Settings, never done by provisioning.
-if pgrep -u "$TARGET_USER" -x gopanel >/dev/null; then
-	echo "--- Restarting the running panel into the new version ---"
-	env_args=("XDG_RUNTIME_DIR=/run/user/$TARGET_UID" "DISPLAY=${DISPLAY:-:0}")
-	sudo -u "$TARGET_USER" env "${env_args[@]}" "$LIBDIR/gopanel" restart || echo "restart failed (it will pick up the new version at next login)" >&2
+# A panel that is already running moves to the new binary. Switching panels is the user's choice
+# in Settings, never done here.
+#   - 0.21.19 and later: `gopanel restart` (exec: same pid, helpers keep running).
+#   - older ones cannot do that after their files were replaced (the exec found no binary and the
+#     panel exited, then the XFCE watchdog brought the XFCE panel back: tower, 2026-10-13), so
+#     they are quit and the new binary is started in its own unit (like cyberbeest-panel-choice.sh
+#     does), well inside the watchdog's 15 s grace.
+GOPID="$(pgrep -u "$TARGET_USER" -x gopanel | head -1)" || true
+if [ -n "$GOPID" ]; then
+	echo "--- Moving the running panel to the new version ---"
+	if [ -n "$OLD_VERSION" ] && [ "$(printf '%s\n0.21.19\n' "$OLD_VERSION" | sort -V | head -1)" = "0.21.19" ]; then
+		sudo -u "$TARGET_USER" env XDG_RUNTIME_DIR="/run/user/$TARGET_UID" DISPLAY="${DISPLAY:-:0}" \
+			"$LIBDIR/gopanel" restart || echo "restart failed" >&2
+	else
+		env_args=("XDG_RUNTIME_DIR=/run/user/$TARGET_UID" "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$TARGET_UID/bus")
+		while IFS= read -r -d '' line; do
+			case "$line" in
+				DISPLAY=*|XAUTHORITY=*|XDG_CURRENT_DESKTOP=*|XDG_SESSION_TYPE=*|DBUS_SESSION_BUS_ADDRESS=*) env_args+=("$line") ;;
+			esac
+		done < "/proc/$GOPID/environ"
+		sudo -u "$TARGET_USER" env "${env_args[@]}" "$LIBDIR/gopanel" quit || true
+		for _ in $(seq 40); do pgrep -u "$TARGET_USER" -x gopanel >/dev/null || break; sleep 0.25; done
+		sudo -u "$TARGET_USER" env "${env_args[@]}" systemd-run --user --collect --quiet \
+			--unit="panel-choice-$(date +%s%N)" -p KillMode=process \
+			--setenv=DISPLAY --setenv=XAUTHORITY --setenv=XDG_CURRENT_DESKTOP --setenv=XDG_SESSION_TYPE \
+			-- "$LIBDIR/gopanel" || echo "could not start the new panel; it starts at next login" >&2
+	fi
 fi
 
 echo "=== done ==="

@@ -246,6 +246,9 @@ def current_panel():
     return "xfce"
 
 
+BG_CYCLES = ["off", "24h", "1h", "5m", "1m"]
+
+
 class PanelPage(Gtk.Box):
     def __init__(self, script):
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=14)
@@ -284,6 +287,20 @@ class PanelPage(Gtk.Box):
             mnote.get_style_context().add_class("dim-label")
             self.pack_start(mnote, False, False, 0)
 
+        self.pack_start(Gtk.Separator(), False, False, 0)
+        brow = Gtk.Box(spacing=10)
+        brow.pack_start(Gtk.Label(label=t("panel.bg_label"), xalign=0), False, False, 0)
+        self.bg_combo = Gtk.ComboBoxText()
+        for cid in BG_CYCLES:
+            self.bg_combo.append(cid, t("panel.bg_" + cid))
+        if not self.bg_combo.set_active_id(read_panel_conf().get("BG_CYCLE", "off")):
+            self.bg_combo.set_active_id("off")
+        brow.pack_start(self.bg_combo, False, False, 0)
+        self.pack_start(brow, False, False, 0)
+        bnote = Gtk.Label(wrap=True, max_width_chars=44, xalign=0, label=t("panel.bg_note"))
+        bnote.get_style_context().add_class("dim-label")
+        self.pack_start(bnote, False, False, 0)
+
         # Nothing changes until Apply or OK: what is shown now is the "applied" state.
         self.applied = self.chosen()
         buttons = Gtk.ButtonBox(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
@@ -295,36 +312,38 @@ class PanelPage(Gtk.Box):
         buttons.pack_start(self.apply_btn, False, False, 0)
         buttons.pack_start(self.ok_btn, False, False, 0)
         self.pack_end(buttons, False, False, 0)
-        for w in (self.xfce_radio, self.go_radio, self.mon_combo):
+        for w in (self.xfce_radio, self.go_radio, self.mon_combo, self.bg_combo):
             if w is not None:
                 w.connect("toggled" if isinstance(w, Gtk.RadioButton) else "changed", lambda *_: self.refresh_apply())
         self.refresh_apply()
 
     def chosen(self):
         panel = "gopanel" if self.go_radio.get_active() else "xfce"
-        return (panel, self.mon_combo.get_active_id() if self.mon_combo else None)
+        return (panel, self.mon_combo.get_active_id() if self.mon_combo else None, self.bg_combo.get_active_id())
 
     def refresh_apply(self):
         self.apply_btn.set_sensitive(self.chosen() != self.applied)
 
     def apply(self):
-        panel, monitor = self.chosen()
-        old_panel, old_monitor = self.applied
-        # the monitor setting goes first: a panel that starts below reads it at startup
+        panel, monitor, bg = self.chosen()
+        old_panel, old_monitor, old_bg = self.applied
+        # the settings go first: a panel that starts below reads them at startup
         if monitor is not None and monitor != old_monitor:
             write_panel_conf("MONITOR", monitor or "auto")
+        if bg != old_bg:
+            write_panel_conf("BG_CYCLE", bg or "off")
         if panel != old_panel:
             # Switching takes a few seconds (starts one panel, then stops the other).
             subprocess.Popen([self.script, "set", panel])
-        elif monitor is not None and monitor != old_monitor:
-            # the running panel re-reads the setting on reload and moves/copies itself
+        elif (monitor is not None and monitor != old_monitor) or bg != old_bg:
+            # the running panel re-reads the settings on reload and moves/copies/recolours itself
             for exe in (os.path.expanduser("~/.local/bin/gopanel"), "gopanel"):
                 try:
                     subprocess.Popen([exe, "reload"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                     break
                 except OSError:
                     continue
-        self.applied = (panel, monitor)
+        self.applied = (panel, monitor, bg)
         self.refresh_apply()
 
     def on_ok(self, button):
