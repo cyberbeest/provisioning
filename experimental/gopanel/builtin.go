@@ -103,6 +103,12 @@ func newVolumeItem() *item {
 		case vol < 67:
 			name = "audio-volume-medium-symbolic"
 		}
+		volPct.Store(int32(vol))
+		if muted {
+			volMuted.Store(1)
+		} else {
+			volMuted.Store(0)
+		}
 		tip := fmt.Sprintf("Volume %d%%", vol)
 		if muted {
 			tip = "Volume muted"
@@ -112,6 +118,8 @@ func newVolumeItem() *item {
 	it.click = func(x, y, btn int) {
 		switch btn {
 		case 1:
+			openVolumePopup(it.x + it.w/2)
+		case 3:
 			if _, err := exec.LookPath("pavucontrol"); err == nil {
 				run(exec.Command("pavucontrol"))
 			}

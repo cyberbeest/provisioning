@@ -6,8 +6,10 @@
 package main
 
 import (
+	"context"
 	"encoding/binary"
 	"fmt"
+	"github.com/godbus/dbus/v5"
 	"log"
 	"net"
 	"os"
@@ -25,7 +27,7 @@ import (
 	"gopanel/proto"
 )
 
-const version = "0.10.0"
+const version = "0.11.0"
 
 var ctlCmds chan<- string // control commands into the main loop
 
@@ -138,6 +140,7 @@ func main() {
 	gc, _ := xproto.NewGcontextId(c)
 	xproto.CreateGC(c, gc, xproto.Drawable(wid), 0, nil)
 	xproto.MapWindow(c, wid)
+	xscr, xgc = scr, gc
 	tip := newTooltip(c, scr, gc)
 	menus := newMenuMgr(c, scr, gc)
 	wh := newWhisker(c, scr, gc)
@@ -364,23 +367,33 @@ func main() {
 	whReady := make(chan whiskerData, 1)
 	go preloadWhisker(whReady)
 
-	// Helpers are told to pause while the display is in standby: nothing to see,
-	// and animation would only burn battery. (A locked-but-lit screen is not
-	// detected yet; the C plugins also asked the screensaver over D-Bus.)
+	// Helpers are told to pause while the display is in standby or the screensaver
+	// (lock screen) is active: nothing to see, and animation would only burn battery.
 	dpmsC := make(chan bool, 1)
-	if dpms.Init(c) == nil {
-		go func() { // own goroutine: a reply that never comes must not freeze the main loop
-			for {
-				time.Sleep(2 * time.Second)
+	hasDPMS := dpms.Init(c) == nil
+	go func() { // own goroutine: a reply that never comes must not freeze the main loop
+		bus, _ := dbus.ConnectSessionBus()
+		for {
+			time.Sleep(2 * time.Second)
+			off := false
+			if hasDPMS {
 				if info, err := dpms.Info(c).Reply(); err == nil {
-					select {
-					case dpmsC <- info.State && info.PowerLevel != dpms.DPMSModeOn:
-					default:
-					}
+					off = info.State && info.PowerLevel != dpms.DPMSModeOn
 				}
 			}
-		}()
-	}
+			if !off && bus != nil {
+				var active bool
+				ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+				err := bus.Object("org.xfce.ScreenSaver", "/org/xfce/ScreenSaver").CallWithContext(ctx, "org.xfce.ScreenSaver.GetActive", 0).Store(&active)
+				cancel()
+				off = err == nil && active
+			}
+			select {
+			case dpmsC <- off:
+			default:
+			}
+		}
+	}()
 	pauseLine := func() string {
 		if paused {
 			return "pause"
@@ -453,6 +466,9 @@ func main() {
 				tip.paint()
 				continue
 			}
+			if popupHandle(ev) {
+				continue
+			}
 			if menus.handle(ev) {
 				continue
 			}
@@ -466,6 +482,7 @@ func main() {
 			}
 		case req := <-menuReqs:
 			cancelTip()
+			closePopup()
 			menus.open(req)
 		case u := <-updates:
 			it := u.it
@@ -579,6 +596,14 @@ func main() {
 				log.Fatal(syscall.Exec(exe, []string{exe}, os.Environ()))
 			case "menu":
 				toggleWhisker()
+			case "calendar", "volume": // also handy for testing; toggles
+				if curPop != nil {
+					closePopup()
+				} else if cmd == "calendar" {
+					openCalendar(int(sw) - 60)
+				} else {
+					openVolumePopup(int(sw) - 400)
+				}
 			case "yield":
 				xt.yieldTray()
 			case "quit":

@@ -32,6 +32,12 @@ func newClockItem() *item {
 		}
 		return img, now.Format("Monday, 2 January 2006")
 	}
+	it.hl = true
+	it.click = func(x, y, btn int) {
+		if btn == 1 {
+			openCalendar(it.x + it.w/2)
+		}
+	}
 	go func() {
 		for {
 			now := time.Now()

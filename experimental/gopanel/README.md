@@ -54,5 +54,8 @@ chosen in Cyberbeest Settings > Panel); cyberbeest-whisker-key.sh is the Windows
   desynchronise and hang the next reply.
 - Control and helper sockets are reachable by same-uid jailed apps: commands carry no data,
   nothing can launch anything. Helpers can draw into the panel, though.
-- Not done: volume/clock/power popups, per-plugin settings dialogs,
+- Popups (popup.go, popups_ui.go): clock click = month calendar, volume click = slider + mute + mixer
+  (right click = pavucontrol). `gopanel calendar|volume` toggles them, e.g. for testing.
+- Helpers also pause while the screensaver (lock screen) is active, not just in DPMS standby.
+- Not done: power popup (brightness), per-plugin settings dialogs,
   translations, screensaver-aware pausing (only DPMS standby pauses helpers).
