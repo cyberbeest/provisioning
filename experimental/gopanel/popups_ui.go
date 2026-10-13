@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -83,71 +84,126 @@ func openCalendar(anchorX int) {
 
 var volPct, volMuted atomic.Int32 // kept up to date by the volume item
 
+// mixerSlider is one volume slider with its mute row inside the volume popup.
+type mixerSlider struct {
+	title  string
+	pct    int
+	muted  bool
+	last   int
+	setPct func(int) // pactl set-*-volume
+	toggle func()    // pactl set-*-mute toggle
+	top    int       // y of the title row, set by the layout
+}
+
+func readPactlVolume(kind, dev string) (int, bool) {
+	vol, muted := 0, pactl("get-"+kind+"-mute", dev) == "Mute: yes\n"
+	if f := strings.Fields(pactl("get-"+kind+"-volume", dev)); len(f) > 4 {
+		vol, _ = strconv.Atoi(strings.TrimSuffix(f[4], "%"))
+	}
+	return vol, muted
+}
+
 func openVolumePopup(anchorX int) {
-	const w, h, pad, trackY = 240, 118, 16, 48
+	const w, pad, secH = 240, 16, 96
+	out := &mixerSlider{title: tr("Volume"), pct: int(volPct.Load()), muted: volMuted.Load() != 0, last: -1,
+		setPct: func(v int) { exec.Command("pactl", "set-sink-volume", "@DEFAULT_SINK@", fmt.Sprintf("%d%%", v)).Run() },
+		toggle: func() { exec.Command("pactl", "set-sink-mute", "@DEFAULT_SINK@", "toggle").Run() }}
+	secs := []*mixerSlider{out}
+	if pactl("get-default-source") != "" {
+		mic := &mixerSlider{title: tr("Microphone"), last: -1,
+			setPct: func(v int) {
+				exec.Command("pactl", "set-source-volume", "@DEFAULT_SOURCE@", fmt.Sprintf("%d%%", v)).Run()
+			},
+			toggle: func() { exec.Command("pactl", "set-source-mute", "@DEFAULT_SOURCE@", "toggle").Run() }}
+		mic.pct, mic.muted = readPactlVolume("source", "@DEFAULT_SOURCE@")
+		secs = append(secs, mic)
+	}
+	for i, sl := range secs {
+		sl.top = 10 + i*secH
+	}
+	h := 10 + len(secs)*secH + 26
+	mixerY := h - 30
 	p := &popup{w: w, h: h}
-	last := -1
-	set := func(x int) {
+	trackY := func(sl *mixerSlider) int { return sl.top + 38 }
+	muteY := func(sl *mixerSlider) int { return sl.top + 62 }
+	set := func(sl *mixerSlider, x int) {
 		v := min(max((x-pad)*100/(w-2*pad), 0), 100)
-		volPct.Store(int32(v))
+		sl.pct = v
+		if sl == out {
+			volPct.Store(int32(v))
+		}
 		p.repaint()
-		if v != last {
-			last = v
-			go exec.Command("pactl", "set-sink-volume", "@DEFAULT_SINK@", fmt.Sprintf("%d%%", v)).Run()
+		if v != sl.last {
+			sl.last = v
+			go sl.setPct(v)
 		}
 	}
-	row := func(i int) (int, int) { return 74 + i*20, 74 + i*20 + 20 } // text rows below the slider
 	p.paint = func(img *image.RGBA) {
-		v := int(volPct.Load())
-		textAt(img, pad, 10, tr("Volume"), menuInk, true, labelPx, 0)
-		pct := fmt.Sprintf("%d%%", v)
-		textAt(img, w-pad-textW(pct), 10, pct, menuInk, false, labelPx, 0)
-		drawSlider(img, pad, w-pad, trackY, v)
-		mark := "☐"
-		if volMuted.Load() != 0 {
-			mark = "☑"
+		for i, sl := range secs {
+			if i > 0 {
+				fillRect(img, image.Rect(pad, sl.top-10, w-pad, sl.top-9), menuBorder)
+			}
+			textAt(img, pad, sl.top, sl.title, menuInk, true, labelPx, 0)
+			pct := fmt.Sprintf("%d%%", sl.pct)
+			textAt(img, w-pad-textW(pct), sl.top, pct, menuInk, false, labelPx, 0)
+			drawSlider(img, pad, w-pad, trackY(sl), sl.pct)
+			mark := "☐"
+			if sl.muted {
+				mark = "☑"
+			}
+			textAt(img, pad, muteY(sl), mark+"  "+tr("Mute"), menuInk, false, labelPx, 0)
 		}
-		y0, _ := row(0)
-		textAt(img, pad, y0, mark+"  "+tr("Mute"), menuInk, false, labelPx, 0)
-		y1, _ := row(1)
-		textAt(img, pad, y1, tr("Audio Mixer…"), menuInk, false, labelPx, 0)
+		fillRect(img, image.Rect(pad, mixerY-6, w-pad, mixerY-5), menuBorder)
+		textAt(img, pad, mixerY, tr("Audio Mixer…"), menuInk, false, labelPx, 0)
 	}
-	dragging := false
+	var drag *mixerSlider
 	p.press = func(x, y, btn int) {
-		switch {
-		case btn == 4:
-			set(int(volPct.Load())*(w-2*pad)/100 + pad + 5*(w-2*pad)/100)
-		case btn == 5:
-			set(int(volPct.Load())*(w-2*pad)/100 + pad - 5*(w-2*pad)/100)
-		case btn != 1:
-		case y >= trackY-10 && y <= trackY+16:
-			dragging = true
-			set(x)
-		default:
-			if y0, y1 := row(0); y >= y0 && y < y1 {
-				volMuted.Store(1 - volMuted.Load())
-				p.repaint()
-				go exec.Command("pactl", "set-sink-mute", "@DEFAULT_SINK@", "toggle").Run()
-			} else if y0, y1 = row(1); y >= y0 && y < y1 {
-				closePopup()
-				if _, err := exec.LookPath("pavucontrol"); err == nil {
-					run(exec.Command("pavucontrol"))
+		for _, sl := range secs {
+			cur := pad + sl.pct*(w-2*pad)/100
+			switch {
+			case btn == 4 && y >= sl.top && y < sl.top+secH:
+				set(sl, cur+5*(w-2*pad)/100)
+				return
+			case btn == 5 && y >= sl.top && y < sl.top+secH:
+				set(sl, cur-5*(w-2*pad)/100)
+				return
+			case btn == 1 && y >= trackY(sl)-10 && y <= trackY(sl)+16:
+				drag = sl
+				set(sl, x)
+				return
+			case btn == 1 && y >= muteY(sl) && y < muteY(sl)+20:
+				sl.muted = !sl.muted
+				if sl == out {
+					volMuted.Store(map[bool]int32{true: 1}[sl.muted])
 				}
+				p.repaint()
+				go sl.toggle()
+				return
+			}
+		}
+		if btn == 1 && y >= mixerY && y < mixerY+20 {
+			closePopup()
+			if _, err := exec.LookPath("pavucontrol"); err == nil {
+				run(exec.Command("pavucontrol"))
 			}
 		}
 	}
 	p.motion = func(x, y int, held bool) {
-		if dragging && held {
-			set(x)
+		if drag != nil && held {
+			set(drag, x)
 		}
 	}
-	p.release = func() { dragging = false }
+	p.release = func() { drag = nil }
 	p.key = func(code xproto.Keycode) {
+		step := 0
 		switch code {
 		case 113, 116: // Left, Down
-			set(int(volPct.Load())*(w-2*pad)/100 + pad - 5*(w-2*pad)/100)
+			step = -5
 		case 114, 111: // Right, Up
-			set(int(volPct.Load())*(w-2*pad)/100 + pad + 5*(w-2*pad)/100)
+			step = 5
+		}
+		if step != 0 {
+			set(out, pad+(out.pct+step)*(w-2*pad)/100)
 		}
 	}
 	openPopup(p, anchorX)

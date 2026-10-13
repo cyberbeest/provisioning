@@ -76,6 +76,9 @@ chosen in Cyberbeest Settings > Panel); cyberbeest-whisker-key.sh is the Windows
 - Helpers: duplicates (a restarted panel racing a surviving helper) are told to `quit` and exit instead of
   reconnecting forever; the supervisor waits 4 s for survivors before spawning; zombie helpers from before an
   exec-restart are reaped.
+- Volume popup has a second section for the microphone (default source: slider + mute).
+- Free width goes to the taskbar first (up to a full-width button per window), the expanding separator
+  gets the rest -- buttons are no longer squeezed next to empty space.
 - Volume keys show an OSD notification (speaker + bar).
 - Memory (2026-10-13, PSS): gopanel with its 5 helper processes ~64 MB; xfce4-panel with its 15 plugin
   wrappers ~108 MB (idle, 25 s after start). PSS splits shared libraries across their users, so GTK's share

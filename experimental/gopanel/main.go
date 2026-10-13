@@ -28,7 +28,7 @@ import (
 	"gopanel/proto"
 )
 
-const version = "0.18.0"
+const version = "0.18.2"
 
 var ctlCmds chan<- string // control commands into the main loop
 
@@ -165,20 +165,47 @@ func main() {
 
 	// relayout assigns x positions; expanding items share whatever width is left.
 	relayout := func() {
-		fixed, nexp := 4, 0 // 4px right margin
+		fixed := 4 // 4px right margin
+		var exp []*item
 		for _, it := range items {
 			if it.expand {
-				nexp++
+				exp = append(exp, it)
 			} else {
 				fixed += it.w
 			}
 		}
-		extra := max(monW-fixed, 0)
+		// Share the free width between the expanding items, but never give one more than it
+		// can use (the taskbar wants at most a full-width button per window): the surplus goes
+		// to the others (the expanding separator), so buttons are not squeezed next to dead space.
+		left := max(monW-fixed, 0)
+		alloc := map[*item]int{}
+		rest := append([]*item(nil), exp...)
+		for len(rest) > 0 {
+			share := left / len(rest)
+			capped := false
+			for i, it := range rest {
+				if it.want != nil {
+					if w := it.want(); w <= share {
+						alloc[it] = w
+						left -= w
+						rest = append(rest[:i], rest[i+1:]...)
+						capped = true
+						break
+					}
+				}
+			}
+			if !capped {
+				for _, it := range rest {
+					alloc[it] = share
+				}
+				break
+			}
+		}
 		x := 0
 		for _, it := range items {
 			it.x = x
 			if it.expand {
-				if nw := extra / nexp; nw != it.w {
+				if nw := alloc[it]; nw != it.w {
 					it.w = nw
 					if it.resize != nil {
 						it.resize(nw)

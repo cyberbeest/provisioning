@@ -90,6 +90,7 @@ type twin struct {
 }
 
 type taskbar struct {
+	lastN   int
 	it      *item
 	wins    []*twin // client list order
 	active  xproto.Window
@@ -106,6 +107,7 @@ func newTaskbarItem() *item {
 	it.click = tb.onClick
 	it.tipAt = tb.tipAt
 	it.hl = false
+	it.want = func() int { return len(tb.shown()) * (tbMaxButton + tbGap) }
 	it.resize = func(w int) { tb.w = w; tb.render() }
 	it.motion = func(x int) {
 		if i := tb.indexAt(x); i != tb.hover {
@@ -318,6 +320,12 @@ func ellipsize(text string, maxW int, ink color.RGBA) string {
 }
 
 func (tb *taskbar) render() {
+	if n := len(tb.shown()); n != tb.lastN { // the width the buttons want changed: re-share the free space
+		tb.lastN = n
+		if reflow != nil {
+			reflow()
+		}
+	}
 	if tb.w <= 0 {
 		return
 	}

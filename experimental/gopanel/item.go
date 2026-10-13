@@ -18,6 +18,7 @@ type item struct {
 	name     string // helper name, for kind "helper"
 	x, w     int
 	expand   bool
+	want     func() int          // expanding items: widest useful width (nil = takes whatever is left)
 	img      *image.RGBA         // current frame, centred in the item box
 	tip      string              // tooltip (Pango-lite markup)
 	hl       bool                // highlight while hovered
