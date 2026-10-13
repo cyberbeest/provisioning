@@ -8,13 +8,13 @@ import (
 	"gopanel/gfx"
 )
 
-// newClockItem replicates the xfce clock plugin's default: date over time.
+// newClockItem: time over date, right-aligned.
 func newClockItem() *item {
 	it := newItem("clock")
 	ink := color.RGBA{0, 0, 0, 255}
 	render := func(now time.Time) (*image.RGBA, string) {
-		lines := []string{now.Format("2006-01-02"), now.Format("15:04")}
-		px := 12.0 // Sans ~9pt: the clock was the biggest text in the panel
+		lines := []string{now.Format("15:04"), now.Format("2006-01-02")}
+		px := 11.5 // Sans ~8.6pt: the clock was the biggest text in the panel
 		var ws [2]int
 		var spans [2][]gfx.Span
 		w, h := 0, 0
@@ -28,7 +28,7 @@ func newClockItem() *item {
 		}
 		img := image.NewRGBA(image.Rect(0, 0, w, 2*h))
 		for i := range lines {
-			gfx.Draw(img, (w-ws[i])/2, i*h, spans[i], px)
+			gfx.Draw(img, w-ws[i], i*h, spans[i], px)
 		}
 		return img, longDate(now)
 	}
