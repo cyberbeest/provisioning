@@ -25,13 +25,15 @@
 #     rename) across a whole filesystem via fanotify, including which program
 #     caused it. Handy for finding out what is writing to disk.
 #   - audacity: audio recorder/editor.
+#   - filelight: graphical disk usage analyzer (sunburst chart of the biggest
+#     directories, with delete from the context menu).
 # Idempotent: safe to re-run.
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG="$DIR/32-minor-apt-packages.log"
 exec > >(tee -a "$LOG") 2>&1
 
-PACKAGES=(gnome-calculator xclip kleopatra ncdu gh gnome-disk-utility fatrace audacity)
+PACKAGES=(gnome-calculator xclip kleopatra ncdu gh gnome-disk-utility fatrace audacity filelight)
 
 echo "=== $(date) : installing minor apt packages: ${PACKAGES[*]} ==="
 apt-get -o DPkg::Lock::Timeout=60 update -qq
