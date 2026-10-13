@@ -39,6 +39,16 @@ func newPowerItem() *item {
 	}
 	it := newItem("power")
 	it.hl = true
+	it.click = func(x, y, btn int) {
+		switch btn {
+		case 1:
+			openPowerPopup(it.x + it.w/2)
+		case 4:
+			go stepBrightness(+5)
+		case 5:
+			go stepBrightness(-5)
+		}
+	}
 	refresh := func() {
 		pct := sysfsInt(bat + "/capacity")
 		status := sysfsString(bat + "/status")
@@ -62,6 +72,7 @@ func newPowerItem() *item {
 		name := fmt.Sprintf("battery-level-%d%s-symbolic", level, state)
 		img := iconText(loadIcon(name), fmt.Sprintf("%d%%", pct), 2)
 		tip := "<b>Computer</b>\n" + text
+		powerText.Store(fmt.Sprintf("Battery %d%%\n%s", pct, text))
 		it.post(itemUpdate{img: img, tip: &tip, w: img.Bounds().Dx() + 2*labelEdge})
 	}
 	go func() {

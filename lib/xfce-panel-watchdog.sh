@@ -192,7 +192,22 @@ restart_panel() {
 }
 
 echo "xfce-panel-watchdog: watching xfce4-panel (poll every ${POLL_INTERVAL}s)" >&2
+# The marker means "gopanel is the panel now". If gopanel then disappears (crash, kill),
+# the desktop would stay without any panel, so after a grace period (it may just be
+# restarting itself) drop the marker and let the XFCE panel come back.
+GOPANEL_GRACE_POLLS=3
+gopanel_missing=0
 while true; do
+    if [ -e "$PANEL_STOPPED_MARKER" ] && ! pgrep -x gopanel >/dev/null 2>&1; then
+        gopanel_missing=$((gopanel_missing + 1))
+        if [ "$gopanel_missing" -ge "$GOPANEL_GRACE_POLLS" ]; then
+            echo "xfce-panel-watchdog: gopanel is gone while the XFCE panel is stopped -- bringing the XFCE panel back" >&2
+            rm -f "$PANEL_STOPPED_MARKER"
+            gopanel_missing=0
+        fi
+    else
+        gopanel_missing=0
+    fi
     if ! panel_alive && [ ! -e "$PANEL_STOPPED_MARKER" ]; then
         restart_panel
     fi

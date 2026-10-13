@@ -27,7 +27,7 @@ import (
 	"gopanel/proto"
 )
 
-const version = "0.11.1"
+const version = "0.12.0"
 
 var ctlCmds chan<- string // control commands into the main loop
 
@@ -596,11 +596,13 @@ func main() {
 				log.Fatal(syscall.Exec(exe, []string{exe}, os.Environ()))
 			case "menu":
 				toggleWhisker()
-			case "calendar", "volume": // also handy for testing; toggles
+			case "calendar", "volume", "power": // also handy for testing; toggles
 				if curPop != nil {
 					closePopup()
 				} else if cmd == "calendar" {
 					openCalendar(int(sw) - 60)
+				} else if cmd == "power" {
+					openPowerPopup(int(sw) - 300)
 				} else {
 					openVolumePopup(int(sw) - 400)
 				}

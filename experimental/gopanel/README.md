@@ -56,6 +56,10 @@ chosen in Cyberbeest Settings > Panel); cyberbeest-whisker-key.sh is the Windows
   nothing can launch anything. Helpers can draw into the panel, though.
 - Popups (popup.go, popups_ui.go): clock click = month calendar, volume click = slider + mute + mixer
   (right click = pavucontrol). `gopanel calendar|volume` toggles them, e.g. for testing.
+- Power button click = battery text + brightness slider (logind SetBrightness; scroll on the button
+  also changes it) + links to power settings; `gopanel power` toggles it.
+- If gopanel dies while the XFCE panel is stopped, xfce-panel-watchdog drops the marker after ~15 s and the
+  XFCE panel returns (so the desktop is never left without a panel).
 - Helpers also pause while the screensaver (lock screen) is active, not just in DPMS standby.
-- Not done: power popup (brightness), per-plugin settings dialogs,
+- Not done: per-plugin settings dialogs,
   translations.
