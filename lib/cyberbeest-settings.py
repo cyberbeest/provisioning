@@ -322,21 +322,22 @@ class PanelPage(Gtk.Box):
         return (panel, self.mon_combo.get_active_id() if self.mon_combo else None, self.bg_combo.get_active_id())
 
     def refresh_apply(self):
-        self.apply_btn.set_sensitive(self.chosen() != self.applied)
+        # Apply is always available: it also repairs a state that differs from what is chosen
+        # (e.g. the Cyberbeest panel chosen but not running).
+        self.apply_btn.set_sensitive(True)
 
     def apply(self):
         panel, monitor, bg = self.chosen()
-        old_panel, old_monitor, old_bg = self.applied
         # the settings go first: a panel that starts below reads them at startup
-        if monitor is not None and monitor != old_monitor:
+        if monitor is not None:
             write_panel_conf("MONITOR", monitor or "auto")
-        if bg != old_bg:
-            write_panel_conf("BG_CYCLE", bg or "off")
-        if panel != old_panel:
-            # Switching takes a few seconds (starts one panel, then stops the other).
-            subprocess.Popen([self.script, "set", panel])
-        elif (monitor is not None and monitor != old_monitor) or bg != old_bg:
-            # the running panel re-reads the settings on reload and moves/copies/recolours itself
+        write_panel_conf("BG_CYCLE", bg or "off")
+        # Always (re)apply the chosen panel, changed or not: `set` starts it if it is not
+        # running and stops the other one -- a no-op when everything already is as chosen.
+        # Switching takes a few seconds (starts one panel, then stops the other).
+        subprocess.Popen([self.script, "set", panel])
+        if panel == "gopanel":
+            # a running panel re-reads the settings on reload and moves/copies/recolours itself
             for exe in (os.path.expanduser("~/.local/bin/gopanel"), "gopanel"):
                 try:
                     subprocess.Popen([exe, "reload"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -344,11 +345,9 @@ class PanelPage(Gtk.Box):
                 except OSError:
                     continue
         self.applied = (panel, monitor, bg)
-        self.refresh_apply()
 
     def on_ok(self, button):
-        if self.chosen() != self.applied:
-            self.apply()
+        self.apply()
         self.get_toplevel().destroy()
 
 
