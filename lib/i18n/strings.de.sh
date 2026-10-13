@@ -191,6 +191,12 @@ Dein Claude-Konto selbst bleibt unberührt."
 	[claude.remove_keep_button]="Entfernen, Daten behalten"
 	[claude.remove_all_button]="Alles entfernen"
 	[claude.remove_cancel]="Abbrechen"
+	[claude.remove_confirm_title]="Wirklich?"
+	[claude.remove_confirm_keep]="Claude Code wird jetzt entfernt. Deine Einstellungen, gespeicherten Gespräche und Projekte in ~/claude bleiben."
+	[claude.remove_confirm_all]="<b>Das lässt sich nicht rückgängig machen.</b>
+
+Claude Code, deine Einstellungen, alle gespeicherten Gespräche und der ganze Ordner ~/claude (samt deiner eigenen Dateien) werden endgültig gelöscht."
+	[claude.remove_confirm_yes]="Ja, entfernen"
 	[claude.remove_done_title]="Claude Code entfernt"
 	[claude.remove_done_message]="Claude Code und alles, was dazugehörte, ist entfernt."
 	[claude.remove_none_message]="Claude Code ist in diesem Benutzerkonto nicht installiert."

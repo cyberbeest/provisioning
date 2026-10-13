@@ -44,6 +44,16 @@ if [ "$rc" -ne 0 ]; then
 	keep_data=0
 fi
 
+# Last chance, naming exactly what is about to go.
+if [ "$keep_data" -eq 1 ]; then
+	confirm_text="$(t claude.remove_confirm_keep)"
+else
+	confirm_text="$(t claude.remove_confirm_all)"
+fi
+zenity --question --default-cancel --width=460 \
+	--title="$(t claude.remove_confirm_title)" --text="$confirm_text" \
+	--ok-label="$(t claude.remove_confirm_yes)" --cancel-label="$(t claude.remove_cancel)" || exit 0
+
 remove_all() {
 	echo "=== $(date) : removing Claude Code ==="
 

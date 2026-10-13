@@ -189,6 +189,12 @@ Your Claude account itself is not affected."
 	[claude.remove_keep_button]="Remove, keep my data"
 	[claude.remove_all_button]="Remove everything"
 	[claude.remove_cancel]="Cancel"
+	[claude.remove_confirm_title]="Are you sure?"
+	[claude.remove_confirm_keep]="Claude Code will be removed now. Your settings, saved conversations and ~/claude projects stay."
+	[claude.remove_confirm_all]="<b>This cannot be undone.</b>
+
+Claude Code, your settings, all saved conversations and the whole ~/claude folder (including your own files) will be deleted permanently."
+	[claude.remove_confirm_yes]="Yes, remove"
 	[claude.remove_done_title]="Claude Code removed"
 	[claude.remove_done_message]="Claude Code and everything that came with it is gone."
 	[claude.remove_none_message]="Claude Code is not installed in this account."
