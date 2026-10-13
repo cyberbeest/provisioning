@@ -4,6 +4,7 @@ import logging
 import logging.handlers
 import subprocess
 import threading
+import time
 from pathlib import Path
 
 import numpy as np
@@ -303,12 +304,33 @@ def focus_window(wid):
     return r.returncode == 0 and active_window() == wid
 
 
+def dismiss_panel_popups():
+    """Ask the Go panel (if it runs) to close any open menu or popup. Its popups hold a
+    keyboard grab that swallows XTEST keystrokes, so text meant for the window the
+    dictation started in would be typed into the popup's search box instead."""
+    import os
+    import socket
+    path = os.path.join(os.environ.get("XDG_RUNTIME_DIR") or "/tmp", "gopanel.sock")
+    if not os.path.exists(path):
+        return
+    try:
+        with socket.socket(socket.AF_UNIX) as s:
+            s.settimeout(0.5)
+            s.connect(path)
+            s.sendall(b"dismiss\n")
+            s.recv(16)
+        time.sleep(0.15)  # let the panel release its grab before we type
+    except OSError:
+        pass
+
+
 def type_text(text, target=None):
     """Type into the focused window. With a target window ID, first bring that
     window back to the front and type only if it really has focus; returns
     False when it could not be reached, so the caller can keep the text."""
     if not text:
         return True
+    dismiss_panel_popups()
     if target and not focus_window(target):
         log.warning("window %s is gone or would not take focus, text not typed", target)
         return False

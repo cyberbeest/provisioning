@@ -27,7 +27,7 @@ import (
 	"gopanel/proto"
 )
 
-const version = "0.11.0"
+const version = "0.11.1"
 
 var ctlCmds chan<- string // control commands into the main loop
 
@@ -604,6 +604,10 @@ func main() {
 				} else {
 					openVolumePopup(int(sw) - 400)
 				}
+			case "dismiss": // close every open popup (Dictate asks before it types)
+				wh.close()
+				menus.close()
+				closePopup()
 			case "yield":
 				xt.yieldTray()
 			case "quit":
