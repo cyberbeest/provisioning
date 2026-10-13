@@ -57,6 +57,17 @@ otherwise.
   Useful with no graphical session available, or when you want that upfront
   deselection `run-gui.py` doesn't offer.
 
+## Claude Code (opt-in)
+
+`68-claude-code-launchers.sh` only adds two menu entries: "Install Claude Code
+(cloud AI)" and "Remove Claude Code". Claude Code sends everything it works on
+to Anthropic, so nothing installs it automatically. The install entry
+(`lib/claude-code/cyberbeest-claude-install.sh`) shows a large privacy warning
+first, then installs Claude Code plus the extras (sudo helper with the RUNME
+convention, Claude Sessions window, spoken replies via local Piper TTS) into the
+user's home. The remove entry (`cyberbeest-claude-remove.sh`) deletes all of it,
+including `~/.claude`.
+
 ## Getting this directory onto a fresh install
 
 This repo is public on GitHub, so on a freshly installed Debian machine

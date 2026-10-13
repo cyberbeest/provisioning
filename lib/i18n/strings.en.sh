@@ -151,4 +151,53 @@ OUTPUT"
 	[vpn.genmon_dropped]="VPN disconnected unexpectedly (was: NAME)"
 	[vpn.genmon_none]="No VPN connected."
 	[vpn.genmon_click_for_options]="Click for options."
+	[claude.warn_title]="Install Claude Code? PRIVACY WARNING"
+	[claude.warn_message]="<span size=\"xx-large\" weight=\"bold\" foreground=\"#c00000\">⚠  PRIVACY WARNING</span>
+
+<span size=\"large\" weight=\"bold\">Claude Code is NOT private. It is a cloud service.</span>
+
+Everything you do with it is sent over the internet to Anthropic's servers: your messages, the contents of every file and folder it reads, the output of every command it runs, and anything shown on screen that it looks at. Anthropic may store it. Cyberbeest's encryption, firewall and offline-by-default design <b>do not protect anything you give to Claude Code</b>.
+
+• Never use it with passwords, keys, wallets, private documents, or other people's data.
+• It can run commands on this computer. You decide what it may do, but a wrong approval can delete or leak your files.
+• You need your own Claude account (a paid plan or API credit). Cyberbeest is not affiliated with Anthropic.
+• Download size: about 1.2 GB (Claude Code, helper tools, spoken-reply voices).
+
+It is installed only in your own account, and the menu entry \"Remove Claude Code\" deletes everything again.
+
+<b>Only continue if you accept that your work leaves this computer.</b>"
+	[claude.warn_install]="I understand - install"
+	[claude.warn_cancel]="Cancel"
+	[claude.installing]="Installing Claude Code (this takes a few minutes)..."
+	[claude.install_done_title]="Claude Code installed"
+	[claude.install_done_message]="Done. Open \"Claude Code\" from the menu. On first start it asks you to log in with your Claude account.
+
+Reminder: everything you type there is sent to Anthropic."
+	[claude.install_failed_title]="Installation failed"
+	[claude.install_failed_message]="Something went wrong. Nothing else on your system was changed. Details: LOG"
+	[claude.remove_title]="Remove Claude Code"
+	[claude.remove_message]="This deletes Claude Code completely from your account:
+
+• the program and its updates
+• all settings and login data (and, if you choose, conversation history)
+• the helper tools, voice and menu entries Cyberbeest added
+
+Your Claude account itself is not affected."
+	[claude.remove_button]="Remove everything"
+	[claude.remove_cancel]="Cancel"
+	[claude.remove_workdir_title]="Work folder"
+	[claude.remove_workdir_message]="The folder ~/claude contains files that are not part of Claude Code's setup.
+
+Delete the whole folder too? Choose \"Keep\" to leave your files alone."
+	[claude.remove_workdir_delete]="Delete folder"
+	[claude.remove_workdir_keep]="Keep"
+	[claude.remove_done_title]="Claude Code removed"
+	[claude.remove_done_message]="Claude Code and everything that came with it is gone."
+	[claude.remove_none_message]="Claude Code is not installed in this account."
+	[claude.remove_history_title]="Conversation history"
+	[claude.remove_history_message]="Keep your saved Claude conversations (and Claude's notes about your projects)?
+
+They stay in ~/.claude and are picked up again if you reinstall Claude Code. Everything else is removed either way."
+	[claude.remove_history_keep]="Keep history"
+	[claude.remove_history_delete]="Delete history"
 )

@@ -153,4 +153,53 @@ OUTPUT"
 	[vpn.genmon_dropped]="VPN unerwartet getrennt (war: NAME)"
 	[vpn.genmon_none]="Kein VPN verbunden."
 	[vpn.genmon_click_for_options]="Klicken für Optionen."
+	[claude.warn_title]="Claude Code installieren? DATENSCHUTZ-WARNUNG"
+	[claude.warn_message]="<span size=\"xx-large\" weight=\"bold\" foreground=\"#c00000\">⚠  DATENSCHUTZ-WARNUNG</span>
+
+<span size=\"large\" weight=\"bold\">Claude Code ist NICHT privat. Es ist ein Cloud-Dienst.</span>
+
+Alles, was du damit machst, geht über das Internet an die Server von Anthropic: deine Nachrichten, der Inhalt jeder Datei und jedes Ordners, die es liest, die Ausgabe jedes Befehls, den es ausführt, und alles auf dem Bildschirm, was es sich ansieht. Anthropic kann das speichern. Verschlüsselung, Firewall und die Offline-Voreinstellung von Cyberbeest <b>schützen nichts davon, was du Claude Code gibst</b>.
+
+• Nie mit Passwörtern, Schlüsseln, Wallets, privaten Dokumenten oder Daten anderer Personen verwenden.
+• Es kann Befehle auf diesem Computer ausführen. Du bestimmst, was es darf, aber eine falsche Freigabe kann Dateien löschen oder preisgeben.
+• Du brauchst ein eigenes Claude-Konto (Bezahl-Tarif oder API-Guthaben). Cyberbeest ist nicht mit Anthropic verbunden.
+• Download-Größe: etwa 1,2 GB (Claude Code, Hilfswerkzeuge, Sprachausgabe-Stimmen).
+
+Die Installation betrifft nur dein eigenes Benutzerkonto, und der Menüeintrag „Claude Code entfernen“ löscht alles wieder.
+
+<b>Nur fortfahren, wenn du akzeptierst, dass deine Arbeit diesen Computer verlässt.</b>"
+	[claude.warn_install]="Verstanden - installieren"
+	[claude.warn_cancel]="Abbrechen"
+	[claude.installing]="Claude Code wird installiert (dauert einige Minuten)..."
+	[claude.install_done_title]="Claude Code installiert"
+	[claude.install_done_message]="Fertig. Öffne „Claude Code“ im Menü. Beim ersten Start wirst du gebeten, dich mit deinem Claude-Konto anzumelden.
+
+Zur Erinnerung: Alles, was du dort eintippst, geht an Anthropic."
+	[claude.install_failed_title]="Installation fehlgeschlagen"
+	[claude.install_failed_message]="Etwas ist schiefgelaufen. Sonst wurde nichts an deinem System geändert. Einzelheiten: LOG"
+	[claude.remove_title]="Claude Code entfernen"
+	[claude.remove_message]="Dies löscht Claude Code vollständig aus deinem Benutzerkonto:
+
+• das Programm und seine Updates
+• alle Einstellungen und Anmeldedaten (und, wenn du willst, den Gesprächsverlauf)
+• die von Cyberbeest hinzugefügten Hilfswerkzeuge, Stimmen und Menüeinträge
+
+Dein Claude-Konto selbst bleibt unberührt."
+	[claude.remove_button]="Alles entfernen"
+	[claude.remove_cancel]="Abbrechen"
+	[claude.remove_workdir_title]="Arbeitsordner"
+	[claude.remove_workdir_message]="Der Ordner ~/claude enthält Dateien, die nicht zur Einrichtung von Claude Code gehören.
+
+Den ganzen Ordner auch löschen? Mit „Behalten“ bleiben deine Dateien unangetastet."
+	[claude.remove_workdir_delete]="Ordner löschen"
+	[claude.remove_workdir_keep]="Behalten"
+	[claude.remove_done_title]="Claude Code entfernt"
+	[claude.remove_done_message]="Claude Code und alles, was dazugehörte, ist entfernt."
+	[claude.remove_none_message]="Claude Code ist in diesem Benutzerkonto nicht installiert."
+	[claude.remove_history_title]="Gesprächsverlauf"
+	[claude.remove_history_message]="Deine gespeicherten Claude-Gespräche (und Claudes Notizen zu deinen Projekten) behalten?
+
+Sie bleiben in ~/.claude und werden wieder verwendet, wenn du Claude Code neu installierst. Alles andere wird in jedem Fall entfernt."
+	[claude.remove_history_keep]="Verlauf behalten"
+	[claude.remove_history_delete]="Verlauf löschen"
 )

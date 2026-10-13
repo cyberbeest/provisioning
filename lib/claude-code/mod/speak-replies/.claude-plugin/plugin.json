@@ -1,0 +1,1 @@
+{ "name": "speak-replies", "version": "0.1.0", "description": "Speaks Claude's replies aloud with Piper TTS; /voice toggles it." }

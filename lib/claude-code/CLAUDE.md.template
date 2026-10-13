@@ -1,0 +1,6 @@
+If commands need to be run with sudo:
+-Put them in a script in ~/claude, appropriately named, e.g. setup-firewall.sh
+-Make sure the script catches all its output in a log file in the same directory.
+-When the script is ready, create a second empty file in the same directory, e.g. RUNME-setup-firewall.sh
+-An always-on daemon (`~/claude/claude-sudo-helper-gui.sh`, autostarted) watches `~/claude` (not subdirectories) for these RUNMEs and prompts the user to approve running them as root. It ignores a RUNME if the script it points to was edited more recently than the marker, so a stale marker won't get run against changed content.
+-The script runs as root, so `~` and `$HOME` expand to /root there: use absolute paths.
