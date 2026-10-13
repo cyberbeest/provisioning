@@ -635,4 +635,17 @@ STRINGS = {
     "sharedfolders.step_starting": "{app} wird neu gestartet…",
     "sharedfolders.step_done": "Fertig: {n} App(s) neu gestartet.",
     "sharedfolders.step_none": "Es konnte nichts neu gestartet werden.",
+
+    "connections.window_title": "Netzwerkverbindungen nach App",
+    "connections.col_app": "App / Gegenstelle",
+    "connections.col_port": "Port / Anzahl",
+    "connections.col_direction": "Richtung",
+    "connections.col_host": "Hostname (Reverse-DNS)",
+    "connections.n_incoming": "{n} eingehend",
+    "connections.dir_incoming": "⬇ eingehend",
+    "connections.dir_outgoing": "ausgehend",
+    "connections.system_service": "Systemdienst",
+    "connections.sandboxed": "abgeschottet",
+    "connections.unknown": "unbekannt",
+    "connections.status": "{total} Verbindungen ({incoming} eingehend), {apps} Apps. Aktualisiert alle {secs} s. Hostnamen sind nur Reverse-DNS-Hinweise.",
 }

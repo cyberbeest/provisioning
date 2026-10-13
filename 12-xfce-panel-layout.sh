@@ -37,9 +37,12 @@
 # Bumped 2026-10-13: reserves plugin-220 (genmon) for 11b-mic-recording-
 # indicator.sh, placed between the systray (where Dictate sits) and the
 # volume plugin: a red dot that flashes while an app records the microphone.
+# Bumped 2026-10-13: reserves plugin-221 (genmon) for 11c-network-
+# connections.sh, right after the clipboard icon: a globe whose tooltip lists
+# which apps hold network connections.
 # Depends on: 07-security-update-timer.sh, 09-cyberbeest-logout-dialog.sh,
 # 10-browser-sandbox.sh, 11-xfce-panel-plugins.sh, 11a-clipboard-status.sh,
-# 11b-mic-recording-indicator.sh.
+# 11b-mic-recording-indicator.sh, 11c-network-connections.sh.
 # Idempotent: safe to re-run (overwrites its own config files; backs up any
 # pre-existing xfce4-panel.xml the first time). Also removes any other panel
 # (e.g. Debian's stock second panel) so only this one is left, since a live
@@ -266,7 +269,7 @@ PANEL_XML_TMP="$(mktemp)"
 sed -e "s|__HOME__|$TARGET_HOME|g" -e "s|__ICONS_DIR__|$ICONS_DIR|g" \
 	"$LAYOUT/xfce4-panel.xml.template" > "$PANEL_XML_TMP"
 python3 "$DIR/lib/merge-xfce-panel-plugins.py" "$PANEL_XML_OLD" "$PANEL_XML_TMP" \
-	201 202 203 204 205 206 207 208 211 212 213 214 215 217 218 219 220
+	201 202 203 204 205 206 207 208 211 212 213 214 215 217 218 219 220 221
 install -m 644 "$PANEL_XML_TMP" "$PANEL_XML"
 rm -f "$PANEL_XML_TMP" "$PANEL_XML_OLD"
 
