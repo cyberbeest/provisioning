@@ -57,11 +57,11 @@ func ctlServer(cmds chan<- string) {
 				defer conn.Close()
 				line, _ := bufio.NewReader(conn).ReadString('\n')
 				switch cmd := strings.TrimSpace(line); cmd {
-				case "reload", "restart", "quit":
+				case "reload", "restart", "quit", "menu":
 					cmds <- cmd
 					fmt.Fprintln(conn, "ok")
 				default:
-					fmt.Fprintln(conn, "unknown command; try: reload restart quit")
+					fmt.Fprintln(conn, "unknown command; try: reload restart quit menu")
 				}
 			}()
 		}

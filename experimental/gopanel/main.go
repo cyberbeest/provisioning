@@ -22,16 +22,19 @@ import (
 	"gopanel/proto"
 )
 
-const version = "0.6.0"
+const version = "0.7.0"
 
 var (
-	xc           *xgb.Conn // shared X connection (goroutine-safe)
-	xroot        xproto.Window
-	drawItem     func(*item) // set by main: repaint one item (main goroutine only)
-	taskbars     []*taskbar
-	panelH       = 35 // overridden from the xfce4-panel config
-	iconSize     = 28
-	panelScreenY uint16 // screen y of the panel's top edge
+	xc            *xgb.Conn // shared X connection (goroutine-safe)
+	xroot         xproto.Window
+	drawItem      func(*item) // set by main: repaint one item (main goroutine only)
+	toggleWhisker func()      // open/close the application menu (main goroutine only)
+	cancelTipFn   func()
+	whiskerAnchor int // screen x of the menu button
+	taskbars      []*taskbar
+	panelH        = 35 // overridden from the xfce4-panel config
+	iconSize      = 28
+	panelScreenY  uint16 // screen y of the panel's top edge
 )
 
 // vcsRevision returns the git revision Go embedded at build time, if any.
@@ -126,6 +129,11 @@ func main() {
 	xproto.MapWindow(c, wid)
 	tip := newTooltip(c, scr, gc)
 	menus := newMenuMgr(c, scr, gc)
+	wh := newWhisker(c, scr, gc)
+	toggleWhisker = func() {
+		cancelTipFn()
+		wh.toggle(whiskerAnchor)
+	}
 
 	var (
 		items   []*item
@@ -241,6 +249,7 @@ func main() {
 			}
 		})
 	}
+	cancelTipFn = cancelTip
 	setHover := func(it *item) {
 		if it == hover {
 			return
@@ -335,6 +344,8 @@ func main() {
 	}()
 
 	install(cfg)
+	whReady := make(chan whiskerData, 1)
+	go preloadWhisker(whReady)
 
 	// Helpers are told to pause while the display is in standby: nothing to see,
 	// and animation would only burn battery. (A locked-but-lit screen is not
@@ -410,7 +421,14 @@ func main() {
 			if menus.handle(ev) {
 				continue
 			}
+			if wh.handle(ev) {
+				continue
+			}
 			handle(ev)
+		case d := <-whReady:
+			if !wh.loaded {
+				wh.setData(d)
+			}
 		case req := <-menuReqs:
 			cancelTip()
 			menus.open(req)
@@ -524,6 +542,8 @@ func main() {
 				os.Remove(proto.SockPath())
 				exe, _ := os.Executable()
 				log.Fatal(syscall.Exec(exe, []string{exe}, os.Environ()))
+			case "menu":
+				toggleWhisker()
 			case "quit":
 				for _, s := range sups {
 					close(s.stop)

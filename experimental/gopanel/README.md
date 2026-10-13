@@ -23,7 +23,7 @@ Build everything: `./build.sh`   Run: `./gopanel` (alongside xfce4-panel is fine
 | clock              | date over time                                                       |
 | genmon             | built-in runner (`<img> <txt> <tool> <click> <txtclick>`)            |
 | kitt-scanner, mem-liquid, io-scanner, network-scanner, wattage-panel | helper processes, see below |
-| whiskermenu        | not yet                                                              |
+| whiskermenu        | application menu: categories from the XDG menu files, search, favorites, recent |
 
 ## Helpers
 

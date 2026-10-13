@@ -19,9 +19,7 @@ var helperNames = map[string]string{
 }
 
 // notYet lists xfce plugins gopanel does not replace (yet).
-var notYet = map[string]string{
-	"whiskermenu": "menu button (next session)",
-}
+var notYet = map[string]string{}
 
 func atoi(vals []string, def int) int {
 	if len(vals) == 1 {
@@ -75,6 +73,9 @@ func buildItems(cfg map[string][]string) []*item {
 				it.w = 8
 			}
 			items = append(items, it)
+		case t == "whiskermenu":
+			whiskerID = id
+			items = append(items, newWhiskerButton(cfg, id))
 		case t == "tasklist":
 			items = append(items, newTaskbarItem())
 		case t == "systray":
@@ -124,6 +125,26 @@ func newLauncherItem(path string) *item {
 	it.click = func(x, y, btn int) {
 		if btn == 1 {
 			run(l.command())
+		}
+	}
+	return it
+}
+
+// newWhiskerButton is the panel button that opens the application menu.
+func newWhiskerButton(cfg map[string][]string, id string) *item {
+	it := newItem("whisker")
+	it.w = panelH
+	it.hl = true
+	it.tip = "Applications"
+	if v := cfg["/plugins/plugin-"+id+"/button-icon"]; len(v) == 1 {
+		it.img = loadIcon(v[0])
+	} else {
+		it.img = loadIcon("org.xfce.panel.applicationsmenu")
+	}
+	it.click = func(x, y, btn int) {
+		if btn == 1 && toggleWhisker != nil {
+			whiskerAnchor = it.x
+			toggleWhisker()
 		}
 	}
 	return it

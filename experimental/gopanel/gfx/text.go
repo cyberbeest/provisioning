@@ -77,7 +77,7 @@ func face(path string, px float64) font.Face {
 	if l == nil {
 		return nil
 	}
-	fc, err := opentype.NewFace(l.f, &opentype.FaceOptions{Size: px, DPI: 72, Hinting: font.HintingFull})
+	fc, err := opentype.NewFace(l.f, &opentype.FaceOptions{Size: px, DPI: 72, Hinting: font.HintingVertical})
 	if err != nil {
 		return nil
 	}

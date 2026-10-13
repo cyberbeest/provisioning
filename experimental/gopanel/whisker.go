@@ -1,0 +1,828 @@
+package main
+
+import (
+	"image"
+	"image/color"
+	"image/draw"
+	"os"
+	"os/exec"
+	"os/user"
+	"path/filepath"
+	"strings"
+
+	"github.com/jezek/xgb"
+	"github.com/jezek/xgb/xproto"
+	"gopanel/appmenu"
+	"gopanel/gfx"
+)
+
+// Whisker-style application menu: header with user and session buttons, search box,
+// application list on the left, categories on the right.
+
+const (
+	whW, whH     = 600, 650
+	whHeaderH    = 52
+	whSearchY    = 56
+	whSearchH    = 32
+	whListTop    = 96
+	whListBottom = whH - 8
+	whListX      = 8
+	whListW      = 402
+	whCatX       = 416
+	whCatW       = 176
+	whAppRowH    = 40
+	whCatRowH    = 34
+	whAppIcon    = 32
+	whCatIcon    = 22
+)
+
+var (
+	whBg      = color.RGBA{0xf6, 0xf5, 0xf4, 255}
+	whBorder  = color.RGBA{0xb4, 0xb2, 0xae, 255}
+	whListBg  = color.RGBA{255, 255, 255, 255}
+	whSel     = color.RGBA{0xd8, 0xd5, 0xd0, 255}
+	whHover   = color.RGBA{0xe6, 0xe4, 0xe1, 255}
+	whFocus   = color.RGBA{0x35, 0x84, 0xe4, 255}
+	whInk     = color.RGBA{0, 0, 0, 255}
+	whDim     = color.RGBA{0x88, 0x88, 0x88, 255}
+	whSepLine = color.RGBA{0xcf, 0xcd, 0xc9, 255}
+)
+
+// special categories in front of the real ones
+const (
+	catRecent = iota
+	catFav
+	catAll
+	catFirstReal
+)
+
+type whisker struct {
+	c   *xgb.Conn
+	scr *xproto.ScreenInfo
+	gc  xproto.Gcontext
+
+	win    xproto.Window
+	x, y   int
+	isOpen bool
+
+	cats   []*appmenu.Category
+	all    []*appmenu.Entry
+	byID   map[string]*appmenu.Entry
+	loaded bool
+
+	favIDs, recentIDs            []string
+	catIdx                       int
+	query                        []rune
+	list                         []*appmenu.Entry // what the app pane shows
+	listScroll                   int
+	catScroll                    int
+	hoverRow, hoverCat, hoverBtn int
+	selRow                       int // keyboard selection in the app list
+
+	icons    map[string]*image.RGBA
+	userName string
+	avatar   *image.RGBA
+	btnIcons [3]*image.RGBA
+	keymap   []xproto.Keysym
+	kpc      int // keysyms per keycode
+	minKC    xproto.Keycode
+	cfg      map[string][]string
+}
+
+func newWhisker(c *xgb.Conn, scr *xproto.ScreenInfo, gc xproto.Gcontext) *whisker {
+	w := &whisker{c: c, scr: scr, gc: gc, icons: map[string]*image.RGBA{}, hoverRow: -1, hoverCat: -1, hoverBtn: -1, selRow: -1}
+	if u, err := user.Current(); err == nil {
+		w.userName = u.Username
+	}
+	return w
+}
+
+type whiskerData struct {
+	cats []*appmenu.Category
+	all  []*appmenu.Entry
+}
+
+// preload runs off the main goroutine at startup: it builds the menu and resolves every
+// icon path (filling the disk cache), so the first open is quick.
+func preloadWhisker(out chan<- whiskerData) {
+	cats, all, err := appmenu.Load()
+	if err != nil {
+		return
+	}
+	for _, e := range all {
+		findIcons(e.Icon, whAppIcon)
+	}
+	for _, c := range cats {
+		findIcons(c.Icon, whCatIcon)
+	}
+	FlushIconCache()
+	out <- whiskerData{cats, all}
+}
+
+func (w *whisker) loadData() {
+	cats, all, err := appmenu.Load()
+	if err != nil {
+		return
+	}
+	w.setData(whiskerData{cats, all})
+}
+
+func (w *whisker) setData(d whiskerData) {
+	cats, all := d.cats, d.all
+	w.cats, w.all, w.loaded = cats, all, true
+	w.byID = map[string]*appmenu.Entry{}
+	for _, e := range all {
+		w.byID[e.ID] = e
+	}
+}
+
+func (w *whisker) icon(name string, size int) *image.RGBA {
+	key := name + "@" + string(rune('0'+size/8))
+	if im, ok := w.icons[key]; ok {
+		return im
+	}
+	var im *image.RGBA
+	if name != "" {
+		if filepath.IsAbs(name) || len(findIcons(name, size)) > 0 {
+			im = loadIconSized(name, size)
+		}
+	}
+	if im == nil {
+		im = loadIconSized("application-x-executable", size)
+	}
+	w.icons[key] = im
+	return im
+}
+
+// xfconf property helpers (whisker settings live in xfce4-panel's channel).
+func (w *whisker) prop(name string) []string { return w.cfg["/plugins/plugin-"+whiskerID+"/"+name] }
+
+var whiskerID = "201"
+
+func (w *whisker) refreshConfig() {
+	w.cfg = xfconfAll()
+	w.favIDs = w.prop("favorites")
+	w.recentIDs = w.prop("recent")
+}
+
+func (w *whisker) cmdFromCfg(key, def string) string {
+	if v := w.prop(key); len(v) == 1 && v[0] != "" {
+		return v[0]
+	}
+	return def
+}
+
+func (w *whisker) toggle(anchorX int) {
+	if w.isOpen {
+		w.close()
+		return
+	}
+	w.open(anchorX)
+}
+
+func (w *whisker) open(anchorX int) {
+	if !w.loaded {
+		w.loadData()
+	}
+	w.refreshConfig()
+	w.query = nil
+	w.listScroll, w.catScroll, w.hoverRow, w.hoverCat, w.hoverBtn, w.selRow = 0, 0, -1, -1, -1, -1
+	w.catIdx = catFav
+	if v := w.prop("default-category"); len(v) == 1 {
+		switch v[0] {
+		case "0":
+			w.catIdx = catRecent
+		case "2":
+			w.catIdx = catAll
+		}
+	}
+	if w.avatar == nil {
+		home, _ := os.UserHomeDir()
+		face := filepath.Join(home, ".face")
+		if _, err := os.Stat(face); err != nil {
+			if v := w.prop("button-icon"); len(v) == 1 {
+				face = v[0]
+			}
+		}
+		w.avatar = loadPNG(face, 32)
+		for i, n := range []string{"org.xfce.settings.manager", "system-lock-screen-symbolic", "system-log-out-symbolic"} {
+			w.btnIcons[i] = w.icon(n, 24)
+		}
+	}
+	w.rebuildList()
+	if w.keymap == nil {
+		setup := xproto.Setup(w.c)
+		w.minKC = setup.MinKeycode
+		n := byte(setup.MaxKeycode-setup.MinKeycode) + 1
+		if r, err := xproto.GetKeyboardMapping(w.c, w.minKC, n).Reply(); err == nil {
+			w.keymap, w.kpc = r.Keysyms, int(r.KeysymsPerKeycode)
+		}
+	}
+
+	w.x = min(max(anchorX, 0), int(w.scr.WidthInPixels)-whW)
+	w.y = int(w.scr.HeightInPixels) - panelH - whH
+	wid, _ := xproto.NewWindowId(w.c)
+	xproto.CreateWindow(w.c, w.scr.RootDepth, wid, w.scr.Root, int16(w.x), int16(w.y), whW, whH, 0,
+		xproto.WindowClassInputOutput, w.scr.RootVisual,
+		xproto.CwOverrideRedirect|xproto.CwEventMask, []uint32{1, xproto.EventMaskExposure | xproto.EventMaskKeyPress})
+	xproto.MapWindow(w.c, wid)
+	w.win, w.isOpen = wid, true
+	xproto.GrabPointer(w.c, false, wid, xproto.EventMaskButtonPress|xproto.EventMaskButtonRelease|xproto.EventMaskPointerMotion,
+		xproto.GrabModeAsync, xproto.GrabModeAsync, xproto.WindowNone, xproto.CursorNone, xproto.TimeCurrentTime)
+	xproto.GrabKeyboard(w.c, false, wid, xproto.TimeCurrentTime, xproto.GrabModeAsync, xproto.GrabModeAsync)
+	w.paintAll()
+}
+
+func (w *whisker) close() {
+	if !w.isOpen {
+		return
+	}
+	xproto.UngrabPointer(w.c, xproto.TimeCurrentTime)
+	xproto.UngrabKeyboard(w.c, xproto.TimeCurrentTime)
+	xproto.DestroyWindow(w.c, w.win)
+	w.isOpen = false
+}
+
+// ---- data for the app pane ----------------------------------------------------------
+
+func (w *whisker) entriesByIDs(ids []string) []*appmenu.Entry {
+	var out []*appmenu.Entry
+	for _, id := range ids {
+		if e := w.byID[id]; e != nil {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+func (w *whisker) rebuildList() {
+	w.listScroll, w.hoverRow, w.selRow = 0, -1, -1
+	if len(w.query) > 0 {
+		w.list = w.search(string(w.query))
+		if len(w.list) > 0 {
+			w.selRow = 0
+		}
+		return
+	}
+	switch {
+	case w.catIdx == catRecent:
+		w.list = w.entriesByIDs(w.recentIDs)
+	case w.catIdx == catFav:
+		w.list = w.entriesByIDs(w.favIDs)
+	case w.catIdx == catAll:
+		w.list = w.all
+	default:
+		w.list = w.cats[w.catIdx-catFirstReal].Entries
+	}
+}
+
+// search ranks name matches above generic name, keywords, comment and command matches.
+func (w *whisker) search(q string) []*appmenu.Entry {
+	q = strings.ToLower(strings.TrimSpace(q))
+	type scored struct {
+		e *appmenu.Entry
+		s int
+	}
+	var hits []scored
+	for _, e := range w.all {
+		name := strings.ToLower(e.Name)
+		s := 0
+		switch {
+		case name == q:
+			s = 100
+		case strings.HasPrefix(name, q):
+			s = 90
+		case strings.Contains(name, " "+q):
+			s = 80
+		case strings.Contains(name, q):
+			s = 70
+		case strings.Contains(strings.ToLower(e.GenericName), q):
+			s = 50
+		default:
+			for _, k := range e.Keywords {
+				if strings.Contains(strings.ToLower(k), q) {
+					s = 40
+					break
+				}
+			}
+			if s == 0 && strings.Contains(strings.ToLower(e.Comment), q) {
+				s = 30
+			}
+			if s == 0 && strings.Contains(strings.ToLower(e.Exec), q) {
+				s = 20
+			}
+		}
+		if s > 0 {
+			hits = append(hits, scored{e, s})
+		}
+	}
+	// stable by score (entries are already name-sorted)
+	var out []*appmenu.Entry
+	for s := 100; s > 0; s-- {
+		for _, h := range hits {
+			if h.s == s {
+				out = append(out, h.e)
+			}
+		}
+	}
+	return out
+}
+
+func (w *whisker) catCount() int { return catFirstReal + len(w.cats) }
+
+func (w *whisker) catName(i int) string {
+	switch i {
+	case catRecent:
+		return "Recently Used"
+	case catFav:
+		return "Favorites"
+	case catAll:
+		return "All Applications"
+	}
+	return w.cats[i-catFirstReal].Name
+}
+
+func (w *whisker) catIcon(i int) string {
+	switch i {
+	case catRecent:
+		return "document-open-recent"
+	case catFav:
+		return "emblem-favorite"
+	case catAll:
+		return "applications-other"
+	}
+	return w.cats[i-catFirstReal].Icon
+}
+
+// ---- rendering -----------------------------------------------------------------------
+
+func rect(img *image.RGBA, r image.Rectangle, c color.RGBA) {
+	draw.Draw(img, r, image.NewUniform(c), image.Point{}, draw.Src)
+}
+
+func frame(img *image.RGBA, r image.Rectangle, c color.RGBA) {
+	rect(img, image.Rect(r.Min.X, r.Min.Y, r.Max.X, r.Min.Y+1), c)
+	rect(img, image.Rect(r.Min.X, r.Max.Y-1, r.Max.X, r.Max.Y), c)
+	rect(img, image.Rect(r.Min.X, r.Min.Y, r.Min.X+1, r.Max.Y), c)
+	rect(img, image.Rect(r.Max.X-1, r.Min.Y, r.Max.X, r.Max.Y), c)
+}
+
+func blit(img *image.RGBA, src *image.RGBA, x, y int) {
+	if src == nil {
+		return
+	}
+	b := src.Bounds()
+	draw.Draw(img, image.Rect(x, y, x+b.Dx(), y+b.Dy()), src, b.Min, draw.Over)
+}
+
+func textAt(img *image.RGBA, x, y int, text string, c color.RGBA, bold bool, px float64, maxW int) {
+	t := []rune(text)
+	for len(t) > 0 {
+		s := string(t)
+		if len(t) < len([]rune(text)) {
+			s += "…"
+		}
+		sp := []gfx.Span{{Text: s, Scale: 1, Bold: bold, Color: c}}
+		if maxW <= 0 || gfx.Measure(sp, px).W <= maxW {
+			gfx.Draw(img, x, y, sp, px)
+			return
+		}
+		t = t[:len(t)-1]
+	}
+}
+
+func (w *whisker) paintHeader() *image.RGBA {
+	img := image.NewRGBA(image.Rect(0, 0, whW, whHeaderH))
+	rect(img, img.Bounds(), whBg)
+	blit(img, w.avatar, 10, 10)
+	textAt(img, 52, 14, w.userName, whInk, true, 17, 300)
+	for i, ic := range w.btnIcons {
+		x := whW - 8 - (3-i)*44 + 8
+		if i == w.hoverBtn {
+			rect(img, image.Rect(x-4, 8, x+36, 44), whHover)
+		}
+		blit(img, ic, x+4, 14)
+	}
+	return img
+}
+
+func btnRect(i int) image.Rectangle {
+	x := whW - 8 - (3-i)*44 + 8
+	return image.Rect(x-4, 8, x+36, 44)
+}
+
+func (w *whisker) paintSearch() *image.RGBA {
+	img := image.NewRGBA(image.Rect(0, 0, whW, whSearchH+4))
+	rect(img, img.Bounds(), whBg)
+	r := image.Rect(8, 0, whW-8, whSearchH)
+	rect(img, r, color.RGBA{255, 255, 255, 255})
+	frame(img, r, whFocus)
+	frame(img, r.Inset(1), whFocus)
+	textAt(img, 18, 7, "\U0001F50D︎", whDim, false, 14, 0)
+	text := string(w.query)
+	if text == "" {
+		textAt(img, 40, 8, "", whDim, false, 13, 0)
+	} else {
+		textAt(img, 40, 8, text, whInk, false, 13, whW-80)
+		tw := gfx.Measure([]gfx.Span{{Text: text, Scale: 1, Color: whInk}}, 13).W
+		rect(img, image.Rect(40+min(tw, whW-80)+1, 7, 40+min(tw, whW-80)+2, 25), whInk)
+	}
+	if text == "" {
+		rect(img, image.Rect(40, 7, 41, 25), whInk)
+	}
+	return img
+}
+
+func (w *whisker) listHeight() int { return whListBottom - whListTop }
+
+func (w *whisker) paintList() *image.RGBA {
+	h := w.listHeight()
+	img := image.NewRGBA(image.Rect(0, 0, whListW, h))
+	rect(img, img.Bounds(), whListBg)
+	first := w.listScroll / whAppRowH
+	for i := first; i < len(w.list) && i*whAppRowH-w.listScroll < h; i++ {
+		e := w.list[i]
+		y := i*whAppRowH - w.listScroll
+		switch {
+		case i == w.selRow:
+			rect(img, image.Rect(0, y, whListW, y+whAppRowH), whSel)
+		case i == w.hoverRow:
+			rect(img, image.Rect(0, y, whListW, y+whAppRowH), whHover)
+		}
+		blit(img, w.icon(e.Icon, whAppIcon), 6, y+(whAppRowH-whAppIcon)/2)
+		textAt(img, 46, y+3, e.Name, whInk, true, 13, whListW-56)
+		sub := e.Comment
+		if sub == "" {
+			sub = e.GenericName
+		}
+		textAt(img, 46, y+20, sub, whInk, false, 13, whListW-56)
+	}
+	if len(w.list) == 0 {
+		msg := "No applications"
+		if len(w.query) == 0 && w.catIdx == catRecent {
+			msg = "No recently used applications"
+		} else if len(w.query) == 0 && w.catIdx == catFav {
+			msg = "No favorites yet"
+		}
+		textAt(img, 12, 12, msg, whDim, false, 13, 0)
+	}
+	frame(img, img.Bounds(), whBorder)
+	w.scrollbar(img, len(w.list)*whAppRowH, w.listScroll)
+	return img
+}
+
+func (w *whisker) scrollbar(img *image.RGBA, total, scroll int) {
+	h := img.Bounds().Dy()
+	if total <= h {
+		return
+	}
+	bh := max(h*h/total, 24)
+	by := (h - bh) * scroll / (total - h)
+	rect(img, image.Rect(img.Bounds().Dx()-6, by+2, img.Bounds().Dx()-3, by+bh-2), color.RGBA{0xb0, 0xae, 0xaa, 255})
+}
+
+func (w *whisker) catRowY(i int) int { // y within the category pane
+	y := i*whCatRowH + 2
+	if i >= catFirstReal {
+		y += 8 // separator gap
+	}
+	return y - w.catScroll
+}
+
+func (w *whisker) paintCats() *image.RGBA {
+	h := w.listHeight()
+	img := image.NewRGBA(image.Rect(0, 0, whCatW, h))
+	rect(img, img.Bounds(), whBg)
+	for i := 0; i < w.catCount(); i++ {
+		y := w.catRowY(i)
+		if y+whCatRowH < 0 || y > h {
+			continue
+		}
+		if i == catFirstReal {
+			rect(img, image.Rect(4, y-5, whCatW-12, y-4), whSepLine)
+		}
+		sel := len(w.query) == 0 && i == w.catIdx
+		switch {
+		case sel:
+			rect(img, image.Rect(0, y, whCatW-8, y+whCatRowH), whSel)
+		case i == w.hoverCat:
+			rect(img, image.Rect(0, y, whCatW-8, y+whCatRowH), whHover)
+		}
+		blit(img, w.icon(w.catIcon(i), whCatIcon), 8, y+(whCatRowH-whCatIcon)/2)
+		textAt(img, 40, y+(whCatRowH-16)/2, w.catName(i), whInk, false, 13, whCatW-56)
+	}
+	total := w.catRowY(w.catCount()-1) + w.catScroll + whCatRowH + 8
+	w.scrollbar(img, total, w.catScroll)
+	return img
+}
+
+func (w *whisker) put(img *image.RGBA, x, y int) {
+	b := img.Bounds()
+	buf := make([]byte, b.Dx()*b.Dy()*4)
+	for i := 0; i < b.Dx()*b.Dy(); i++ {
+		p := img.Pix[i*4:]
+		buf[i*4], buf[i*4+1], buf[i*4+2] = p[2], p[1], p[0]
+	}
+	putBGRX(w.c, xproto.Drawable(w.win), w.gc, w.scr.RootDepth, x, y, b.Dx(), b.Dy(), buf)
+}
+
+func (w *whisker) paintAll() {
+	bg := image.NewRGBA(image.Rect(0, 0, whW, whH))
+	rect(bg, bg.Bounds(), whBg)
+	frame(bg, bg.Bounds(), whBorder)
+	w.put(bg, 0, 0)
+	w.put(w.paintHeader(), 0, 0)
+	w.put(w.paintSearch(), 0, whSearchY)
+	w.put(w.paintList(), whListX, whListTop)
+	w.put(w.paintCats(), whCatX, whListTop)
+	go FlushIconCache()
+}
+
+// ---- input ---------------------------------------------------------------------------
+
+func (w *whisker) launch(e *appmenu.Entry) {
+	l := &launcher{exec: e.Exec, dir: e.Path, term: e.Terminal, name: e.Name}
+	run(l.command())
+	w.noteRecent(e.ID)
+	w.close()
+}
+
+func (w *whisker) noteRecent(id string) {
+	max := 10
+	if v := w.prop("recent-items-max"); len(v) == 1 {
+		if n := atoi(v, 10); n > 0 {
+			max = n
+		}
+	}
+	ids := []string{id}
+	for _, r := range w.recentIDs {
+		if r != id && len(ids) < max {
+			ids = append(ids, r)
+		}
+	}
+	w.recentIDs = ids
+	go setXfconfArray("/plugins/plugin-"+whiskerID+"/recent", ids)
+}
+
+// setXfconfArray stores a string array property in xfce4-panel's channel.
+func setXfconfArray(prop string, vals []string) {
+	args := []string{"-c", "xfce4-panel", "-p", prop, "-n", "-a"}
+	for _, v := range vals {
+		args = append(args, "-t", "string", "-s", v)
+	}
+	exec.Command("xfconf-query", args...).Run()
+}
+
+func (w *whisker) listRowAt(py int) int {
+	i := (py - whListTop + w.listScroll) / whAppRowH
+	if i < 0 || i >= len(w.list) {
+		return -1
+	}
+	return i
+}
+
+func (w *whisker) catAtY(py int) int {
+	for i := 0; i < w.catCount(); i++ {
+		y := w.catRowY(i) + whListTop
+		if py >= y && py < y+whCatRowH {
+			return i
+		}
+	}
+	return -1
+}
+
+func (w *whisker) scrollList(delta int) {
+	maxScroll := max(len(w.list)*whAppRowH-w.listHeight(), 0)
+	w.listScroll = min(max(w.listScroll+delta, 0), maxScroll)
+}
+
+func (w *whisker) scrollCats(delta int) {
+	total := w.catCount()*whCatRowH + 12
+	w.catScroll = min(max(w.catScroll+delta, 0), max(total-w.listHeight(), 0))
+}
+
+func (w *whisker) ensureVisible(row int) {
+	top, bot := row*whAppRowH, (row+1)*whAppRowH
+	if top < w.listScroll {
+		w.listScroll = top
+	} else if bot > w.listScroll+w.listHeight() {
+		w.listScroll = bot - w.listHeight()
+	}
+}
+
+func (w *whisker) runButton(i int) {
+	cmd := ""
+	switch i {
+	case 0:
+		cmd = w.cmdFromCfg("command-settings", "xfce4-settings-manager")
+	case 1:
+		cmd = w.cmdFromCfg("command-lockscreen", "xflock4")
+	case 2:
+		cmd = w.cmdFromCfg("command-logout", "xfce4-session-logout")
+	}
+	w.close()
+	if cmd != "" {
+		run(shell(cmd))
+	}
+}
+
+// keysymFor translates a key press using the server's keyboard mapping.
+func (w *whisker) keysymFor(code xproto.Keycode, state uint16) xproto.Keysym {
+	if w.kpc == 0 {
+		return 0
+	}
+	base := int(code-w.minKC) * w.kpc
+	col := 0
+	if state&0x80 != 0 && w.kpc > 4 { // Mod5: ISO_Level3_Shift (AltGr)
+		col = 4
+	}
+	if state&1 != 0 {
+		col++
+	}
+	if base+col >= len(w.keymap) || w.keymap[base+col] == 0 {
+		col &^= 1
+	}
+	ks := w.keymap[base+col]
+	if state&2 != 0 && state&1 == 0 && col == 0 && ks >= 'a' && ks <= 'z' { // CapsLock
+		ks -= 32
+	}
+	return ks
+}
+
+func (w *whisker) key(code xproto.Keycode, state uint16) {
+	ks := w.keysymFor(code, state)
+	switch ks {
+	case 0xff1b: // Escape
+		if len(w.query) > 0 {
+			w.query = nil
+			w.rebuildList()
+			w.paintAll()
+		} else {
+			w.close()
+		}
+		return
+	case 0xff08: // BackSpace
+		if len(w.query) > 0 {
+			w.query = w.query[:len(w.query)-1]
+			w.rebuildList()
+			w.paintAll()
+		}
+		return
+	case 0xff0d, 0xff8d: // Return
+		if w.selRow >= 0 && w.selRow < len(w.list) {
+			w.launch(w.list[w.selRow])
+		} else if len(w.list) > 0 && len(w.query) > 0 {
+			w.launch(w.list[0])
+		}
+		return
+	case 0xff54, 0xff52: // Down, Up
+		if len(w.list) == 0 {
+			return
+		}
+		d := 1
+		if ks == 0xff52 {
+			d = -1
+		}
+		w.selRow = min(max(w.selRow+d, 0), len(w.list)-1)
+		w.ensureVisible(w.selRow)
+		w.put(w.paintList(), whListX, whListTop)
+		return
+	case 0xff55, 0xff56: // Page Up/Down
+		d := w.listHeight() / whAppRowH
+		if ks == 0xff55 {
+			d = -d
+		}
+		if len(w.list) > 0 {
+			w.selRow = min(max(w.selRow+d, 0), len(w.list)-1)
+			w.ensureVisible(w.selRow)
+			w.put(w.paintList(), whListX, whListTop)
+		}
+		return
+	}
+	var r rune
+	switch {
+	case ks >= 0x20 && ks <= 0x7e, ks >= 0xa0 && ks <= 0xff:
+		r = rune(ks)
+	case ks&0xff000000 == 0x01000000:
+		r = rune(ks & 0xffffff)
+	}
+	if r != 0 {
+		w.query = append(w.query, r)
+		w.rebuildList()
+		w.paintAll()
+	}
+}
+
+// handle consumes events while the menu is open.
+func (w *whisker) handle(ev xgb.Event) bool {
+	if !w.isOpen {
+		return false
+	}
+	switch e := ev.(type) {
+	case xproto.ExposeEvent:
+		if e.Window == w.win && e.Count == 0 {
+			w.paintAll()
+			return true
+		}
+	case xproto.KeyPressEvent:
+		w.key(e.Detail, e.State)
+		return true
+	case xproto.MotionNotifyEvent:
+		w.motion(int(e.RootX)-w.x, int(e.RootY)-w.y)
+		return true
+	case xproto.ButtonPressEvent:
+		w.press(int(e.RootX)-w.x, int(e.RootY)-w.y, int(e.Detail))
+		return true
+	case xproto.ButtonReleaseEvent:
+		return true
+	}
+	return false
+}
+
+func (w *whisker) motion(px, py int) {
+	if px < 0 || py < 0 || px >= whW || py >= whH {
+		return
+	}
+	row, cat, btn := -1, -1, -1
+	switch {
+	case py < whHeaderH:
+		for i := 0; i < 3; i++ {
+			if image.Pt(px, py).In(btnRect(i)) {
+				btn = i
+			}
+		}
+	case px >= whListX && px < whListX+whListW && py >= whListTop && py < whListBottom:
+		row = w.listRowAt(py)
+	case px >= whCatX && px < whCatX+whCatW && py >= whListTop && py < whListBottom:
+		cat = w.catAtY(py)
+	}
+	if btn != w.hoverBtn {
+		w.hoverBtn = btn
+		w.put(w.paintHeader(), 0, 0)
+	}
+	if row != w.hoverRow {
+		w.hoverRow = row
+		if row >= 0 {
+			w.selRow = row
+		}
+		w.put(w.paintList(), whListX, whListTop)
+	}
+	if cat != w.hoverCat {
+		w.hoverCat = cat
+		hs := true
+		if v := w.prop("hover-switch-category"); len(v) == 1 && v[0] == "false" {
+			hs = false
+		}
+		if cat >= 0 && hs && len(w.query) == 0 && cat != w.catIdx {
+			w.catIdx = cat
+			w.rebuildList()
+			w.put(w.paintList(), whListX, whListTop)
+		}
+		w.put(w.paintCats(), whCatX, whListTop)
+	}
+}
+
+func (w *whisker) press(px, py, btn int) {
+	if px < 0 || py < 0 || px >= whW || py >= whH {
+		w.close() // click outside
+		return
+	}
+	inList := px >= whListX && px < whListX+whListW && py >= whListTop && py < whListBottom
+	inCats := px >= whCatX && px < whCatX+whCatW && py >= whListTop && py < whListBottom
+	switch btn {
+	case 4, 5:
+		d := -3 * whAppRowH
+		if btn == 5 {
+			d = -d
+		}
+		if inCats {
+			w.scrollCats(d / 2)
+			w.put(w.paintCats(), whCatX, whListTop)
+		} else {
+			w.scrollList(d)
+			w.hoverRow = w.listRowAt(py)
+			w.put(w.paintList(), whListX, whListTop)
+		}
+	case 1:
+		switch {
+		case py < whHeaderH:
+			for i := 0; i < 3; i++ {
+				if image.Pt(px, py).In(btnRect(i)) {
+					w.runButton(i)
+					return
+				}
+			}
+		case inList:
+			if r := w.listRowAt(py); r >= 0 {
+				w.launch(w.list[r])
+			}
+		case inCats:
+			if c := w.catAtY(py); c >= 0 {
+				w.query = nil
+				w.catIdx = c
+				w.rebuildList()
+				w.paintAll()
+			}
+		}
+	}
+}
