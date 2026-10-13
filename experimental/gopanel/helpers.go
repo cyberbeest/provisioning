@@ -22,6 +22,7 @@ type helperConn struct {
 	img  *image.RGBA
 	out  chan string   // lines to the helper; dropped when full
 	done chan struct{} // closed when the connection ends
+	kill func()        // closes the connection
 }
 
 func (hc *helperConn) send(line string) {
@@ -33,8 +34,9 @@ func (hc *helperConn) send(line string) {
 
 type helperEvent struct {
 	hc   *helperConn
-	kind string // "hello", "image", "bye"
+	kind string // "hello", "image", "tooltip", "bye"
 	img  *image.RGBA
+	text string
 }
 
 const maxHelperPixels = 4 << 20 // 16 MB of RGBA per frame, far beyond any panel item
@@ -76,7 +78,7 @@ func serveHelper(conn net.Conn, ev chan<- helperEvent) {
 	if err != nil || w < 1 || w > 4096 {
 		return
 	}
-	hc := &helperConn{name: f[1], w: w, h: panelH, out: make(chan string, 16), done: make(chan struct{})}
+	hc := &helperConn{name: f[1], w: w, h: panelH, out: make(chan string, 16), done: make(chan struct{}), kill: func() { conn.Close() }}
 	hc.img = image.NewRGBA(image.Rect(0, 0, hc.w, hc.h))
 	defer close(hc.done)
 
@@ -101,6 +103,13 @@ func serveHelper(conn net.Conn, ev chan<- helperEvent) {
 		line, err := r.ReadString('\n')
 		if err != nil {
 			return
+		}
+		if strings.HasPrefix(line, "tooltip ") || line == "tooltip\n" {
+			text := strings.TrimSuffix(strings.TrimPrefix(line, "tooltip"), "\n")
+			text = strings.TrimPrefix(text, " ")
+			text = strings.NewReplacer(`\n`, "\n", `\\`, `\`).Replace(text)
+			ev <- helperEvent{hc: hc, kind: "tooltip", text: text}
+			continue
 		}
 		f := strings.Fields(line)
 		if len(f) == 3 && f[0] == "image" {

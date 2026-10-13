@@ -49,8 +49,8 @@ func watchConfig(cmds chan<- string) {
 				if filepath.Dir(ev.Name) == panelDir {
 					if ev.Has(fsnotify.Create) && strings.HasPrefix(base, "launcher-") {
 						add(ev.Name) // new launcher dir
-					} else if !strings.HasPrefix(base, "launcher-") {
-						continue // genmon rc files etc. are not our business
+					} else if !strings.HasPrefix(base, "launcher-") && !strings.HasPrefix(base, "genmon-") {
+						continue // plugin settings we don't mirror are not our business
 					}
 				} else if filepath.Dir(ev.Name) == xfconfDir && base != "xfce4-panel.xml" {
 					continue

@@ -1,12 +1,13 @@
 // gopanel: a minimal X11 panel in pure Go (no cgo, no toolkit).
 // Two jobs: (1) reserve a strip at the screen bottom via _NET_WM_STRUT_PARTIAL
-// so the WM keeps other windows out of it, (2) lay out items in it: launcher icons, and frames sent by helper processes.
+// so the WM keeps other windows out of it, (2) lay out items in it: launchers,
+// built-in widgets (clock, genmon) and frames sent by helper processes.
+// The item list mirrors the xfce4-panel plugin list (see config.go).
 package main
 
 import (
 	"encoding/binary"
 	"fmt"
-	"image"
 	"log"
 	"os"
 	"os/signal"
@@ -21,31 +22,12 @@ import (
 	"gopanel/proto"
 )
 
-const version = "0.2.0"
+const version = "0.3.0"
 
-const (
-	panelH = 56
-	slot   = 48
-	pad    = 8
-	bgCol  = 0x1e1e2e
-	hiCol  = 0x45475a
+var (
+	panelH   = 35 // overridden from the xfce4-panel config
+	iconSize = 28
 )
-
-var launchers []*launcher
-
-// item is one thing in the panel: a launcher icon or a helper's frame.
-type item struct {
-	x, w, h int
-	l       *launcher
-	hc      *helperConn
-}
-
-func (it *item) image() *image.RGBA {
-	if it.l != nil {
-		return it.l.img
-	}
-	return it.hc.img
-}
 
 // vcsRevision returns the git revision Go embedded at build time, if any.
 func vcsRevision() string {
@@ -97,9 +79,12 @@ func main() {
 	}
 	sig := make(chan os.Signal, 1) // register first: default SIGHUP action would kill us
 	signal.Notify(sig, syscall.SIGHUP)
-	launchers = loadPanelLaunchers()
-	if len(launchers) == 0 {
-		log.Fatal("no launchers found in xfce4-panel config")
+
+	cfg := xfconfAll()
+	panelH = atoi(cfg["/panels/panel-1/size"], panelH)
+	iconSize = min(atoi(cfg["/panels/panel-1/icon-size"], iconSize), panelH-2)
+	if iconSize < 8 {
+		iconSize = panelH - 2
 	}
 
 	c, err := xgb.NewConn()
@@ -108,23 +93,23 @@ func main() {
 	}
 	defer c.Close()
 	scr := xproto.Setup(c).DefaultScreen(c)
-	w, h := scr.WidthInPixels, scr.HeightInPixels
+	sw, sh := scr.WidthInPixels, scr.HeightInPixels
 
 	wid, _ := xproto.NewWindowId(c)
 	xproto.CreateWindow(c, scr.RootDepth, wid, scr.Root,
-		0, int16(h-panelH), w, panelH, 0,
+		0, int16(int(sh)-panelH), sw, uint16(panelH), 0,
 		xproto.WindowClassInputOutput, scr.RootVisual,
 		xproto.CwBackPixel|xproto.CwEventMask,
-		[]uint32{bgCol, xproto.EventMaskExposure | xproto.EventMaskButtonPress |
+		[]uint32{panelBg, xproto.EventMaskExposure | xproto.EventMaskButtonPress |
 			xproto.EventMaskPointerMotion | xproto.EventMaskLeaveWindow})
 
 	// Window type DOCK + strut: this is "where the rest of the desktop is".
 	xproto.ChangeProperty(c, xproto.PropModeReplace, wid, atom(c, "_NET_WM_WINDOW_TYPE"),
 		xproto.AtomAtom, 32, 1, u32(uint32(atom(c, "_NET_WM_WINDOW_TYPE_DOCK"))))
 	xproto.ChangeProperty(c, xproto.PropModeReplace, wid, atom(c, "_NET_WM_STRUT_PARTIAL"),
-		xproto.AtomCardinal, 32, 12, u32(0, 0, 0, panelH, 0, 0, 0, 0, 0, 0, 0, uint32(w)-1))
+		xproto.AtomCardinal, 32, 12, u32(0, 0, 0, uint32(panelH), 0, 0, 0, 0, 0, 0, 0, uint32(sw)-1))
 	xproto.ChangeProperty(c, xproto.PropModeReplace, wid, atom(c, "_NET_WM_STRUT"),
-		xproto.AtomCardinal, 32, 4, u32(0, 0, 0, panelH))
+		xproto.AtomCardinal, 32, 4, u32(0, 0, 0, uint32(panelH)))
 	name := "gopanel"
 	xproto.ChangeProperty(c, xproto.PropModeReplace, wid, xproto.AtomWmName,
 		xproto.AtomString, 8, uint32(len(name)), []byte(name))
@@ -132,62 +117,77 @@ func main() {
 	gc, _ := xproto.NewGcontextId(c)
 	xproto.CreateGC(c, gc, xproto.Drawable(wid), 0, nil)
 	xproto.MapWindow(c, wid)
+	tip := newTooltip(c, scr, gc)
 
 	var (
 		items   []*item
 		helpers []*helperConn
+		sups    = map[string]*supervisor{}
 		hover   *item
 		paused  bool
 	)
-	relayout := func() {
-		items = items[:0]
-		x := pad
-		for _, l := range launchers {
-			items = append(items, &item{x: x, w: slot, h: slot, l: l})
-			x += slot + pad
-		}
-		for _, hc := range helpers {
-			items = append(items, &item{x: x, w: hc.w, h: hc.h, hc: hc})
-			x += hc.w + pad
-		}
-		hover = nil
-	}
-	relayout()
 
-	// draw composites the item's premultiplied RGBA over the panel (or hover)
-	// colour and pushes it to the window, in row chunks to stay under the X
-	// request size limit.
+	// relayout assigns x positions; expanding items share whatever width is left.
+	relayout := func() {
+		fixed, nexp := 4, 0 // 4px right margin
+		for _, it := range items {
+			if it.expand {
+				nexp++
+			} else {
+				fixed += it.w
+			}
+		}
+		extra := max(int(sw)-fixed, 0)
+		x := 0
+		for _, it := range items {
+			it.x = x
+			if it.expand {
+				it.w = extra / nexp
+			}
+			x += it.w
+		}
+	}
+
+	// draw composites the item's image (premultiplied RGBA, centred) over the panel or
+	// hover colour and pushes the item's box to the window.
 	draw := func(it *item) {
-		bg := uint32(bgCol)
-		if it == hover && it.l != nil {
-			bg = hiCol
+		if it.w <= 0 {
+			return
+		}
+		bg := uint32(panelBg)
+		if it == hover && it.hl {
+			bg = hoverBg
 		}
 		br, bgn, bb := uint32(byte(bg>>16)), uint32(byte(bg>>8)), uint32(byte(bg))
-		img := it.image()
-		buf := make([]byte, it.w*it.h*4)
-		for y := 0; y < it.h; y++ {
-			src := img.Pix[y*img.Stride : y*img.Stride+it.w*4]
-			dst := buf[y*it.w*4:]
-			for x := 0; x < it.w; x++ {
-				p, o := src[x*4:], x*4
-				inv := 255 - uint32(p[3])
-				dst[o] = byte(uint32(p[2]) + bb*inv/255)
-				dst[o+1] = byte(uint32(p[1]) + bgn*inv/255)
-				dst[o+2] = byte(uint32(p[0]) + br*inv/255)
+		buf := make([]byte, it.w*panelH*4)
+		for i := 0; i < it.w*panelH; i++ {
+			buf[i*4], buf[i*4+1], buf[i*4+2] = byte(bb), byte(bgn), byte(br)
+		}
+		if img := it.img; img != nil {
+			ib := img.Bounds()
+			ox, oy := (it.w-ib.Dx())/2, (panelH-ib.Dy())/2
+			for y := 0; y < ib.Dy(); y++ {
+				if oy+y < 0 || oy+y >= panelH {
+					continue
+				}
+				for x := 0; x < ib.Dx(); x++ {
+					if ox+x < 0 || ox+x >= it.w {
+						continue
+					}
+					p := img.Pix[y*img.Stride+x*4:]
+					o := ((oy+y)*it.w + ox + x) * 4
+					inv := 255 - uint32(p[3])
+					buf[o] = byte(uint32(p[2]) + bb*inv/255)
+					buf[o+1] = byte(uint32(p[1]) + bgn*inv/255)
+					buf[o+2] = byte(uint32(p[0]) + br*inv/255)
+				}
 			}
 		}
-		rows := 200000 / (it.w * 4)
-		if rows < 1 {
-			rows = 1
-		}
-		y0 := (panelH - it.h) / 2
-		for y := 0; y < it.h; y += rows {
-			n := rows
-			if y+n > it.h {
-				n = it.h - y
-			}
+		rows := max(200000/(it.w*4), 1) // stay under the X request size limit
+		for y := 0; y < panelH; y += rows {
+			n := min(rows, panelH-y)
 			xproto.PutImage(c, xproto.ImageFormatZPixmap, xproto.Drawable(wid), gc,
-				uint16(it.w), uint16(n), int16(it.x), int16(y0+y), 0, scr.RootDepth,
+				uint16(it.w), uint16(n), int16(it.x), int16(y), 0, scr.RootDepth,
 				buf[y*it.w*4:(y+n)*it.w*4])
 		}
 	}
@@ -199,11 +199,32 @@ func main() {
 	}
 	hit := func(x int16) *item {
 		for _, it := range items {
-			if int(x) >= it.x && int(x) < it.x+it.w {
+			if it.interactive() && int(x) >= it.x && int(x) < it.x+it.w {
 				return it
 			}
 		}
 		return nil
+	}
+
+	// Tooltips appear after the pointer rests on an item for a moment.
+	tipC := make(chan *item, 1)
+	var tipTimer *time.Timer
+	cancelTip := func() {
+		if tipTimer != nil {
+			tipTimer.Stop()
+		}
+		tip.hide()
+	}
+	armTip := func(it *item) {
+		if it == nil || it.tip == "" {
+			return
+		}
+		tipTimer = time.AfterFunc(500*time.Millisecond, func() {
+			select {
+			case tipC <- it:
+			default:
+			}
+		})
 	}
 	setHover := func(it *item) {
 		if it == hover {
@@ -211,18 +232,60 @@ func main() {
 		}
 		old := hover
 		hover = it
+		cancelTip()
 		if old != nil {
-			if old.hc != nil {
-				old.hc.send("hover off")
+			if old.hover != nil {
+				old.hover(false)
 			}
 			draw(old)
 		}
 		if it != nil {
-			if it.hc != nil {
-				it.hc.send("hover on")
+			if it.hover != nil {
+				it.hover(true)
 			}
 			draw(it)
+			armTip(it)
 		}
+	}
+
+	// install replaces the item list (initial build and reload): old items are
+	// discarded, still-connected helpers are re-bound by name, and helper
+	// supervisors are started/stopped to match.
+	install := func(cfg map[string][]string) {
+		hover = nil
+		cancelTip()
+		for _, it := range items {
+			it.discard()
+		}
+		items = buildItems(cfg)
+		want := map[string]bool{}
+		for _, it := range items {
+			if it.kind == "helper" {
+				want[it.name] = true
+				for _, hc := range helpers {
+					if hc.name == it.name && it.hc == nil {
+						bindHelper(it, hc)
+					}
+				}
+			}
+		}
+		for n, s := range sups {
+			if !want[n] {
+				close(s.stop)
+				delete(sups, n)
+			}
+		}
+		for _, it := range items {
+			if it.kind != "helper" || sups[it.name] != nil {
+				continue
+			}
+			it := it
+			s := &supervisor{name: it.name, stop: make(chan struct{}), connected: func() bool { return it.conn.Load() }}
+			sups[it.name] = s
+			go s.run()
+		}
+		relayout()
+		redrawAll()
 	}
 
 	cmds := make(chan string, 4)
@@ -252,12 +315,14 @@ func main() {
 		}
 	}()
 
+	install(cfg)
+
 	// Helpers are told to pause while the display is in standby: nothing to see,
 	// and animation would only burn battery. (A locked-but-lit screen is not
 	// detected yet; the C plugins also asked the screensaver over D-Bus.)
 	dpmsOK := dpms.Init(c) == nil
-	tick := time.NewTicker(2 * time.Second)
-	defer tick.Stop()
+	dpmsTick := time.NewTicker(2 * time.Second)
+	defer dpmsTick.Stop()
 	pauseLine := func() string {
 		if paused {
 			return "pause"
@@ -276,19 +341,9 @@ func main() {
 		case xproto.LeaveNotifyEvent:
 			setHover(nil)
 		case xproto.ButtonPressEvent:
-			it := hit(e.EventX)
-			switch {
-			case it == nil:
-			case it.hc != nil:
-				it.hc.send(fmt.Sprintf("click %d %d %d", int(e.EventX)-it.x, int(e.EventY)-(panelH-it.h)/2, e.Detail))
-			case e.Detail == 1:
-				cmd := it.l.command()
-				cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
-				if err := cmd.Start(); err != nil {
-					log.Println(err)
-					return
-				}
-				go cmd.Wait()
+			cancelTip()
+			if it := hit(e.EventX); it != nil && it.click != nil {
+				it.click(int(e.EventX)-it.x, int(e.EventY), int(e.Detail))
 			}
 		}
 	}
@@ -299,19 +354,70 @@ func main() {
 			if !ok {
 				return
 			}
+			if ee, isExp := ev.(xproto.ExposeEvent); isExp && ee.Window == tip.win {
+				tip.paint()
+				continue
+			}
 			handle(ev)
+		case u := <-updates:
+			it := u.it
+			if it.isDead() {
+				continue
+			}
+			if u.img != nil {
+				it.img = u.img
+			}
+			if u.tip != nil {
+				it.tip = *u.tip
+				if tip.shown && tip.forIt == it {
+					if it.tip == "" {
+						tip.hide()
+					} else {
+						tip.show(it, it.tip, it.x+it.w/2)
+					}
+				}
+			}
+			if u.w != it.w && !it.expand && u.w >= 0 && (u.w > 0 || u.img != nil) {
+				it.w = u.w
+				relayout()
+				redrawAll()
+				continue
+			}
+			draw(it)
+		case it := <-tipC:
+			if it == hover && it.tip != "" && !it.isDead() {
+				tip.show(it, it.tip, it.x+it.w/2)
+			}
 		case he := <-hev:
 			switch he.kind {
 			case "hello":
+				var target *item
+				for _, it := range items {
+					if it.kind == "helper" && it.name == he.hc.name && it.hc == nil {
+						target = it
+						break
+					}
+				}
+				if target == nil {
+					he.hc.kill() // not in the panel configuration
+					continue
+				}
 				helpers = append(helpers, he.hc)
+				bindHelper(target, he.hc)
 				he.hc.send(pauseLine())
 				relayout()
 				redrawAll()
 			case "image":
 				he.hc.img = he.img
-				for _, it := range items {
-					if it.hc == he.hc {
-						draw(it)
+				if it := itemFor(items, he.hc); it != nil {
+					it.img = he.img
+					draw(it)
+				}
+			case "tooltip":
+				if it := itemFor(items, he.hc); it != nil {
+					it.tip = he.text
+					if tip.shown && tip.forIt == it {
+						tip.show(it, it.tip, it.x+it.w/2)
 					}
 				}
 			case "bye":
@@ -321,10 +427,17 @@ func main() {
 						break
 					}
 				}
+				if it := itemFor(items, he.hc); it != nil {
+					unbindHelper(it)
+					if hover == it {
+						hover = nil
+						cancelTip()
+					}
+				}
 				relayout()
 				redrawAll()
 			}
-		case <-tick.C:
+		case <-dpmsTick.C:
 			if !dpmsOK {
 				continue
 			}
@@ -340,21 +453,51 @@ func main() {
 			}
 		case cmd := <-cmds:
 			switch cmd {
-			case "reload": // re-read panel config and .desktop files, redraw
+			case "reload": // re-read the xfce4-panel config, rebuild all items
 				log.Println("reload")
-				if l := loadPanelLaunchers(); len(l) > 0 {
-					launchers = l
-					relayout()
-					redrawAll()
-				}
+				install(xfconfAll())
 			case "restart": // replace this process with the (possibly rebuilt) binary
 				os.Remove(sockPath())
 				os.Remove(proto.SockPath())
 				exe, _ := os.Executable()
 				log.Fatal(syscall.Exec(exe, []string{exe}, os.Environ()))
 			case "quit":
+				for _, s := range sups {
+					close(s.stop)
+				}
+				time.Sleep(200 * time.Millisecond) // let supervisors terminate their children
 				return
 			}
 		}
 	}
+}
+
+func itemFor(items []*item, hc *helperConn) *item {
+	for _, it := range items {
+		if it.hc == hc {
+			return it
+		}
+	}
+	return nil
+}
+
+// bindHelper attaches a connected helper to its panel item.
+func bindHelper(it *item, hc *helperConn) {
+	it.hc = hc
+	it.conn.Store(true)
+	it.w, it.img, it.hl = hc.w, hc.img, false
+	it.click = func(x, y, btn int) { hc.send(fmt.Sprintf("click %d %d %d", x, y, btn)) }
+	it.hover = func(on bool) {
+		if on {
+			hc.send("hover on")
+		} else {
+			hc.send("hover off")
+		}
+	}
+}
+
+func unbindHelper(it *item) {
+	it.hc = nil
+	it.conn.Store(false)
+	it.w, it.img, it.tip, it.click, it.hover = 0, nil, "", nil, nil
 }

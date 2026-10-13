@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
+	"syscall"
 	"time"
 )
 
@@ -24,6 +26,7 @@ func SockPath() string {
 }
 
 type Client struct {
+	mu            sync.Mutex
 	conn          net.Conn
 	Width, Height int
 	Events        chan string // lines from the panel; closed when the connection ends
@@ -78,9 +81,36 @@ func Dial(name string, widthFor func(panelH int) int) (*Client, error) {
 func (c *Client) SendImage(img *image.RGBA) error {
 	b := img.Bounds()
 	hdr := []byte(fmt.Sprintf("image %d %d\n", b.Dx(), b.Dy()))
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.conn.SetWriteDeadline(time.Now().Add(2 * time.Second))
 	_, err := (&net.Buffers{hdr, img.Pix[:b.Dx()*b.Dy()*4]}).WriteTo(c.conn)
 	return err
+}
+
+// SetTooltip sets the tooltip shown when the pointer rests on the slot (Pango-lite
+// markup, newlines allowed).
+func (c *Client) SetTooltip(markup string) error {
+	esc := strings.NewReplacer(`\`, `\\`, "\n", `\n`).Replace(markup)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.conn.SetWriteDeadline(time.Now().Add(2 * time.Second))
+	_, err := fmt.Fprintf(c.conn, "tooltip %s\n", esc)
+	return err
+}
+
+// ParentAlive reports whether the panel that spawned this helper (GOPANEL_PARENT)
+// still exists; helpers started by hand have no parent and always report true.
+func ParentAlive() bool {
+	v := os.Getenv("GOPANEL_PARENT")
+	if v == "" {
+		return true
+	}
+	pid, err := strconv.Atoi(v)
+	if err != nil {
+		return true
+	}
+	return syscall.Kill(pid, 0) != syscall.ESRCH
 }
 
 func (c *Client) Close() { c.conn.Close() }

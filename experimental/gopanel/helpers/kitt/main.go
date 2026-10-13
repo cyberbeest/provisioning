@@ -6,6 +6,7 @@ package main
 import (
 	"bufio"
 	"flag"
+	"fmt"
 	"image"
 	"log"
 	"math"
@@ -13,8 +14,10 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
+	"gopanel/procinfo"
 	"gopanel/proto"
 )
 
@@ -204,7 +207,53 @@ func render(img *image.RGBA, eye float64) {
 	}
 }
 
+func cpuStatus(load float64) string {
+	switch {
+	case load < 0.10:
+		return "= Idle ="
+	case load < 0.40:
+		return "= Light load ="
+	case load < 0.70:
+		return "= Thinking hard ="
+	case load < 0.90:
+		return "= Working hard ="
+	}
+	return "= Maxed out ="
+}
+
+var loadBits atomic.Uint64 // smoothed load, shared with the tooltip goroutine
+
+// tooltipLoop keeps the tooltip current while the pointer is over the slot. The
+// per-process scan only runs from here, i.e. only while someone is looking.
+func tooltipLoop(c *proto.Client, stop <-chan struct{}) {
+	for {
+		load := math.Float64frombits(loadBits.Load())
+		base := fmt.Sprintf("CPU load: %.0f%%\n%s", load*100, cpuStatus(load))
+		c.SetTooltip(base)
+		top := procinfo.TopCPU(3, true)
+		if len(top) > 0 {
+			var b strings.Builder
+			b.WriteString(base + "\n\nTop CPU:")
+			for _, p := range top {
+				fmt.Fprintf(&b, "\n%s  %.0f%%", p.Name, p.Percent)
+			}
+			c.SetTooltip(b.String())
+		}
+		select {
+		case <-time.After(3 * time.Second):
+		case <-stop:
+			return
+		}
+	}
+}
+
 func run(c *proto.Client) {
+	var stopTip chan struct{}
+	defer func() {
+		if stopTip != nil {
+			close(stopTip)
+		}
+	}()
 	img := image.NewRGBA(image.Rect(0, 0, c.Width, c.Height))
 	lay := computeLayout(float64(c.Width), float64(c.Height))
 	var (
@@ -245,6 +294,16 @@ func run(c *proto.Client) {
 				return
 			}
 			switch ev {
+			case "hover on":
+				if stopTip == nil {
+					stopTip = make(chan struct{})
+					go tooltipLoop(c, stopTip)
+				}
+			case "hover off":
+				if stopTip != nil {
+					close(stopTip)
+					stopTip = nil
+				}
 			case "pause":
 				paused = true
 			case "resume":
@@ -254,6 +313,7 @@ func run(c *proto.Client) {
 		case <-sampleT.C:
 			if !paused {
 				cpu.sample()
+				loadBits.Store(math.Float64bits(cpu.load))
 			}
 		case now := <-frameC:
 			dt := now.Sub(last).Seconds()
@@ -296,6 +356,9 @@ func main() {
 	loadXfceRC(*rc)
 	flag.Parse()
 	for {
+		if !proto.ParentAlive() {
+			return // the panel that started us is gone
+		}
 		c, err := proto.Dial("kitt", func(h int) int { return h * aspectRatio })
 		if err != nil {
 			time.Sleep(time.Second) // panel not up yet (or restarting): keep trying

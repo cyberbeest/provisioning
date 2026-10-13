@@ -19,11 +19,12 @@ import (
 )
 
 type launcher struct {
-	name string
-	exec string
-	dir  string
-	term bool
-	img  *image.RGBA
+	name    string
+	comment string
+	exec    string
+	dir     string
+	term    bool
+	img     *image.RGBA
 }
 
 var fieldCode = regexp.MustCompile(`%[fFuUdDnNickvm]`)
@@ -63,33 +64,6 @@ func xfconfAll() map[string][]string {
 	return m
 }
 
-// loadPanelLaunchers mirrors the xfce4-panel config: panel-1's plugin ids in
-// order, keeping those that are "launcher" plugins, and their .desktop items.
-func loadPanelLaunchers() []*launcher {
-	home, _ := os.UserHomeDir()
-	cfg := xfconfAll()
-	var res []*launcher
-	for _, id := range cfg["/panels/panel-1/plugin-ids"] {
-		if t := cfg["/plugins/plugin-"+id]; len(t) == 0 || t[0] != "launcher" {
-			continue
-		}
-		for _, item := range cfg["/plugins/plugin-"+id+"/items"] {
-			path := filepath.Join(home, ".config/xfce4/panel/launcher-"+id, item)
-			if _, err := os.Stat(path); err != nil {
-				path = filepath.Join("/usr/share/applications", item)
-			}
-			l, icon := parseDesktop(path)
-			if l == nil {
-				log.Println("skipping", path)
-				continue
-			}
-			l.img = loadIcon(icon)
-			res = append(res, l)
-		}
-	}
-	return res
-}
-
 func parseDesktop(path string) (*launcher, string) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -113,6 +87,8 @@ func parseDesktop(path string) (*launcher, string) {
 		switch k { // unlocalised keys only
 		case "Name":
 			l.name = v
+		case "Comment":
+			l.comment = v
 		case "Exec":
 			l.exec = v
 		case "Icon":
@@ -132,7 +108,7 @@ func parseDesktop(path string) (*launcher, string) {
 var iconThemes = []string{"Tango", "gnome", "Adwaita", "hicolor", "oxygen"}
 
 // findIcon resolves an Icon= value: absolute path, or a themed name searched
-// across the theme dirs. Prefers SVG, else the smallest PNG >= slot, else the largest.
+// across the theme dirs. Prefers SVG, else the smallest PNG >= iconSize, else the largest.
 func findIcon(name string) string {
 	if filepath.IsAbs(name) {
 		return name
@@ -178,14 +154,14 @@ func iconScore(p string) int {
 			}
 		}
 	}
-	if sz >= slot {
+	if sz >= iconSize {
 		return 5000 - sz
 	}
 	return sz
 }
 
 func loadIcon(name string) *image.RGBA {
-	dst := image.NewRGBA(image.Rect(0, 0, slot, slot))
+	dst := image.NewRGBA(image.Rect(0, 0, iconSize, iconSize))
 	p := findIcon(name)
 	if p == "" {
 		log.Println("icon not found:", name)
@@ -202,8 +178,8 @@ func loadIcon(name string) *image.RGBA {
 			log.Println(p, err)
 			return dst
 		}
-		ic.SetTarget(0, 0, slot, slot)
-		ic.Draw(rasterx.NewDasher(slot, slot, rasterx.NewScannerGV(slot, slot, dst, dst.Bounds())), 1)
+		ic.SetTarget(0, 0, float64(iconSize), float64(iconSize))
+		ic.Draw(rasterx.NewDasher(iconSize, iconSize, rasterx.NewScannerGV(iconSize, iconSize, dst, dst.Bounds())), 1)
 		return dst
 	}
 	src, _, err := image.Decode(f)
