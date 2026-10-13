@@ -98,8 +98,7 @@ func (t *tooltip) paint() {
 		p := t.img.Pix[i*4:]
 		buf[i*4], buf[i*4+1], buf[i*4+2] = p[2], p[1], p[0]
 	}
-	xproto.PutImage(t.c, xproto.ImageFormatZPixmap, xproto.Drawable(t.win), t.gc,
-		uint16(w), uint16(h), 0, 0, 0, t.scr.RootDepth, buf)
+	putBGRX(t.c, xproto.Drawable(t.win), t.gc, t.scr.RootDepth, 0, 0, w, h, buf)
 }
 
 func (t *tooltip) hide() {

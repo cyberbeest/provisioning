@@ -7,9 +7,9 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/godbus/dbus/v5"
 	"github.com/godbus/dbus/v5/prop"
@@ -402,6 +402,10 @@ func (t *tray) onClick(x, y, btn int) {
 	obj := t.conn.Object(ic.owner, ic.path)
 	switch btn {
 	case 1:
+		if ic.itemIsMenu && ic.menu != "" {
+			go t.showMenu(ic, int(sx))
+			return
+		}
 		method := itemIface + ".Activate"
 		if ic.itemIsMenu {
 			method = itemIface + ".ContextMenu"
@@ -410,6 +414,10 @@ func (t *tray) onClick(x, y, btn int) {
 	case 2:
 		go obj.Call(itemIface+".SecondaryActivate", 0, sx, sy)
 	case 3:
+		if ic.menu != "" {
+			go t.showMenu(ic, int(sx))
+			return
+		}
 		go obj.Call(itemIface+".ContextMenu", 0, sx, sy)
 	case 4, 5:
 		d := int32(-1)
@@ -420,4 +428,80 @@ func (t *tray) onClick(x, y, btn int) {
 	}
 }
 
-var _ = sort.Strings
+const menuIface = "com.canonical.dbusmenu"
+
+// showMenu fetches the item's dbusmenu layout and asks the main goroutine to pop it up.
+func (t *tray) showMenu(ic *trayIcon, anchorX int) {
+	obj := t.conn.Object(ic.owner, ic.menu)
+	obj.Call(menuIface+".AboutToShow", 0, int32(0)) // lets the app refresh its menu
+	call := obj.Call(menuIface+".GetLayout", 0, int32(0), int32(-1), []string{})
+	if call.Err != nil || len(call.Body) < 2 {
+		return
+	}
+	root, ok := call.Body[1].([]interface{})
+	if !ok {
+		return
+	}
+	top := parseMenuNode(root)
+	if top == nil || len(top.children) == 0 {
+		return
+	}
+	menuReqs <- menuReq{items: top.children, anchorX: anchorX, onSelect: func(mi *menuItem) {
+		go obj.Call(menuIface+".Event", 0, mi.id, "clicked", dbus.MakeVariant(int32(0)), uint32(time.Now().Unix()))
+	}}
+}
+
+// parseMenuNode converts a dbusmenu layout node (ia{sv}av) into menuItems.
+func parseMenuNode(n []interface{}) *menuItem {
+	if len(n) < 3 {
+		return nil
+	}
+	id, _ := n[0].(int32)
+	props, _ := n[1].(map[string]dbus.Variant)
+	pstr := func(k string) string {
+		if v, ok := props[k]; ok {
+			s, _ := v.Value().(string)
+			return s
+		}
+		return ""
+	}
+	pbool := func(k string, def bool) bool {
+		if v, ok := props[k]; ok {
+			if b, ok := v.Value().(bool); ok {
+				return b
+			}
+		}
+		return def
+	}
+	mi := &menuItem{id: id, label: pstr("label"), sep: pstr("type") == "separator",
+		disabled: !pbool("enabled", true), toggle: pstr("toggle-type")}
+	if v, ok := props["toggle-state"]; ok {
+		if s, ok := v.Value().(int32); ok {
+			mi.checked = s == 1
+		}
+	}
+	if nm := pstr("icon-name"); nm != "" {
+		mi.icon = loadIconSized(nm, 16)
+	}
+	kids, _ := n[2].([]dbus.Variant)
+	for _, kv := range kids {
+		kn, _ := kv.Value().([]interface{})
+		if child := parseMenuNode(kn); child != nil && pboolOf(kn, "visible") {
+			mi.children = append(mi.children, child)
+		}
+	}
+	return mi
+}
+
+func pboolOf(n []interface{}, key string) bool {
+	if len(n) < 2 {
+		return true
+	}
+	props, _ := n[1].(map[string]dbus.Variant)
+	if v, ok := props[key]; ok {
+		if b, ok := v.Value().(bool); ok {
+			return b
+		}
+	}
+	return true
+}

@@ -22,7 +22,7 @@ import (
 	"gopanel/proto"
 )
 
-const version = "0.5.0"
+const version = "0.5.1"
 
 var (
 	panelH       = 35 // overridden from the xfce4-panel config
@@ -120,6 +120,7 @@ func main() {
 	xproto.CreateGC(c, gc, xproto.Drawable(wid), 0, nil)
 	xproto.MapWindow(c, wid)
 	tip := newTooltip(c, scr, gc)
+	menus := newMenuMgr(c, scr, gc)
 
 	var (
 		items   []*item
@@ -185,13 +186,7 @@ func main() {
 				}
 			}
 		}
-		rows := max(200000/(it.w*4), 1) // stay under the X request size limit
-		for y := 0; y < panelH; y += rows {
-			n := min(rows, panelH-y)
-			xproto.PutImage(c, xproto.ImageFormatZPixmap, xproto.Drawable(wid), gc,
-				uint16(it.w), uint16(n), int16(it.x), int16(y), 0, scr.RootDepth,
-				buf[y*it.w*4:(y+n)*it.w*4])
-		}
+		putBGRX(c, xproto.Drawable(wid), gc, scr.RootDepth, it.x, 0, it.w, panelH, buf)
 	}
 	redrawAll := func() {
 		xproto.ClearArea(c, false, wid, 0, 0, 0, 0)
@@ -329,9 +324,20 @@ func main() {
 	// Helpers are told to pause while the display is in standby: nothing to see,
 	// and animation would only burn battery. (A locked-but-lit screen is not
 	// detected yet; the C plugins also asked the screensaver over D-Bus.)
-	dpmsOK := dpms.Init(c) == nil
-	dpmsTick := time.NewTicker(2 * time.Second)
-	defer dpmsTick.Stop()
+	dpmsC := make(chan bool, 1)
+	if dpms.Init(c) == nil {
+		go func() { // own goroutine: a reply that never comes must not freeze the main loop
+			for {
+				time.Sleep(2 * time.Second)
+				if info, err := dpms.Info(c).Reply(); err == nil {
+					select {
+					case dpmsC <- info.State && info.PowerLevel != dpms.DPMSModeOn:
+					default:
+					}
+				}
+			}
+		}()
+	}
 	pauseLine := func() string {
 		if paused {
 			return "pause"
@@ -379,7 +385,13 @@ func main() {
 				tip.paint()
 				continue
 			}
+			if menus.handle(ev) {
+				continue
+			}
 			handle(ev)
+		case req := <-menuReqs:
+			cancelTip()
+			menus.open(req)
 		case u := <-updates:
 			it := u.it
 			if it.isDead() {
@@ -473,15 +485,8 @@ func main() {
 				relayout()
 				redrawAll()
 			}
-		case <-dpmsTick.C:
-			if !dpmsOK {
-				continue
-			}
-			info, err := dpms.Info(c).Reply()
-			if err != nil {
-				continue
-			}
-			if off := info.State && info.PowerLevel != dpms.DPMSModeOn; off != paused {
+		case off := <-dpmsC:
+			if off != paused {
 				paused = off
 				for _, hc := range helpers {
 					hc.send(pauseLine())

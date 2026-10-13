@@ -160,8 +160,10 @@ func iconScore(p string) int {
 	return sz
 }
 
-func loadIcon(name string) *image.RGBA {
-	dst := image.NewRGBA(image.Rect(0, 0, iconSize, iconSize))
+func loadIcon(name string) *image.RGBA { return loadIconSized(name, iconSize) }
+
+func loadIconSized(name string, size int) *image.RGBA {
+	dst := image.NewRGBA(image.Rect(0, 0, size, size))
 	p := findIcon(name)
 	if p == "" {
 		log.Println("icon not found:", name)
@@ -178,8 +180,8 @@ func loadIcon(name string) *image.RGBA {
 			log.Println(p, err)
 			return dst
 		}
-		ic.SetTarget(0, 0, float64(iconSize), float64(iconSize))
-		ic.Draw(rasterx.NewDasher(iconSize, iconSize, rasterx.NewScannerGV(iconSize, iconSize, dst, dst.Bounds())), 1)
+		ic.SetTarget(0, 0, float64(size), float64(size))
+		ic.Draw(rasterx.NewDasher(size, size, rasterx.NewScannerGV(size, size, dst, dst.Bounds())), 1)
 		return dst
 	}
 	src, _, err := image.Decode(f)
