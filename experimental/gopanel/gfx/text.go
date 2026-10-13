@@ -302,13 +302,22 @@ func runs(spans []Span, basePx float64) []run {
 // Metrics describes one line of laid-out text.
 type Metrics struct{ W, H, Ascent int }
 
+// measureNoKern is font.MeasureString without kerning. At panel sizes the hinted glyphs
+// snap to whole pixels, and a kerning pair such as "Te" then makes the letters touch.
+func measureNoKern(fc font.Face, text string) (w fixed.Int26_6) {
+	for _, ch := range text {
+		w += font.MeasureString(fc, string(ch))
+	}
+	return
+}
+
 func measureRuns(rs []run) (w fixed.Int26_6, asc, desc int) {
 	for _, r := range rs {
 		fc := face(r.path, r.px)
 		if fc == nil {
 			continue
 		}
-		w += font.MeasureString(fc, r.text)
+		w += measureNoKern(fc, r.text)
 		m := fc.Metrics()
 		if a := m.Ascent.Ceil(); a > asc {
 			asc = a
@@ -341,7 +350,9 @@ func Draw(dst *image.RGBA, x, y int, spans []Span, basePx float64) int {
 			continue
 		}
 		d := font.Drawer{Dst: dst, Src: image.NewUniform(r.col), Face: fc, Dot: dot}
-		d.DrawString(r.text)
+		for _, ch := range r.text {
+			d.DrawString(string(ch))
+		}
 		dot = d.Dot
 	}
 	return (dot.X - fixed.I(x)).Ceil()

@@ -25,7 +25,7 @@ import (
 	"gopanel/proto"
 )
 
-const version = "0.8.0"
+const version = "0.8.1"
 
 var (
 	xc            *xgb.Conn // shared X connection (goroutine-safe)
