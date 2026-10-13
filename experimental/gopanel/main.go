@@ -344,7 +344,8 @@ func main() {
 		return it.tip
 	}
 	armTip := func(it *item) {
-		if it == nil || (it.tip == "" && it.tipAt == nil) {
+		// helpers send their tooltip lazily after "hover on", so an empty tip is still armed
+		if it == nil || (it.tip == "" && it.tipAt == nil && it.kind != "helper") {
 			return
 		}
 		rep := activeRep // the tooltip belongs to the panel the pointer is on
