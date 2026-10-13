@@ -50,6 +50,10 @@ use_gopanel() {
 }
 
 use_xfce() {
+	# gopanel owns the XEmbed tray selection; xfce4-panel's systray does not retry, so
+	# release it before the panel starts.
+	pgrep -x gopanel >/dev/null && "$(gopanel_bin)" yield
+	sleep 0.5
 	rm -f "$MARKER"
 	wait_for 8 xfce4-panel || launch xfce4-panel # the watchdog normally does this within 5 s
 	wait_for 10 xfce4-panel

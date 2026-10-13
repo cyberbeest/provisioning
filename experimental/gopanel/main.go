@@ -25,7 +25,9 @@ import (
 	"gopanel/proto"
 )
 
-const version = "0.9.1"
+const version = "0.10.0"
+
+var ctlCmds chan<- string // control commands into the main loop
 
 var (
 	xc            *xgb.Conn // shared X connection (goroutine-safe)
@@ -114,6 +116,7 @@ func main() {
 	panelScreenY = sh - uint16(panelH)
 	xc, xroot = c, scr.Root
 	wid, _ := xproto.NewWindowId(c)
+	panelWin = wid
 	xproto.CreateWindow(c, scr.RootDepth, wid, scr.Root,
 		0, int16(int(sh)-panelH), sw, uint16(panelH), 0,
 		xproto.WindowClassInputOutput, scr.RootVisual,
@@ -175,6 +178,7 @@ func main() {
 			}
 			x += it.w
 		}
+		xt.place()
 	}
 
 	// draw composites the item's image (premultiplied RGBA, centred) over the panel or
@@ -220,6 +224,10 @@ func main() {
 		for _, it := range items {
 			draw(it)
 		}
+	}
+	reflow = func() {
+		relayout()
+		redrawAll()
 	}
 	hit := func(x int16) *item {
 		for _, it := range items {
@@ -325,6 +333,7 @@ func main() {
 	}
 
 	cmds := make(chan string, 4)
+	ctlCmds = cmds
 	ctlServer(cmds)
 	watchConfig(cmds)
 	defer os.Remove(sockPath())
@@ -380,6 +389,9 @@ func main() {
 	}
 
 	handle := func(ev xgb.Event) {
+		if xt.handle(ev) {
+			return
+		}
 		switch e := ev.(type) {
 		case xproto.ExposeEvent:
 			if e.Count == 0 {
@@ -428,8 +440,11 @@ func main() {
 		}
 	}
 
+	xtTick := xtrayTick()
 	for {
 		select {
+		case <-xtTick:
+			xt.tryAcquire()
 		case ev, ok := <-events:
 			if !ok {
 				return
@@ -564,6 +579,8 @@ func main() {
 				log.Fatal(syscall.Exec(exe, []string{exe}, os.Environ()))
 			case "menu":
 				toggleWhisker()
+			case "yield":
+				xt.yieldTray()
 			case "quit":
 				for _, s := range sups {
 					close(s.stop)
@@ -644,6 +661,10 @@ func panelMenu(x int, cmds chan<- string) {
 // up with the proper session environment, launching it directly only if the
 // watchdog (not installed everywhere) does not.
 func toggleXfcePanel() {
+	if !xfcePanelRunning() {
+		ctlCmds <- "yield" // so its systray can own the XEmbed tray selection
+		time.Sleep(300 * time.Millisecond)
+	}
 	dir := os.Getenv("XDG_RUNTIME_DIR")
 	if dir == "" {
 		dir = os.TempDir()

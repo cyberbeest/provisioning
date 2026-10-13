@@ -79,7 +79,7 @@ func buildItems(cfg map[string][]string) []*item {
 		case t == "tasklist":
 			items = append(items, newTaskbarItem())
 		case t == "systray":
-			items = append(items, newTrayItem())
+			items = append(items, newTrayItem(), newXTrayItem())
 		case t == "power-manager-plugin":
 			items = append(items, newPowerItem())
 		case t == "pulseaudio":

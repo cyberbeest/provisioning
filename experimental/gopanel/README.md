@@ -40,8 +40,12 @@ a dead xfce4-panel, so Stop writes `$XDG_RUNTIME_DIR/cyberbeest-xfce-panel-stopp
 watchdog respects until Start removes it (or the next login). Scripts that reload the panel
 (lib/xfce-panel-reload.sh, panel-icon toggles) ignore the marker. The Whisker entry
 "Cyberbeest Panel (experimental)" (cyberbeest-gopanel.desktop) starts this panel; a second
-instance refuses to start. Which panel starts at login is not wired up yet.
-StatusNotifier icons need the watcher that xfce4-panel owns, so they vanish while it is stopped.
+instance refuses to start.
+When xfce4-panel is gone gopanel becomes the StatusNotifier watcher (and rescans the bus for items that
+registered with the old one) and owns the XEmbed tray selection (xembed.go), so Telegram, nm-applet and
+friends dock into it; `gopanel yield` hands the selection back before xfce4-panel starts.
+Switching is done by cyberbeest-panel-choice.sh (also run at login via cyberbeest-panel-choice.desktop,
+chosen in Cyberbeest Settings > Panel); cyberbeest-whisker-key.sh is the Windows-key binding.
 
 ## Notes
 
@@ -50,5 +54,5 @@ StatusNotifier icons need the watcher that xfce4-panel owns, so they vanish whil
   desynchronise and hang the next reply.
 - Control and helper sockets are reachable by same-uid jailed apps: commands carry no data,
   nothing can launch anything. Helpers can draw into the panel, though.
-- Not done: XEmbed (legacy) tray, volume/clock/power popups, per-plugin settings dialogs,
+- Not done: volume/clock/power popups, per-plugin settings dialogs,
   translations, screensaver-aware pausing (only DPMS standby pauses helpers).
