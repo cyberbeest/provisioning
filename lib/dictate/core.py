@@ -540,7 +540,9 @@ def _heal_silent_microphone(frames, source):
             log.warning("stall state: %s", _stall_snapshot())
             seen = tm["blocks"]
             subprocess.run(["pactl", "suspend-source", name, "1"], timeout=3, check=False)
-            time.sleep(0.2)
+            # How long the source stays suspended matters: with 0.2 s the restart failed three times
+            # in a row (2026-10-13), 0.5 s worked before. Each retry waits longer.
+            time.sleep((0.5, 1.0, 2.0)[min(nudges, 3) - 1])
             subprocess.run(["pactl", "suspend-source", name, "0"], timeout=3, check=False)
             time.sleep(1.0)
             if tm["blocks"] > seen:
