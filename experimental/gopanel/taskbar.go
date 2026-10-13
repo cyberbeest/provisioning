@@ -109,6 +109,8 @@ func newTaskbarItem() *item {
 	it.hl = false
 	it.want = func() int { return len(tb.shown()) * (tbMaxButton + tbGap) }
 	it.resize = func(w int) { tb.w = w; tb.render() }
+	it.imgAt = tb.renderImg
+	it.ctxW = func(w int) { tb.w = w }
 	it.motion = func(x int) {
 		if i := tb.indexAt(x); i != tb.hover {
 			tb.hover = i
@@ -284,11 +286,13 @@ func (tb *taskbar) shown() []*twin {
 	return out
 }
 
-func (tb *taskbar) buttonWidth(n int) int {
+func (tb *taskbar) buttonWidth(n int) int { return tb.buttonWidthFor(tb.w, n) }
+
+func (tb *taskbar) buttonWidthFor(w, n int) int {
 	if n == 0 {
 		return 0
 	}
-	return min(tbMaxButton, (tb.w-(n-1)*tbGap)/n)
+	return min(tbMaxButton, (w-(n-1)*tbGap)/n)
 }
 
 func (tb *taskbar) indexAt(x int) int {
@@ -337,9 +341,17 @@ func (tb *taskbar) render() {
 	if tb.w <= 0 {
 		return
 	}
+	tb.it.img = tb.renderImg(tb.w)
+	if drawItem != nil && tb.it.w > 0 {
+		drawItem(tb.it)
+	}
+}
+
+// renderImg draws the buttons for a taskbar w px wide (the panel's own, or a replica's).
+func (tb *taskbar) renderImg(w int) *image.RGBA {
 	vis := tb.shown()
-	img := image.NewRGBA(image.Rect(0, 0, tb.w, panelH))
-	bw := tb.buttonWidth(len(vis))
+	img := image.NewRGBA(image.Rect(0, 0, w, panelH))
+	bw := tb.buttonWidthFor(w, len(vis))
 	bh := panelH - 6
 	for i, w := range vis {
 		x0, y0 := i*(bw+tbGap), 3
@@ -376,10 +388,7 @@ func (tb *taskbar) render() {
 			gfx.Draw(img, tx, y0+(bh-m.H)/2, sp, labelPx)
 		}
 	}
-	tb.it.img = img
-	if drawItem != nil && tb.it.w > 0 {
-		drawItem(tb.it)
-	}
+	return img
 }
 
 // fillRRect draws an anti-aliased rounded rectangle with a 1px border.
@@ -462,7 +471,7 @@ func (tb *taskbar) onClick(x, y, btn int) {
 		if tw.maximized {
 			max.label = tr("Unmaximize")
 		}
-		menuReqs <- menuReq{
+		menuReqs <- menuReq{rep: activeRep,
 			items:   []*menuItem{min, max, {sep: true}, {id: 3, label: tr("Close")}},
 			anchorX: tb.it.x + i*(tb.buttonWidth(len(vis))+tbGap) + tb.buttonWidth(len(vis))/2,
 			onSelect: func(mi *menuItem) {

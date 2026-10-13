@@ -468,7 +468,7 @@ func (t *tray) showMenu(ic *trayIcon, anchorX int) {
 	if top == nil || len(top.children) == 0 {
 		return
 	}
-	menuReqs <- menuReq{items: top.children, anchorX: anchorX, onSelect: func(mi *menuItem) {
+	menuReqs <- menuReq{rep: activeRep, items: top.children, anchorX: anchorX, onSelect: func(mi *menuItem) {
 		go obj.Call(menuIface+".Event", 0, mi.id, "clicked", dbus.MakeVariant(int32(0)), uint32(time.Now().Unix()))
 	}}
 }

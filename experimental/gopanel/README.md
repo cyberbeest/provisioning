@@ -47,6 +47,18 @@ friends dock into it; `gopanel yield` hands the selection back before xfce4-pane
 Switching is done by cyberbeest-panel-choice.sh (also run at login via cyberbeest-panel-choice.desktop,
 chosen in Cyberbeest Settings > Panel); cyberbeest-whisker-key.sh is the Windows-key binding.
 
+## Monitors
+
+The panel lives on one monitor: `MONITOR=` in `~/.config/cyberbeest/panel.conf` (Settings > Panel, shown
+with 2+ monitors) is `auto` (output named in the xfce4-panel config, else primary, else leftmost), an
+output name, or `all`. With `all` every other monitor gets a replica: its own window, strut and layout
+(taskbar and spacers use that monitor's width), same items. XEmbed tray icons are real windows and stay on
+the main panel; replicas leave that slot out. Events on a replica run through `withReplica` (panels.go),
+which makes it the current panel (monitor globals, item x/width) for the duration. Setting changes and
+monitor changes (RandR screen/output/CRTC events, `gopanel reload`) rebuild the replicas.
+Test without hardware: Xvfb + `xrandr --setmonitor` (delete the `screen` monitor via `--output screen --off`),
+gopanel under `dbus-run-session` with its own HOME and XDG_RUNTIME_DIR.
+
 ## Shipping
 
 Machines do not build it. `release.sh --publish` builds panel + helpers, packs a reproducible

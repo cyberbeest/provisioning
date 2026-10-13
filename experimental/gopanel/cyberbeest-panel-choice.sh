@@ -66,9 +66,9 @@ use_xfce() {
 
 saved() { grep -qx 'PANEL=gopanel' "$CONF" 2>/dev/null && echo gopanel || echo xfce; }
 
-save() {
+save() { # keeps the other settings in the file (MONITOR=...)
 	mkdir -p "$(dirname "$CONF")"
-	echo "PANEL=$1" >"$CONF"
+	{ echo "PANEL=$1"; grep -v '^PANEL=' "$CONF" 2>/dev/null || true; } >"$CONF.new" && mv "$CONF.new" "$CONF"
 }
 
 echo "== $(date) $*"

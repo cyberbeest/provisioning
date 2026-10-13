@@ -59,9 +59,13 @@ STRINGS = {
     "settings.tab_power": "Extended power options",
     "settings.tab_panel": "Panel",
     "panel.info": "Choose which panel is shown at the bottom of the screen. The change takes effect right away and is kept for the next login.",
-    "panel.xfce": "XFCE panel (default)",
-    "panel.gopanel": "Cyberbeest panel (experimental)",
-    "panel.note": "The panels swap within a few seconds. The experimental panel does not support every tray icon yet.",
+    "panel.xfce": "XFCE panel",
+    "panel.gopanel": "Cyberbeest panel (default)",
+    "panel.note": "The panels swap within a few seconds.",
+    "panel.monitor_label": "Show the Cyberbeest panel on:",
+    "panel.monitor_auto": "Automatic (primary monitor)",
+    "panel.monitor_all": "All monitors (copies of the panel)",
+    "panel.monitor_note": "Copies show everything except tray icons that are real windows; those stay on the main panel.",
 
     "lockpower.window_title": "Cyberbeest Extended Power Options",
     "lockpower.info": (

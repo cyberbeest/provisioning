@@ -31,7 +31,7 @@ import (
 	"gopanel/proto"
 )
 
-const version = "0.21.13"
+const version = "0.21.15"
 
 var ctlCmds chan<- string // control commands into the main loop
 
@@ -119,6 +119,7 @@ func main() {
 	defer c.Close()
 	scr := xproto.Setup(c).DefaultScreen(c)
 	initRandr(c, scr.Root)
+	applyMonitorChoice(cfg)
 	queryMonitor(c, scr)
 	sw := uint16(monW)
 
@@ -160,6 +161,7 @@ func main() {
 	xproto.CreatePixmap(c, scr.RootDepth, back, xproto.Drawable(wid), uint16(backW), uint16(panelH))
 	bgGC, _ := xproto.NewGcontextId(c)
 	xproto.CreateGC(c, bgGC, xproto.Drawable(back), xproto.GcForeground, []uint32{panelBg})
+	panelGCs.c, panelGCs.scr, panelGCs.gc, panelGCs.bgGC = c, scr, gc, bgGC
 	tip := newTooltip(c, scr, gc)
 	noticeTip = newTooltip(c, scr, gc)
 	menus := newMenuMgr(c, scr, gc)
@@ -176,63 +178,32 @@ func main() {
 		hover   *item
 		paused  bool
 	)
+	curHover = func() *item { return hover }
 
 	// relayout assigns x positions; expanding items share whatever width is left.
 	relayout := func() {
+		if swapped { // a replica's event handler is running: redo it once the swap is undone
+			pendingRelayout = true
+			return
+		}
 		for _, it := range items { // a tray keeps its recorded slot while the apps dock
 			if it.hold > it.w {
 				it.w = it.hold
 			}
 		}
-		fixed := 4 // 4px right margin
-		var exp []*item
+		xs, ws := computeLayout(items, monW, false)
 		for _, it := range items {
+			it.x = xs[it]
 			if it.expand {
-				exp = append(exp, it)
-			} else {
-				fixed += it.w
-			}
-		}
-		// Free width goes first to expanding items that say how much they can use (the taskbar:
-		// a full-width button per window), in panel order; fillers (the expanding separator) get
-		// the rest. With no filler the users take everything, so the right side stays right.
-		left := max(monW-fixed, 0)
-		alloc := map[*item]int{}
-		var users, fillers []*item
-		for _, it := range exp {
-			if it.want != nil {
-				users = append(users, it)
-			} else {
-				fillers = append(fillers, it)
-			}
-		}
-		if len(fillers) == 0 && len(users) > 0 {
-			for _, it := range users {
-				alloc[it] = left / len(users)
-			}
-		} else {
-			for _, it := range users {
-				w := min(it.want(), left)
-				alloc[it] = w
-				left -= w
-			}
-			for _, it := range fillers {
-				alloc[it] = left / len(fillers)
-			}
-		}
-		x := 0
-		for _, it := range items {
-			it.x = x
-			if it.expand {
-				if nw := alloc[it]; nw != it.w {
+				if nw := ws[it]; nw != it.w {
 					it.w = nw
 					if it.resize != nil {
 						it.resize(nw)
 					}
 				}
 			}
-			x += it.w
 		}
+		layoutReplicas()
 		xt.place()
 		scheduleRecord()
 	}
@@ -247,45 +218,21 @@ func main() {
 		if it == hover && it.hl {
 			bg = hoverBg
 		}
-		br, bgn, bb := uint32(byte(bg>>16)), uint32(byte(bg>>8)), uint32(byte(bg))
 		need := it.w * panelH * 4
 		if cap(it.drawBuf) < need { // reused between frames: animated items draw 20-40 times a second
 			it.drawBuf = make([]byte, need)
 		}
 		buf := it.drawBuf[:need]
-		buf[0], buf[1], buf[2], buf[3] = byte(bb), byte(bgn), byte(br), 0
-		for n := 4; n < need; n *= 2 { // fill with the background colour by doubling copies
-			copy(buf[n:], buf[:n])
-		}
-		if img := it.img; img != nil {
-			ib := img.Bounds()
-			ox, oy := (it.w-ib.Dx())/2, (panelH-ib.Dy())/2
-			if it.hold > 0 {
-				ox = 0 // icons fill the held slot from the left, so they do not slide as more dock
-			}
-			for y := 0; y < ib.Dy(); y++ {
-				if oy+y < 0 || oy+y >= panelH {
-					continue
-				}
-				for x := 0; x < ib.Dx(); x++ {
-					if ox+x < 0 || ox+x >= it.w {
-						continue
-					}
-					p := img.Pix[y*img.Stride+x*4:]
-					o := ((oy+y)*it.w + ox + x) * 4
-					inv := 255 - uint32(p[3])
-					buf[o] = byte(uint32(p[2]) + bb*inv/255)
-					buf[o+1] = byte(uint32(p[1]) + bgn*inv/255)
-					buf[o+2] = byte(uint32(p[0]) + br*inv/255)
-				}
-			}
-		}
+		composite(buf, it.w, it.img, it.hold > 0, bg)
 		putBGRX(c, xproto.Drawable(back), gc, scr.RootDepth, it.x, 0, it.w, panelH, buf)
 		if copyOut {
 			xproto.CopyArea(c, xproto.Drawable(back), xproto.Drawable(wid), gc, int16(it.x), 0, int16(it.x), 0, uint16(it.w), uint16(panelH))
 		}
 	}
-	draw := func(it *item) { drawTo(it, true) }
+	draw := func(it *item) {
+		drawTo(it, true)
+		drawReplicas(it)
+	}
 	drawItem = draw
 	redrawAll := func() {
 		xproto.PolyFillRectangle(c, xproto.Drawable(back), bgGC, []xproto.Rectangle{{X: 0, Y: 0, Width: uint16(backW), Height: uint16(panelH)}})
@@ -293,8 +240,33 @@ func main() {
 			drawTo(it, false)
 		}
 		xproto.CopyArea(c, xproto.Drawable(back), xproto.Drawable(wid), gc, 0, 0, 0, 0, uint16(backW), uint16(panelH))
+		redrawReplicas()
 	}
 	reflow = func() {
+		relayout()
+		redrawAll()
+	}
+	// reposition moves the panel to the monitor pickMonitor chooses now (a no-op when that
+	// monitor's rectangle is the one it is already on).
+	lastSig := ""
+	reposition := func() {
+		queryMonitor(c, scr)
+		sig := monitorSig() + "|" + panelOutput
+		if sig == lastSig {
+			return
+		}
+		lastSig = sig
+		wh.close()
+		menus.close()
+		closePopup()
+		xproto.ConfigureWindow(c, wid, xproto.ConfigWindowX|xproto.ConfigWindowY|xproto.ConfigWindowWidth|xproto.ConfigWindowHeight,
+			[]uint32{uint32(monX), uint32(panelTopY()), uint32(monW), uint32(panelH)})
+		setStrut()
+		xproto.FreePixmap(c, back)
+		backW = monW
+		back, _ = xproto.NewPixmapId(c)
+		xproto.CreatePixmap(c, scr.RootDepth, back, xproto.Drawable(wid), uint16(backW), uint16(panelH))
+		rebuildReplicas(monRect{x: monX, y: monY, w: monW, h: monH})
 		relayout()
 		redrawAll()
 	}
@@ -308,7 +280,11 @@ func main() {
 	}
 
 	// Tooltips appear after the pointer rests on an item for a moment.
-	tipC := make(chan *item, 1)
+	type tipReq struct {
+		it  *item
+		rep *replica
+	}
+	tipC := make(chan tipReq, 1)
 	var tipTimer *time.Timer
 	cancelTip := func() {
 		if tipTimer != nil {
@@ -327,9 +303,10 @@ func main() {
 		if it == nil || (it.tip == "" && it.tipAt == nil) {
 			return
 		}
+		rep := activeRep // the tooltip belongs to the panel the pointer is on
 		tipTimer = time.AfterFunc(500*time.Millisecond, func() {
 			select {
-			case tipC <- it:
+			case tipC <- tipReq{it, rep}:
 			default:
 			}
 		})
@@ -361,6 +338,8 @@ func main() {
 	// discarded, still-connected helpers are re-bound by name, and helper
 	// supervisors are started/stopped to match.
 	install := func(cfg map[string][]string) {
+		applyMonitorChoice(cfg)
+		reposition() // no-op unless the monitor setup or the choice changed
 		hover = nil
 		cancelTip()
 		for _, it := range items {
@@ -371,6 +350,7 @@ func main() {
 		}
 		taskbars = nil
 		items = buildItems(cfg)
+		panelItems = items
 		want := map[string]bool{}
 		for _, it := range items {
 			if it.kind == "helper" {
@@ -434,6 +414,7 @@ func main() {
 
 	go reapZombies()
 	install(cfg)
+	reposition()    // creates the replica panels, if the setting asks for them
 	xt.tryAcquire() // right away: while nobody owns the tray, apps show their icon as a stray window
 	whReady := make(chan whiskerData, 1)
 	go preloadWhisker(whReady)
@@ -478,21 +459,9 @@ func main() {
 			return
 		}
 		switch e := ev.(type) {
-		case randr.ScreenChangeNotifyEvent:
-			// monitor plugged/unplugged or resolution changed: follow the primary monitor
-			wh.close()
-			menus.close()
-			closePopup()
-			queryMonitor(c, scr)
-			xproto.ConfigureWindow(c, wid, xproto.ConfigWindowX|xproto.ConfigWindowY|xproto.ConfigWindowWidth|xproto.ConfigWindowHeight,
-				[]uint32{uint32(monX), uint32(panelTopY()), uint32(monW), uint32(panelH)})
-			setStrut()
-			xproto.FreePixmap(c, back)
-			backW = monW
-			back, _ = xproto.NewPixmapId(c)
-			xproto.CreatePixmap(c, scr.RootDepth, back, xproto.Drawable(wid), uint16(backW), uint16(panelH))
-			relayout()
-			redrawAll()
+		case randr.ScreenChangeNotifyEvent, randr.NotifyEvent:
+			// monitor plugged/unplugged, made primary, or resolution changed
+			reposition()
 		case xproto.KeyPressEvent:
 			mediaKey(e.Detail)
 		case xproto.ExposeEvent:
@@ -560,6 +529,14 @@ func main() {
 				noticeTip.paint()
 				continue
 			}
+			if r := replicaOf(ev); r != nil {
+				if _, isExp := ev.(xproto.ExposeEvent); isExp {
+					r.flush()
+				} else {
+					withReplica(r, func() { handle(ev) })
+				}
+				continue
+			}
 			if popupHandle(ev) {
 				continue
 			}
@@ -577,7 +554,11 @@ func main() {
 		case req := <-menuReqs:
 			cancelTip()
 			closePopup()
-			menus.open(req)
+			if req.rep != nil {
+				withReplica(req.rep, func() { menus.open(req) })
+			} else {
+				menus.open(req)
+			}
 		case u := <-updates:
 			it := u.it
 			if it.isDead() {
@@ -604,9 +585,17 @@ func main() {
 				continue
 			}
 			draw(it)
-		case it := <-tipC:
-			if txt := tipText(it); it == hover && txt != "" && !it.isDead() {
-				tip.show(it, txt, it.x+it.w/2)
+		case rq := <-tipC:
+			showTip := func() {
+				it := rq.it
+				if txt := tipText(it); it == hover && txt != "" && !it.isDead() {
+					tip.show(it, txt, it.x+it.w/2)
+				}
+			}
+			if rq.rep != nil {
+				withReplica(rq.rep, showTip)
+			} else {
+				showTip()
 			}
 		case he := <-hev:
 			switch he.kind {
@@ -832,7 +821,7 @@ func panelMenu(x int, cmds chan<- string, over *item) {
 	if over != nil && over.rc != "" { // the plugin's own entry, like the XFCE panel's plugin menu
 		items = append([]*menuItem{{id: 10, label: propsLabel(over.title)}, {sep: true}}, items...)
 	}
-	menuReqs <- menuReq{
+	menuReqs <- menuReq{rep: activeRep,
 		items:   items,
 		anchorX: x,
 		onSelect: func(mi *menuItem) {

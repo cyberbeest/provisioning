@@ -27,6 +27,7 @@ type menuReq struct {
 	items    []*menuItem
 	anchorX  int
 	onSelect func(*menuItem)
+	rep      *replica // the panel replica it was requested from (nil: the main panel)
 }
 
 var menuReqs = make(chan menuReq, 4)
@@ -59,11 +60,12 @@ type menuLevel struct {
 }
 
 type menuMgr struct {
-	c        *xgb.Conn
-	scr      *xproto.ScreenInfo
-	gc       xproto.Gcontext
-	levels   []*menuLevel
-	onSelect func(*menuItem)
+	c              *xgb.Conn
+	scr            *xproto.ScreenInfo
+	gc             xproto.Gcontext
+	levels         []*menuLevel
+	mx, my, mw, mh int // monitor the menu opened on
+	onSelect       func(*menuItem)
 }
 
 func newMenuMgr(c *xgb.Conn, scr *xproto.ScreenInfo, gc xproto.Gcontext) *menuMgr {
@@ -96,6 +98,7 @@ func spansFor(text string, c color.RGBA) []gfx.Span {
 func (m *menuMgr) open(req menuReq) {
 	m.close()
 	m.onSelect = req.onSelect
+	m.mx, m.my, m.mw, m.mh = monX, monY, monW, monH
 	lv := m.layout(req.items, 0, 0, -1)
 	lv.x = min(max(monX+req.anchorX-lv.w/2, monX), monX+monW-lv.w)
 	lv.y = monY + monH - panelH - lv.h - 2
@@ -246,10 +249,10 @@ func (m *menuMgr) setHover(li, i int) {
 		top := lv.y + lv.rowTops[i] + 2
 		sub := m.layout(lv.items[i].children, 0, 0, i)
 		sub.x, sub.y = lv.x+lv.w-3, top-2
-		if sub.x+sub.w > monX+monW {
+		if sub.x+sub.w > m.mx+m.mw {
 			sub.x = lv.x - sub.w + 3
 		}
-		sub.y = min(sub.y, monY+monH-panelH-sub.h)
+		sub.y = min(sub.y, m.my+m.mh-panelH-sub.h)
 		m.show(sub)
 	}
 }

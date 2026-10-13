@@ -26,6 +26,7 @@ family of scripts already uses.
 
 import argparse
 import os
+import re
 import subprocess
 
 import gi
@@ -194,6 +195,46 @@ def panel_choice_script():
     return None
 
 
+def read_panel_conf():
+    out = {}
+    try:
+        with open(PANEL_CONF, encoding="utf-8") as f:
+            for line in f:
+                k, sep, v = line.strip().partition("=")
+                if sep:
+                    out[k] = v
+    except OSError:
+        pass
+    return out
+
+
+def write_panel_conf(key, value):
+    """Set one KEY=value line in panel.conf, keeping the others (PANEL=...)."""
+    conf = read_panel_conf()
+    conf[key] = value
+    os.makedirs(os.path.dirname(PANEL_CONF), exist_ok=True)
+    with open(PANEL_CONF, "w", encoding="utf-8") as f:
+        for k, v in conf.items():
+            f.write("%s=%s\n" % (k, v))
+
+
+def connected_monitors():
+    """[(name, width, height)] of the active monitors, from xrandr."""
+    try:
+        out = subprocess.run(["xrandr", "--listmonitors"], capture_output=True, text=True, timeout=5,
+                             env=dict(os.environ, LC_ALL="C")).stdout
+    except (OSError, subprocess.SubprocessError):
+        return []
+    mons = []
+    for line in out.splitlines()[1:]:
+        parts = line.split()
+        if len(parts) >= 3:
+            m = re.match(r"(\d+)/\d+x(\d+)/\d+", parts[2])
+            if m:  # parts[1] is "+*NAME": + = automatic, * = primary
+                mons.append((parts[1].lstrip("+*"), int(m.group(1)), int(m.group(2))))
+    return mons
+
+
 def current_panel():
     try:
         with open(PANEL_CONF, encoding="utf-8") as f:
@@ -226,6 +267,36 @@ class PanelPage(Gtk.Box):
 
         self.xfce_radio.connect("toggled", self.on_toggled, "xfce")
         self.go_radio.connect("toggled", self.on_toggled, "gopanel")
+
+        mons = connected_monitors()
+        if len(mons) > 1:
+            self.pack_start(Gtk.Separator(), False, False, 0)
+            row = Gtk.Box(spacing=10)
+            row.pack_start(Gtk.Label(label=t("panel.monitor_label"), xalign=0), False, False, 0)
+            self.mon_combo = Gtk.ComboBoxText()
+            self.mon_combo.append("auto", t("panel.monitor_auto"))
+            for name, w, h in mons:
+                self.mon_combo.append(name, "%s (%dx%d)" % (name, w, h))
+            self.mon_combo.append("all", t("panel.monitor_all"))
+            want = read_panel_conf().get("MONITOR", "auto")
+            if not self.mon_combo.set_active_id(want):
+                self.mon_combo.set_active_id("auto")
+            self.mon_combo.connect("changed", self.on_monitor_changed)
+            row.pack_start(self.mon_combo, False, False, 0)
+            self.pack_start(row, False, False, 0)
+            mnote = Gtk.Label(wrap=True, max_width_chars=44, xalign=0, label=t("panel.monitor_note"))
+            mnote.get_style_context().add_class("dim-label")
+            self.pack_start(mnote, False, False, 0)
+
+    def on_monitor_changed(self, combo):
+        write_panel_conf("MONITOR", combo.get_active_id() or "auto")
+        # the panel re-reads the setting on reload and moves/copies itself
+        for exe in (os.path.expanduser("~/.local/bin/gopanel"), "gopanel"):
+            try:
+                subprocess.Popen([exe, "reload"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                break
+            except OSError:
+                continue
 
     def on_toggled(self, radio, which):
         if radio.get_active():

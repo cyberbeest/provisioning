@@ -63,9 +63,13 @@ STRINGS = {
     "settings.tab_power": "Erweiterte Energieoptionen",
     "settings.tab_panel": "Leiste",
     "panel.info": "Wähle, welche Leiste am unteren Bildschirmrand angezeigt wird. Die Änderung gilt sofort und bleibt bis zur nächsten Anmeldung erhalten.",
-    "panel.xfce": "XFCE-Leiste (Standard)",
-    "panel.gopanel": "Cyberbeest-Leiste (experimentell)",
-    "panel.note": "Die Leisten wechseln innerhalb weniger Sekunden. Die experimentelle Leiste unterstützt noch nicht alle Tray-Symbole.",
+    "panel.xfce": "XFCE-Leiste",
+    "panel.gopanel": "Cyberbeest-Leiste (Standard)",
+    "panel.note": "Die Leisten wechseln innerhalb weniger Sekunden.",
+    "panel.monitor_label": "Cyberbeest-Leiste anzeigen auf:",
+    "panel.monitor_auto": "Automatisch (Hauptbildschirm)",
+    "panel.monitor_all": "Allen Bildschirmen (Kopien der Leiste)",
+    "panel.monitor_note": "Die Kopien zeigen alles außer Tray-Symbolen, die eigene Fenster sind; diese bleiben auf der Hauptleiste.",
 
     "lockpower.window_title": "Cyberbeest Erweiterte Energieoptionen",
     "lockpower.info": (
