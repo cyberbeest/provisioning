@@ -205,6 +205,29 @@ PROFILE_FILE = os.path.join(DIR, ".provisioning-profile.env")
 PERSISTED_PROFILE_FILE = os.path.expanduser("~/.config/cyberbeest/run-gui-profile.json")
 
 
+# Scripts whose confirmation the user refused: skipped (with a log note) in
+# later batch runs until the user runs them explicitly on their own.
+DECLINED_SCRIPTS_FILE = os.path.expanduser("~/.config/cyberbeest/run-gui-declined-scripts.json")
+
+
+def load_declined_scripts():
+    try:
+        with open(DECLINED_SCRIPTS_FILE) as f:
+            data = json.load(f)
+        return set(data) if isinstance(data, list) else set()
+    except (OSError, ValueError, TypeError):
+        return set()
+
+
+def save_declined_scripts(scripts):
+    try:
+        os.makedirs(os.path.dirname(DECLINED_SCRIPTS_FILE), exist_ok=True)
+        with open(DECLINED_SCRIPTS_FILE, "w") as f:
+            json.dump(sorted(scripts), f)
+    except OSError:
+        pass
+
+
 def load_persisted_profile():
     try:
         with open(PERSISTED_PROFILE_FILE) as f:
@@ -2009,7 +2032,22 @@ class RunGuiWindow(Gtk.Window):
             has_work_check = CONFIRMATION_SKIP_IF_NOOP.get(script)
             if has_work_check is not None and not has_work_check():
                 confirm_message = None
-            if confirm_message and not self._confirm(script, confirm_message):
+            if confirm_message:
+                declined = load_declined_scripts()
+                if script in declined and self.current_run_is_batch:
+                    GLib.idle_add(self.append_log, script, t("run_gui.log_skipped_declined").format(script=script))
+                    GLib.idle_add(self.set_row_status, script, "skipped")
+                    GLib.idle_add(self._bump_progress)
+                    continue
+                if self._confirm(script, confirm_message):
+                    if script in declined:
+                        declined.discard(script)
+                        save_declined_scripts(declined)
+                else:
+                    declined.add(script)
+                    save_declined_scripts(declined)
+                    confirm_message = "declined"
+            if confirm_message == "declined":
                 GLib.idle_add(self.append_log, script, t("run_gui.log_skipped").format(script=script))
                 GLib.idle_add(self.set_row_status, script, "skipped")
                 GLib.idle_add(self._bump_progress)

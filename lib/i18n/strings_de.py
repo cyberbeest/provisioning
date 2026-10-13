@@ -376,6 +376,7 @@ STRINGS = {
         "interaktives Terminal) -- dort abschließen ===\n"
     ),
     "run_gui.log_stop_requested": "=== Stopp angefordert: {count} verbleibende(s) Skript(e) übersprungen ===\n",
+    "run_gui.log_skipped_declined": "=== {script} übersprungen (früher abgelehnt; einzeln ausführen, um erneut gefragt zu werden) ===\n",
     "run_gui.log_skipped": "=== {script} übersprungen (nicht bestätigt) ===\n",
     "run_gui.log_running_marker": "=== {script} läuft ===\n",
     "run_gui.log_done_marker": "=== {script} fertig ({duration}) ===\n",

@@ -359,6 +359,7 @@ STRINGS = {
         "complete it there ===\n"
     ),
     "run_gui.log_stop_requested": "=== stop requested: skipping {count} remaining script(s) ===\n",
+    "run_gui.log_skipped_declined": "=== {script} skipped (declined earlier; run it explicitly to be asked again) ===\n",
     "run_gui.log_skipped": "=== {script} skipped (not confirmed) ===\n",
     "run_gui.log_running_marker": "=== running {script} ===\n",
     "run_gui.log_done_marker": "=== {script} done ({duration}) ===\n",
