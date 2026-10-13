@@ -355,7 +355,7 @@ def type_text(text, target=None):
                 )
             if r.returncode != 0:
                 log.error("%s exited with %s — text not typed", tool, r.returncode)
-                notify(_("Typing failed ({tool} exit {code})").format(tool=tool, code=r.returncode), urgency="critical", timeout_ms=5000)
+                notify(_("Typing failed ({tool} exit {code})").format(tool=tool, code=r.returncode), urgency="normal", timeout_ms=5000)   # critical never expires
             return r.returncode == 0
         except FileNotFoundError:
             continue

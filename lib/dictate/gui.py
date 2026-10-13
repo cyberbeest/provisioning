@@ -1152,7 +1152,8 @@ class MainWindow(QMainWindow):
         self.set_status("error", _("Error: {msg}").format(msg=msg[:80]))
         # The window is usually hidden in the tray, so the status label alone
         # means the dictation fails without anyone noticing.
-        threading.Thread(target=core.notify, args=(msg[:200], "critical", 5000), daemon=True).start()
+        # Normal urgency: notification daemons never expire a "critical" one, whatever -t says.
+        threading.Thread(target=core.notify, args=(msg[:200], "normal", 5000), daemon=True).start()
 
     def set_status(self, state, msg):
         self._status = (state, msg)
