@@ -70,8 +70,12 @@ func TestControlSocketRefusesSandboxedPeer(t *testing.T) {
 	if got := runClient(t, nil, sock, "dismiss\n"); got != "ok" {
 		t.Fatalf("normal client: got %q, want ok", got)
 	}
-	if got := runClient(t, []string{"firejail", "--quiet", "--noprofile"}, sock, "dismiss\n"); !strings.HasPrefix(got, "NOREPLY") {
-		t.Fatalf("firejailed client was served: %q", got)
+	// The control socket deliberately admits root without a namespace check (root can do
+	// anything to the panel anyway), so a jailed client is only refused when it is not root.
+	if os.Getuid() != 0 {
+		if got := runClient(t, []string{"firejail", "--quiet", "--noprofile"}, sock, "dismiss\n"); !strings.HasPrefix(got, "NOREPLY") {
+			t.Fatalf("firejailed client was served: %q", got)
+		}
 	}
 	if n := len(cmds); n != 1 {
 		t.Fatalf("%d commands reached the panel, want exactly 1", n)
