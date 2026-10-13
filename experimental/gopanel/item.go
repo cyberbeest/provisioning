@@ -36,6 +36,7 @@ type item struct {
 	rc       string      // the plugin's xfce rc file (settings the Properties dialog edits), if any
 	drawBuf  []byte      // scratch for draw()
 	reserved bool        // w is a cached guess from the last run, not yet confirmed
+	hold     int         // tray: slot width kept (icons left-aligned in it) while autostarted apps are still docking
 }
 
 func newItem(kind string) *item {

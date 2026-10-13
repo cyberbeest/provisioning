@@ -31,7 +31,7 @@ import (
 	"gopanel/proto"
 )
 
-const version = "0.21.9"
+const version = "0.21.13"
 
 var ctlCmds chan<- string // control commands into the main loop
 
@@ -151,6 +151,15 @@ func main() {
 	xproto.CreateGC(c, gc, xproto.Drawable(wid), 0, nil)
 	xproto.MapWindow(c, wid)
 	xscr, xgc = scr, gc
+
+	// All panel drawing goes to a back pixmap and is copied to the window in one go, so a full
+	// redraw never shows the cleared panel between the clear and the icons (that flickered
+	// while things were still arriving at startup).
+	backW := monW
+	back, _ := xproto.NewPixmapId(c)
+	xproto.CreatePixmap(c, scr.RootDepth, back, xproto.Drawable(wid), uint16(backW), uint16(panelH))
+	bgGC, _ := xproto.NewGcontextId(c)
+	xproto.CreateGC(c, bgGC, xproto.Drawable(back), xproto.GcForeground, []uint32{panelBg})
 	tip := newTooltip(c, scr, gc)
 	noticeTip = newTooltip(c, scr, gc)
 	menus := newMenuMgr(c, scr, gc)
@@ -168,15 +177,12 @@ func main() {
 		paused  bool
 	)
 
-	// While the panel starts up, items arrive piecemeal (helpers connecting, tray icons
-	// docking, taskbar filling). Layout and drawing are held back for a moment and then
-	// applied in one go, instead of shuffling and flickering.
-	settling := true
-
 	// relayout assigns x positions; expanding items share whatever width is left.
 	relayout := func() {
-		if settling {
-			return
+		for _, it := range items { // a tray keeps its recorded slot while the apps dock
+			if it.hold > it.w {
+				it.w = it.hold
+			}
 		}
 		fixed := 4 // 4px right margin
 		var exp []*item
@@ -228,13 +234,13 @@ func main() {
 			x += it.w
 		}
 		xt.place()
-		saveWidths(items)
+		scheduleRecord()
 	}
 
 	// draw composites the item's image (premultiplied RGBA, centred) over the panel or
 	// hover colour and pushes the item's box to the window.
-	draw := func(it *item) {
-		if it.w <= 0 || settling {
+	drawTo := func(it *item, copyOut bool) {
+		if it.w <= 0 {
 			return
 		}
 		bg := uint32(panelBg)
@@ -254,6 +260,9 @@ func main() {
 		if img := it.img; img != nil {
 			ib := img.Bounds()
 			ox, oy := (it.w-ib.Dx())/2, (panelH-ib.Dy())/2
+			if it.hold > 0 {
+				ox = 0 // icons fill the held slot from the left, so they do not slide as more dock
+			}
 			for y := 0; y < ib.Dy(); y++ {
 				if oy+y < 0 || oy+y >= panelH {
 					continue
@@ -271,17 +280,19 @@ func main() {
 				}
 			}
 		}
-		putBGRX(c, xproto.Drawable(wid), gc, scr.RootDepth, it.x, 0, it.w, panelH, buf)
+		putBGRX(c, xproto.Drawable(back), gc, scr.RootDepth, it.x, 0, it.w, panelH, buf)
+		if copyOut {
+			xproto.CopyArea(c, xproto.Drawable(back), xproto.Drawable(wid), gc, int16(it.x), 0, int16(it.x), 0, uint16(it.w), uint16(panelH))
+		}
 	}
+	draw := func(it *item) { drawTo(it, true) }
 	drawItem = draw
 	redrawAll := func() {
-		if settling {
-			return
-		}
-		xproto.ClearArea(c, false, wid, 0, 0, 0, 0)
+		xproto.PolyFillRectangle(c, xproto.Drawable(back), bgGC, []xproto.Rectangle{{X: 0, Y: 0, Width: uint16(backW), Height: uint16(panelH)}})
 		for _, it := range items {
-			draw(it)
+			drawTo(it, false)
 		}
+		xproto.CopyArea(c, xproto.Drawable(back), xproto.Drawable(wid), gc, 0, 0, 0, 0, uint16(backW), uint16(panelH))
 	}
 	reflow = func() {
 		relayout()
@@ -389,7 +400,8 @@ func main() {
 		reserveWidths(items)
 		relayout()
 		redrawAll()
-		time.AfterFunc(3*time.Second, func() { ctlCmds <- "unreserve" })
+		time.AfterFunc(10*time.Second, func() { ctlCmds <- "unreserve" }) // helpers are only spawned after the supervisor's 4 s grace
+		time.AfterFunc(20*time.Second, func() { ctlCmds <- "unreserve-late" })
 	}
 
 	cmds := make(chan string, 4)
@@ -422,7 +434,6 @@ func main() {
 
 	go reapZombies()
 	install(cfg)
-	time.AfterFunc(2*time.Second, func() { cmds <- "settle" })
 	xt.tryAcquire() // right away: while nobody owns the tray, apps show their icon as a stray window
 	whReady := make(chan whiskerData, 1)
 	go preloadWhisker(whReady)
@@ -476,6 +487,10 @@ func main() {
 			xproto.ConfigureWindow(c, wid, xproto.ConfigWindowX|xproto.ConfigWindowY|xproto.ConfigWindowWidth|xproto.ConfigWindowHeight,
 				[]uint32{uint32(monX), uint32(panelTopY()), uint32(monW), uint32(panelH)})
 			setStrut()
+			xproto.FreePixmap(c, back)
+			backW = monW
+			back, _ = xproto.NewPixmapId(c)
+			xproto.CreatePixmap(c, scr.RootDepth, back, xproto.Drawable(wid), uint16(backW), uint16(panelH))
 			relayout()
 			redrawAll()
 		case xproto.KeyPressEvent:
@@ -734,15 +749,28 @@ func main() {
 				closePopup()
 			case "notice-timeout:" + strconv.Itoa(noticeToken): // only the latest launch's timer counts
 				noticeHide()
-			case "settle": // end of the startup hold: lay out and draw everything at once
-				settling = false
-				relayout()
-				redrawAll()
+			case "record-widths":
+				saveWidths(items)
 			case "unreserve": // cached widths that nobody confirmed: give the space back
-				if unreserve(items) {
+				if unreserve(items, false) {
 					relayout()
 					redrawAll()
 				}
+				checkWidths(items)
+			case "unreserve-late": // autostarted apps have had their time to dock: release the tray slot, start recording
+				if unreserve(items, true) {
+					for _, it := range items {
+						if it.kind == "tray" || it.kind == "xtray" {
+							it.w = 0 // recomputed from the icons actually docked
+						}
+					}
+					if sniTray != nil {
+						sniTray.render()
+					}
+					xt.sync()
+				}
+				recordArmed = true
+				scheduleRecord()
 			case "yield":
 				xt.yieldTray()
 			case "quit":
