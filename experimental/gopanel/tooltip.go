@@ -69,14 +69,14 @@ func (t *tooltip) show(it *item, markup string, anchorX int) {
 	t.hide()
 	img := renderTip(markup)
 	w, h := img.Bounds().Dx(), img.Bounds().Dy()
-	x := anchorX - w/2
-	if x+w > int(t.scr.WidthInPixels) {
-		x = int(t.scr.WidthInPixels) - w
+	x := monX + anchorX - w/2
+	if x+w > monX+monW {
+		x = monX + monW - w
 	}
-	if x < 0 {
-		x = 0
+	if x < monX {
+		x = monX
 	}
-	y := int(t.scr.HeightInPixels) - panelH - h - 4
+	y := monY + monH - panelH - h - 4
 	wid, _ := xproto.NewWindowId(t.c)
 	xproto.CreateWindow(t.c, t.scr.RootDepth, wid, t.scr.Root, int16(x), int16(y), uint16(w), uint16(h), 0,
 		xproto.WindowClassInputOutput, t.scr.RootVisual,

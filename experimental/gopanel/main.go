@@ -10,6 +10,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"github.com/godbus/dbus/v5"
+	"github.com/jezek/xgb/randr"
 	"log"
 	"net"
 	"os"
@@ -27,7 +28,7 @@ import (
 	"gopanel/proto"
 )
 
-const version = "0.14.0"
+const version = "0.15.0"
 
 var ctlCmds chan<- string // control commands into the main loop
 
@@ -113,14 +114,15 @@ func main() {
 	}
 	defer c.Close()
 	scr := xproto.Setup(c).DefaultScreen(c)
-	sw, sh := scr.WidthInPixels, scr.HeightInPixels
+	initRandr(c, scr.Root)
+	queryMonitor(c, scr)
+	sw := uint16(monW)
 
-	panelScreenY = sh - uint16(panelH)
 	xc, xroot = c, scr.Root
 	wid, _ := xproto.NewWindowId(c)
 	panelWin = wid
 	xproto.CreateWindow(c, scr.RootDepth, wid, scr.Root,
-		0, int16(int(sh)-panelH), sw, uint16(panelH), 0,
+		int16(monX), int16(panelTopY()), sw, uint16(panelH), 0,
 		xproto.WindowClassInputOutput, scr.RootVisual,
 		xproto.CwBackPixel|xproto.CwEventMask,
 		[]uint32{panelBg, xproto.EventMaskExposure | xproto.EventMaskButtonPress |
@@ -129,10 +131,14 @@ func main() {
 	// Window type DOCK + strut: this is "where the rest of the desktop is".
 	xproto.ChangeProperty(c, xproto.PropModeReplace, wid, atom(c, "_NET_WM_WINDOW_TYPE"),
 		xproto.AtomAtom, 32, 1, u32(uint32(atom(c, "_NET_WM_WINDOW_TYPE_DOCK"))))
-	xproto.ChangeProperty(c, xproto.PropModeReplace, wid, atom(c, "_NET_WM_STRUT_PARTIAL"),
-		xproto.AtomCardinal, 32, 12, u32(0, 0, 0, uint32(panelH), 0, 0, 0, 0, 0, 0, 0, uint32(sw)-1))
-	xproto.ChangeProperty(c, xproto.PropModeReplace, wid, atom(c, "_NET_WM_STRUT"),
-		xproto.AtomCardinal, 32, 4, u32(0, 0, 0, uint32(panelH)))
+	setStrut := func() {
+		bottom := uint32(rootH - (monY + monH) + panelH)
+		xproto.ChangeProperty(c, xproto.PropModeReplace, wid, atom(c, "_NET_WM_STRUT_PARTIAL"),
+			xproto.AtomCardinal, 32, 12, u32(0, 0, 0, bottom, 0, 0, 0, 0, 0, 0, uint32(monX), uint32(monX+monW-1)))
+		xproto.ChangeProperty(c, xproto.PropModeReplace, wid, atom(c, "_NET_WM_STRUT"),
+			xproto.AtomCardinal, 32, 4, u32(0, 0, 0, bottom))
+	}
+	setStrut()
 	name := "gopanel"
 	xproto.ChangeProperty(c, xproto.PropModeReplace, wid, xproto.AtomWmName,
 		xproto.AtomString, 8, uint32(len(name)), []byte(name))
@@ -167,7 +173,7 @@ func main() {
 				fixed += it.w
 			}
 		}
-		extra := max(int(sw)-fixed, 0)
+		extra := max(monW-fixed, 0)
 		x := 0
 		for _, it := range items {
 			it.x = x
@@ -407,6 +413,17 @@ func main() {
 			return
 		}
 		switch e := ev.(type) {
+		case randr.ScreenChangeNotifyEvent:
+			// monitor plugged/unplugged or resolution changed: follow the primary monitor
+			wh.close()
+			menus.close()
+			closePopup()
+			queryMonitor(c, scr)
+			xproto.ConfigureWindow(c, wid, xproto.ConfigWindowX|xproto.ConfigWindowY|xproto.ConfigWindowWidth|xproto.ConfigWindowHeight,
+				[]uint32{uint32(monX), uint32(panelTopY()), uint32(monW), uint32(panelH)})
+			setStrut()
+			relayout()
+			redrawAll()
 		case xproto.KeyPressEvent:
 			mediaKey(e.Detail)
 		case xproto.ExposeEvent:
@@ -603,11 +620,11 @@ func main() {
 				if curPop != nil {
 					closePopup()
 				} else if cmd == "calendar" {
-					openCalendar(int(sw) - 60)
+					openCalendar(monW - 60)
 				} else if cmd == "power" {
-					openPowerPopup(int(sw) - 300)
+					openPowerPopup(monW - 300)
 				} else {
-					openVolumePopup(int(sw) - 400)
+					openVolumePopup(monW - 400)
 				}
 			case "dismiss": // close every open popup (Dictate asks before it types)
 				wh.close()

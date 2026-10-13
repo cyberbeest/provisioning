@@ -34,8 +34,8 @@ var (
 // openPopup shows p centred above anchorX (screen coordinates), replacing any popup.
 func openPopup(p *popup, anchorX int) {
 	closePopup()
-	p.x = min(max(anchorX-p.w/2, 0), int(xscr.WidthInPixels)-p.w)
-	p.y = int(xscr.HeightInPixels) - panelH - p.h - 2
+	p.x = min(max(monX+anchorX-p.w/2, monX), monX+monW-p.w)
+	p.y = monY + monH - panelH - p.h - 2
 	p.win, _ = xproto.NewWindowId(xc)
 	xproto.CreateWindow(xc, xscr.RootDepth, p.win, xroot, int16(p.x), int16(p.y), uint16(p.w), uint16(p.h), 0,
 		xproto.WindowClassInputOutput, xscr.RootVisual,

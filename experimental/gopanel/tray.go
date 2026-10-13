@@ -415,12 +415,12 @@ func (t *tray) onClick(x, y, btn int) {
 	if ic == nil || t.conn == nil {
 		return
 	}
-	sx, sy := int32(t.it.x+x), int32(int(panelScreenY)+y)
+	sx, sy := int32(monX+t.it.x+x), int32(panelTopY()+y)
 	obj := t.conn.Object(ic.owner, ic.path)
 	switch btn {
 	case 1:
 		if ic.itemIsMenu && ic.menu != "" {
-			go t.showMenu(ic, int(sx))
+			go t.showMenu(ic, t.it.x+x)
 			return
 		}
 		method := itemIface + ".Activate"
@@ -432,7 +432,7 @@ func (t *tray) onClick(x, y, btn int) {
 		go obj.Call(itemIface+".SecondaryActivate", 0, sx, sy)
 	case 3:
 		if ic.menu != "" {
-			go t.showMenu(ic, int(sx))
+			go t.showMenu(ic, t.it.x+x)
 			return
 		}
 		go obj.Call(itemIface+".ContextMenu", 0, sx, sy)

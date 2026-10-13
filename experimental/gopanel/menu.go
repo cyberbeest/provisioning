@@ -97,8 +97,8 @@ func (m *menuMgr) open(req menuReq) {
 	m.close()
 	m.onSelect = req.onSelect
 	lv := m.layout(req.items, 0, 0, -1)
-	lv.x = min(max(req.anchorX-lv.w/2, 0), int(m.scr.WidthInPixels)-lv.w)
-	lv.y = int(m.scr.HeightInPixels) - panelH - lv.h - 2
+	lv.x = min(max(monX+req.anchorX-lv.w/2, monX), monX+monW-lv.w)
+	lv.y = monY + monH - panelH - lv.h - 2
 	m.show(lv)
 	xproto.GrabPointer(m.c, false, lv.win, xproto.EventMaskButtonPress|xproto.EventMaskButtonRelease|xproto.EventMaskPointerMotion,
 		xproto.GrabModeAsync, xproto.GrabModeAsync, xproto.WindowNone, xproto.CursorNone, xproto.TimeCurrentTime)
@@ -246,10 +246,10 @@ func (m *menuMgr) setHover(li, i int) {
 		top := lv.y + lv.rowTops[i] + 2
 		sub := m.layout(lv.items[i].children, 0, 0, i)
 		sub.x, sub.y = lv.x+lv.w-3, top-2
-		if sub.x+sub.w > int(m.scr.WidthInPixels) {
+		if sub.x+sub.w > monX+monW {
 			sub.x = lv.x - sub.w + 3
 		}
-		sub.y = min(sub.y, int(m.scr.HeightInPixels)-panelH-sub.h)
+		sub.y = min(sub.y, monY+monH-panelH-sub.h)
 		m.show(sub)
 	}
 }

@@ -220,8 +220,8 @@ func (w *whisker) open(anchorX int) {
 		}
 	}
 
-	w.x = min(max(anchorX, 0), int(w.scr.WidthInPixels)-whW)
-	w.y = int(w.scr.HeightInPixels) - panelH - whH
+	w.x = min(max(monX+anchorX, monX), monX+monW-whW)
+	w.y = monY + monH - panelH - whH
 	wid, _ := xproto.NewWindowId(w.c)
 	xproto.CreateWindow(w.c, w.scr.RootDepth, wid, w.scr.Root, int16(w.x), int16(w.y), whW, whH, 0,
 		xproto.WindowClassInputOutput, w.scr.RootVisual,

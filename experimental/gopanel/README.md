@@ -60,6 +60,9 @@ chosen in Cyberbeest Settings > Panel); cyberbeest-whisker-key.sh is the Windows
   also changes it) + links to power settings; `gopanel power` toggles it.
 - If gopanel dies while the XFCE panel is stopped, xfce-panel-watchdog drops the marker after ~15 s and the
   XFCE panel returns (so the desktop is never left without a panel).
+- Multi-monitor: the panel sits at the bottom of the primary monitor (RandR) and follows resolution or
+  monitor changes (monitor.go; popups/menus/tooltips position against that monitor). Tested by resizing a
+  nested X display; not tested with a real second monitor.
 - Media keys (mediakeys.go): volume up/down, mute, mic mute, play/pause/next/prev (MPRIS). The pulseaudio
   plugin of xfce4-panel normally grabs these; gopanel grabs them too and loses harmlessly if it runs alongside.
 - Whisker: right-click on an app = add/remove favorite, add to desktop.
