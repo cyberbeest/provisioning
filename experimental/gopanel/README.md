@@ -69,5 +69,7 @@ chosen in Cyberbeest Settings > Panel); cyberbeest-whisker-key.sh is the Windows
   plugin of xfce4-panel normally grabs these; gopanel grabs them too and loses harmlessly if it runs alongside.
 - Whisker: right-click on an app = add/remove favorite, add to desktop.
 - Helpers also pause while the screensaver (lock screen) is active, not just in DPMS standby.
-- Not done: per-plugin settings dialogs,
-  Whisker's app names (those come from the .desktop files).
+- Memory (2026-10-13, PSS): gopanel with its 5 helper processes ~64 MB; xfce4-panel with its 15 plugin
+  wrappers ~108 MB (idle, 25 s after start). PSS splits shared libraries across their users, so GTK's share
+  in the XFCE number is flattered by other GTK apps running.
+- Not done: per-plugin settings dialogs, taskbar drag-reorder.
