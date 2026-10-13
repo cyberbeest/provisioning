@@ -105,9 +105,12 @@ func readPactlVolume(kind, dev string) (int, bool) {
 
 func openVolumePopup(anchorX int) {
 	const w, pad, secH = 240, 16, 96
+	const maxPct = 150 // like pavucontrol: up to 150% amplification
 	out := &mixerSlider{title: tr("Volume"), pct: int(volPct.Load()), muted: volMuted.Load() != 0, last: -1,
 		setPct: func(v int) { exec.Command("pactl", "set-sink-volume", "@DEFAULT_SINK@", fmt.Sprintf("%d%%", v)).Run() },
 		toggle: func() { exec.Command("pactl", "set-sink-mute", "@DEFAULT_SINK@", "toggle").Run() }}
+	out.pct, out.muted = readPactlVolume("sink", "@DEFAULT_SINK@") // not the cached value: it can lag a moment
+	volPct.Store(int32(out.pct))
 	secs := []*mixerSlider{out}
 	if pactl("get-default-source") != "" {
 		mic := &mixerSlider{title: tr("Microphone"), last: -1,
@@ -127,7 +130,7 @@ func openVolumePopup(anchorX int) {
 	trackY := func(sl *mixerSlider) int { return sl.top + 38 }
 	muteY := func(sl *mixerSlider) int { return sl.top + 62 }
 	set := func(sl *mixerSlider, x int) {
-		v := min(max((x-pad)*100/(w-2*pad), 0), 100)
+		v := min(max((x-pad)*maxPct/(w-2*pad), 0), maxPct)
 		sl.pct = v
 		if sl == out {
 			volPct.Store(int32(v))
@@ -146,7 +149,7 @@ func openVolumePopup(anchorX int) {
 			textAt(img, pad, sl.top, sl.title, menuInk, true, labelPx, 0)
 			pct := fmt.Sprintf("%d%%", sl.pct)
 			textAt(img, w-pad-textW(pct), sl.top, pct, menuInk, false, labelPx, 0)
-			drawSlider(img, pad, w-pad, trackY(sl), sl.pct)
+			drawSliderMax(img, pad, w-pad, trackY(sl), sl.pct, maxPct)
 			mark := "☐"
 			if sl.muted {
 				mark = "☑"
@@ -159,13 +162,13 @@ func openVolumePopup(anchorX int) {
 	var drag *mixerSlider
 	p.press = func(x, y, btn int) {
 		for _, sl := range secs {
-			cur := pad + sl.pct*(w-2*pad)/100
+			cur := pad + sl.pct*(w-2*pad)/maxPct
 			switch {
 			case btn == 4 && y >= sl.top && y < sl.top+secH:
-				set(sl, cur+5*(w-2*pad)/100)
+				set(sl, cur+5*(w-2*pad)/maxPct)
 				return
 			case btn == 5 && y >= sl.top && y < sl.top+secH:
-				set(sl, cur-5*(w-2*pad)/100)
+				set(sl, cur-5*(w-2*pad)/maxPct)
 				return
 			case btn == 1 && y >= trackY(sl)-10 && y <= trackY(sl)+16:
 				drag = sl
@@ -203,7 +206,7 @@ func openVolumePopup(anchorX int) {
 			step = 5
 		}
 		if step != 0 {
-			set(out, pad+(out.pct+step)*(w-2*pad)/100)
+			set(out, pad+(out.pct+step)*(w-2*pad)/maxPct)
 		}
 	}
 	openPopup(p, anchorX)
@@ -331,11 +334,25 @@ func openPowerPopup(anchorX int) {
 	openPopup(p, anchorX)
 }
 
-// drawSlider paints a horizontal slider (track y..y+6, handle around it) between x0 and x1.
-func drawSlider(img *image.RGBA, x0, x1, y, pct int) {
+// drawSlider paints a 0..100 slider (track y..y+6, handle around it) between x0 and x1.
+func drawSlider(img *image.RGBA, x0, x1, y, pct int) { drawSliderMax(img, x0, x1, y, pct, 100) }
+
+// drawSliderMax is drawSlider for a 0..max scale; past 100 the fill turns orange (amplified)
+// and a tick marks the 100% position.
+func drawSliderMax(img *image.RGBA, x0, x1, y, pct, max int) {
+	pct = min(pct, max)
 	fillRect(img, image.Rect(x0, y, x1, y+6), color.RGBA{0xd8, 0xd6, 0xd2, 255})
-	fx := x0 + pct*(x1-x0)/100
-	fillRect(img, image.Rect(x0, y, fx, y+6), menuHilite)
+	fx := x0 + pct*(x1-x0)/max
+	t100 := x0 + 100*(x1-x0)/max
+	if pct <= 100 {
+		fillRect(img, image.Rect(x0, y, fx, y+6), menuHilite)
+	} else {
+		fillRect(img, image.Rect(x0, y, t100, y+6), menuHilite)
+		fillRect(img, image.Rect(t100, y, fx, y+6), color.RGBA{0xe6, 0x7e, 0x22, 255})
+	}
+	if max > 100 {
+		fillRect(img, image.Rect(t100, y+7, t100+1, y+12), menuDimInk)
+	}
 	fillRect(img, image.Rect(fx-5, y-6, fx+5, y+12), color.RGBA{0xf6, 0xf5, 0xf4, 255})
 	fillRect(img, image.Rect(fx-5, y-6, fx+5, y-5), menuBorder)
 	fillRect(img, image.Rect(fx-5, y+11, fx+5, y+12), menuBorder)

@@ -414,6 +414,23 @@ func (tb *taskbar) iconify(tw *twin) {
 
 func (tb *taskbar) onClick(x, y, btn int) {
 	vis := tb.shown()
+	if (btn == 4 || btn == 5) && len(vis) > 0 { // wheel cycles through the windows
+		cur, d := -1, 1
+		for i, w := range vis {
+			if w.id == tb.active {
+				cur = i
+			}
+		}
+		if btn == 4 {
+			d = -1
+		}
+		next := (cur + d + len(vis)) % len(vis)
+		if cur < 0 && d < 0 {
+			next = len(vis) - 1
+		}
+		tb.activate(vis[next])
+		return
+	}
 	i := tb.indexAt(x)
 	if i < 0 {
 		return
