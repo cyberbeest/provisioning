@@ -177,28 +177,19 @@ Reminder: everything you type there is sent to Anthropic."
 	[claude.install_failed_title]="Installation failed"
 	[claude.install_failed_message]="Something went wrong. Nothing else on your system was changed. Details: LOG"
 	[claude.remove_title]="Remove Claude Code"
-	[claude.remove_message]="This deletes Claude Code completely from your account:
+	[claude.remove_message]="Claude Code, its login, the helper tools, voices and menu entries are removed either way.
 
-• the program and its updates
-• all settings and login data (and, if you choose, conversation history)
-• the helper tools, voice and menu entries Cyberbeest added
+<b>Remove, keep my data</b> (recommended)
+Keeps your settings, your saved conversations and the ~/claude folder with your projects. A later reinstall picks them up again.
+
+<b>Remove everything</b>
+Also deletes your settings, all saved conversations and the whole ~/claude folder, including your own files in it.
 
 Your Claude account itself is not affected."
-	[claude.remove_button]="Remove everything"
+	[claude.remove_keep_button]="Remove, keep my data"
+	[claude.remove_all_button]="Remove everything"
 	[claude.remove_cancel]="Cancel"
-	[claude.remove_workdir_title]="Work folder"
-	[claude.remove_workdir_message]="The folder ~/claude contains files that are not part of Claude Code's setup.
-
-Delete the whole folder too? Choose \"Keep\" to leave your files alone."
-	[claude.remove_workdir_delete]="Delete folder"
-	[claude.remove_workdir_keep]="Keep"
 	[claude.remove_done_title]="Claude Code removed"
 	[claude.remove_done_message]="Claude Code and everything that came with it is gone."
 	[claude.remove_none_message]="Claude Code is not installed in this account."
-	[claude.remove_history_title]="Conversation history"
-	[claude.remove_history_message]="Keep your saved Claude conversations (and Claude's notes about your projects)?
-
-They stay in ~/.claude and are picked up again if you reinstall Claude Code. Everything else is removed either way."
-	[claude.remove_history_keep]="Keep history"
-	[claude.remove_history_delete]="Delete history"
 )

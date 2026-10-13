@@ -179,28 +179,19 @@ Zur Erinnerung: Alles, was du dort eintippst, geht an Anthropic."
 	[claude.install_failed_title]="Installation fehlgeschlagen"
 	[claude.install_failed_message]="Etwas ist schiefgelaufen. Sonst wurde nichts an deinem System geändert. Einzelheiten: LOG"
 	[claude.remove_title]="Claude Code entfernen"
-	[claude.remove_message]="Dies löscht Claude Code vollständig aus deinem Benutzerkonto:
+	[claude.remove_message]="Claude Code, die Anmeldung, die Hilfswerkzeuge, Stimmen und Menüeinträge werden in jedem Fall entfernt.
 
-• das Programm und seine Updates
-• alle Einstellungen und Anmeldedaten (und, wenn du willst, den Gesprächsverlauf)
-• die von Cyberbeest hinzugefügten Hilfswerkzeuge, Stimmen und Menüeinträge
+<b>Entfernen, Daten behalten</b> (empfohlen)
+Behält deine Einstellungen, deine gespeicherten Gespräche und den Ordner ~/claude mit deinen Projekten. Eine spätere Neuinstallation nutzt sie wieder.
+
+<b>Alles entfernen</b>
+Löscht zusätzlich deine Einstellungen, alle gespeicherten Gespräche und den ganzen Ordner ~/claude samt deiner eigenen Dateien darin.
 
 Dein Claude-Konto selbst bleibt unberührt."
-	[claude.remove_button]="Alles entfernen"
+	[claude.remove_keep_button]="Entfernen, Daten behalten"
+	[claude.remove_all_button]="Alles entfernen"
 	[claude.remove_cancel]="Abbrechen"
-	[claude.remove_workdir_title]="Arbeitsordner"
-	[claude.remove_workdir_message]="Der Ordner ~/claude enthält Dateien, die nicht zur Einrichtung von Claude Code gehören.
-
-Den ganzen Ordner auch löschen? Mit „Behalten“ bleiben deine Dateien unangetastet."
-	[claude.remove_workdir_delete]="Ordner löschen"
-	[claude.remove_workdir_keep]="Behalten"
 	[claude.remove_done_title]="Claude Code entfernt"
 	[claude.remove_done_message]="Claude Code und alles, was dazugehörte, ist entfernt."
 	[claude.remove_none_message]="Claude Code ist in diesem Benutzerkonto nicht installiert."
-	[claude.remove_history_title]="Gesprächsverlauf"
-	[claude.remove_history_message]="Deine gespeicherten Claude-Gespräche (und Claudes Notizen zu deinen Projekten) behalten?
-
-Sie bleiben in ~/.claude und werden wieder verwendet, wenn du Claude Code neu installierst. Alles andere wird in jedem Fall entfernt."
-	[claude.remove_history_keep]="Verlauf behalten"
-	[claude.remove_history_delete]="Verlauf löschen"
 )

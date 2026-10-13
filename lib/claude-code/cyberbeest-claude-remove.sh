@@ -5,8 +5,8 @@
 # ~/.claude.json, caches, URL handler, daemon, TTS venv + voices, mod, menu and
 # autostart entries, the sudo helper. In ~/claude only the files the installer
 # recorded are removed; if anything else is left there it asks before deleting
-# the folder (default: keep), and whether to keep the conversation history in
-# ~/.claude/projects (default: keep). Runs as the normal user.
+# the folder. One choice: keep settings + projects (default) or remove everything.
+# Runs as the normal user.
 set -uo pipefail
 DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
 . "$DIR/../i18n.sh"
@@ -30,36 +30,18 @@ if [ "$installed" -eq 0 ]; then
 	exit 0
 fi
 
-zenity --question --default-cancel --width=480 \
+# One dialog, one choice. zenity prints the extra button's label and exits 1
+# for it; OK exits 0 (keep my data, the default), Cancel exits 1 with no output.
+out="$(zenity --question --width=520 \
 	--title="$(t claude.remove_title)" --text="$(t claude.remove_message)" \
-	--ok-label="$(t claude.remove_button)" --cancel-label="$(t claude.remove_cancel)" || exit 0
-
-# Ask about the work folder up front (before anything is deleted), but only
-# if there will be something else left in it.
-delete_workdir=0
-if [ -d "$WORK" ]; then
-	leftover="$(cd "$WORK" && find . -mindepth 1 -maxdepth 1 \
-		! -name CLAUDE.md ! -name 'claude-sudo-helper-gui.*' ! -name '.sessions' \
-		-print 2>/dev/null | sed 's#^\./##' | sort)"
-	if [ -f "$STATE/claude-code-files.txt" ]; then
-		leftover="$(grep -vxFf "$STATE/claude-code-files.txt" <<<"$leftover" || true)"
-	fi
-	if [ -n "$leftover" ]; then
-		zenity --question --default-cancel --width=460 \
-			--title="$(t claude.remove_workdir_title)" --text="$(t claude.remove_workdir_message)" \
-			--ok-label="$(t claude.remove_workdir_delete)" --cancel-label="$(t claude.remove_workdir_keep)" \
-			&& delete_workdir=1
-	fi
-fi
-
-# Conversation history (session transcripts, auto-memory, prompt history) can
-# stay behind: a later reinstall picks the sessions up again. Default: keep.
-keep_history=0
-if [ -d "$HOME/.claude/projects" ] || [ -f "$HOME/.claude/history.jsonl" ]; then
-	zenity --question --default-cancel --width=460 \
-		--title="$(t claude.remove_history_title)" --text="$(t claude.remove_history_message)" \
-		--ok-label="$(t claude.remove_history_delete)" --cancel-label="$(t claude.remove_history_keep)" \
-		|| keep_history=1
+	--ok-label="$(t claude.remove_keep_button)" \
+	--extra-button="$(t claude.remove_all_button)" \
+	--cancel-label="$(t claude.remove_cancel)")"
+rc=$?
+keep_data=1
+if [ "$rc" -ne 0 ]; then
+	[ "$out" = "$(t claude.remove_all_button)" ] || exit 0
+	keep_data=0
 fi
 
 remove_all() {
@@ -72,7 +54,7 @@ remove_all() {
 	fi
 	pkill -f '[c]laude-sudo-helper-gui.sh' || true
 	pkill -f '[c]laude-sessions-gui.py' || true
-	pkill -f '[c]laude-tts/speak.py' || true
+	pkill -f '[c]laude-tts/(speak|synth).py' || true
 	# Bracket trick: the pattern must not match this script's own command line.
 	rem="$(pgrep -f '\.local/bin/clau[d]e|\.local/share/clau[d]e/versions/' || true)"
 	[ -n "$rem" ] && { kill $rem 2>/dev/null; sleep 1; kill -9 $rem 2>/dev/null; } || true
@@ -83,22 +65,38 @@ remove_all() {
 			[ -n "$f" ] && rm -f -- "$WORK/$f"
 		done < "$STATE/claude-code-files.txt"
 	fi
-	rm -f -- "$WORK"/claude-sudo-helper-gui.* "$WORK/CLAUDE.md"
-	rm -rf --one-file-system -- "$WORK/.sessions"
-	if [ "$delete_workdir" -eq 1 ]; then
-		rm -rf --one-file-system -- "$WORK"
+	rm -f -- "$WORK"/claude-sudo-helper-gui.*
+	if [ "$keep_data" -eq 1 ]; then
+		# CLAUDE.md, .sessions and the user's own files stay
+		rmdir "$WORK" 2>/dev/null || echo "kept $WORK (your projects)"
 	else
-		rmdir "$WORK" 2>/dev/null || echo "kept $WORK (not empty)"
+		rm -rf --one-file-system -- "$WORK"
 	fi
 
 	echo "--- Claude Code itself ---"
 	rm -rf --one-file-system -- "$HOME/.local/share/claude" \
 		"$HOME/.cache/claude" "$HOME/.cache/claude-cli-nodejs" "$HOME/.local/state/claude"
-	if [ "$keep_history" -eq 1 ]; then
-		# everything in ~/.claude except the transcripts/memory and prompt history
-		find "$HOME/.claude" -mindepth 1 -maxdepth 1 ! -name projects ! -name history.jsonl \
+	if [ "$keep_data" -eq 1 ]; then
+		# Keep settings, instructions, conversation history; drop login, plugins and the rest.
+		find "$HOME/.claude" -mindepth 1 -maxdepth 1 \
+			! -name projects ! -name history.jsonl ! -name settings.json ! -name CLAUDE.md \
+			! -name plans ! -name skills ! -name agents ! -name commands \
 			-exec rm -rf --one-file-system -- {} +
-		echo "kept conversation history in $HOME/.claude"
+		python3 - "$HOME/.claude/settings.json" <<'PY' || true
+import json, sys
+p = sys.argv[1]
+try:
+    s = json.load(open(p))
+except (OSError, ValueError):
+    sys.exit(0)
+s.get("enabledPlugins", {}).pop("speak-replies@local-mods", None)
+s.get("extraKnownMarketplaces", {}).pop("local-mods", None)
+for k in ("enabledPlugins", "extraKnownMarketplaces"):
+    if k in s and not s[k]:
+        del s[k]
+json.dump(s, open(p, "w"), indent=2)
+PY
+		echo "kept settings and conversation history in $HOME/.claude"
 	else
 		rm -rf --one-file-system -- "$HOME/.claude"
 	fi
