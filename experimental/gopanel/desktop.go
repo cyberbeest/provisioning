@@ -349,7 +349,24 @@ func FlushIconCache() {
 
 func fileExists(p string) bool { _, err := os.Stat(p); return err == nil }
 
-func loadIcon(name string) *image.RGBA { return loadIconSized(name, iconSize) }
+func loadIcon(name string) *image.RGBA {
+	img := loadIconSized(name, iconSize)
+	if strings.HasSuffix(name, "-symbolic") {
+		tintSymbolic(img)
+	}
+	return img
+}
+
+// tintSymbolic recolours a symbolic icon (a mask: only alpha matters) to the dark
+// foreground GTK would use on the light panel. Some themes ship the mask in light
+// grey (#bebebe, for dark themes), which would render as a washed-out icon.
+func tintSymbolic(img *image.RGBA) {
+	const r, g, b = 0x2e, 0x34, 0x36
+	for i := 0; i+3 < len(img.Pix); i += 4 {
+		a := uint32(img.Pix[i+3])
+		img.Pix[i], img.Pix[i+1], img.Pix[i+2] = byte(r*a/255), byte(g*a/255), byte(b*a/255)
+	}
+}
 
 func loadIconSized(name string, size int) *image.RGBA {
 	for _, p := range findIcons(name, size) {
