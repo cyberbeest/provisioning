@@ -29,7 +29,7 @@ import (
 	"gopanel/proto"
 )
 
-const version = "0.20.1"
+const version = "0.20.3"
 
 var ctlCmds chan<- string // control commands into the main loop
 
@@ -611,6 +611,9 @@ func main() {
 					w := 0
 					if it.img != nil {
 						w = it.img.Bounds().Dx() + 2*labelEdge
+						if isStacked(it.name) {
+							w = it.img.Bounds().Dx() + labelEdge + 1 // tight on the right, the text is right-aligned
+						}
 					}
 					if w != it.w {
 						it.w = w

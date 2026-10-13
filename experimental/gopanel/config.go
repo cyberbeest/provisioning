@@ -105,7 +105,14 @@ func buildItems(cfg map[string][]string) []*item {
 			log.Printf("plugin-%s (%s): skipped, %s", id, t, why)
 		}
 	}
-	return launchersLeft(items)
+	items = launchersLeft(items)
+	// a plain separator right after a stacked (right-aligned) label would only add a gap: drop it
+	for i := 0; i+1 < len(items); i++ {
+		if n := items[i+1]; items[i].kind == "helper" && isStacked(items[i].name) && n.kind == "separator" && !n.expand {
+			n.w = 0
+		}
+	}
+	return items
 }
 
 // launchersLeft puts the fixed launchers right after the menu button, before the expanding

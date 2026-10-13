@@ -103,7 +103,7 @@ func renderStacked(text string) *image.RGBA {
 	y := 0
 	for _, img := range imgs {
 		b := img.Bounds()
-		draw.Draw(out, image.Rect((w-b.Dx())/2, y, (w-b.Dx())/2+b.Dx(), y+b.Dy()), img, image.Point{}, draw.Over)
+		draw.Draw(out, image.Rect(w-b.Dx(), y, w, y+b.Dy()), img, image.Point{}, draw.Over) // right-aligned: snug against the item on the right
 		y += b.Dy()
 	}
 	return out
