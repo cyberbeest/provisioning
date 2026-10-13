@@ -32,7 +32,7 @@ import gi
 
 gi.require_version("Gtk", "3.0")
 gi.require_version("Gdk", "3.0")
-from gi.repository import Gdk, Gtk
+from gi.repository import Gdk, GLib, Gtk
 
 from i18n import t
 
@@ -233,53 +233,207 @@ class PanelPage(Gtk.Box):
             subprocess.Popen([self.script, "set", which])
 
 
-class RcPage(Gtk.Box):
-    """Generic Properties page for a panel plugin's xfce rc file (the plugin menu's
-    "Properties..." entry of the Go panel): one widget per key, chosen from the value's
-    look (true/false, number, rgb(r,g,b), anything else). Saved on every change; the panel
-    notices the file change and restarts the plugin."""
+# Texts for the Properties page of the Go panel's plugins (taken from the XFCE plugins' own
+# dialogs). key -> label; ordered like the original dialogs. Unknown keys are listed at the end.
+_ENABLED_SCAN = "Enabled (off freezes the scanner, centered)"
+_FPS = "Frame rate, fps:"
+_MARGIN = "Margin color:"
+_OFF = "\"Off\" LEDs are fully invisible (vs. dim housing color)"
+_SWEEP = "Sweep pattern:"
+RC_INFO = {
+    "kitt-scanner": {
+        "title": "Kitt Scanner",
+        "about": "A scanner whose sweep speed follows the CPU load.",
+        "keys": {
+            "Enabled": _ENABLED_SCAN,
+            "MinRate": "Min speed (0% CPU load), sweeps/sec:",
+            "MaxRate": "Max speed (100% CPU load), sweeps/sec:",
+            "Gamma": "Gamma (>1 slows low load further, <1 speeds it up):",
+            "FPS": _FPS,
+            "MarginColor": _MARGIN,
+            "UsePanelBg": "Use the panel background color for the margin",
+            "OffIsBg": _OFF,
+            "SineSweep": _SWEEP,
+            "ShowPercent": "Show CPU load percentage over the LEDs",
+            "FriendlyNames": "Use plain-English names in the Top CPU tooltip list (e.g. \"window drawing\" for Xorg)",
+        },
+    },
+    "io-scanner": {
+        "title": "I/O Scanner",
+        "about": "A scanner whose sweep speed follows disk throughput.",
+        "keys": {
+            "Enabled": _ENABLED_SCAN,
+            "MinRate": "Min speed (idle disk), sweeps/sec:",
+            "MaxRate": "Max speed (full-scale I/O), sweeps/sec:",
+            "Factor": "Rate factor (rate = factor * MB/s ^ exponent):",
+            "Exponent": "Rate exponent (0.301 = doubles every 10x MB/s):",
+            "IoMaxMbps": "Full-scale disk throughput, MB/s:",
+            "Gamma": "Gamma (>1 slows low throughput further, <1 speeds it up):",
+            "FPS": _FPS,
+            "MarginColor": _MARGIN,
+            "OffIsBg": _OFF,
+            "SineSweep": _SWEEP,
+            "ShowRate": "Show MB/s number over the LEDs",
+        },
+    },
+    "network-scanner": {
+        "title": "Network Scanner",
+        "about": "A scanner whose sweep speed follows network traffic.",
+        "keys": {
+            "Enabled": _ENABLED_SCAN,
+            "MinRate": "Min speed (no traffic), sweeps/sec:",
+            "MaxRate": "Max speed (full-scale traffic), sweeps/sec:",
+            "Factor": "Rate factor (rate = factor * MB/s ^ exponent):",
+            "Exponent": "Rate exponent (0.301 = doubles every 10x MB/s):",
+            "FPS": _FPS,
+            "MarginColor": _MARGIN,
+            "OffIsBg": _OFF,
+            "SineSweep": _SWEEP,
+            "ShowRate": "Show MB/s number over the LEDs",
+        },
+    },
+    "mem-liquid": {
+        "title": "Memory Liquid",
+        "about": "A tank of liquid whose level shows how much memory is in use.",
+        "keys": {
+            "Enabled": "Enabled (off freezes the liquid motion)",
+            "FPS": _FPS,
+            "ShowPercent": "Show percentage inside the tank",
+            "CountMapped": "Count loaded mmap'd file pages as used (e.g. LLM weights)",
+            "FriendlyNames": "Use plain-English names in the Top RAM tooltip list (e.g. \"window drawing\" for Xorg)",
+            "DiskWarningPercent": "Warn when disk usage reaches, %:",
+            "MarginColor": _MARGIN,
+        },
+    },
+    "wattage-panel": {
+        "title": "Wattage Panel",
+        "about": "Battery power draw and the estimated time remaining.",
+        "keys": {"DebugRaw": "Show last 10 raw energy_now readings in tooltip (debug)"},
+    },
+    "genmon": {
+        "title": "Generic Monitor",
+        "about": "Shows the output of a command. The command prints <txt>, <img>, <tool> and <click> tags.",
+        "keys": {
+            "Command": "Command:",
+            "UpdatePeriod": "Update period, milliseconds:",
+            "UseLabel": "Show a label next to the output",
+            "Text": "Label text:",
+            "Font": "Font:",
+        },
+    },
+}
+# longer explanations shown as tooltips
+RC_TIPS = {
+    "CountMapped": "On (default): counts resident/loaded mmap'd pages as used, even though clean, because evicting "
+    "an actively-read mapping (like a model file mmap'd by llama.cpp) causes real refault stalls. Off: matches "
+    "MemAvailable -- clean mmap'd pages count as free. Either way the warning tracks MemAvailable.",
+    "Gamma": "1 is linear. Above 1 the scanner stays slow longer as the load rises; below 1 it speeds up sooner.",
+    "SineSweep": "A sine sweep slows down at each end of the track; linear keeps one constant speed.",
+}
 
-    def __init__(self, path):
+
+BOOL01 = {"UseLabel"}  # booleans stored as 0/1
+
+
+class RcPage(Gtk.Box):
+    """Properties page for a panel plugin's xfce rc file (the plugin menu's "Properties..." of
+    the Go panel): one widget per key, with the wording of the original XFCE plugin dialogs,
+    chosen by the value's look (true/false, number, rgb(r,g,b), anything else). Saved on
+    every change; the panel notices the file change and restarts the plugin."""
+
+    def __init__(self, path, kind=""):
         import configparser
-        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=12)
-        self.set_border_width(16)
+        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=14)
+        self.set_border_width(18)
         self.path = path
+        info = RC_INFO.get(kind, {})
+        self.labels = info.get("keys", {})
         self.cp = configparser.RawConfigParser(strict=False)
         self.cp.optionxform = str
-        self.cp.read(path, encoding="utf-8")
-        self.pack_start(Gtk.Label(label=t("settings.props_info"), xalign=0), False, False, 0)
-        grid = Gtk.Grid(column_spacing=12, row_spacing=8)
+        with open(path, encoding="utf-8") as f:
+            text = f.read()
+        # some rc files (genmon) have no [section] line; give them one for parsing, leave it out on save
+        self.headerless = not text.lstrip().startswith("[")
+        self.cp.read_string(("[General]\n" + text) if self.headerless else text)
+
+        head = Gtk.Label(xalign=0)
+        head.set_markup("<b>%s</b>" % GLib.markup_escape_text(info.get("title", os.path.basename(path))))
+        self.pack_start(head, False, False, 0)
+        if info.get("about"):
+            about = Gtk.Label(label=info["about"], xalign=0, wrap=True, max_width_chars=60)
+            about.get_style_context().add_class("dim-label")
+            self.pack_start(about, False, False, 0)
+        self.pack_start(Gtk.Separator(), False, False, 0)
+
+        grid = Gtk.Grid(column_spacing=16, row_spacing=10)
         self.pack_start(grid, False, False, 0)
-        row = 0
+        items = {}
         for section in self.cp.sections():
             for key, value in self.cp.items(section):
-                grid.attach(Gtk.Label(label=self.pretty(key), xalign=0), 0, row, 1, 1)
+                items[key] = (section, value)
+        order = [k for k in self.labels if k in items] + [k for k in items if k not in self.labels]
+        row = 0
+        for key in order:
+            section, value = items[key]
+            label = self.labels.get(key) or self.pretty(key)
+            tip = RC_TIPS.get(key)
+            if key == "SineSweep" and value in ("true", "false"):
+                self.add_sweep(grid, row, section, key, label, value == "true", tip)
+            elif value in ("true", "false") or (key in BOOL01 and value in ("0", "1")):
+                on, off = ("1", "0") if value in ("0", "1") else ("true", "false")
+                w = Gtk.CheckButton(label=label)
+                w.get_child().set_line_wrap(True)
+                w.set_active(value == on)
+                w.connect("toggled", lambda b, s=section, k=key, on=on, off=off: self.save(s, k, on if b.get_active() else off))
+                if tip:
+                    w.set_tooltip_text(tip)
+                grid.attach(w, 0, row, 2, 1)
+            else:
+                lab = Gtk.Label(label=label, xalign=0, wrap=True, max_width_chars=44)
+                lab.set_hexpand(True)
+                if tip:
+                    lab.set_tooltip_text(tip)
+                grid.attach(lab, 0, row, 1, 1)
                 grid.attach(self.widget_for(section, key, value), 1, row, 1, 1)
-                row += 1
+            row += 1
 
     @staticmethod
     def pretty(key):
         import re
         if key.isupper():
             return key
-        return re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", key).capitalize()
+        return re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", key).capitalize() + ":"
+
+    def add_sweep(self, grid, row, section, key, label, sine, tip):
+        lab = Gtk.Label(label=label, xalign=0, yalign=0)
+        grid.attach(lab, 0, row, 1, 1)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        r1 = Gtk.RadioButton.new_with_label(None, "Sine wave (eases at each end)")
+        r2 = Gtk.RadioButton.new_with_label_from_widget(r1, "Linear (constant speed)")
+        (r1 if sine else r2).set_active(True)
+        r1.connect("toggled", lambda b: self.save(section, key, "true" if b.get_active() else "false"))
+        box.pack_start(r1, False, False, 0)
+        box.pack_start(r2, False, False, 0)
+        grid.attach(box, 1, row, 1, 1)
 
     def save(self, section, key, value):
         self.cp.set(section, key, str(value))
+        import io
+        buf = io.StringIO()
+        self.cp.write(buf, space_around_delimiters=False)
+        out = buf.getvalue()
+        if self.headerless and out.startswith("[General]\n"):
+            out = out[len("[General]\n"):]
         with open(self.path, "w", encoding="utf-8") as f:
-            self.cp.write(f, space_around_delimiters=False)
+            f.write(out)
 
     def widget_for(self, section, key, value):
         import re
-        if value in ("true", "false"):
-            w = Gtk.CheckButton()
-            w.set_active(value == "true")
-            w.connect("toggled", lambda b: self.save(section, key, "true" if b.get_active() else "false"))
-            return w
         m = re.fullmatch(r"rgb\((\d+),\s*(\d+),\s*(\d+)\)", value.strip())
         if m:
             rgba = Gdk.RGBA()
-            rgba.red, rgba.green, rgba.blue, rgba.alpha = (int(m.group(i)) / 255 for i in (1, 2, 3)) + (1.0,)
+            rgba.red, rgba.green, rgba.blue = (int(m.group(i)) / 255 for i in (1, 2, 3))
+            rgba.alpha = 1.0
             w = Gtk.ColorButton.new_with_rgba(rgba)
 
             def picked(b):
@@ -301,7 +455,7 @@ class RcPage(Gtk.Box):
             return w
         w = Gtk.Entry()
         w.set_text(value)
-        w.set_width_chars(36)
+        w.set_width_chars(44)
         w.connect("changed", lambda e: self.save(section, key, e.get_text()))
         return w
 
@@ -346,12 +500,15 @@ def main():
     ap.add_argument("--tab", default="power")
     ap.add_argument("--rc", help="open the Properties page of this plugin rc file instead")
     ap.add_argument("--title", default="")
+    ap.add_argument("--kind", default="", help="plugin type (kitt-scanner, genmon, ...) for the wording")
     args = ap.parse_args()
     if args.rc:
         win = Gtk.Window(title=t("settings.props_title").format(name=args.title or os.path.basename(args.rc)))
         win.set_position(Gtk.WindowPosition.CENTER)
         win.connect("destroy", Gtk.main_quit)
-        win.add(RcPage(args.rc))
+        win.set_default_size(560, -1)
+        win.add(RcPage(args.rc, args.kind))
+        win.set_focus(None)
         win.show_all()
         Gtk.main()
         return

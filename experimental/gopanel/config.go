@@ -91,14 +91,14 @@ func buildItems(cfg map[string][]string) []*item {
 			if rc["Command"] != "" {
 				period, _ := strconv.Atoi(rc["UpdatePeriod"])
 				g := newGenmonItem(rc["Command"], period)
-				g.rc = filepath.Join(home, ".config/xfce4/panel/genmon-"+id+".rc")
+				g.rc, g.ptype, g.title = filepath.Join(home, ".config/xfce4/panel/genmon-"+id+".rc"), "genmon", genmonTitle(rc["Command"])
 				items = append(items, g)
 			}
 		case helperNames[t] != "":
 			it := newItem("helper")
 			it.name = helperNames[t]
 			if p := filepath.Join(home, ".config/xfce4/panel/"+t+"-"+id+".rc"); fileExists(p) {
-				it.rc = p
+				it.rc, it.ptype, it.title = p, t, helperTitles[it.name]
 			}
 			items = append(items, it)
 		case t == "":
@@ -182,4 +182,23 @@ func newWhiskerButton(cfg map[string][]string, id string) *item {
 		}
 	}
 	return it
+}
+
+var helperTitles = map[string]string{
+	"kitt": "Kitt Scanner", "mem-liquid": "Memory Liquid", "io-scanner": "I/O Scanner",
+	"network-scanner": "Network Scanner", "wattage-panel": "Wattage Panel",
+}
+
+// genmonTitle names a generic monitor after what it runs.
+func genmonTitle(command string) string {
+	if strings.Contains(command, "panel-status-genmon") {
+		return "Autolock & Status"
+	}
+	base := filepath.Base(strings.Fields(command + " x")[0])
+	base = strings.TrimSuffix(base, filepath.Ext(base))
+	base = strings.NewReplacer("-", " ", "_", " ").Replace(base)
+	if base == "" {
+		return "Generic Monitor"
+	}
+	return strings.ToUpper(base[:1]) + base[1:]
 }

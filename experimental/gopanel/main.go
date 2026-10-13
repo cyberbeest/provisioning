@@ -30,7 +30,7 @@ import (
 	"gopanel/proto"
 )
 
-const version = "0.21.1"
+const version = "0.21.3"
 
 var ctlCmds chan<- string // control commands into the main loop
 
@@ -768,7 +768,7 @@ func panelMenu(x int, cmds chan<- string, over *item) {
 	}
 	items := []*menuItem{xfce, {sep: true}, {id: 2, label: tr("Restart this panel")}, {id: 3, label: tr("Quit this panel")}}
 	if over != nil && over.rc != "" { // the plugin's own entry, like the XFCE panel's plugin menu
-		items = append([]*menuItem{{id: 10, label: tr("Properties…")}, {sep: true}}, items...)
+		items = append([]*menuItem{{id: 10, label: propsLabel(over.title)}, {sep: true}}, items...)
 	}
 	menuReqs <- menuReq{
 		items:   items,
@@ -776,11 +776,11 @@ func panelMenu(x int, cmds chan<- string, over *item) {
 		onSelect: func(mi *menuItem) {
 			switch mi.id {
 			case 10:
-				title := over.name
+				title := over.title
 				if title == "" {
 					title = filepath.Base(over.rc)
 				}
-				run(exec.Command(os.ExpandEnv("$HOME/.local/bin/cyberbeest-settings.py"), "--rc", over.rc, "--title", title))
+				run(exec.Command(os.ExpandEnv("$HOME/.local/bin/cyberbeest-settings.py"), "--rc", over.rc, "--title", title, "--kind", over.ptype))
 			case 1:
 				go toggleXfcePanel()
 			case 2:

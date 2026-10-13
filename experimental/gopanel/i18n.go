@@ -99,3 +99,14 @@ func longDate(t time.Time) string {
 	}
 	return t.Format("Monday, 2 January 2006")
 }
+
+// propsLabel is the plugin menu entry: "Kitt Scanner Properties…" / "Eigenschaften von Kitt Scanner…".
+func propsLabel(title string) string {
+	if title == "" {
+		return tr("Properties…")
+	}
+	if german {
+		return "Eigenschaften von " + title + "…"
+	}
+	return title + " Properties…"
+}
