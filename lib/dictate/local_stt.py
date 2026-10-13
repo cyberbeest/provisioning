@@ -376,6 +376,10 @@ def _trimmed(audio: np.ndarray, speech) -> np.ndarray:
     return trimmed
 
 
+class Cancelled(Exception):
+    """The user cancelled the dictation while it was being transcribed."""
+
+
 class StreamingVad:
     """Runs the detector while a recording is still going, so the speech mask is
     ready the moment the key is released. feed() is cheap and safe to call from
@@ -573,9 +577,11 @@ class LocalRecognizer:
     def wait_ready(self, timeout: Optional[float] = None) -> bool:
         return self._ready.wait(timeout)
 
-    def transcribe(self, audio: np.ndarray, speech=None) -> str:
+    def transcribe(self, audio: np.ndarray, speech=None, cancel=None) -> str:
         """Take int16 mono 16 kHz audio (shape (N,) or (N, 1)), return text.
-        speech: the clip's speech mask if it was already found while recording."""
+        speech: the clip's speech mask if it was already found while recording.
+        cancel: optional threading.Event; once set, raises Cancelled between pieces
+        (a piece already being decoded cannot be interrupted)."""
         self._ready.wait()
         if self._recognizer is None:
             raise RuntimeError(f"local recognizer failed to load: {self._load_error}")
@@ -590,11 +596,18 @@ class LocalRecognizer:
         parts = []
         with self._decode_lock:
             for chunk in _split(audio):
+                if cancel is not None and cancel.is_set():
+                    raise Cancelled()
                 text = self._decode(chunk)
                 # The model now and then returns nothing for a long piece that
                 # clearly holds speech; shorter pieces of the same audio decode.
                 if not text and len(chunk) > RETRY_CHUNK_S * TARGET_SR:
-                    text = " ".join(t for t in map(self._decode, _split(chunk, RETRY_CHUNK_S)) if t)
+                    parts_r = []
+                    for piece in _split(chunk, RETRY_CHUNK_S):
+                        if cancel is not None and cancel.is_set():
+                            raise Cancelled()
+                        parts_r.append(self._decode(piece))
+                    text = " ".join(t for t in parts_r if t)
                 parts.append(text)
         self.last_used = time.monotonic()
         return " ".join(p for p in parts if p)

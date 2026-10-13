@@ -1083,16 +1083,20 @@ class MainWindow(QMainWindow):
                 return   # the download failure has already been reported
             if note:
                 note.update(self._note_text(target), cancellable=target != "")
+        import local_stt
         wait_note = None
         if self._local_model_available() and not note:
-            import local_stt
             if local_stt.status() != "loaded":
                 # Dictation ended before the model finished loading: say why
                 # the text is late, and take the message down when it is ready.
                 wait_note = core.notify_sticky(
                     _("Loading the speech model, your text follows in a moment..."))
         try:
-            text = core.transcribe(audio, self.cfg, speech)
+            text = core.transcribe(audio, self.cfg, speech, note.cancelled if note else None)
+        except local_stt.Cancelled:
+            core.log.info("transcription of %.1fs audio cancelled after %.1fs", secs, time.monotonic() - t0)
+            self.bridge.transcribed.emit("", target)
+            return
         except Exception as e:
             core.log.exception("transcribe failed: %.1fs audio, peak %d", secs, peak)
             self.bridge.error.emit(str(e))

@@ -496,11 +496,11 @@ class Recorder:
         return self.finish(self.detach())
 
 
-def transcribe(audio, cfg, speech=None):
+def transcribe(audio, cfg, speech=None, cancel=None):
     import local_stt
     threads = int(cfg.get("local_stt_num_threads", local_stt.DEFAULT_THREADS))
     idle_s = 60 * float(cfg.get("local_stt_idle_minutes", 5))
-    text = local_stt.get_recognizer(num_threads=threads, idle_s=idle_s).transcribe(audio, speech)
+    text = local_stt.get_recognizer(num_threads=threads, idle_s=idle_s).transcribe(audio, speech, cancel)
     # The model ends every piece with a full stop, even a lone word or number.
     if text.endswith(".") and len(text.split()) == 1:
         text = text[:-1]
