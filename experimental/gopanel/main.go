@@ -29,7 +29,7 @@ import (
 	"gopanel/proto"
 )
 
-const version = "0.19.4"
+const version = "0.19.5"
 
 var ctlCmds chan<- string // control commands into the main loop
 
@@ -175,31 +175,31 @@ func main() {
 				fixed += it.w
 			}
 		}
-		// Share the free width between the expanding items, but never give one more than it
-		// can use (the taskbar wants at most a full-width button per window): the surplus goes
-		// to the others (the expanding separator), so buttons are not squeezed next to dead space.
+		// Free width goes first to expanding items that say how much they can use (the taskbar:
+		// a full-width button per window), in panel order; fillers (the expanding separator) get
+		// the rest. With no filler the users take everything, so the right side stays right.
 		left := max(monW-fixed, 0)
 		alloc := map[*item]int{}
-		rest := append([]*item(nil), exp...)
-		for len(rest) > 0 {
-			share := left / len(rest)
-			capped := false
-			for i, it := range rest {
-				if it.want != nil {
-					if w := it.want(); w <= share {
-						alloc[it] = w
-						left -= w
-						rest = append(rest[:i], rest[i+1:]...)
-						capped = true
-						break
-					}
-				}
+		var users, fillers []*item
+		for _, it := range exp {
+			if it.want != nil {
+				users = append(users, it)
+			} else {
+				fillers = append(fillers, it)
 			}
-			if !capped {
-				for _, it := range rest {
-					alloc[it] = share
-				}
-				break
+		}
+		if len(fillers) == 0 && len(users) > 0 {
+			for _, it := range users {
+				alloc[it] = left / len(users)
+			}
+		} else {
+			for _, it := range users {
+				w := min(it.want(), left)
+				alloc[it] = w
+				left -= w
+			}
+			for _, it := range fillers {
+				alloc[it] = left / len(fillers)
 			}
 		}
 		x := 0
@@ -678,6 +678,10 @@ func main() {
 					pprof.StopCPUProfile()
 					f.Close()
 				}()
+			case "layout": // debugging: log every item's position
+				for i, it := range items {
+					log.Printf("layout %2d %-9s %-14s x=%4d w=%4d expand=%v reserved=%v", i, it.kind, it.name, it.x, it.w, it.expand, it.reserved)
+				}
 			case "dismiss": // close every open popup (Dictate asks before it types)
 				wh.close()
 				menus.close()
