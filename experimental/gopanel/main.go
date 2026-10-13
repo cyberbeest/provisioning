@@ -25,7 +25,7 @@ import (
 	"gopanel/proto"
 )
 
-const version = "0.8.1"
+const version = "0.9.1"
 
 var (
 	xc            *xgb.Conn // shared X connection (goroutine-safe)
@@ -386,6 +386,15 @@ func main() {
 				redrawAll()
 			}
 		case xproto.PropertyNotifyEvent:
+			// Another window took focus (a dictation typing back into its window,
+			// the user switching windows): popups hold a keyboard grab that would
+			// swallow its keystrokes, so let go of it.
+			if e.Window == xroot && (wh.isOpen || menus.active()) {
+				if r, err := xproto.GetAtomName(xc, e.Atom).Reply(); err == nil && r.Name == "_NET_ACTIVE_WINDOW" {
+					wh.close()
+					menus.close()
+				}
+			}
 			for _, tb := range taskbars {
 				tb.onProperty(e)
 			}
@@ -618,7 +627,12 @@ func panelMenu(x int, cmds chan<- string) {
 			case 2:
 				go func() { cmds <- "restart" }()
 			case 3:
-				go func() { cmds <- "quit" }()
+				go func() {
+					if !xfcePanelRunning() { // never leave the desktop without a panel
+						toggleXfcePanel()
+					}
+					cmds <- "quit"
+				}()
 			}
 		},
 	}
@@ -647,5 +661,7 @@ func toggleXfcePanel() {
 			return
 		}
 	}
-	exec.Command("systemd-run", "--user", "--collect", "--quiet", "xfce4-panel").Run()
+	exec.Command("systemd-run", "--user", "--collect", "--quiet",
+		"--setenv=DISPLAY", "--setenv=XAUTHORITY", "--setenv=XDG_CURRENT_DESKTOP", "--setenv=XDG_SESSION_TYPE",
+		"xfce4-panel").Run()
 }

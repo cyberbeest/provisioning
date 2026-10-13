@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"encoding/xml"
 	"fmt"
 	"image"
 	"image/draw"
@@ -56,6 +58,7 @@ type tray struct {
 	conn  *dbus.Conn
 	mu    sync.Mutex
 	icons []*trayIcon // registration order
+	own   bool        // we are the StatusNotifierWatcher
 }
 
 // ---- own watcher, used only when nobody else provides one --------------------------
@@ -105,6 +108,12 @@ func newTrayItem() *item {
 	it.stop = func() { conn.Close() }
 
 	ownWatcher := t.serveWatcher()
+	t.own = ownWatcher
+	if ownWatcher { // nobody else collected the running items for us
+		go func() {
+			t.rescan()
+		}()
+	}
 	sigs := make(chan *dbus.Signal, 64)
 	conn.Signal(sigs)
 	for _, opt := range [][]dbus.MatchOption{
@@ -200,6 +209,11 @@ func (t *tray) onSignal(s *dbus.Signal) {
 	case s.Name == "org.freedesktop.DBus.NameOwnerChanged" && len(s.Body) == 3:
 		name, _ := s.Body[0].(string)
 		newOwner, _ := s.Body[2].(string)
+		if name == watcherName && newOwner == "" && !t.own { // xfce4-panel went away: take over
+			if t.own = t.serveWatcher(); t.own {
+				go t.rescan() // apps that registered once with the old watcher will not do it again
+			}
+		}
 		if newOwner == "" {
 			t.unregister(func(ic *trayIcon) bool { return ic.owner == name || ic.service == name })
 		}
@@ -301,6 +315,7 @@ func (t *tray) refresh(ic *trayIcon) {
 	var props map[string]dbus.Variant
 	obj := t.conn.Object(ic.owner, ic.path)
 	if err := obj.Call("org.freedesktop.DBus.Properties.GetAll", 0, itemIface).Store(&props); err != nil {
+		log.Println("tray: GetAll", ic.owner, ic.path, err)
 		return
 	}
 	str := func(k string) string {
@@ -506,4 +521,67 @@ func pboolOf(n []interface{}, key string) bool {
 		}
 	}
 	return true
+}
+
+// rescan scans a few times: some apps (blueman) reconnect to the bus when the watcher
+// changes hands and only publish their item a moment later.
+func (t *tray) rescan() {
+	for _, d := range []time.Duration{time.Second, 4 * time.Second, 10 * time.Second} {
+		time.Sleep(d)
+		t.scanForItems()
+	}
+}
+
+// scanForItems finds live StatusNotifier items by introspecting every bus
+// connection, for use after taking over as watcher: the previous watcher's list
+// died with it and not every app re-registers (blueman does not).
+func (t *tray) scanForItems() {
+	var names []string
+	if err := t.conn.BusObject().Call("org.freedesktop.DBus.ListNames", 0).Store(&names); err != nil {
+		return
+	}
+	self := t.conn.Names()[0]
+	for _, n := range names {
+		if !strings.HasPrefix(n, ":") || n == self {
+			continue
+		}
+		t.scanNode(n, "/", 0)
+	}
+}
+
+type introNode struct {
+	Interfaces []struct {
+		Name string `xml:"name,attr"`
+	} `xml:"interface"`
+	Nodes []struct {
+		Name string `xml:"name,attr"`
+	} `xml:"node"`
+}
+
+func (t *tray) scanNode(bus, path string, depth int) {
+	if depth > 4 {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 700*time.Millisecond)
+	defer cancel()
+	var xmlData string
+	if err := t.conn.Object(bus, dbus.ObjectPath(path)).CallWithContext(ctx, "org.freedesktop.DBus.Introspectable.Introspect", 0).Store(&xmlData); err != nil {
+		return
+	}
+	var n introNode
+	if xml.Unmarshal([]byte(xmlData), &n) != nil {
+		return
+	}
+	for _, i := range n.Interfaces {
+		if i.Name == itemIface {
+			log.Println("tray: scan found", bus+path)
+			t.register("", bus+path)
+			return
+		}
+	}
+	for _, c := range n.Nodes {
+		if c.Name != "" {
+			t.scanNode(bus, strings.TrimSuffix(path, "/")+"/"+c.Name, depth+1)
+		}
+	}
 }

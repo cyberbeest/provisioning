@@ -30,7 +30,7 @@ DEFAULTS = {
     "AC_SHUTDOWN_MINUTES": "60",
     "BATTERY_SHUTDOWN_MINUTES": "60",
     "LINK_AC_BATTERY": "true",
-    # Not surfaced in this menu (see cyberbeest-extended-power-options.py instead) --
+    # Not surfaced in this menu (see cyberbeest-settings.py's power tab instead) --
     # kept here anyway so this menu's own write_settings() calls don't drop
     # them from the config file when saving an unrelated setting.
     "MINIMIZE_MINUTES": "1",
@@ -250,7 +250,7 @@ def open_power_saving_dialog(_item):
     # that would tear down a nested dialog.run() loop started in the same
     # process before the user got to see it.
     Gtk.main_quit()
-    subprocess.Popen([os.path.expanduser("~/.local/bin/cyberbeest-extended-power-options.py")])
+    subprocess.Popen([os.path.expanduser("~/.local/bin/cyberbeest-settings.py"), "--tab=power"])
 
 
 def add_preset_section(menu, label, key, current, linked):

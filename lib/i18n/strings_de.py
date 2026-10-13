@@ -57,6 +57,14 @@ STRINGS = {
     "timer.on_battery": "Im Akkubetrieb:",
     "timer.power_saving_while_locked": "Erweiterte Energieoptionen…",
 
+    "settings.window_title": "Cyberbeest Einstellungen",
+    "settings.tab_power": "Erweiterte Energieoptionen",
+    "settings.tab_panel": "Leiste",
+    "panel.info": "Wähle, welche Leiste am unteren Bildschirmrand angezeigt wird. Die Änderung gilt sofort und bleibt bis zur nächsten Anmeldung erhalten.",
+    "panel.xfce": "XFCE-Leiste (Standard)",
+    "panel.gopanel": "Cyberbeest-Leiste (experimentell)",
+    "panel.note": "Die Leisten wechseln innerhalb weniger Sekunden. Die experimentelle Leiste unterstützt noch nicht alle Tray-Symbole.",
+
     "lockpower.window_title": "Cyberbeest Erweiterte Energieoptionen",
     "lockpower.info": (
         "Sobald der Bildschirm so lange gesperrt ist, werden Fenster "

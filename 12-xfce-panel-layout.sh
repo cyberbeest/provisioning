@@ -28,7 +28,7 @@
 # themselves right before it.
 #
 # Bumped 2026-09-20: reserves plugin-19 (genmon) for 11a-clipboard-status.sh.
-# Also installs Cyberbeest Extended Power Options (lib/cyberbeest-extended-power-options.py):
+# Also installs Cyberbeest Settings (lib/cyberbeest-settings.py; its Extended power options tab):
 # a small Whisker-menu app (Cyberbeest category) for the window-minimize-delay
 # and browser-CPU-throttle settings lock-shutdown-watcher.sh applies while
 # locked. shutdown-timer-menu.py's "Power saving while locked..." item opens
@@ -132,12 +132,15 @@ sed "s|__GENMON_WIDGET__|genmon-211|g" "$DIR/lib/shutdown-timer-menu.py" \
 	> "$TARGET_HOME/.local/bin/shutdown-timer-menu.py"
 chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.local/bin/shutdown-timer-menu.py"
 chmod 755 "$TARGET_HOME/.local/bin/shutdown-timer-menu.py"
-# The menu's "Power saving while locked..." item launches this as a
-# separate process (see shutdown-timer-menu.py's open_power_saving_dialog).
-sed "s|__GENMON_WIDGET__|genmon-211|g" "$DIR/lib/cyberbeest-extended-power-options.py" \
-	> "$TARGET_HOME/.local/bin/cyberbeest-extended-power-options.py"
-chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.local/bin/cyberbeest-extended-power-options.py"
-chmod 755 "$TARGET_HOME/.local/bin/cyberbeest-extended-power-options.py"
+# The menu's "Extended power options..." item launches this as a separate
+# process (see shutdown-timer-menu.py's open_power_saving_dialog). It replaced
+# the standalone cyberbeest-extended-power-options.py, removed here.
+sed "s|__GENMON_WIDGET__|genmon-211|g" "$DIR/lib/cyberbeest-settings.py" \
+	> "$TARGET_HOME/.local/bin/cyberbeest-settings.py"
+chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.local/bin/cyberbeest-settings.py"
+chmod 755 "$TARGET_HOME/.local/bin/cyberbeest-settings.py"
+rm -f "$TARGET_HOME/.local/bin/cyberbeest-extended-power-options.py" \
+	"$TARGET_HOME/.local/share/applications/cyberbeest-extended-power-options.desktop"
 # i18n.py does `from i18n import t`, which only resolves if i18n.py (and its
 # strings_*.py catalogs) sit next to the installed script -- see lib/i18n.py.
 install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 "$DIR/lib/i18n.py" "$TARGET_HOME/.local/bin/i18n.py"
@@ -161,22 +164,22 @@ install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 \
 install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 \
 	"$DIR/lib/assets/Cyberbeest-black.png" "$ICONS_DIR/Cyberbeest-black.png"
 
-echo "--- Installing app menu entry for Cyberbeest Extended Power Options (Whisker menu, Cyberbeest category) ---"
+echo "--- Installing app menu entry for Cyberbeest Settings (Whisker menu, Cyberbeest category) ---"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.local/share/applications"
-cat > "$TARGET_HOME/.local/share/applications/cyberbeest-extended-power-options.desktop" <<EOF
+cat > "$TARGET_HOME/.local/share/applications/cyberbeest-settings.desktop" <<EOF
 [Desktop Entry]
 Type=Application
-Name=Cyberbeest Extended Power Options
-Name[de]=Cyberbeest Erweiterte Energieoptionen
-Comment=Window minimizing and browser CPU throttling while the screen is locked
-Comment[de]=Fenster minimieren und Browser-CPU begrenzen bei gesperrtem Bildschirm
-Exec=$TARGET_HOME/.local/bin/cyberbeest-extended-power-options.py
+Name=Cyberbeest Settings
+Name[de]=Cyberbeest Einstellungen
+Comment=Extended power options and more
+Comment[de]=Erweiterte Energieoptionen und mehr
+Exec=$TARGET_HOME/.local/bin/cyberbeest-settings.py
 Icon=$ICONS_DIR/Cyberbeest-black.png
 Terminal=false
 Categories=Cyberbeest;Settings;
 StartupNotify=true
 EOF
-chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.local/share/applications/cyberbeest-extended-power-options.desktop"
+chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.local/share/applications/cyberbeest-settings.desktop"
 
 # The pulseaudio plugin's volume icon comes from Adwaita (not hicolor --
 # Tango, the active GTK icon theme, inherits from Adwaita before falling

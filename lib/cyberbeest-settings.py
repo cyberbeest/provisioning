@@ -1,22 +1,30 @@
 #!/usr/bin/env python3
-"""Cyberbeest Extended Power Options: a standalone dialog for the
-power-saving-while-locked settings (window minimizing + browser CPU
-throttling) used by lock-shutdown-watcher.sh, the instant-cover curtain
-toggle (see lock-screen-curtain.sh), and the pre-lock warning notification
-(see lock-warning-watcher.sh) -- none of these are surfaced anywhere else,
-so they all live in this one dialog. Has its own Whisker menu entry
-(Cyberbeest category), and is also launched as a separate process from
-shutdown-timer-menu.py's "Extended power options..." item, rather than
-opened as a Gtk.Dialog inside the menu's own process -- see the comment on
-open_power_saving_dialog() there for why.
+"""Cyberbeest Settings: one window with vertical tabs (Gtk.StackSidebar).
+Each tab is a self-contained page class that builds into a Gtk.Box, so adding
+another dialog means writing one more page and registering it in PAGES.
 
-Reads/writes the same config file as lock-shutdown-watcher.sh and
-shutdown-timer-menu.py, and keeps its own copy of DEFAULTS (matching the
-menu's full set, not just the two keys shown here) so a save from this
-dialog doesn't drop the shutdown-timer's own keys -- same duplication
-convention the rest of this family of scripts already uses.
+Tabs:
+  power  Extended power options: the power-saving-while-locked settings (window
+         minimizing + browser CPU throttling) used by lock-shutdown-watcher.sh,
+         the instant-cover curtain toggle (see lock-screen-curtain.sh), and the
+         pre-lock warning notification (see lock-warning-watcher.sh).
+  panel  Which panel runs: the stock XFCE panel or the experimental Go panel.
+         Only shown where the panel switcher (cyberbeest-panel-choice.sh) is
+         installed, i.e. on the dev machine for now.
+
+Launch with --tab=<name> to open on a given tab (the shutdown timer menu's
+"Extended power options..." item uses --tab=power). Run as a separate process
+from that menu, rather than a Gtk.Dialog inside its process -- see the comment
+on open_power_saving_dialog() there for why.
+
+The power tab reads/writes the same config file as lock-shutdown-watcher.sh
+and shutdown-timer-menu.py, and keeps its own copy of DEFAULTS (matching the
+menu's full set, not just the keys shown here) so a save doesn't drop the
+shutdown-timer's own keys -- same duplication convention the rest of this
+family of scripts already uses.
 """
 
+import argparse
 import os
 import subprocess
 
@@ -84,18 +92,12 @@ def fmt_percent_output(spin):
     return True
 
 
-class PowerSavingDialog(Gtk.Window):
+class PowerPage(Gtk.Box):
     def __init__(self):
-        super().__init__(title=t("lockpower.window_title"))
-        self.set_default_size(380, -1)
-        self.set_position(Gtk.WindowPosition.CENTER)
+        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=14)
         self.set_border_width(16)
-        self.connect("destroy", Gtk.main_quit)
-
         settings = read_settings()
-
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
-        self.add(box)
+        box = self
 
         info = Gtk.Label(
             wrap=True,
@@ -155,12 +157,6 @@ class PowerSavingDialog(Gtk.Window):
         no_mercy_info.get_style_context().add_class("dim-label")
         box.pack_start(no_mercy_info, False, False, 0)
 
-        button_box = Gtk.ButtonBox(layout_style=Gtk.ButtonBoxStyle.END)
-        box.pack_start(button_box, False, False, 0)
-        close_button = Gtk.Button(label=t("lockpower.close"))
-        close_button.connect("clicked", lambda _b: self.destroy())
-        button_box.pack_start(close_button, False, False, 0)
-
     def on_minimize_changed(self, spin):
         write_setting("MINIMIZE_MINUTES", spin.get_value_as_int())
 
@@ -183,9 +179,101 @@ class PowerSavingDialog(Gtk.Window):
         write_setting("NO_MERCY_LOCK_ENABLED", "true" if check.get_active() else "false")
 
 
+PANEL_CHOICE_SCRIPTS = [
+    os.path.expanduser("~/.local/bin/cyberbeest-panel-choice.sh"),
+    os.path.expanduser("~/claude/provisioning/experimental/gopanel/cyberbeest-panel-choice.sh"),
+]
+PANEL_CONF = os.path.join(CONFIG_DIR, "panel.conf")
+
+
+def panel_choice_script():
+    for p in PANEL_CHOICE_SCRIPTS:
+        if os.access(p, os.X_OK):
+            return p
+    return None
+
+
+def current_panel():
+    try:
+        with open(PANEL_CONF, encoding="utf-8") as f:
+            for line in f:
+                if line.strip() == "PANEL=gopanel":
+                    return "gopanel"
+    except OSError:
+        pass
+    return "xfce"
+
+
+class PanelPage(Gtk.Box):
+    def __init__(self, script):
+        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=14)
+        self.set_border_width(16)
+        self.script = script
+
+        info = Gtk.Label(wrap=True, max_width_chars=44, xalign=0, label=t("panel.info"))
+        self.pack_start(info, False, False, 0)
+
+        self.xfce_radio = Gtk.RadioButton.new_with_label_from_widget(None, t("panel.xfce"))
+        self.go_radio = Gtk.RadioButton.new_with_label_from_widget(self.xfce_radio, t("panel.gopanel"))
+        (self.go_radio if current_panel() == "gopanel" else self.xfce_radio).set_active(True)
+        self.pack_start(self.xfce_radio, False, False, 0)
+        self.pack_start(self.go_radio, False, False, 0)
+
+        note = Gtk.Label(wrap=True, max_width_chars=44, xalign=0, label=t("panel.note"))
+        note.get_style_context().add_class("dim-label")
+        self.pack_start(note, False, False, 0)
+
+        self.xfce_radio.connect("toggled", self.on_toggled, "xfce")
+        self.go_radio.connect("toggled", self.on_toggled, "gopanel")
+
+    def on_toggled(self, radio, which):
+        if radio.get_active():
+            # Switching takes a few seconds (starts one panel, then stops the other).
+            subprocess.Popen([self.script, "set", which])
+
+
+PAGES = [
+    ("power", "settings.tab_power", lambda: PowerPage()),
+    ("panel", "settings.tab_panel", lambda: PanelPage(panel_choice_script()) if panel_choice_script() else None),
+]
+
+
+class SettingsWindow(Gtk.Window):
+    def __init__(self, tab):
+        super().__init__(title=t("settings.window_title"))
+        self.set_default_size(640, 420)
+        self.set_position(Gtk.WindowPosition.CENTER)
+        self.connect("destroy", Gtk.main_quit)
+
+        paned = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+        self.add(paned)
+        stack = self.stack = Gtk.Stack()
+        stack.set_transition_type(Gtk.StackTransitionType.NONE)
+        sidebar = Gtk.StackSidebar()
+        sidebar.set_stack(stack)
+        paned.pack_start(sidebar, False, False, 0)
+        paned.pack_start(Gtk.Separator(orientation=Gtk.Orientation.VERTICAL), False, False, 0)
+        paned.pack_start(stack, True, True, 0)
+
+        for name, title_key, build in PAGES:
+            page = build()
+            if page is not None:
+                stack.add_titled(page, name, t(title_key))
+        self.tab = tab
+
+    def select_tab(self):
+        # Only works once the pages are shown, so call after show_all().
+        if self.stack.get_child_by_name(self.tab):
+            self.stack.set_visible_child_name(self.tab)
+
+
 def main():
-    win = PowerSavingDialog()
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--tab", default="power")
+    args = ap.parse_args()
+    win = SettingsWindow(args.tab)
     win.show_all()
+    win.select_tab()
     Gtk.main()
 
 

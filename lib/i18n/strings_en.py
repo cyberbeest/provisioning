@@ -53,6 +53,14 @@ STRINGS = {
     "timer.on_battery": "On battery:",
     "timer.power_saving_while_locked": "Extended power options…",
 
+    "settings.window_title": "Cyberbeest Settings",
+    "settings.tab_power": "Extended power options",
+    "settings.tab_panel": "Panel",
+    "panel.info": "Choose which panel is shown at the bottom of the screen. The change takes effect right away and is kept for the next login.",
+    "panel.xfce": "XFCE panel (default)",
+    "panel.gopanel": "Cyberbeest panel (experimental)",
+    "panel.note": "The panels swap within a few seconds. The experimental panel does not support every tray icon yet.",
+
     "lockpower.window_title": "Cyberbeest Extended Power Options",
     "lockpower.info": (
         "Once the screen has been locked this long, windows are minimized "
