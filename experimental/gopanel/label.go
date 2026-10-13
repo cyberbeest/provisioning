@@ -4,6 +4,8 @@ import (
 	"image"
 	"image/color"
 	"image/draw"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"gopanel/gfx"
@@ -60,4 +62,81 @@ func iconText(icon *image.RGBA, markup string, gap int) *image.RGBA {
 		draw.Draw(img, image.Rect(x, (h-th)/2, x+tw, (h-th)/2+th), txt, image.Point{}, draw.Over)
 	}
 	return img
+}
+
+// stackedPx is the font size of a two-line label (the panel is 35px high).
+const stackedPx = 11.5
+
+// renderStacked draws plain text on two balanced lines ("8.2W -2:12" -> "8.2W" over
+// "-2:12", "🔒 Never ⏻ Never" -> "🔒 Never" over "⏻ Never") to save panel width. Text with
+// markup, or that cannot be split, is not stacked; nil means "render it normally".
+func renderStacked(text string) *image.RGBA {
+	text = strings.TrimSpace(text)
+	if text == "" || strings.ContainsAny(text, "<&") {
+		return nil
+	}
+	words := strings.Fields(text)
+	if len(words) < 2 {
+		return nil
+	}
+	width := func(s string) int { return gfx.Measure(gfx.ParseMarkup(s, inkBlack), stackedPx).W }
+	best, bestW := 1, 1<<30
+	for i := 1; i < len(words); i++ {
+		l, r := strings.Join(words[:i], " "), strings.Join(words[i:], " ")
+		if w := max(width(l), width(r)); w < bestW {
+			best, bestW = i, w
+		}
+	}
+	lines := []string{strings.Join(words[:best], " "), strings.Join(words[best:], " ")}
+	var imgs [2]*image.RGBA
+	w, h := 0, 0
+	for i, l := range lines {
+		sp := gfx.ParseMarkup(l, inkBlack)
+		m := gfx.Measure(sp, stackedPx)
+		img := image.NewRGBA(image.Rect(0, 0, max(m.W, 1), max(m.H, 1)))
+		gfx.Draw(img, 0, 0, sp, stackedPx)
+		imgs[i] = img
+		w = max(w, m.W)
+		h += m.H
+	}
+	out := image.NewRGBA(image.Rect(0, 0, w, h))
+	y := 0
+	for _, img := range imgs {
+		b := img.Bounds()
+		draw.Draw(out, image.Rect((w-b.Dx())/2, y, (w-b.Dx())/2+b.Dx(), y+b.Dy()), img, image.Point{}, draw.Over)
+		y += b.Dy()
+	}
+	return out
+}
+
+// stacked lists what gets the two-line treatment: helper names and substrings of genmon
+// commands, one per line in ~/.config/gopanel/stacked.conf (default below when absent).
+var stackedList = loadStackedList()
+
+func loadStackedList() []string {
+	def := []string{"wattage-panel", "panel-status-genmon"}
+	dir, err := os.UserConfigDir()
+	if err != nil {
+		return def
+	}
+	b, err := os.ReadFile(filepath.Join(dir, "gopanel", "stacked.conf"))
+	if err != nil {
+		return def
+	}
+	var out []string
+	for _, l := range strings.Split(string(b), "\n") {
+		if l = strings.TrimSpace(l); l != "" && !strings.HasPrefix(l, "#") {
+			out = append(out, l)
+		}
+	}
+	return out
+}
+
+func isStacked(key string) bool {
+	for _, s := range stackedList {
+		if strings.Contains(key, s) {
+			return true
+		}
+	}
+	return false
 }

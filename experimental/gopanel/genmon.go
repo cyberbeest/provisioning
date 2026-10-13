@@ -62,6 +62,7 @@ func loadPNG(path string, maxH int) *image.RGBA {
 func newGenmonItem(command string, periodMs int) *item {
 	it := newItem("genmon")
 	it.hl = true
+	stack := isStacked(command)
 	if periodMs < 250 {
 		periodMs = 30000
 	}
@@ -125,7 +126,13 @@ func newGenmonItem(command string, periodMs int) *item {
 		spans := gfx.ParseMarkup(txt, ink)
 		px := 13.0
 		var tm gfx.Metrics
-		if strings.TrimSpace(txt) != "" {
+		var stackedImg *image.RGBA
+		if stack {
+			stackedImg = renderStacked(txt)
+		}
+		if stackedImg != nil {
+			tm = gfx.Metrics{W: stackedImg.Bounds().Dx(), H: stackedImg.Bounds().Dy()}
+		} else if strings.TrimSpace(txt) != "" {
 			tm = gfx.Measure(spans, px)
 		}
 		iw, ih := 0, 0
@@ -146,7 +153,11 @@ func newGenmonItem(command string, periodMs int) *item {
 			if iw > 0 {
 				x += gap
 			}
-			gfx.Draw(img, x, (h-tm.H)/2, spans, px)
+			if stackedImg != nil {
+				draw.Draw(img, image.Rect(x, (h-tm.H)/2, x+tm.W, (h-tm.H)/2+tm.H), stackedImg, image.Point{}, draw.Over)
+			} else {
+				gfx.Draw(img, x, (h-tm.H)/2, spans, px)
+			}
 		}
 		zmu.Lock()
 		cur = zone{imgW: iw, imgCmd: imgClick, txtCmd: txtClick}

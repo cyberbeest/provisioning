@@ -76,6 +76,10 @@ chosen in Cyberbeest Settings > Panel); cyberbeest-whisker-key.sh is the Windows
 - Helpers: duplicates (a restarted panel racing a surviving helper) are told to `quit` and exit instead of
   reconnecting forever; the supervisor waits 4 s for survivors before spawning; zombie helpers from before an
   exec-restart are reaped.
+- Two-line labels (label.go renderStacked): text of the wattage helper and of the status genmon (autolock/
+  shutdown timers) is split into two balanced lines, saving ~110 px. Which items: one name/command substring
+  per line in ~/.config/gopanel/stacked.conf (default: wattage-panel, panel-status-genmon).
+- XEmbed icons of apps that also have a StatusNotifier icon (blueman registers both) are hidden, so no blank slot.
 - Volume sliders go up to 150% (orange past the 100% tick) like pavucontrol; wheel over the taskbar cycles windows.
 - Volume popup has a second section for the microphone (default source: slider + mute).
 - Free width goes to the taskbar first (up to a full-width button per window), the expanding separator

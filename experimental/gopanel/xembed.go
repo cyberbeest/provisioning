@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"strings"
 	"time"
 
 	"github.com/jezek/xgb/xproto"
@@ -20,11 +21,12 @@ const (
 )
 
 type xtray struct {
-	it    *item
-	mgr   xproto.Window
-	owned bool
-	yield bool // another panel is about to start: leave the selection alone
-	icons []xproto.Window
+	it     *item
+	mgr    xproto.Window
+	owned  bool
+	yield  bool // another panel is about to start: leave the selection alone
+	icons  []xproto.Window
+	hidden map[xproto.Window]bool // docked, but the app also has a StatusNotifier icon: shown once, not twice
 }
 
 var (
@@ -40,11 +42,22 @@ func newXTrayItem() *item {
 	return it
 }
 
+func (x *xtray) visibleIcons() []xproto.Window {
+	var out []xproto.Window
+	for _, w := range x.icons {
+		if !x.hidden[w] {
+			out = append(out, w)
+		}
+	}
+	return out
+}
+
 func (x *xtray) width() int {
-	if len(x.icons) == 0 {
+	n := len(x.visibleIcons())
+	if n == 0 {
 		return 0
 	}
-	return len(x.icons)*(iconSize+xtGap) - xtGap + 2*xtEdge
+	return n*(iconSize+xtGap) - xtGap + 2*xtEdge
 }
 
 // tryAcquire takes the tray selection if it is free.
@@ -145,6 +158,7 @@ func (x *xtray) dock(w xproto.Window) {
 func (x *xtray) remove(w xproto.Window) {
 	for i, c := range x.icons {
 		if c == w {
+			delete(x.hidden, w)
 			x.icons = append(x.icons[:i], x.icons[i+1:]...)
 			x.sync()
 			return
@@ -152,15 +166,72 @@ func (x *xtray) remove(w xproto.Window) {
 	}
 }
 
-// place moves the docked windows to follow the item after a layout pass.
+// place moves the docked windows to follow the item after a layout pass; hidden ones wait
+// unmapped off-screen.
 func (x *xtray) place() {
 	if x.it == nil {
 		return
 	}
 	y := (panelH - iconSize) / 2
-	for i, w := range x.icons {
+	i := 0
+	for _, w := range x.icons {
+		if x.hidden[w] {
+			xproto.ConfigureWindow(xc, w, xproto.ConfigWindowX|xproto.ConfigWindowY, []uint32{0xffffff38, 0xffffff38}) // -200,-200
+			continue
+		}
 		xproto.ConfigureWindow(xc, w, xproto.ConfigWindowX|xproto.ConfigWindowY|xproto.ConfigWindowWidth|xproto.ConfigWindowHeight,
 			[]uint32{uint32(x.it.x + xtEdge + i*(iconSize+xtGap)), uint32(y), uint32(iconSize), uint32(iconSize)})
+		i++
+	}
+}
+
+// windowIDs returns the lowercase name and class strings of a window.
+func windowIDs(w xproto.Window) []string {
+	var out []string
+	for _, p := range []string{"_NET_WM_NAME", "WM_NAME", "WM_CLASS"} {
+		if r := getProp(w, p, 256); r != nil {
+			for _, s := range strings.Split(string(r.Value), "\x00") {
+				if s != "" {
+					out = append(out, strings.ToLower(s))
+				}
+			}
+		}
+	}
+	return out
+}
+
+// refreshHidden hides docked icons whose application also shows a StatusNotifier icon
+// (blueman registers both; the XEmbed one stays blank). Called from the tick.
+func (x *xtray) refreshHidden() {
+	if len(x.icons) == 0 || sniTray == nil {
+		return
+	}
+	ids := sniTray.ids()
+	changed := false
+	for _, w := range x.icons {
+		hide := false
+		for _, s := range windowIDs(w) {
+			for _, id := range ids {
+				if len(id) >= 4 && (s == id || strings.HasPrefix(s, id)) {
+					hide = true
+				}
+			}
+		}
+		if hide != x.hidden[w] {
+			if x.hidden == nil {
+				x.hidden = map[xproto.Window]bool{}
+			}
+			x.hidden[w] = hide
+			if hide {
+				xproto.UnmapWindow(xc, w)
+			} else {
+				xproto.MapWindow(xc, w)
+			}
+			changed = true
+		}
+	}
+	if changed {
+		x.sync()
 	}
 }
 

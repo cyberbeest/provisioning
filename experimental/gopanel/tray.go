@@ -53,6 +53,9 @@ type trayIcon struct {
 	img            *image.RGBA
 }
 
+// sniTray is the running StatusNotifier host, for the XEmbed tray to compare against.
+var sniTray *tray
+
 type tray struct {
 	it    *item
 	conn  *dbus.Conn
@@ -99,6 +102,7 @@ func newTrayItem() *item {
 	it := newItem("tray")
 	it.hl = false
 	t := &tray{it: it}
+	sniTray = t
 	conn, err := dbus.ConnectSessionBus()
 	if err != nil {
 		log.Println("tray: no session bus:", err)
@@ -584,4 +588,17 @@ func (t *tray) scanNode(bus, path string, depth int) {
 			t.scanNode(bus, strings.TrimSuffix(path, "/")+"/"+c.Name, depth+1)
 		}
 	}
+}
+
+// ids returns the lowercase Ids of the registered StatusNotifier items.
+func (t *tray) ids() []string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	var out []string
+	for _, ic := range t.icons {
+		if ic.id != "" {
+			out = append(out, strings.ToLower(ic.id))
+		}
+	}
+	return out
 }

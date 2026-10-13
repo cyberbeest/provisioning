@@ -29,7 +29,7 @@ import (
 	"gopanel/proto"
 )
 
-const version = "0.19.5"
+const version = "0.20.1"
 
 var ctlCmds chan<- string // control commands into the main loop
 
@@ -516,6 +516,7 @@ func main() {
 		select {
 		case <-xtTick:
 			xt.tryAcquire()
+			xt.refreshHidden()
 		case ev, ok := <-events:
 			if !ok {
 				return
@@ -600,7 +601,13 @@ func main() {
 				}
 			case "label":
 				if it := itemFor(items, he.hc); it != nil {
-					it.img = renderLabel(he.text)
+					it.img = nil
+					if isStacked(it.name) {
+						it.img = renderStacked(he.text)
+					}
+					if it.img == nil {
+						it.img = renderLabel(he.text)
+					}
 					w := 0
 					if it.img != nil {
 						w = it.img.Bounds().Dx() + 2*labelEdge
