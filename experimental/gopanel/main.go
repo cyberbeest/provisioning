@@ -27,7 +27,7 @@ import (
 	"gopanel/proto"
 )
 
-const version = "0.13.1"
+const version = "0.14.0"
 
 var ctlCmds chan<- string // control commands into the main loop
 
@@ -401,11 +401,14 @@ func main() {
 		return "resume"
 	}
 
+	grabMediaKeys()
 	handle := func(ev xgb.Event) {
 		if xt.handle(ev) {
 			return
 		}
 		switch e := ev.(type) {
+		case xproto.KeyPressEvent:
+			mediaKey(e.Detail)
 		case xproto.ExposeEvent:
 			if e.Count == 0 {
 				redrawAll()
