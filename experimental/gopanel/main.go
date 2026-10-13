@@ -19,6 +19,7 @@ import (
 	"path/filepath"
 	"runtime/debug"
 	"runtime/pprof"
+	"strings"
 	"syscall"
 	"time"
 
@@ -29,7 +30,7 @@ import (
 	"gopanel/proto"
 )
 
-const version = "0.20.3"
+const version = "0.21.1"
 
 var ctlCmds chan<- string // control commands into the main loop
 
@@ -503,8 +504,8 @@ func main() {
 		case xproto.ButtonPressEvent:
 			cancelTip()
 			it := hit(e.EventX)
-			if e.Detail == 3 && (it == nil || it.kind == "separator" || it.kind == "launcher" || it.kind == "clock" || it.kind == "helper") {
-				panelMenu(int(e.EventX), cmds)
+			if e.Detail == 3 && (it == nil || it.kind == "separator" || it.kind == "launcher" || it.kind == "clock" || it.kind == "helper" || it.kind == "genmon") {
+				panelMenu(int(e.EventX), cmds, it)
 			} else if it != nil && it.click != nil {
 				it.click(int(e.EventX)-it.x, int(e.EventY), int(e.Detail))
 			}
@@ -603,7 +604,7 @@ func main() {
 				if it := itemFor(items, he.hc); it != nil {
 					it.img = nil
 					if isStacked(it.name) {
-						it.img = renderStacked(he.text)
+						it.img = renderStacked(he.text, true)
 					}
 					if it.img == nil {
 						it.img = renderLabel(he.text)
@@ -655,6 +656,14 @@ func main() {
 				}
 			}
 		case cmd := <-cmds:
+			if name, ok := strings.CutPrefix(cmd, "helper-restart:"); ok { // internal (the socket does not accept it)
+				for _, hc := range helpers {
+					if hc.name == name {
+						hc.send("quit") // exits; the supervisor starts it again, reading the new settings
+					}
+				}
+				continue
+			}
 			switch cmd {
 			case "reload": // re-read the xfce4-panel config, rebuild all items
 				log.Println("reload")
@@ -752,16 +761,26 @@ func xfcePanelRunning() bool {
 
 // panelMenu is the right-click menu of the panel background: switch the stock
 // XFCE panel on or off, restart or quit this panel.
-func panelMenu(x int, cmds chan<- string) {
+func panelMenu(x int, cmds chan<- string, over *item) {
 	xfce := &menuItem{id: 1, label: tr("Start XFCE panel")}
 	if xfcePanelRunning() {
 		xfce = &menuItem{id: 1, label: tr("Stop XFCE panel")}
 	}
+	items := []*menuItem{xfce, {sep: true}, {id: 2, label: tr("Restart this panel")}, {id: 3, label: tr("Quit this panel")}}
+	if over != nil && over.rc != "" { // the plugin's own entry, like the XFCE panel's plugin menu
+		items = append([]*menuItem{{id: 10, label: tr("Properties…")}, {sep: true}}, items...)
+	}
 	menuReqs <- menuReq{
-		items:   []*menuItem{xfce, {sep: true}, {id: 2, label: tr("Restart this panel")}, {id: 3, label: tr("Quit this panel")}},
+		items:   items,
 		anchorX: x,
 		onSelect: func(mi *menuItem) {
 			switch mi.id {
+			case 10:
+				title := over.name
+				if title == "" {
+					title = filepath.Base(over.rc)
+				}
+				run(exec.Command(os.ExpandEnv("$HOME/.local/bin/cyberbeest-settings.py"), "--rc", over.rc, "--title", title))
 			case 1:
 				go toggleXfcePanel()
 			case 2:

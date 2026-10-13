@@ -39,6 +39,7 @@ var deStrings = map[string]string{
 	"Volume":                  "Lautstärke",
 	"Volume muted":            "Lautstärke stumm",
 	"Mute":                    "Stumm",
+	"Properties…":             "Eigenschaften…",
 	"Microphone":              "Mikrofon",
 	"Audio Mixer…":            "Audio-Mixer…",
 	"Battery":                 "Akku",

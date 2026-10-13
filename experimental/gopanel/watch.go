@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
@@ -49,6 +50,9 @@ func watchConfig(cmds chan<- string) {
 				if filepath.Dir(ev.Name) == panelDir {
 					if ev.Has(fsnotify.Create) && strings.HasPrefix(base, "launcher-") {
 						add(ev.Name) // new launcher dir
+					} else if name := helperForRC(base); name != "" {
+						restartHelperSoon(name, cmds) // its settings changed: restart it
+						continue
 					} else if !strings.HasPrefix(base, "launcher-") && !strings.HasPrefix(base, "genmon-") {
 						continue // plugin settings we don't mirror are not our business
 					}
@@ -78,4 +82,35 @@ func watchConfig(cmds chan<- string) {
 			}
 		}
 	}()
+}
+
+var helperTimers = map[string]*time.Timer{}
+var helperTimersMu sync.Mutex
+
+// helperForRC maps "kitt-scanner-214.rc" to the helper that implements that plugin ("kitt").
+func helperForRC(base string) string {
+	if !strings.HasSuffix(base, ".rc") {
+		return ""
+	}
+	t := strings.TrimSuffix(base, ".rc")
+	if i := strings.LastIndex(t, "-"); i > 0 {
+		t = t[:i]
+	}
+	return helperNames[t]
+}
+
+// restartHelperSoon debounces the burst of events one save produces.
+func restartHelperSoon(name string, cmds chan<- string) {
+	helperTimersMu.Lock()
+	defer helperTimersMu.Unlock()
+	if t := helperTimers[name]; t != nil {
+		t.Reset(400 * time.Millisecond)
+		return
+	}
+	helperTimers[name] = time.AfterFunc(400*time.Millisecond, func() {
+		select {
+		case cmds <- "helper-restart:" + name:
+		default:
+		}
+	})
 }

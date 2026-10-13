@@ -70,7 +70,7 @@ const stackedPx = 11.5
 // renderStacked draws plain text on two balanced lines ("8.2W -2:12" -> "8.2W" over
 // "-2:12", "🔒 Never ⏻ Never" -> "🔒 Never" over "⏻ Never") to save panel width. Text with
 // markup, or that cannot be split, is not stacked; nil means "render it normally".
-func renderStacked(text string) *image.RGBA {
+func renderStacked(text string, right bool) *image.RGBA {
 	text = strings.TrimSpace(text)
 	if text == "" || strings.ContainsAny(text, "<&") {
 		return nil
@@ -103,7 +103,11 @@ func renderStacked(text string) *image.RGBA {
 	y := 0
 	for _, img := range imgs {
 		b := img.Bounds()
-		draw.Draw(out, image.Rect(w-b.Dx(), y, w, y+b.Dy()), img, image.Point{}, draw.Over) // right-aligned: snug against the item on the right
+		x := 0
+		if right { // snug against the item on the right
+			x = w - b.Dx()
+		}
+		draw.Draw(out, image.Rect(x, y, x+b.Dx(), y+b.Dy()), img, image.Point{}, draw.Over)
 		y += b.Dy()
 	}
 	return out

@@ -54,6 +54,8 @@ STRINGS = {
     "timer.power_saving_while_locked": "Extended power options…",
 
     "settings.window_title": "Cyberbeest Settings",
+    "settings.props_title": "Properties: {name}",
+    "settings.props_info": "Changes apply right away.",
     "settings.tab_power": "Extended power options",
     "settings.tab_panel": "Panel",
     "panel.info": "Choose which panel is shown at the bottom of the screen. The change takes effect right away and is kept for the next login.",

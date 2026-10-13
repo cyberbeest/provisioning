@@ -128,7 +128,7 @@ func newGenmonItem(command string, periodMs int) *item {
 		var tm gfx.Metrics
 		var stackedImg *image.RGBA
 		if stack {
-			stackedImg = renderStacked(txt)
+			stackedImg = renderStacked(txt, false)
 		}
 		if stackedImg != nil {
 			tm = gfx.Metrics{W: stackedImg.Bounds().Dx(), H: stackedImg.Bounds().Dy()}

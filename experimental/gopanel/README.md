@@ -76,6 +76,9 @@ chosen in Cyberbeest Settings > Panel); cyberbeest-whisker-key.sh is the Windows
 - Helpers: duplicates (a restarted panel racing a surviving helper) are told to `quit` and exit instead of
   reconnecting forever; the supervisor waits 4 s for survivors before spawning; zombie helpers from before an
   exec-restart are reaped.
+- Right-click on a helper or genmon item adds "Properties…" to the panel menu: lib/cyberbeest-settings.py
+  --rc FILE shows a generic editor for the plugin's xfce rc file (checkbox / number / colour / text per key);
+  saving makes gopanel restart that helper (it exits on `quit`, the supervisor respawns it with the new settings).
 - Two-line labels (label.go renderStacked): text of the wattage helper and of the status genmon (autolock/
   shutdown timers) is split into two balanced lines, saving ~110 px. Which items: one name/command substring
   per line in ~/.config/gopanel/stacked.conf (default: wattage-panel, panel-status-genmon).

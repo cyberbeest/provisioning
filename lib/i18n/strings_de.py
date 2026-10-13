@@ -58,6 +58,8 @@ STRINGS = {
     "timer.power_saving_while_locked": "Erweiterte Energieoptionen…",
 
     "settings.window_title": "Cyberbeest Einstellungen",
+    "settings.props_title": "Eigenschaften: {name}",
+    "settings.props_info": "Änderungen gelten sofort.",
     "settings.tab_power": "Erweiterte Energieoptionen",
     "settings.tab_panel": "Leiste",
     "panel.info": "Wähle, welche Leiste am unteren Bildschirmrand angezeigt wird. Die Änderung gilt sofort und bleibt bis zur nächsten Anmeldung erhalten.",

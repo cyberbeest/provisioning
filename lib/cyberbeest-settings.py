@@ -31,7 +31,8 @@ import subprocess
 import gi
 
 gi.require_version("Gtk", "3.0")
-from gi.repository import Gtk
+gi.require_version("Gdk", "3.0")
+from gi.repository import Gdk, Gtk
 
 from i18n import t
 
@@ -232,6 +233,79 @@ class PanelPage(Gtk.Box):
             subprocess.Popen([self.script, "set", which])
 
 
+class RcPage(Gtk.Box):
+    """Generic Properties page for a panel plugin's xfce rc file (the plugin menu's
+    "Properties..." entry of the Go panel): one widget per key, chosen from the value's
+    look (true/false, number, rgb(r,g,b), anything else). Saved on every change; the panel
+    notices the file change and restarts the plugin."""
+
+    def __init__(self, path):
+        import configparser
+        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        self.set_border_width(16)
+        self.path = path
+        self.cp = configparser.RawConfigParser(strict=False)
+        self.cp.optionxform = str
+        self.cp.read(path, encoding="utf-8")
+        self.pack_start(Gtk.Label(label=t("settings.props_info"), xalign=0), False, False, 0)
+        grid = Gtk.Grid(column_spacing=12, row_spacing=8)
+        self.pack_start(grid, False, False, 0)
+        row = 0
+        for section in self.cp.sections():
+            for key, value in self.cp.items(section):
+                grid.attach(Gtk.Label(label=self.pretty(key), xalign=0), 0, row, 1, 1)
+                grid.attach(self.widget_for(section, key, value), 1, row, 1, 1)
+                row += 1
+
+    @staticmethod
+    def pretty(key):
+        import re
+        if key.isupper():
+            return key
+        return re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", key).capitalize()
+
+    def save(self, section, key, value):
+        self.cp.set(section, key, str(value))
+        with open(self.path, "w", encoding="utf-8") as f:
+            self.cp.write(f, space_around_delimiters=False)
+
+    def widget_for(self, section, key, value):
+        import re
+        if value in ("true", "false"):
+            w = Gtk.CheckButton()
+            w.set_active(value == "true")
+            w.connect("toggled", lambda b: self.save(section, key, "true" if b.get_active() else "false"))
+            return w
+        m = re.fullmatch(r"rgb\((\d+),\s*(\d+),\s*(\d+)\)", value.strip())
+        if m:
+            rgba = Gdk.RGBA()
+            rgba.red, rgba.green, rgba.blue, rgba.alpha = (int(m.group(i)) / 255 for i in (1, 2, 3)) + (1.0,)
+            w = Gtk.ColorButton.new_with_rgba(rgba)
+
+            def picked(b):
+                c = b.get_rgba()
+                self.save(section, key, "rgb(%d,%d,%d)" % tuple(round(x * 255) for x in (c.red, c.green, c.blue)))
+
+            w.connect("color-set", picked)
+            return w
+        if re.fullmatch(r"-?\d+", value):
+            w = Gtk.SpinButton.new_with_range(-1000000, 1000000, 1)
+            w.set_value(int(value))
+            w.connect("value-changed", lambda b: self.save(section, key, b.get_value_as_int()))
+            return w
+        if re.fullmatch(r"-?\d+\.\d+", value):
+            w = Gtk.SpinButton.new_with_range(-1000000, 1000000, 0.1)
+            w.set_digits(2)
+            w.set_value(float(value))
+            w.connect("value-changed", lambda b: self.save(section, key, ("%.2f" % b.get_value()).rstrip("0").rstrip(".")))
+            return w
+        w = Gtk.Entry()
+        w.set_text(value)
+        w.set_width_chars(36)
+        w.connect("changed", lambda e: self.save(section, key, e.get_text()))
+        return w
+
+
 PAGES = [
     ("power", "settings.tab_power", lambda: PowerPage()),
     ("panel", "settings.tab_panel", lambda: PanelPage(panel_choice_script()) if panel_choice_script() else None),
@@ -270,7 +344,17 @@ class SettingsWindow(Gtk.Window):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--tab", default="power")
+    ap.add_argument("--rc", help="open the Properties page of this plugin rc file instead")
+    ap.add_argument("--title", default="")
     args = ap.parse_args()
+    if args.rc:
+        win = Gtk.Window(title=t("settings.props_title").format(name=args.title or os.path.basename(args.rc)))
+        win.set_position(Gtk.WindowPosition.CENTER)
+        win.connect("destroy", Gtk.main_quit)
+        win.add(RcPage(args.rc))
+        win.show_all()
+        Gtk.main()
+        return
     win = SettingsWindow(args.tab)
     win.show_all()
     win.select_tab()

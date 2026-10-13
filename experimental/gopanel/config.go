@@ -90,11 +90,16 @@ func buildItems(cfg map[string][]string) []*item {
 			rc := iniFile(filepath.Join(home, ".config/xfce4/panel/genmon-"+id+".rc"))
 			if rc["Command"] != "" {
 				period, _ := strconv.Atoi(rc["UpdatePeriod"])
-				items = append(items, newGenmonItem(rc["Command"], period))
+				g := newGenmonItem(rc["Command"], period)
+				g.rc = filepath.Join(home, ".config/xfce4/panel/genmon-"+id+".rc")
+				items = append(items, g)
 			}
 		case helperNames[t] != "":
 			it := newItem("helper")
 			it.name = helperNames[t]
+			if p := filepath.Join(home, ".config/xfce4/panel/"+t+"-"+id+".rc"); fileExists(p) {
+				it.rc = p
+			}
 			items = append(items, it)
 		case t == "":
 		default:
