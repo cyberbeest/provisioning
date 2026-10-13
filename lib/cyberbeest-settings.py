@@ -265,9 +265,7 @@ class PanelPage(Gtk.Box):
         note.get_style_context().add_class("dim-label")
         self.pack_start(note, False, False, 0)
 
-        self.xfce_radio.connect("toggled", self.on_toggled, "xfce")
-        self.go_radio.connect("toggled", self.on_toggled, "gopanel")
-
+        self.mon_combo = None
         mons = connected_monitors()
         if len(mons) > 1:
             self.pack_start(Gtk.Separator(), False, False, 0)
@@ -278,30 +276,61 @@ class PanelPage(Gtk.Box):
             for name, w, h in mons:
                 self.mon_combo.append(name, "%s (%dx%d)" % (name, w, h))
             self.mon_combo.append("all", t("panel.monitor_all"))
-            want = read_panel_conf().get("MONITOR", "auto")
-            if not self.mon_combo.set_active_id(want):
+            if not self.mon_combo.set_active_id(read_panel_conf().get("MONITOR", "auto")):
                 self.mon_combo.set_active_id("auto")
-            self.mon_combo.connect("changed", self.on_monitor_changed)
             row.pack_start(self.mon_combo, False, False, 0)
             self.pack_start(row, False, False, 0)
             mnote = Gtk.Label(wrap=True, max_width_chars=44, xalign=0, label=t("panel.monitor_note"))
             mnote.get_style_context().add_class("dim-label")
             self.pack_start(mnote, False, False, 0)
 
-    def on_monitor_changed(self, combo):
-        write_panel_conf("MONITOR", combo.get_active_id() or "auto")
-        # the panel re-reads the setting on reload and moves/copies itself
-        for exe in (os.path.expanduser("~/.local/bin/gopanel"), "gopanel"):
-            try:
-                subprocess.Popen([exe, "reload"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                break
-            except OSError:
-                continue
+        # Nothing changes until Apply or OK: what is shown now is the "applied" state.
+        self.applied = self.chosen()
+        buttons = Gtk.ButtonBox(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        buttons.set_layout(Gtk.ButtonBoxStyle.END)
+        self.apply_btn = Gtk.Button(label=t("settings.apply"))
+        self.ok_btn = Gtk.Button(label=t("settings.ok"))
+        self.apply_btn.connect("clicked", lambda b: self.apply())
+        self.ok_btn.connect("clicked", self.on_ok)
+        buttons.pack_start(self.apply_btn, False, False, 0)
+        buttons.pack_start(self.ok_btn, False, False, 0)
+        self.pack_end(buttons, False, False, 0)
+        for w in (self.xfce_radio, self.go_radio, self.mon_combo):
+            if w is not None:
+                w.connect("toggled" if isinstance(w, Gtk.RadioButton) else "changed", lambda *_: self.refresh_apply())
+        self.refresh_apply()
 
-    def on_toggled(self, radio, which):
-        if radio.get_active():
+    def chosen(self):
+        panel = "gopanel" if self.go_radio.get_active() else "xfce"
+        return (panel, self.mon_combo.get_active_id() if self.mon_combo else None)
+
+    def refresh_apply(self):
+        self.apply_btn.set_sensitive(self.chosen() != self.applied)
+
+    def apply(self):
+        panel, monitor = self.chosen()
+        old_panel, old_monitor = self.applied
+        # the monitor setting goes first: a panel that starts below reads it at startup
+        if monitor is not None and monitor != old_monitor:
+            write_panel_conf("MONITOR", monitor or "auto")
+        if panel != old_panel:
             # Switching takes a few seconds (starts one panel, then stops the other).
-            subprocess.Popen([self.script, "set", which])
+            subprocess.Popen([self.script, "set", panel])
+        elif monitor is not None and monitor != old_monitor:
+            # the running panel re-reads the setting on reload and moves/copies itself
+            for exe in (os.path.expanduser("~/.local/bin/gopanel"), "gopanel"):
+                try:
+                    subprocess.Popen([exe, "reload"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    break
+                except OSError:
+                    continue
+        self.applied = (panel, monitor)
+        self.refresh_apply()
+
+    def on_ok(self, button):
+        if self.chosen() != self.applied:
+            self.apply()
+        self.get_toplevel().destroy()
 
 
 # Texts for the Properties page of the Go panel's plugins (taken from the XFCE plugins' own
