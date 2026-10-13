@@ -1,2 +1,2 @@
-speak-replies: Claude Code mod that speaks a short line after each reply (Piper TTS, runs locally).
+speak-replies: Claude Code mod that plays a message-type beep and speaks a short line after each reply (Piper TTS, runs locally).
 register.ts has @HOME@ replaced by the installer. /voice toggles it.

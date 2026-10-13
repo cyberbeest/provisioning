@@ -100,12 +100,13 @@ EOF
 
 	echo "--- Spoken replies (Piper, local) ---"
 	install -d "$TTS"
-	install -m 755 "$DIR/speak.py" "$TTS/speak.py"
+	install -m 755 "$DIR/speak.py" "$DIR/synth.py" "$DIR/gen_sounds.py" "$TTS/"
+	python3 "$TTS/gen_sounds.py"  # message-type beeps, synthesized (no audio files in the repo)
 	if [ ! -x "$TTS/venv/bin/python" ]; then
 		python3 -m venv "$TTS/venv"
 	fi
 	"$TTS/venv/bin/pip" install --quiet 'piper-tts==1.8.0'
-	for v in en/en_US/ryan/medium/en_US-ryan-medium de/de_DE/thorsten/medium/de_DE-thorsten-medium; do
+	for v in en/en_GB/alan/medium/en_GB-alan-medium de/de_DE/thorsten/medium/de_DE-thorsten-medium; do
 		n="$(basename "$v")"
 		for ext in onnx onnx.json; do
 			if [ ! -s "$TTS/$n.$ext" ]; then
