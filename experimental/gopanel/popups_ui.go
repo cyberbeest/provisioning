@@ -27,12 +27,12 @@ func openCalendar(anchorX int) {
 	shown := cur()
 	p := &popup{w: w, h: h}
 	p.paint = func(img *image.RGBA) {
-		title := shown.Format("January 2006")
+		title := monthTitle(shown)
 		textAt(img, (w-textW(title))/2, 6, title, menuInk, true, labelPx, 0)
 		textAt(img, pad+8, 6, "‹", menuInk, true, labelPx+3, 0)
 		textAt(img, w-pad-18, 6, "›", menuInk, true, labelPx+3, 0)
 		for i := 0; i < 7; i++ {
-			d := time.Weekday((i + 1) % 7).String()[:2]
+			d := weekdayShort(time.Weekday((i + 1) % 7))
 			textAt(img, pad+i*cw+(cw-textW(d))/2, titleH+3, d, menuDimInk, false, labelPx, 0)
 		}
 		off := (int(shown.Weekday()) + 6) % 7 // Monday first
@@ -99,7 +99,7 @@ func openVolumePopup(anchorX int) {
 	row := func(i int) (int, int) { return 74 + i*20, 74 + i*20 + 20 } // text rows below the slider
 	p.paint = func(img *image.RGBA) {
 		v := int(volPct.Load())
-		textAt(img, pad, 10, "Volume", menuInk, true, labelPx, 0)
+		textAt(img, pad, 10, tr("Volume"), menuInk, true, labelPx, 0)
 		pct := fmt.Sprintf("%d%%", v)
 		textAt(img, w-pad-textW(pct), 10, pct, menuInk, false, labelPx, 0)
 		drawSlider(img, pad, w-pad, trackY, v)
@@ -108,9 +108,9 @@ func openVolumePopup(anchorX int) {
 			mark = "☑"
 		}
 		y0, _ := row(0)
-		textAt(img, pad, y0, mark+"  Mute", menuInk, false, labelPx, 0)
+		textAt(img, pad, y0, mark+"  "+tr("Mute"), menuInk, false, labelPx, 0)
 		y1, _ := row(1)
-		textAt(img, pad, y1, "Audio Mixer…", menuInk, false, labelPx, 0)
+		textAt(img, pad, y1, tr("Audio Mixer…"), menuInk, false, labelPx, 0)
 	}
 	dragging := false
 	p.press = func(x, y, btn int) {
@@ -234,14 +234,14 @@ func openPowerPopup(anchorX int) {
 			textAt(img, pad, 10+i*20, l, menuInk, i == 0, labelPx, 0)
 		}
 		if bright >= 0 {
-			textAt(img, pad, 58, "Display brightness", menuInk, false, labelPx, 0)
+			textAt(img, pad, 58, tr("Display brightness"), menuInk, false, labelPx, 0)
 			pct := fmt.Sprintf("%d%%", bright)
 			textAt(img, w-pad-textW(pct), 58, pct, menuInk, false, labelPx, 0)
 			drawSlider(img, pad, w-pad, trackY-12, bright)
 		}
 		y0, _ := rows()
-		textAt(img, pad, y0, "Power Manager Settings…", menuInk, false, labelPx, 0)
-		textAt(img, pad, y0+20, "Extended power options…", menuInk, false, labelPx, 0)
+		textAt(img, pad, y0, tr("Power Manager Settings…"), menuInk, false, labelPx, 0)
+		textAt(img, pad, y0+20, tr("Extended power options…"), menuInk, false, labelPx, 0)
 	}
 	dragging := false
 	p.press = func(x, y, btn int) {

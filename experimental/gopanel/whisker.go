@@ -335,11 +335,11 @@ func (w *whisker) catCount() int { return catFirstReal + len(w.cats) }
 func (w *whisker) catName(i int) string {
 	switch i {
 	case catRecent:
-		return "Recently Used"
+		return tr("Recently Used")
 	case catFav:
-		return "Favorites"
+		return tr("Favorites")
 	case catAll:
-		return "All Applications"
+		return tr("All Applications")
 	}
 	return w.cats[i-catFirstReal].Name
 }
@@ -464,7 +464,7 @@ func (w *whisker) paintList() *image.RGBA {
 		if len(w.query) == 0 && w.catIdx == catRecent {
 			msg = "No recently used applications"
 		} else if len(w.query) == 0 && w.catIdx == catFav {
-			msg = "No favorites yet"
+			msg = tr("No favorites yet")
 		}
 		textAt(img, 12, 12, msg, whDim, false, 13, 0)
 	}
@@ -877,11 +877,11 @@ func (w *whisker) isFavorite(id string) bool {
 }
 
 func (w *whisker) openCtx(px, py int, e *appmenu.Entry) {
-	fav := "Add to Favorites"
+	fav := tr("Add to Favorites")
 	if w.isFavorite(e.ID) {
-		fav = "Remove from Favorites"
+		fav = tr("Remove from Favorites")
 	}
-	c := &whiskerCtx{e: e, labels: []string{fav, "Add to Desktop"}, hover: -1}
+	c := &whiskerCtx{e: e, labels: []string{fav, tr("Add to Desktop")}, hover: -1}
 	for _, l := range c.labels {
 		c.w = max(c.w, textWidth(l, 13)+28)
 	}

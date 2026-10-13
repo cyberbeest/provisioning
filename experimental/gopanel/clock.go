@@ -30,7 +30,7 @@ func newClockItem() *item {
 		for i := range lines {
 			gfx.Draw(img, (w-ws[i])/2, i*h, spans[i], px)
 		}
-		return img, now.Format("Monday, 2 January 2006")
+		return img, longDate(now)
 	}
 	it.hl = true
 	it.click = func(x, y, btn int) {

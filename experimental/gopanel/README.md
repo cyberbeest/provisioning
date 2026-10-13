@@ -63,9 +63,11 @@ chosen in Cyberbeest Settings > Panel); cyberbeest-whisker-key.sh is the Windows
 - Multi-monitor: the panel sits at the bottom of the primary monitor (RandR) and follows resolution or
   monitor changes (monitor.go; popups/menus/tooltips position against that monitor). Tested by resizing a
   nested X display; not tested with a real second monitor.
+- German: i18n.go translates calendar, popups, menus and tooltips when /etc/default/locale is de_*
+  (`GOPANEL_LANG=de_DE` forces it for testing).
 - Media keys (mediakeys.go): volume up/down, mute, mic mute, play/pause/next/prev (MPRIS). The pulseaudio
   plugin of xfce4-panel normally grabs these; gopanel grabs them too and loses harmlessly if it runs alongside.
 - Whisker: right-click on an app = add/remove favorite, add to desktop.
 - Helpers also pause while the screensaver (lock screen) is active, not just in DPMS standby.
 - Not done: per-plugin settings dialogs,
-  translations.
+  Whisker's app names (those come from the .desktop files).

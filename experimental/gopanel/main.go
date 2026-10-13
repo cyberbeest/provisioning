@@ -28,7 +28,7 @@ import (
 	"gopanel/proto"
 )
 
-const version = "0.15.0"
+const version = "0.16.0"
 
 var ctlCmds chan<- string // control commands into the main loop
 
@@ -681,12 +681,12 @@ func xfcePanelRunning() bool {
 // panelMenu is the right-click menu of the panel background: switch the stock
 // XFCE panel on or off, restart or quit this panel.
 func panelMenu(x int, cmds chan<- string) {
-	xfce := &menuItem{id: 1, label: "Start XFCE panel"}
+	xfce := &menuItem{id: 1, label: tr("Start XFCE panel")}
 	if xfcePanelRunning() {
-		xfce = &menuItem{id: 1, label: "Stop XFCE panel"}
+		xfce = &menuItem{id: 1, label: tr("Stop XFCE panel")}
 	}
 	menuReqs <- menuReq{
-		items:   []*menuItem{xfce, {sep: true}, {id: 2, label: "Restart this panel"}, {id: 3, label: "Quit this panel"}},
+		items:   []*menuItem{xfce, {sep: true}, {id: 2, label: tr("Restart this panel")}, {id: 3, label: tr("Quit this panel")}},
 		anchorX: x,
 		onSelect: func(mi *menuItem) {
 			switch mi.id {

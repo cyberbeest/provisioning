@@ -135,7 +135,7 @@ func newWhiskerButton(cfg map[string][]string, id string) *item {
 	it := newItem("whisker")
 	it.w = panelH
 	it.hl = true
-	it.tip = "Applications"
+	it.tip = tr("Applications")
 	if v := cfg["/plugins/plugin-"+id+"/button-icon"]; len(v) == 1 {
 		it.img = loadIcon(v[0])
 	} else {

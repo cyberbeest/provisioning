@@ -421,16 +421,16 @@ func (tb *taskbar) onClick(x, y, btn int) {
 	case 2:
 		sendClientMessage(tw.id, "_NET_CLOSE_WINDOW", [5]uint32{0, 2, 0, 0, 0})
 	case 3:
-		min := &menuItem{id: 1, label: "Minimize"}
+		min := &menuItem{id: 1, label: tr("Minimize")}
 		if tw.minimized {
-			min.label = "Restore"
+			min.label = tr("Restore")
 		}
-		max := &menuItem{id: 2, label: "Maximize"}
+		max := &menuItem{id: 2, label: tr("Maximize")}
 		if tw.maximized {
-			max.label = "Unmaximize"
+			max.label = tr("Unmaximize")
 		}
 		menuReqs <- menuReq{
-			items:   []*menuItem{min, max, {sep: true}, {id: 3, label: "Close"}},
+			items:   []*menuItem{min, max, {sep: true}, {id: 3, label: tr("Close")}},
 			anchorX: tb.it.x + i*(tb.buttonWidth(len(vis))+tbGap) + tb.buttonWidth(len(vis))/2,
 			onSelect: func(mi *menuItem) {
 				switch mi.id {

@@ -56,23 +56,23 @@ func newPowerItem() *item {
 		state, text := "", ""
 		switch {
 		case status == "Charging":
-			state, text = "-charging", "Charging"
+			state, text = "-charging", tr("Charging")
 		case status == "Full" || (pct >= 99 && batteryOnAC()):
-			state, text = "-charged", "Fully charged"
+			state, text = "-charged", tr("Fully charged")
 			if level != 100 {
 				state = ""
 			}
 		default:
-			text = "Discharging"
+			text = tr("Discharging")
 			if p := sysfsInt(bat + "/power_now"); p > 0 {
 				hours := float64(sysfsInt(bat+"/energy_now")) / float64(p)
-				text = fmt.Sprintf("Discharging, %d:%02d remaining", int(hours), int((hours-float64(int(hours)))*60))
+				text = fmt.Sprintf("%s, %d:%02d %s", tr("Discharging"), int(hours), int((hours-float64(int(hours)))*60), tr("remaining"))
 			}
 		}
 		name := fmt.Sprintf("battery-level-%d%s-symbolic", level, state)
 		img := iconText(loadIcon(name), fmt.Sprintf("%d%%", pct), 2)
-		tip := "<b>Computer</b>\n" + text
-		powerText.Store(fmt.Sprintf("Battery %d%%\n%s", pct, text))
+		tip := "<b>" + tr("Computer") + "</b>\n" + text
+		powerText.Store(fmt.Sprintf("%s %d%%\n%s", tr("Battery"), pct, text))
 		it.post(itemUpdate{img: img, tip: &tip, w: img.Bounds().Dx() + 2*labelEdge})
 	}
 	go func() {
@@ -120,9 +120,9 @@ func newVolumeItem() *item {
 		} else {
 			volMuted.Store(0)
 		}
-		tip := fmt.Sprintf("Volume %d%%", vol)
+		tip := fmt.Sprintf("%s %d%%", tr("Volume"), vol)
 		if muted {
-			tip = "Volume muted"
+			tip = tr("Volume muted")
 		}
 		it.post(itemUpdate{img: iconText(loadIcon(name), "", 0), tip: &tip, w: panelH})
 	}
