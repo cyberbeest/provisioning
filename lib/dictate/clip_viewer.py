@@ -58,7 +58,9 @@ class WaveView(QWidget):
         self.tm = tm
         # the clip starts when the stream started; everything before that was never recorded
         self.offset = tm.get("first_block", tm.get("started", 0.0))
-        self.dur = len(audio) / sr
+        # stretches where the microphone delivered nothing: (samples recorded before the gap, its length in s)
+        self.gaps = [(int(a), float(b)) for a, b in tm.get("gaps", [])]
+        self.dur = len(audio) / sr + sum(g for _s, g in self.gaps)   # clip length on the wall clock, gaps included
         self.release = tm.get("release")
         self.total = max(self.offset + self.dur, (self.release or 0.0) + 0.2) + 0.1
         n_frames = len(audio) // VAD_FRAME
@@ -68,15 +70,27 @@ class WaveView(QWidget):
         self.cursor = None   # playback position in seconds since the clip start
         self._env = None
 
+    def wall(self, i):
+        """Seconds since the key press at which sample i was recorded (a gap before i pushes it later)."""
+        return self.offset + i / self.sr + sum(g for s, g in self.gaps if s <= i)
+
+    def wall_end(self, i):
+        """Same for the end of a stretch that stops at sample i (a gap starting at i comes after it)."""
+        return self.offset + i / self.sr + sum(g for s, g in self.gaps if s < i)
+
     def x_of(self, t):   # seconds since key press -> pixel
         return 100 + (self.width() - 114) * t / self.total
 
-    def envelope(self, w):
-        if self._env is None or len(self._env) != w:
-            x = np.abs(self.audio.astype(np.float32)) / 32768.0
+    def envelope(self, a, b, w):
+        """Peak level per pixel column for samples a..b."""
+        key = (a, b, w)
+        if self._env is None:
+            self._env = {}
+        if key not in self._env:
+            x = np.abs(self.audio[a:b].astype(np.float32)) / 32768.0
             edges = np.linspace(0, len(x), w + 1).astype(int)
-            self._env = np.array([x[a:b].max() if b > a else 0.0 for a, b in zip(edges[:-1], edges[1:])])
-        return self._env
+            self._env[key] = np.array([x[i:j].max() if j > i else 0.0 for i, j in zip(edges[:-1], edges[1:])])
+        return self._env[key]
 
     def paintEvent(self, _event):
         p = QPainter(self)
@@ -107,14 +121,25 @@ class WaveView(QWidget):
             p.setPen(QColor("#b06a00"))
             p.drawText(QRectF(xe + 4, lanes[0], xr - xe - 8, lane_h), Qt.AlignmentFlag.AlignCenter | Qt.TextFlag.TextWordWrap,
                        _("no audio arrived"))
-        # waveform
-        y, mid = lanes[0], lanes[0] + lane_h // 2
-        w = max(int(self.x_of(self.offset + self.dur)) - xs, 1)
-        env = self.envelope(w)
+        # gaps inside the take
+        for s_, g in self.gaps:
+            xa, xb = int(self.x_of(self.wall_end(s_))), int(self.x_of(self.wall_end(s_) + g))
+            for y in lanes:
+                p.fillRect(xa, y, max(xb - xa, 1), lane_h, QColor(255, 170, 60, 110))
+            p.setPen(QColor("#b06a00"))
+            p.drawText(QRectF(xa - 40, lanes[0] + lane_h - 16, xb - xa + 80, 14), Qt.AlignmentFlag.AlignCenter,
+                       _("no audio for {t:.1f} s").format(t=g))
+        # waveform, one piece per stretch between the gaps
+        mid = lanes[0] + lane_h // 2
         p.setPen(QPen(QColor("#2a6fb0")))
-        for i, v in enumerate(env):
-            h = int(v * lane_h / 2)
-            p.drawLine(xs + i, mid - h, xs + i, mid + h)
+        cuts = [0] + [s_ for s_, _g in self.gaps] + [len(self.audio)]
+        for a, b in zip(cuts[:-1], cuts[1:]):
+            if b <= a:
+                continue
+            xa, xb = int(self.x_of(self.wall(a))), int(self.x_of(self.wall_end(b)))
+            for i, v in enumerate(self.envelope(a, b, max(xb - xa, 1))):
+                h = int(v * lane_h / 2)
+                p.drawLine(xa + i, mid - h, xa + i, mid + h)
         # speech masks
         for lane, mask, color in ((1, self.streamed, "#2e9e4f"), (2, self.clip_mask, "#2e9e4f")):
             if mask is None:
@@ -124,8 +149,8 @@ class WaveView(QWidget):
                 continue
             for i, on in enumerate(mask):
                 if on:
-                    a = self.x_of(self.offset + i * VAD_FRAME / self.sr)
-                    b = self.x_of(self.offset + (i + 1) * VAD_FRAME / self.sr)
+                    a = self.x_of(self.wall(i * VAD_FRAME))
+                    b = self.x_of(self.wall_end((i + 1) * VAD_FRAME))
                     p.fillRect(QRectF(a, lanes[lane] + 6, max(b - a, 1), lane_h - 12), QColor(color))
         # markers: key press, stream opened, first audio, release
         marks = [(0.0, _("key"), "#000000"), (self.tm.get("started"), _("stream on"), "#b06a00"),
@@ -153,7 +178,7 @@ class WaveView(QWidget):
             p.drawText(x - 10, bottom + 16, f"{t:g}s")
             t += step
         if self.cursor is not None:
-            x = int(self.x_of(self.offset + self.cursor))
+            x = int(self.x_of(self.wall(int(self.cursor * self.sr))))
             p.setPen(QPen(QColor("#d00000"), 2))
             p.drawLine(x, top - 6, x, bottom)
         p.end()

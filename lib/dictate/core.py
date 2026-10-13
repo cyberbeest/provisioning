@@ -477,7 +477,7 @@ def _select_microphone():
 
 
 STREAM_CLOSE_TIMEOUT_S = 3.0   # a healthy stop()+close() takes hundreds of ms
-FIRST_FRAME_TIMEOUT_S = 1.0    # a healthy stream delivers a block every ~30 ms; this long without one is a stall
+FIRST_FRAME_TIMEOUT_S = 0.5    # a healthy stream delivers a block every ~5-30 ms; this long without one is a stall
 WATCHDOG_MAX_S = 600.0         # a take is never watched longer than this
 
 
@@ -488,18 +488,24 @@ def _stall_snapshot():
             return Path(path).read_text().strip()
         except OSError:
             return default
-    status = {}
-    for line in read("/proc/asound/card0/pcm0c/sub0/status", "").splitlines():
-        k, _sep, v = line.partition(":")
-        status[k.strip()] = v.strip()
+    def pcm_status():
+        st = {}
+        for line in read("/proc/asound/card0/pcm0c/sub0/status", "").splitlines():
+            k, _sep, v = line.partition(":")
+            st[k.strip()] = v.strip()
+        return st
+    status = pcm_status()
+    time.sleep(0.25)
+    # frozen = the driver/codec stopped capturing; moving = the hardware runs and PulseAudio/ALSA reading is stuck
+    moving = "?" if "hw_ptr" not in status else ("yes" if pcm_status().get("hw_ptr") != status["hw_ptr"] else "NO (frozen)")
     temps = []
     for z in sorted(Path("/sys/class/thermal").glob("thermal_zone*")):
         t = read(z / "temp", "")
         if t.isdigit():
             temps.append("%s=%d" % (read(z / "type"), int(t) // 1000))
     meminfo = {l.split(":")[0]: l.split()[1] for l in read("/proc/meminfo", "").splitlines() if ":" in l}
-    return ("pcm %s hw_ptr=%s avail=%s | audio device runtime pm: %s/%s | load %s | avail mem %s MB | %s" % (
-        status.get("state", "closed"), status.get("hw_ptr", "?"), status.get("avail", "?"),
+    return ("pcm %s hw_ptr=%s avail=%s hw_ptr moving: %s | audio device runtime pm: %s/%s | load %s | avail mem %s MB | %s" % (
+        status.get("state", "closed"), status.get("hw_ptr", "?"), status.get("avail", "?"), moving,
         read("/sys/bus/pci/devices/0000:00:0e.0/power/control"), read("/sys/bus/pci/devices/0000:00:0e.0/power/runtime_status"),
         read("/proc/loadavg").split(" ")[0], int(meminfo.get("MemAvailable", "0")) // 1024, " ".join(temps)))
 
@@ -529,12 +535,12 @@ def _heal_silent_microphone(frames, source):
                                             timeout=2, env={**os.environ, "LC_ALL": "C"}).stdout.strip()
             if not name:
                 return
-            log.warning("microphone %s delivered no audio for %.0fs (%d blocks so far), restarting it",
-                        name, FIRST_FRAME_TIMEOUT_S, len(frames))
+            log.warning("microphone %s delivered no audio for %.1fs (%d blocks, %.1fs into the take), restarting it",
+                        name, FIRST_FRAME_TIMEOUT_S, len(frames), time.monotonic() - tm.get("started", time.monotonic()))
             log.warning("stall state: %s", _stall_snapshot())
             seen = tm["blocks"]
             subprocess.run(["pactl", "suspend-source", name, "1"], timeout=3, check=False)
-            time.sleep(0.5)
+            time.sleep(0.2)
             subprocess.run(["pactl", "suspend-source", name, "0"], timeout=3, check=False)
             time.sleep(1.0)
             if tm["blocks"] > seen:
@@ -552,7 +558,7 @@ class _Frames(list):
 
     def __init__(self):
         super().__init__()
-        self.timing = {"blocks": 0, "overflows": 0, "max_gap": 0.0}
+        self.timing = {"blocks": 0, "overflows": 0, "max_gap": 0.0, "gaps": [], "samples": 0}
 
 
 class Recorder:
@@ -596,6 +602,9 @@ class Recorder:
                     tm["first_block"] = now
                 else:
                     tm["max_gap"] = max(tm["max_gap"], now - tm["last_block"])
+                    if now - tm["last_block"] > 0.25:   # [samples recorded before the gap, its length in s]
+                        tm["gaps"].append([tm["samples"], round(now - tm["last_block"], 3)])
+                tm["samples"] += len(indata)
                 tm["last_block"] = now
                 tm["blocks"] += 1
                 if status:

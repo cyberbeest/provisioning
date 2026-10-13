@@ -76,6 +76,7 @@ CATALOGS = {
         "(no speech found)": "(keine Sprache gefunden)",
         "key": "Taste",
         "no audio arrived": "kein Audio angekommen",
+        "no audio for {t:.1f} s": "{t:.1f} s kein Audio",
         "stream on": "Stream an",
         "first audio": "erstes Audio",
         "released": "losgelassen",
