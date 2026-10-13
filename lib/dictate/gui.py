@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Dictate GUI — PyQt6 tray app for voice dictation via Groq Whisper."""
 import fcntl
+import logging
 import math
+import os
 import sys
 import threading
 import time
@@ -1292,7 +1294,12 @@ def main():
     if not QSystemTrayIcon.isSystemTrayAvailable():
         core.log.warning("no system tray: Dictate works through its hotkey only")
     win = MainWindow()  # noqa: F841 (kept alive by the event loop)
-    sys.exit(app.exec())
+    rc = app.exec()
+    # A transcription still running on its worker thread (native onnx code)
+    # would keep the process alive through interpreter shutdown, so leave
+    # without waiting for it.
+    logging.shutdown()
+    os._exit(rc)
 
 
 if __name__ == "__main__":
