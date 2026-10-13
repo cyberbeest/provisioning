@@ -76,6 +76,12 @@ func buildItems(cfg map[string][]string) []*item {
 				it.w = 8
 			}
 			items = append(items, it)
+		case t == "systray":
+			items = append(items, newTrayItem())
+		case t == "power-manager-plugin":
+			items = append(items, newPowerItem())
+		case t == "pulseaudio":
+			items = append(items, newVolumeItem())
 		case t == "clock":
 			items = append(items, newClockItem())
 		case t == "genmon":

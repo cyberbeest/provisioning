@@ -22,11 +22,12 @@ import (
 	"gopanel/proto"
 )
 
-const version = "0.4.0"
+const version = "0.5.0"
 
 var (
-	panelH   = 35 // overridden from the xfce4-panel config
-	iconSize = 28
+	panelH       = 35 // overridden from the xfce4-panel config
+	iconSize     = 28
+	panelScreenY uint16 // screen y of the panel's top edge
 )
 
 // vcsRevision returns the git revision Go embedded at build time, if any.
@@ -95,6 +96,7 @@ func main() {
 	scr := xproto.Setup(c).DefaultScreen(c)
 	sw, sh := scr.WidthInPixels, scr.HeightInPixels
 
+	panelScreenY = sh - uint16(panelH)
 	wid, _ := xproto.NewWindowId(c)
 	xproto.CreateWindow(c, scr.RootDepth, wid, scr.Root,
 		0, int16(int(sh)-panelH), sw, uint16(panelH), 0,
@@ -215,8 +217,15 @@ func main() {
 		}
 		tip.hide()
 	}
+	ptrX := 0 // last pointer x, screen coordinates
+	tipText := func(it *item) string {
+		if it.tipAt != nil {
+			return it.tipAt(ptrX - it.x)
+		}
+		return it.tip
+	}
 	armTip := func(it *item) {
-		if it == nil || it.tip == "" {
+		if it == nil || (it.tip == "" && it.tipAt == nil) {
 			return
 		}
 		tipTimer = time.AfterFunc(500*time.Millisecond, func() {
@@ -337,7 +346,19 @@ func main() {
 				redrawAll()
 			}
 		case xproto.MotionNotifyEvent:
-			setHover(hit(e.EventX))
+			ptrX = int(e.EventX)
+			it := hit(e.EventX)
+			setHover(it)
+			if it != nil && it.tipAt != nil && tip.shown && tip.forIt == it { // moved to another icon
+				if txt := tipText(it); txt == "" {
+					tip.hide()
+				} else if txt != tip.text {
+					tip.show(it, txt, ptrX)
+				}
+			} else if it != nil && it.tipAt != nil && !tip.shown {
+				cancelTip()
+				armTip(it)
+			}
 		case xproto.LeaveNotifyEvent:
 			setHover(nil)
 		case xproto.ButtonPressEvent:
@@ -377,7 +398,7 @@ func main() {
 					}
 				}
 			}
-			if u.w != it.w && !it.expand && u.w >= 0 && (u.w > 0 || u.img != nil) {
+			if u.w != it.w && !it.expand && u.w >= 0 && (u.w > 0 || u.force || u.img != nil) {
 				it.w = u.w
 				relayout()
 				redrawAll()
@@ -385,8 +406,8 @@ func main() {
 			}
 			draw(it)
 		case it := <-tipC:
-			if it == hover && it.tip != "" && !it.isDead() {
-				tip.show(it, it.tip, it.x+it.w/2)
+			if txt := tipText(it); it == hover && txt != "" && !it.isDead() {
+				tip.show(it, txt, it.x+it.w/2)
 			}
 		case he := <-hev:
 			switch he.kind {

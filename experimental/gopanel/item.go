@@ -22,6 +22,7 @@ type item struct {
 	tip    string              // tooltip (Pango-lite markup)
 	hl     bool                // highlight while hovered
 	click  func(x, y, btn int) // main goroutine; must not block
+	tipAt  func(x int) string  // optional: tooltip depends on the pointer position within the item
 	hover  func(on bool)
 	hc     *helperConn
 	dead   chan struct{} // closed when the item is discarded (reload)
@@ -55,10 +56,11 @@ func (it *item) discard() {
 func (it *item) interactive() bool { return it.w > 0 && (it.hl || it.click != nil || it.tip != "") }
 
 type itemUpdate struct {
-	it  *item
-	img *image.RGBA // nil: unchanged
-	tip *string     // nil: unchanged
-	w   int         // 0: unchanged
+	it    *item
+	img   *image.RGBA // nil: unchanged
+	tip   *string     // nil: unchanged
+	w     int         // 0: unchanged
+	force bool        // apply w even when it is 0 (hide the item)
 }
 
 var updates = make(chan itemUpdate, 64)

@@ -19,6 +19,7 @@ type tooltip struct {
 	img   *image.RGBA
 	shown bool
 	forIt *item
+	text  string
 }
 
 func newTooltip(c *xgb.Conn, scr *xproto.ScreenInfo, gc xproto.Gcontext) *tooltip {
@@ -81,7 +82,7 @@ func (t *tooltip) show(it *item, markup string, anchorX int) {
 		xproto.WindowClassInputOutput, t.scr.RootVisual,
 		xproto.CwOverrideRedirect|xproto.CwEventMask, []uint32{1, xproto.EventMaskExposure})
 	xproto.MapWindow(t.c, wid)
-	t.win, t.img, t.shown, t.forIt = wid, img, true, it
+	t.win, t.img, t.shown, t.forIt, t.text = wid, img, true, it, markup
 	t.paint()
 }
 
