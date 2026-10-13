@@ -73,9 +73,17 @@ install_all() {
 	for i in claude-code claude-sessions; do
 		[ -e "$ICONS/$i.png" ] || install -m 644 "$DIR/icons/$i.png" "$ICONS/$i.png"
 	done
-	# put_if_missing FILE < content: never overwrites (a deleted launcher comes back, an existing one stays)
+	# put_if_missing FILE < content: adds a missing launcher, keeps an existing one.
+	# Exception: an entry still carrying a generic icon from an earlier version of
+	# this installer is replaced, so it picks up the blue icon.
 	put_if_missing() {
-		if [ -e "$1" ]; then cat >/dev/null; echo "have $(basename "$1")"; else cat > "$1"; echo "added $(basename "$1")"; fi
+		if [ ! -e "$1" ]; then
+			cat > "$1"; echo "added $(basename "$1")"
+		elif grep -qE '^Icon=(utilities-terminal|utilities-system-monitor)$' "$1"; then
+			cat > "$1"; echo "updated $(basename "$1") (new icon)"
+		else
+			cat >/dev/null; echo "have $(basename "$1")"
+		fi
 	}
 	put_if_missing "$HOME/.config/autostart/claude-sudo-helper-gui.desktop" <<EOF
 [Desktop Entry]
