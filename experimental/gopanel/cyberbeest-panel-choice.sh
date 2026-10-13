@@ -16,7 +16,7 @@ LOG="${XDG_RUNTIME_DIR:-/tmp}/cyberbeest-panel-choice.log"
 export DISPLAY="${DISPLAY:-:0}" XAUTHORITY="${XAUTHORITY:-$HOME/.Xauthority}"
 
 gopanel_bin() {
-	for p in "$GOPANEL_BIN" "$(command -v gopanel)" "$HOME/claude/gopanel/gopanel"; do
+	for p in "$GOPANEL_BIN" "$(command -v gopanel)" "$HOME/.local/bin/gopanel" "$HOME/claude/gopanel/gopanel"; do
 		[ -n "$p" ] && [ -x "$p" ] && { echo "$p"; return 0; }
 	done
 	return 1

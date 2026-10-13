@@ -3,7 +3,9 @@
 # dev machine's live xfce4-keyboard-shortcuts.xml (found to be missing from
 # provisioning entirely on 2026-08-26, after the Super key didn't open
 # Whisker on a freshly provisioned machine):
-#   - Super_L opens the Whisker menu (xfce4-popup-whiskermenu).
+#   - Super_L opens the application menu of whichever panel runs, through
+#     ~/.local/bin/cyberbeest-whisker-key.sh (gopanel's menu when gopanel is up,
+#     else xfce4-popup-whiskermenu; installed here, from experimental/gopanel).
 #   - Ctrl+Alt+Delete and the power key open cyberbeest-logout (installed by
 #     09-cyberbeest-logout-dialog.sh) instead of their Xfce defaults.
 # Everything else in this file is Debian's own stock xfce4-keyboard-shortcuts
@@ -29,6 +31,10 @@ TARGET_USER="${SUDO_USER:?SUDO_USER not set -- run this via sudo, not as a raw r
 TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
 XML_DIR="$TARGET_HOME/.config/xfce4/xfconf/xfce-perchannel-xml"
 DEST="$XML_DIR/xfce4-keyboard-shortcuts.xml"
+
+install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.local/bin"
+install -o "$TARGET_USER" -g "$TARGET_USER" -m 755 "$DIR/experimental/gopanel/cyberbeest-whisker-key.sh" \
+	"$TARGET_HOME/.local/bin/cyberbeest-whisker-key.sh"
 
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$XML_DIR"
 if [ -e "$DEST" ] && [ ! -e "$DEST.pre-cyberbeest" ]; then
@@ -98,7 +104,7 @@ cat > "$DEST" <<EOF
       <property name="HomePage" type="string" value="exo-open --launch WebBrowser"/>
       <property name="XF86Display" type="string" value="xfce4-display-settings --minimal"/>
       <property name="override" type="bool" value="true"/>
-      <property name="Super_L" type="string" value="xfce4-popup-whiskermenu"/>
+      <property name="Super_L" type="string" value="$TARGET_HOME/.local/bin/cyberbeest-whisker-key.sh"/>
       <property name="XF86PowerOff" type="string" value="$TARGET_HOME/.local/bin/cyberbeest-logout"/>
     </property>
   </property>

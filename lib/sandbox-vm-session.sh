@@ -124,10 +124,17 @@ if [ -n "$drop_ids" ] || [ "$changed_status" = true ]; then
 	# Kill and relaunch, never `xfce4-panel -r`, which restarts from the
 	# panel's own cached config and can write that back over the change
 	# just made -- same approach as lib/xfce-panel-reload.sh.
-	pkill -9 -u "$(id -u)" -x xfce4-panel
-	for _ in $(seq 1 60); do
-		pgrep -u "$(id -u)" -x xfce4-panel >/dev/null || break
-		sleep 0.5
-	done
-	setsid xfce4-panel >/dev/null 2>&1 </dev/null &
+	if pgrep -u "$(id -u)" -x xfce4-panel >/dev/null; then
+		pkill -9 -u "$(id -u)" -x xfce4-panel
+		for _ in $(seq 1 60); do
+			pgrep -u "$(id -u)" -x xfce4-panel >/dev/null || break
+			sleep 0.5
+		done
+		setsid xfce4-panel >/dev/null 2>&1 </dev/null &
+	elif pgrep -u "$(id -u)" -x gopanel >/dev/null; then
+		# gopanel is the panel (the XFCE one is stopped on purpose): starting xfce4-panel
+		# here would put a second panel on screen. Let xfconfd flush, then rebuild gopanel's items.
+		sleep 1
+		gopanel reload >/dev/null 2>&1 || "$HOME/.local/bin/gopanel" reload >/dev/null 2>&1 || true
+	fi
 fi

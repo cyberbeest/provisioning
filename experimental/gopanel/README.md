@@ -1,4 +1,4 @@
-# gopanel (experimental)
+# gopanel
 
 A pure-Go X11 panel (no cgo, no toolkit) that mirrors the xfce4-panel plugin list.
 Reserves a bottom strip via `_NET_WM_STRUT_PARTIAL`, lays out items, draws everything itself.
@@ -46,6 +46,18 @@ registered with the old one) and owns the XEmbed tray selection (xembed.go), so 
 friends dock into it; `gopanel yield` hands the selection back before xfce4-panel starts.
 Switching is done by cyberbeest-panel-choice.sh (also run at login via cyberbeest-panel-choice.desktop,
 chosen in Cyberbeest Settings > Panel); cyberbeest-whisker-key.sh is the Windows-key binding.
+
+## Shipping
+
+Machines do not build it. `release.sh --publish` builds panel + helpers, packs a reproducible
+tarball (with LICENSE and the licences of the Go modules inside) as `gopanel-<sha12>.tar.gz`, uploads it
+to cyberbeest.com/gopanel/, checks the download hashes the same, and rewrites the three pins
+(`GOPANEL_VERSION/SHA256/BYTES`) in `../../69-cyberbeest-panel.sh`. Committing that change rolls the
+new version out: 69- downloads it, verifies the pinned SHA-256, unpacks it to `~/.local/lib/gopanel`,
+links `~/.local/bin/gopanel`, installs the switcher, the autostart entry and (via 46-) the Windows-key
+script, writes `PANEL=gopanel` unless a choice already exists, and `gopanel restart`s a running panel.
+The switch from the XFCE panel itself happens at login. On the dev machine the source build runs;
+installing 69- there would put the released build first in `~/.local/bin`, so don't (or remove the link).
 
 ## Notes
 
