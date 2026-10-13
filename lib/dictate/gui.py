@@ -658,6 +658,8 @@ class MainWindow(QMainWindow):
             self.a_hotkey.triggered.connect(self.set_hotkey_enabled)
             self.a_last = QAction(_("Show last transcript"), self)
             self.a_last.triggered.connect(self.show_last_transcript)
+            self.a_replay = QAction(_("Replay last recording"), self)
+            self.a_replay.triggered.connect(self.replay_last_recording)
             self.a_test = QAction(_("Test dictation"), self)
             self.a_test.triggered.connect(self.show_test_dictation)
             a_settings = QAction(_("Dictation settings"), self)
@@ -670,6 +672,7 @@ class MainWindow(QMainWindow):
             a_quit.triggered.connect(QApplication.quit)
             menu.addAction(self.a_hotkey)
             menu.addAction(self.a_last)
+            menu.addAction(self.a_replay)
             menu.addAction(self.a_test)
             menu.addSeparator()
             menu.addAction(a_settings)
@@ -748,6 +751,7 @@ class MainWindow(QMainWindow):
         self.a_hotkey.setText(_("Hotkey {key} enabled").format(key=key))
         self.a_hotkey.setChecked(self.cfg.get("hotkey_enabled", True))
         self.a_last.setEnabled(bool(self.last_text))
+        self.a_replay.setEnabled(core.LAST_CLIP.exists())
         for mid, act in self._model_actions.items():
             act.setChecked(mid == self.cfg.get("model"))
         local = self._local_model_available()
@@ -849,6 +853,19 @@ class MainWindow(QMainWindow):
         self._last_dialog.show()
         self._last_dialog.raise_()
         self._last_dialog.activateWindow()
+
+    def replay_last_recording(self):
+        """Play the last clip and show it: waveform, what the speech detector heard, and the take's timing."""
+        if not core.LAST_CLIP.exists():
+            threading.Thread(target=core.notify, args=(_("No recording yet"), "normal", 3000), daemon=True).start()
+            return
+        import clip_viewer
+        if getattr(self, "_clip_viewer", None) is not None:
+            self._clip_viewer.close()
+        self._clip_viewer = clip_viewer.ClipViewer()
+        self._clip_viewer.show()
+        self._clip_viewer.raise_()
+        self._clip_viewer.activateWindow()
 
     def restart_listener(self):
         if self.listener:
@@ -958,6 +975,7 @@ class MainWindow(QMainWindow):
             self.on_error(_("Model download failed: {err}").format(err=err))
 
     def start_recording(self, click=False) -> bool:
+        requested = time.monotonic()
         self._ensure_model()   # a missing model downloads while the user speaks
         # Reload the model if it was unloaded while idle; the load runs while
         # the user speaks. Also restarts the idle countdown.
@@ -967,7 +985,7 @@ class MainWindow(QMainWindow):
             import local_stt
             meter = local_stt.LiveMeter()
         try:
-            self.recorder.start(tap=meter.feed if meter else None)
+            self.recorder.start(tap=meter.feed if meter else None, requested=requested)
         except Exception as e:
             core.log.exception("could not open the microphone")
             if meter:
@@ -1023,6 +1041,8 @@ class MainWindow(QMainWindow):
         # so pressing the hotkey again right away starts a fresh recording
         # instead of being swallowed by the worker's delayed stop.
         take = self.recorder.detach()
+        if take is not None:
+            take[1].timing["release"] = time.monotonic()
         note, self._note = self._note, None
         target = self._target
         if note is None and self._meter is not None and self.cfg.get("dictation_notifications"):
@@ -1067,6 +1087,7 @@ class MainWindow(QMainWindow):
             core.log.warning("no audio captured (mic delivered no frames)")
             self.bridge.error.emit(_("No audio captured — check the microphone"))
             return
+        core.save_last_clip(audio, take[1].timing, speech)
         secs = len(audio) / core.SAMPLE_RATE
         peak = int(np.abs(audio).max())
         t0 = time.monotonic()
@@ -1271,6 +1292,18 @@ def acquire_single_instance_lock():
 
 def main():
     set_language(core.load_config().get("language", "auto"))
+    if "--view-last" in sys.argv[1:]:   # the clip window on its own, without the tray app
+        core.load_config()
+        app = QApplication(sys.argv)
+        import clip_viewer
+        win = clip_viewer.ClipViewer()
+        win.show()
+        sys.exit(app.exec())
+    if "--replay" in sys.argv[1:]:   # play the last recording and exit (no GUI, no second instance)
+        if not core.replay_last_clip(wait=True):
+            print("No recording yet", file=sys.stderr)
+            sys.exit(1)
+        return
     if not acquire_single_instance_lock():
         sys.exit(0)
     core.setup_logging()

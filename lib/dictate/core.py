@@ -393,6 +393,64 @@ def list_input_sources():
     return sources
 
 
+# The last take, kept as a WAV to judge the microphone by ear (menu "Replay last
+# recording", `gui.py --replay`). It lives in the runtime directory: tmpfs, private
+# to the user, gone at logout or reboot, and only ever the latest one.
+LAST_CLIP = Path(os.environ.get("XDG_RUNTIME_DIR") or "/tmp") / "dictate-last-clip.wav"
+_STAMPS = ("enter", "mic_selected", "opened", "started", "first_block", "last_block", "release")
+_replay = None   # the running paplay, if any
+
+
+LAST_CLIP_INFO = LAST_CLIP.with_suffix(".json")
+
+
+def save_last_clip(audio, timing=None, speech=None):
+    """Keep `audio` (int16 mono, SAMPLE_RATE) as the last clip, replacing the previous one.
+    Next to it goes a small JSON file for the clip viewer: the take's timing stamps
+    (seconds since the key press / click) and the streamed speech mask, if there was one."""
+    import wave
+    tmp = LAST_CLIP.with_suffix(".tmp")
+    try:
+        info = {"sample_rate": SAMPLE_RATE, "samples": int(len(audio))}
+        if timing:
+            t0 = timing.get("requested", timing.get("enter", 0.0))
+            info["timing"] = {k: (round(v - t0, 4) if k in _STAMPS else v) for k, v in timing.items() if k != "requested"}
+        if speech is not None:
+            edges = np.diff(np.concatenate(([0], np.asarray(speech).astype(np.int8), [0])))
+            info["streamed_mask_runs"] = [[int(a), int(b)] for a, b in zip(np.flatnonzero(edges == 1), np.flatnonzero(edges == -1))]
+        itmp = LAST_CLIP_INFO.with_suffix(".tmp")
+        fd = os.open(itmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w") as f:
+            json.dump(info, f)
+        os.replace(itmp, LAST_CLIP_INFO)
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "wb") as f, wave.open(f, "wb") as w:
+            w.setnchannels(CHANNELS)
+            w.setsampwidth(2)
+            w.setframerate(SAMPLE_RATE)
+            w.writeframes(np.ascontiguousarray(audio, dtype="<i2").tobytes())
+        os.replace(tmp, LAST_CLIP)
+    except OSError:
+        log.exception("could not keep the last clip")
+
+
+def replay_last_clip(wait=False):
+    """Play the last clip through PulseAudio, replacing a replay still running.
+    Returns False when there is no clip (or no paplay)."""
+    global _replay
+    if not LAST_CLIP.exists():
+        return False
+    if _replay is not None and _replay.poll() is None:
+        _replay.terminate()
+    try:
+        _replay = subprocess.Popen(["paplay", str(LAST_CLIP)])
+    except FileNotFoundError:
+        return False
+    if wait:
+        _replay.wait()
+    return True
+
+
 def _select_microphone():
     """Point PulseAudio clients in this process at the right microphone: the
     one chosen in Settings, else (automatic) the first real input when the
@@ -419,42 +477,82 @@ def _select_microphone():
 
 
 STREAM_CLOSE_TIMEOUT_S = 3.0   # a healthy stop()+close() takes hundreds of ms
-FIRST_FRAME_TIMEOUT_S = 1.0    # a healthy stream delivers its first block within ~100 ms
+FIRST_FRAME_TIMEOUT_S = 1.0    # a healthy stream delivers a block every ~30 ms; this long without one is a stall
+WATCHDOG_MAX_S = 600.0         # a take is never watched longer than this
+
+
+def _stall_snapshot():
+    """One line of machine state for the log when the microphone stalls, to find out what the stalls have in common."""
+    def read(path, default="?"):
+        try:
+            return Path(path).read_text().strip()
+        except OSError:
+            return default
+    status = {}
+    for line in read("/proc/asound/card0/pcm0c/sub0/status", "").splitlines():
+        k, _sep, v = line.partition(":")
+        status[k.strip()] = v.strip()
+    temps = []
+    for z in sorted(Path("/sys/class/thermal").glob("thermal_zone*")):
+        t = read(z / "temp", "")
+        if t.isdigit():
+            temps.append("%s=%d" % (read(z / "type"), int(t) // 1000))
+    meminfo = {l.split(":")[0]: l.split()[1] for l in read("/proc/meminfo", "").splitlines() if ":" in l}
+    return ("pcm %s hw_ptr=%s avail=%s | audio device runtime pm: %s/%s | load %s | avail mem %s MB | %s" % (
+        status.get("state", "closed"), status.get("hw_ptr", "?"), status.get("avail", "?"),
+        read("/sys/bus/pci/devices/0000:00:0e.0/power/control"), read("/sys/bus/pci/devices/0000:00:0e.0/power/runtime_status"),
+        read("/proc/loadavg").split(" ")[0], int(meminfo.get("MemAvailable", "0")) // 1024, " ".join(temps)))
 
 
 def _heal_silent_microphone(frames, source):
     """Watchdog for one take. The laptop's SOF/es8336 capture can stall (the PCM
     stays RUNNING but its pointer freezes, the source latency grows by the
-    second), and then every stream gets zero frames and PortAudio's stop() hangs
-    (seen 2026-10-13). Suspending and resuming the source makes PulseAudio
+    second), at the start of a take or in the middle of one. Then no more audio
+    arrives and PortAudio's stop() hangs (seen 2026-10-13: one take got 3.9 s of
+    a 10 s dictation). Suspending and resuming the source makes PulseAudio
     reopen the device, and the stream already attached to it carries on, so a
-    nudge a second into the take usually saves it, losing under a second of
-    speech. `source` is the chosen source name, or None for the default."""
+    nudge a second after the audio stops usually saves the rest of the take.
+    `source` is the chosen source name, or None for the default."""
+    tm = frames.timing
+    nudges = 0
+    deadline = time.monotonic() + WATCHDOG_MAX_S
     time.sleep(FIRST_FRAME_TIMEOUT_S)
-    if frames or frames.closed:
-        return
-    try:
-        env = {**os.environ, "LC_ALL": "C"}
-        name = source or subprocess.run(["pactl", "get-default-source"], capture_output=True, text=True,
-                                        timeout=2, env=env).stdout.strip()
-        if not name:
+    while not frames.closed and nudges < 3 and time.monotonic() < deadline:
+        last = tm.get("last_block")
+        stalled = (not frames) if last is None else time.monotonic() - last > FIRST_FRAME_TIMEOUT_S
+        if not stalled:
+            time.sleep(0.3)
+            continue
+        nudges += 1
+        try:
+            name = source or subprocess.run(["pactl", "get-default-source"], capture_output=True, text=True,
+                                            timeout=2, env={**os.environ, "LC_ALL": "C"}).stdout.strip()
+            if not name:
+                return
+            log.warning("microphone %s delivered no audio for %.0fs (%d blocks so far), restarting it",
+                        name, FIRST_FRAME_TIMEOUT_S, len(frames))
+            log.warning("stall state: %s", _stall_snapshot())
+            seen = tm["blocks"]
+            subprocess.run(["pactl", "suspend-source", name, "1"], timeout=3, check=False)
+            time.sleep(0.5)
+            subprocess.run(["pactl", "suspend-source", name, "0"], timeout=3, check=False)
+            time.sleep(1.0)
+            if tm["blocks"] > seen:
+                log.info("microphone is delivering audio again (%d blocks)", len(frames))
+            else:
+                log.warning("microphone still delivers nothing after the restart")
+        except (FileNotFoundError, subprocess.TimeoutExpired):
             return
-        log.warning("microphone %s delivered no audio for %.0fs, restarting it", name, FIRST_FRAME_TIMEOUT_S)
-        subprocess.run(["pactl", "suspend-source", name, "1"], timeout=3, check=False)
-        time.sleep(0.5)
-        subprocess.run(["pactl", "suspend-source", name, "0"], timeout=3, check=False)
-        time.sleep(1.0)
-        if frames:
-            log.info("microphone is delivering audio again (%d blocks)", len(frames))
-        else:
-            log.warning("microphone still delivers nothing after the restart")
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        pass
 
 
 class _Frames(list):
-    """The audio blocks of one take. `closed` tells the callback of an abandoned stream to stop touching them."""
+    """The audio blocks of one take. `closed` tells the callback of an abandoned stream to stop touching them.
+    `timing` (time.monotonic() stamps and counters) is what the clip viewer uses to show where a take lost its start."""
     closed = False
+
+    def __init__(self):
+        super().__init__()
+        self.timing = {"blocks": 0, "overflows": 0, "max_gap": 0.0}
 
 
 class Recorder:
@@ -471,13 +569,18 @@ class Recorder:
     def recording(self):
         return self._take is not None
 
-    def start(self, tap=None):
-        """tap: optional callable that gets every audio block (int16), from the audio thread."""
+    def start(self, tap=None, requested=None):
+        """tap: optional callable that gets every audio block (int16), from the audio thread.
+        requested: time.monotonic() of the key press / click that asked for this take."""
         with self.lock:
             if self._take is not None:
                 return
             frames = _Frames()
+            tm = frames.timing
+            tm["requested"] = requested if requested is not None else time.monotonic()
+            tm["enter"] = time.monotonic()
             _select_microphone()
+            tm["mic_selected"] = time.monotonic()
             vad = None
             try:
                 import local_stt
@@ -488,6 +591,15 @@ class Recorder:
             def callback(indata, n, time_info, status):
                 if frames.closed:
                     return
+                now = time.monotonic()
+                if tm["blocks"] == 0:
+                    tm["first_block"] = now
+                else:
+                    tm["max_gap"] = max(tm["max_gap"], now - tm["last_block"])
+                tm["last_block"] = now
+                tm["blocks"] += 1
+                if status:
+                    tm["overflows"] += 1
                 block = indata.copy()
                 frames.append(block)
                 if vad is not None:
@@ -501,7 +613,9 @@ class Recorder:
                 dtype="int16",
                 callback=callback,
             )
+            tm["opened"] = time.monotonic()
             stream.start()
+            tm["started"] = time.monotonic()
             self._take = (stream, frames, vad)
             threading.Thread(target=_heal_silent_microphone,
                              args=(frames, os.environ.get("PULSE_SOURCE")), daemon=True).start()
