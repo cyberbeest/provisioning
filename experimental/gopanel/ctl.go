@@ -3,16 +3,19 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // Control socket: one line in ("reload", "restart", "quit"), one line out.
-// Same-uid processes can connect, including firejailed ones whose view of
-// $XDG_RUNTIME_DIR includes it, so commands must stay harmless (no "launch X").
+// Only same-uid (or root) processes in the panel's own mount namespace are admitted (see
+// peer.go), so firejailed apps are refused even if they can see the path. Commands must
+// still stay harmless (no "launch X"): any unsandboxed process of the user may send them.
 func sockPath() string {
 	dir := os.Getenv("XDG_RUNTIME_DIR")
 	if dir == "" {
@@ -47,23 +50,16 @@ func ctlServer(cmds chan<- string) {
 		return
 	}
 	os.Chmod(path, 0o600)
-	go func() {
-		for {
-			conn, err := ln.Accept()
-			if err != nil {
-				return
-			}
-			go func() {
-				defer conn.Close()
-				line, _ := bufio.NewReader(conn).ReadString('\n')
-				switch cmd := strings.TrimSpace(line); cmd {
-				case "reload", "restart", "quit", "menu", "yield", "calendar", "volume", "power", "dismiss", "unreserve", "profile", "layout":
-					cmds <- cmd
-					fmt.Fprintln(conn, "ok")
-				default:
-					fmt.Fprintln(conn, "unknown command; try: reload restart quit menu")
-				}
-			}()
+	go acceptLoop(ln, "control socket", false, 8, func(conn net.Conn) {
+		defer conn.Close()
+		conn.SetDeadline(time.Now().Add(2 * time.Second))
+		line, _ := bufio.NewReader(io.LimitReader(conn, 256)).ReadString('\n')
+		switch cmd := strings.TrimSpace(line); cmd {
+		case "reload", "restart", "quit", "menu", "yield", "calendar", "volume", "power", "dismiss", "unreserve", "profile", "layout":
+			cmds <- cmd
+			fmt.Fprintln(conn, "ok")
+		default:
+			fmt.Fprintln(conn, "unknown command; try: reload restart quit menu")
 		}
-	}()
+	})
 }

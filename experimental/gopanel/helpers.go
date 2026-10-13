@@ -10,6 +10,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"gopanel/proto"
 )
@@ -39,11 +40,19 @@ type helperEvent struct {
 	text string
 }
 
-const maxHelperPixels = 4 << 20 // 16 MB of RGBA per frame, far beyond any panel item
+const (
+	maxHelperPixels = 4 << 20  // 16 MB of RGBA per frame, far beyond any panel item
+	maxHelpers      = 32       // simultaneous helper connections
+	maxHelperLine   = 16 << 10 // longest text line a helper may send (tooltips are the long ones)
+	maxLabelRunes   = 256
+	helloTimeout    = 5 * time.Second
+	writeTimeout    = 5 * time.Second
+)
 
 // helperServer accepts helpers on a Unix socket and forwards what they say to ev.
-// Same-uid processes (including jailed ones that can see the path) can connect and
-// draw into the panel, but nothing here can launch or run anything.
+// Only processes the panel started itself are admitted (see peer.go), so sandboxed apps
+// and stray same-uid processes cannot draw into the panel. Nothing here can launch or run
+// anything either way.
 func helperServer(ev chan<- helperEvent) {
 	path := proto.SockPath()
 	os.Remove(path)
@@ -53,27 +62,28 @@ func helperServer(ev chan<- helperEvent) {
 		return
 	}
 	os.Chmod(path, 0o600)
-	go func() {
-		for {
-			conn, err := ln.Accept()
-			if err != nil {
-				return
-			}
-			go serveHelper(conn, ev)
-		}
-	}()
+	go acceptLoop(ln, "helper socket", true, maxHelpers, func(conn net.Conn) { serveHelper(conn, ev) })
+}
+
+// readLine returns one newline-terminated line of at most maxHelperLine bytes; a longer
+// line (no newline within the reader's buffer) is an error and the caller drops the peer.
+func readLine(r *bufio.Reader) (string, error) {
+	b, err := r.ReadSlice('\n')
+	return string(b), err
 }
 
 func serveHelper(conn net.Conn, ev chan<- helperEvent) {
 	defer conn.Close()
 	fmt.Fprintf(conn, "panel %d\n", panelH)
-	r := bufio.NewReader(conn)
+	r := bufio.NewReaderSize(conn, maxHelperLine)
 
-	line, err := r.ReadString('\n')
+	conn.SetReadDeadline(time.Now().Add(helloTimeout))
+	line, err := readLine(r)
 	f := strings.Fields(line)
 	if err != nil || len(f) != 3 || f[0] != "hello" {
 		return
 	}
+	conn.SetReadDeadline(time.Time{})
 	w, err := strconv.Atoi(f[2])
 	if err != nil || w < 0 || w > 4096 {
 		return
@@ -101,7 +111,7 @@ func serveHelper(conn net.Conn, ev chan<- helperEvent) {
 
 lines:
 	for {
-		line, err := r.ReadString('\n')
+		line, err := readLine(r)
 		if err != nil {
 			return
 		}
