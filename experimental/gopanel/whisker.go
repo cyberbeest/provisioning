@@ -9,6 +9,7 @@ import (
 	"os/user"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/jezek/xgb"
 	"github.com/jezek/xgb/xproto"
@@ -57,9 +58,10 @@ const (
 )
 
 type whisker struct {
-	c   *xgb.Conn
-	scr *xproto.ScreenInfo
-	gc  xproto.Gcontext
+	appsLoaded time.Time // applications-dir mtime the menu data was built from
+	c          *xgb.Conn
+	scr        *xproto.ScreenInfo
+	gc         xproto.Gcontext
 
 	win    xproto.Window
 	back   xproto.Pixmap // off-screen copy of the window: paints go here, then one CopyArea
@@ -135,6 +137,9 @@ func (w *whisker) loadData() {
 func (w *whisker) setData(d whiskerData) {
 	cats, all := d.cats, d.all
 	w.cats, w.all, w.loaded = cats, all, true
+	if w.appsLoaded.IsZero() {
+		w.appsLoaded = appsStamp()
+	}
 	w.byID = map[string]*appmenu.Entry{}
 	for _, e := range all {
 		w.byID[e.ID] = e
@@ -185,8 +190,28 @@ func (w *whisker) toggle(anchorX int) {
 	w.open(anchorX)
 }
 
+// appsStamp is the newest mtime among the applications directories: installing or
+// removing a .desktop file touches its directory, so a change means the menu is stale.
+func appsStamp() time.Time {
+	var newest time.Time
+	dirs := []string{filepath.Join(os.Getenv("HOME"), ".local/share/applications")}
+	for _, d := range strings.Split(os.Getenv("XDG_DATA_DIRS"), ":") {
+		if d != "" {
+			dirs = append(dirs, filepath.Join(d, "applications"))
+		}
+	}
+	dirs = append(dirs, "/usr/share/applications", "/usr/local/share/applications")
+	for _, d := range dirs {
+		if st, err := os.Stat(d); err == nil && st.ModTime().After(newest) {
+			newest = st.ModTime()
+		}
+	}
+	return newest
+}
+
 func (w *whisker) open(anchorX int) {
-	if !w.loaded {
+	if stamp := appsStamp(); !w.loaded || stamp.After(w.appsLoaded) {
+		w.appsLoaded = stamp
 		w.loadData()
 	}
 	w.refreshConfig()
