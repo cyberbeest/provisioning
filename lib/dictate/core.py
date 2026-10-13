@@ -417,6 +417,14 @@ def _select_microphone():
         log.info("default source %s is a monitor, recording from %s", default, sources[0])
 
 
+STREAM_CLOSE_TIMEOUT_S = 3.0   # a healthy stop()+close() takes hundreds of ms
+
+
+class _Frames(list):
+    """The audio blocks of one take. `closed` tells the callback of an abandoned stream to stop touching them."""
+    closed = False
+
+
 class Recorder:
     """Each recording is a "take" (stream + its frames). detach() hands the
     current take to the caller without touching PipeWire, so a new start()
@@ -436,7 +444,7 @@ class Recorder:
         with self.lock:
             if self._take is not None:
                 return
-            frames = []
+            frames = _Frames()
             _select_microphone()
             vad = None
             try:
@@ -446,6 +454,8 @@ class Recorder:
                 log.exception("could not start the streaming voice detector")
 
             def callback(indata, n, time_info, status):
+                if frames.closed:
+                    return
                 block = indata.copy()
                 frames.append(block)
                 if vad is not None:
@@ -482,12 +492,27 @@ class Recorder:
         if take is None:
             return None, None
         stream, frames, vad = take
-        try:
-            stream.stop()
-            stream.close()
-        except Exception:
-            # A vanished mic must not lose what was already captured.
-            log.exception("closing input stream failed")
+
+        def close():
+            try:
+                stream.stop()
+                stream.close()
+            except Exception:
+                # A vanished mic must not lose what was already captured.
+                log.exception("closing input stream failed")
+
+        # PortAudio's stop() can hang for good when its capture thread gets stuck
+        # polling a broken Pulse stream (seen 2026-10-13: the take stayed in
+        # "Transcribing" forever). The audio is already in memory, so give the
+        # close a few seconds and go on without it; the stream is abandoned.
+        closer = threading.Thread(target=close, daemon=True)
+        closer.start()
+        closer.join(STREAM_CLOSE_TIMEOUT_S)
+        if closer.is_alive():
+            log.warning("closing the input stream hung for %.0fs; going on with the %d blocks already captured",
+                        STREAM_CLOSE_TIMEOUT_S, len(frames))
+        frames.closed = True
+        frames = list(frames)
         audio = np.concatenate(frames, axis=0) if frames else None
         mask = vad.finish(len(audio) if audio is not None else 0) if vad is not None else None
         return audio, mask
