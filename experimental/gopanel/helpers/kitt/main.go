@@ -22,8 +22,8 @@ import (
 )
 
 const (
-	aspectRatio     = 4 // width = panel height * aspectRatio
-	numLEDs         = 24
+	aspectRatio     = 4  // width = panel height * aspectRatio
+	refLEDs         = 24 // LED count at the automatic width; other widths keep the LED size
 	ledGapFrac      = 0.22
 	glowWidth       = 2.2
 	glowCutoffSigma = 3.5
@@ -45,6 +45,8 @@ var cfg = struct {
 	gamma            float64
 	linear, housing  bool
 	disabled         bool // freeze at dead centre, no animation
+	width            int  // slot width in px; 0 = panel height * aspectRatio
+	rcPath           string
 }{fps: 40, maxRate: 2.86, gamma: 1.0}
 
 // loadXfceRC reads the first ~/.config/xfce4/panel/kitt-scanner-*.rc, so the helper
@@ -63,6 +65,7 @@ func loadXfceRC(path string) {
 		return
 	}
 	defer f.Close()
+	cfg.rcPath = path
 	sc := bufio.NewScanner(f)
 	for sc.Scan() {
 		k, v, ok := strings.Cut(strings.TrimSpace(sc.Text()), "=")
@@ -83,6 +86,8 @@ func loadXfceRC(path string) {
 			cfg.housing = v != "true"
 		case "SineSweep":
 			cfg.linear = v != "true"
+		case "Width":
+			cfg.width = int(fl)
 		case "Enabled":
 			cfg.disabled = v != "true"
 		}
@@ -90,18 +95,46 @@ func loadXfceRC(path string) {
 	log.Println("settings from", path)
 }
 
-type layout struct{ barX, barY, barW, barH, pitch, ledW, radius float64 }
+type layout struct {
+	barX, barY, barW, barH, pitch, ledW, radius float64
+	n                                           int
+}
+
+// persistWidth writes the automatic width into the rc file as Width=, so the
+// Properties dialog shows the real number. The panel restarts us on the change,
+// and the next start finds Width set, so this happens once.
+func persistWidth(w int) {
+	if cfg.width > 0 || cfg.rcPath == "" {
+		return
+	}
+	b, err := os.ReadFile(cfg.rcPath)
+	if err != nil {
+		return
+	}
+	var out []string
+	for _, l := range strings.Split(strings.TrimRight(string(b), "\n"), "\n") {
+		if !strings.HasPrefix(strings.TrimSpace(l), "Width=") {
+			out = append(out, l)
+		}
+	}
+	out = append(out, fmt.Sprintf("Width=%d", w))
+	os.WriteFile(cfg.rcPath, []byte(strings.Join(out, "\n")+"\n"), 0o644)
+}
 
 func computeLayout(w, h float64) layout {
 	l := layout{barW: w * 0.92, barH: h * 0.5}
 	l.barX, l.barY = (w-l.barW)/2, (h-l.barH)/2
-	l.pitch = l.barW / numLEDs
+	// LED size is fixed by the panel height (as at the automatic width); the width only
+	// decides how many fit.
+	refPitch := h * aspectRatio * 0.92 / refLEDs
+	l.n = max(2, int(math.Round(l.barW/refPitch)))
+	l.pitch = l.barW / float64(l.n)
 	l.ledW = l.pitch * (1 - ledGapFrac)
 	l.radius = math.Min(l.ledW, l.barH) / 2
 	return l
 }
 
-func eyePos(phase float64, linear bool) float64 {
+func eyePos(phase float64, linear bool, n int) float64 {
 	frac := phase
 	if phase > 1 {
 		frac = 2 - phase
@@ -109,7 +142,7 @@ func eyePos(phase float64, linear bool) float64 {
 	if !linear {
 		frac = (1 - math.Cos(frac*math.Pi)) / 2
 	}
-	return frac * (numLEDs - 1)
+	return frac * float64(n-1)
 }
 
 // cpuSampler reads /proc/stat and keeps an exponentially smoothed 0..1 load.
@@ -168,7 +201,7 @@ func render(img *image.RGBA, eye float64) {
 	b := img.Bounds()
 	lay := computeLayout(float64(b.Dx()), float64(b.Dy()))
 	cutoff := glowWidth * glowCutoffSigma
-	for i := 0; i < numLEDs; i++ {
+	for i := 0; i < lay.n; i++ {
 		dist := math.Abs(float64(i) - eye)
 		brightness := 0.0
 		if dist <= cutoff {
@@ -259,13 +292,13 @@ func run(c *proto.Client) {
 	var (
 		cpu     cpuSampler
 		phase   float64
-		prevEye = eyePos(0, cfg.linear)
+		prevEye = eyePos(0, cfg.linear, lay.n)
 		paused  bool
 		last    = time.Now()
 	)
 	cpu.sample()
 	if cfg.disabled {
-		prevEye = eyePos(0.5, cfg.linear) // dead centre, like the plugin's off switch
+		prevEye = eyePos(0.5, cfg.linear, lay.n) // dead centre, like the plugin's off switch
 	}
 	render(img, prevEye)
 	if c.SendImage(img) != nil {
@@ -324,7 +357,7 @@ func run(c *proto.Client) {
 			}
 			// Always accumulate phase, so slow drift batches up until it crosses a pixel.
 			phase = math.Mod(phase+dt*rate, 2)
-			eye := eyePos(phase, cfg.linear)
+			eye := eyePos(phase, cfg.linear, lay.n)
 			if math.Abs(eye-prevEye)*lay.pitch < minRedrawPx {
 				continue
 			}
@@ -339,6 +372,7 @@ func run(c *proto.Client) {
 
 func main() {
 	rc := flag.String("rc", "", "xfce plugin rc file to read settings from (default: first kitt-scanner-*.rc)")
+	flag.IntVar(&cfg.width, "width", cfg.width, "slot width in pixels (default: 4x panel height)")
 	flag.IntVar(&cfg.fps, "fps", cfg.fps, "frames per second (1-60)")
 	flag.Float64Var(&cfg.minRate, "min-rate", cfg.minRate, "sweeps/sec at 0% CPU load")
 	flag.Float64Var(&cfg.maxRate, "max-rate", cfg.maxRate, "sweeps/sec at 100% CPU load")
@@ -359,12 +393,18 @@ func main() {
 		if !proto.ParentAlive() {
 			return // the panel that started us is gone
 		}
-		c, err := proto.Dial("kitt", func(h int) int { return h * aspectRatio })
+		c, err := proto.Dial("kitt", func(h int) int {
+			if cfg.width > 0 {
+				return cfg.width
+			}
+			return h * aspectRatio
+		})
 		if err != nil {
 			time.Sleep(time.Second) // panel not up yet (or restarting): keep trying
 			continue
 		}
 		log.Printf("connected %dx%d fps=%d rate=%g..%g gamma=%g linear=%v housing=%v disabled=%v", c.Width, c.Height, cfg.fps, cfg.minRate, cfg.maxRate, cfg.gamma, cfg.linear, cfg.housing, cfg.disabled)
+		persistWidth(c.Width)
 		run(c)
 		c.Close()
 		time.Sleep(time.Second)

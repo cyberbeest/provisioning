@@ -30,7 +30,7 @@ import (
 	"gopanel/proto"
 )
 
-const version = "0.21.3"
+const version = "0.21.4"
 
 var ctlCmds chan<- string // control commands into the main loop
 
@@ -95,6 +95,7 @@ func main() {
 		ctlClient(os.Args[1])
 		return
 	}
+	sweepStaleSubscribers()
 	sig := make(chan os.Signal, 1) // register first: default SIGHUP action would kill us
 	signal.Notify(sig, syscall.SIGHUP)
 
@@ -670,6 +671,7 @@ func main() {
 				install(xfconfAll())
 			case "restart": // replace this process with the (possibly rebuilt) binary
 				xt.parkIcons()
+				killSubscribers()
 				os.Remove(sockPath())
 				os.Remove(proto.SockPath())
 				exe, _ := os.Executable()
@@ -714,6 +716,7 @@ func main() {
 				xt.yieldTray()
 			case "quit":
 				xt.parkIcons()
+				killSubscribers()
 				for _, s := range sups {
 					close(s.stop)
 				}

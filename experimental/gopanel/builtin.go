@@ -6,6 +6,8 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
+	"syscall"
 	"time"
 )
 
@@ -146,6 +148,7 @@ func newVolumeItem() *item {
 		refresh()
 		for !it.isDead() {
 			cmd := exec.Command("pactl", "subscribe")
+			cmd.SysProcAttr = &syscall.SysProcAttr{Pdeathsig: syscall.SIGKILL}
 			out, err := cmd.StdoutPipe()
 			if err != nil || cmd.Start() != nil {
 				select {
@@ -155,6 +158,7 @@ func newVolumeItem() *item {
 					return
 				}
 			}
+			trackSubscriber(cmd.Process)
 			go func() { <-it.dead; cmd.Process.Kill() }()
 			buf := make([]byte, 4096)
 			var last time.Time
@@ -169,7 +173,9 @@ func newVolumeItem() *item {
 					refresh()
 				}
 			}
+			cmd.Process.Kill()
 			cmd.Wait()
+			untrackSubscriber(cmd.Process)
 			select {
 			case <-time.After(2 * time.Second):
 			case <-it.dead:
@@ -178,4 +184,58 @@ func newVolumeItem() *item {
 		}
 	}()
 	return it
+}
+
+// pactl subscribe children must not outlive us: each one is a connection to the sound
+// server, and leaked ones (the restart exec keeps our pid, so nothing reaped them) pile up
+// and clog it. They are killed before restart/quit, and stale ones are swept at startup.
+var (
+	subMu   sync.Mutex
+	subProc = map[int]*os.Process{}
+)
+
+func trackSubscriber(p *os.Process)   { subMu.Lock(); subProc[p.Pid] = p; subMu.Unlock() }
+func untrackSubscriber(p *os.Process) { subMu.Lock(); delete(subProc, p.Pid); subMu.Unlock() }
+
+func killSubscribers() {
+	subMu.Lock()
+	for _, p := range subProc {
+		p.Kill()
+	}
+	subMu.Unlock()
+}
+
+// sweepStaleSubscribers kills our own user's `pactl subscribe` processes that are orphans
+// (parent init or the systemd user manager) or children of this pid left over from before an exec restart.
+func sweepStaleSubscribers() {
+	me := os.Getpid()
+	ents, _ := os.ReadDir("/proc")
+	for _, e := range ents {
+		pid, err := strconv.Atoi(e.Name())
+		if err != nil || pid == me {
+			continue
+		}
+		cmd, _ := os.ReadFile("/proc/" + e.Name() + "/cmdline")
+		if string(cmd) != "pactl\x00subscribe\x00" {
+			continue
+		}
+		st, _ := os.ReadFile("/proc/" + e.Name() + "/stat")
+		i := strings.LastIndexByte(string(st), ')')
+		f := strings.Fields(string(st[i+1:]))
+		if len(f) < 2 {
+			continue
+		}
+		ppid, _ := strconv.Atoi(f[1])
+		pcomm, _ := os.ReadFile("/proc/" + f[1] + "/comm") // orphans go to the systemd --user subreaper
+		if ppid != 1 && ppid != me && strings.TrimSpace(string(pcomm)) != "systemd" {
+			continue
+		}
+		var fi os.FileInfo
+		if fi, err = os.Stat("/proc/" + e.Name()); err != nil {
+			continue
+		}
+		if sys, ok := fi.Sys().(*syscall.Stat_t); ok && int(sys.Uid) == os.Getuid() {
+			syscall.Kill(pid, syscall.SIGKILL)
+		}
+	}
 }

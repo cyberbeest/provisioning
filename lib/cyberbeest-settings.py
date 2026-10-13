@@ -236,6 +236,7 @@ class PanelPage(Gtk.Box):
 # Texts for the Properties page of the Go panel's plugins (taken from the XFCE plugins' own
 # dialogs). key -> label; ordered like the original dialogs. Unknown keys are listed at the end.
 _ENABLED_SCAN = "Enabled (off freezes the scanner, centered)"
+_WIDTH = "Width, pixels:"
 _FPS = "Frame rate, fps:"
 _MARGIN = "Margin color:"
 _OFF = "\"Off\" LEDs are fully invisible (vs. dim housing color)"
@@ -246,6 +247,7 @@ RC_INFO = {
         "about": "A scanner whose sweep speed follows the CPU load.",
         "keys": {
             "Enabled": _ENABLED_SCAN,
+            "Width": _WIDTH,
             "MinRate": "Min speed (0% CPU load), sweeps/sec:",
             "MaxRate": "Max speed (100% CPU load), sweeps/sec:",
             "Gamma": "Gamma (>1 slows low load further, <1 speeds it up):",
