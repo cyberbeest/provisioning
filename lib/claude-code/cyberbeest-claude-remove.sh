@@ -69,6 +69,9 @@ remove_all() {
 	rem="$(pgrep -f '\.local/bin/clau[d]e|\.local/share/clau[d]e/versions/' || true)"
 	[ -n "$rem" ] && { kill $rem 2>/dev/null; sleep 1; kill -9 $rem 2>/dev/null; } || true
 
+	echo "--- panel launchers ---"
+	bash "$DIR/panel-launchers.sh" remove || true
+
 	echo "--- files in $WORK ---"
 	if [ -f "$STATE/claude-code-files.txt" ]; then
 		while IFS= read -r f; do

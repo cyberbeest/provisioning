@@ -14,7 +14,8 @@
 #     window, spawn-claude-session.sh, claude-stop.sh, wait-for-runme.sh
 #   - spoken replies: speak-replies mod + Piper TTS (runs locally), /speak toggles
 #   - a "Claude Code" menu entry that opens a terminal in ~/claude
-# Idempotent: safe to re-run. Adds only what is missing (icons, launchers, voices,
+# Idempotent: safe to re-run. Adds only what is missing (icons, launchers, panel
+# launchers, voices,
 # venv, CLAUDE.md, settings entries); the scripts we ship are refreshed.
 set -uo pipefail
 DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
@@ -114,6 +115,9 @@ Icon=claude-sessions
 Terminal=false
 Categories=Utility;
 EOF
+
+	echo "--- Panel launchers (blue icons, only if missing) ---"
+	bash "$DIR/panel-launchers.sh" add || echo "panel launchers skipped (rc=$?)"
 
 	echo "--- Spoken replies (Piper, local) ---"
 	install -d "$TTS"
