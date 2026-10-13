@@ -79,7 +79,18 @@ def model_dir(model_id: Optional[str] = None) -> Path:
 
 
 TARGET_SR = 16000
-DEFAULT_THREADS = 4
+
+
+def _cores() -> int:
+    """CPU cores this process may run on."""
+    import os
+    try:
+        return max(1, len(os.sched_getaffinity(0)))
+    except AttributeError:
+        return max(1, os.cpu_count() or 1)
+
+
+DEFAULT_THREADS = min(4, _cores())
 DEFAULT_IDLE_S = 300  # unload the model after this long without a dictation; 0 = never
 TARGET_PEAK = 0.5   # quiet pieces are raised to this peak before decoding
 MAX_GAIN = 30.0     # but never amplified more than this, so room noise stays noise
@@ -736,6 +747,7 @@ def get_recognizer(num_threads: int = DEFAULT_THREADS, idle_s: float = DEFAULT_I
     Every call counts as use and restarts the idle countdown.
     """
     global _instance, _idle_s
+    num_threads = max(1, min(int(num_threads), _cores()))   # never more decoder threads than cores, whatever the setting says
     with _instance_lock:
         _idle_s = idle_s
         if (_instance is None or _instance.num_threads != num_threads
