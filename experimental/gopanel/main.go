@@ -19,6 +19,7 @@ import (
 	"path/filepath"
 	"runtime/debug"
 	"runtime/pprof"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -30,7 +31,7 @@ import (
 	"gopanel/proto"
 )
 
-const version = "0.21.6"
+const version = "0.21.8"
 
 var ctlCmds chan<- string // control commands into the main loop
 
@@ -151,6 +152,7 @@ func main() {
 	xproto.MapWindow(c, wid)
 	xscr, xgc = scr, gc
 	tip := newTooltip(c, scr, gc)
+	noticeTip = newTooltip(c, scr, gc)
 	menus := newMenuMgr(c, scr, gc)
 	wh := newWhisker(c, scr, gc)
 	toggleWhisker = func() {
@@ -166,8 +168,16 @@ func main() {
 		paused  bool
 	)
 
+	// While the panel starts up, items arrive piecemeal (helpers connecting, tray icons
+	// docking, taskbar filling). Layout and drawing are held back for a moment and then
+	// applied in one go, instead of shuffling and flickering.
+	settling := true
+
 	// relayout assigns x positions; expanding items share whatever width is left.
 	relayout := func() {
+		if settling {
+			return
+		}
 		fixed := 4 // 4px right margin
 		var exp []*item
 		for _, it := range items {
@@ -224,7 +234,7 @@ func main() {
 	// draw composites the item's image (premultiplied RGBA, centred) over the panel or
 	// hover colour and pushes the item's box to the window.
 	draw := func(it *item) {
-		if it.w <= 0 {
+		if it.w <= 0 || settling {
 			return
 		}
 		bg := uint32(panelBg)
@@ -265,6 +275,9 @@ func main() {
 	}
 	drawItem = draw
 	redrawAll := func() {
+		if settling {
+			return
+		}
 		xproto.ClearArea(c, false, wid, 0, 0, 0, 0)
 		for _, it := range items {
 			draw(it)
@@ -409,6 +422,7 @@ func main() {
 
 	go reapZombies()
 	install(cfg)
+	time.AfterFunc(2*time.Second, func() { cmds <- "settle" })
 	xt.tryAcquire() // right away: while nobody owns the tray, apps show their icon as a stray window
 	whReady := make(chan whiskerData, 1)
 	go preloadWhisker(whReady)
@@ -525,6 +539,10 @@ func main() {
 			}
 			if ee, isExp := ev.(xproto.ExposeEvent); isExp && ee.Window == tip.win {
 				tip.paint()
+				continue
+			}
+			if ee, isExp := ev.(xproto.ExposeEvent); isExp && noticeTip.shown && ee.Window == noticeTip.win {
+				noticeTip.paint()
 				continue
 			}
 			if popupHandle(ev) {
@@ -714,6 +732,12 @@ func main() {
 				wh.close()
 				menus.close()
 				closePopup()
+			case "notice-timeout:" + strconv.Itoa(noticeToken): // only the latest launch's timer counts
+				noticeHide()
+			case "settle": // end of the startup hold: lay out and draw everything at once
+				settling = false
+				relayout()
+				redrawAll()
 			case "unreserve": // cached widths that nobody confirmed: give the space back
 				if unreserve(items) {
 					relayout()

@@ -174,6 +174,7 @@ func (tb *taskbar) scan() {
 		tb.refresh(tw)
 		tb.wins = append(tb.wins, tw)
 	}
+	noticeWindows(tb.wins)
 	tb.render()
 }
 

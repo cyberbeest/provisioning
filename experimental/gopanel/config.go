@@ -159,6 +159,7 @@ func newLauncherItem(path string) *item {
 	it.click = func(x, y, btn int) {
 		if btn == 1 {
 			run(l.command())
+			noticeStart(l.name)
 		}
 	}
 	return it

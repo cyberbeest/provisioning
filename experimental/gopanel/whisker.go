@@ -565,6 +565,7 @@ func (w *whisker) paintAll() {
 func (w *whisker) launch(e *appmenu.Entry) {
 	l := &launcher{exec: e.Exec, dir: e.Path, term: e.Terminal, name: e.Name}
 	run(l.command())
+	noticeStart(l.name)
 	w.noteRecent(e.ID)
 	w.close()
 }
