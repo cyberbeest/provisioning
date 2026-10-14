@@ -40,6 +40,7 @@ echo "--- Installing (empty) per-app overrides for Signal, Element, and Telegram
 install -m 644 "$DIR/lib/signal-desktop.local" /etc/firejail/signal-desktop.local
 install -m 644 "$DIR/lib/element-desktop.local" /etc/firejail/element-desktop.local
 install -m 644 "$DIR/lib/telegram-desktop.local" /etc/firejail/telegram-desktop.local
+install -m 755 "$DIR/lib/xdg-open-jail-shim" /usr/local/bin/xdg-open
 
 echo "--- Allowing userns_create in the firejail-default AppArmor profile (needed by Electron's own internal sandbox) ---"
 # Signal/Element/Telegram are Electron apps -- Electron's own Chromium-based
