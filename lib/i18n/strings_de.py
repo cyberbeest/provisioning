@@ -294,6 +294,8 @@ STRINGS = {
     ),
     "run_gui.profile_sounds_label": "Töne:",
     "run_gui.profile_sounds_checkbox": "Cyberbeest-Start- und Abschalt-Töne abspielen und die Lautstärke auf Maximum setzen",
+    "run_gui.profile_plymouth_pointer_label": "Startbildschirm:",
+    "run_gui.profile_plymouth_pointer_checkbox": "Mauszeiger auf dem Startbildschirm und bei der Passwortabfrage für die Festplatte anzeigen",
     "run_gui.profile_dictation_model_label": "Diktat:",
     "run_gui.profile_dictation_model_checkbox": "Sprachmodell für das Diktieren herunterladen (140–640 MB)",
     "run_gui.profile_vm_image_label": "VM-Image:",

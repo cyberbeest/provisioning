@@ -471,6 +471,7 @@ SCRIPT_DURATION_ESTIMATES = {
     "13a-lock-warning-watcher.sh": 6,
     "14-user-avatar.sh": 0,
     "15-grub-plymouth-theme.sh": 69,
+    "15a-plymouth-pointer.sh": 40,
     "16-power-lock-config.sh": 8,
     "17-login-lock-screen.sh": 0,
     "18-desktop-background.sh": 1,
@@ -970,6 +971,13 @@ class ProvisioningProfileDialog(Gtk.Dialog):
         self.sounds.set_active(prev.get("PROVISIONING_SOUNDS", "yes") != "no")
         add_row(t("run_gui.profile_sounds_label"), self.sounds)
 
+        # Mouse pointer on the boot screen (15a-plymouth-pointer.sh); reads
+        # the answer straight from the profile file. Unticking on a machine
+        # that has it puts stock Plymouth back.
+        self.plymouth_pointer = Gtk.CheckButton(label=t("run_gui.profile_plymouth_pointer_checkbox"))
+        self.plymouth_pointer.set_active(prev.get("PROVISIONING_PLYMOUTH_POINTER", "yes") != "no")
+        add_row(t("run_gui.profile_plymouth_pointer_label"), self.plymouth_pointer)
+
         # Dictation speech model (65-dictate.sh): Dictate itself always
         # installs; this only controls the 140-640 MB model download, so test
         # runs in VMs can skip it. Dictate fetches a missing model on first
@@ -1092,6 +1100,7 @@ class ProvisioningProfileDialog(Gtk.Dialog):
             "PROVISIONING_TIMEZONE": self.tz_combo.get_child().get_text().strip() or "UTC",
             "PROVISIONING_TOUCHPAD_TUNING": "yes" if self.touchpad_tuning.get_active() else "no",
             "PROVISIONING_SOUNDS": "yes" if self.sounds.get_active() else "no",
+            "PROVISIONING_PLYMOUTH_POINTER": "yes" if self.plymouth_pointer.get_active() else "no",
             "PROVISIONING_DICTATION_MODEL": "yes" if self.dictation_model.get_active() else "no",
             "PROVISIONING_VM_IMAGE": "yes" if self.vm_image.get_active() else "no",
             "PROVISIONING_VM_UPDATE": "yes" if self.vm_update and self.vm_update.get_active() else "no",

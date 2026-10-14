@@ -281,6 +281,8 @@ STRINGS = {
     ),
     "run_gui.profile_sounds_label": "Sounds:",
     "run_gui.profile_sounds_checkbox": "Play the Cyberbeest startup and shutdown sounds, and set the volume to maximum",
+    "run_gui.profile_plymouth_pointer_label": "Boot screen:",
+    "run_gui.profile_plymouth_pointer_checkbox": "Show a mouse pointer on the boot screen and the disk password prompt",
     "run_gui.profile_dictation_model_label": "Dictation:",
     "run_gui.profile_dictation_model_checkbox": "Download the speech model for voice dictation (140–640 MB)",
     "run_gui.profile_vm_image_label": "VM image:",
