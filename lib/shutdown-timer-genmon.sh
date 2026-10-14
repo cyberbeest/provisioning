@@ -71,6 +71,19 @@ if [ "$idle_delay_min" -gt 0 ]; then
     if printf '%s' "$sc_status" | grep -q "is being inhibited"; then
         inhibit_app=$(printf '%s' "$sc_status" | grep -oP 'Application="\K[^"]*' | head -n1)
         inhibit_app="${inhibit_app:-?}"
+        # Apps asking via org.freedesktop.PowerManagement.Inhibit (browsers
+        # playing media, etc.) reach xfce4-screensaver relayed by
+        # xfce4-power-manager as the generic "libxfce4ui" -- look up who
+        # really asked so the tooltip names an app the user recognises.
+        if [ "$inhibit_app" = "libxfce4ui" ]; then
+            real_app=$(busctl --user call org.freedesktop.PowerManagement \
+                /org/freedesktop/PowerManagement/Inhibit \
+                org.freedesktop.PowerManagement.Inhibit GetInhibitors 2>/dev/null \
+                | grep -oP '"\K[^"]+' | head -n1)
+            real_app="${real_app##*/}"
+            real_app="${real_app%-stable}"
+            [ -n "$real_app" ] && inhibit_app="$real_app"
+        fi
         blocked_suffix="$(t shutdown_genmon.blocked_suffix)"
         lock_line="${lock_line}${blocked_suffix}"
     fi
