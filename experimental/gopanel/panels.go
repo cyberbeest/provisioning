@@ -185,7 +185,13 @@ func composite(buf []byte, w int, img *image.RGBA, holdLeft bool, bg uint32) {
 	}
 }
 
-// haloPass fades a one-pixel white outline in around everything the image draws, so that
+// The outline is the stock panel grey, part transparent: a pure white one is too harsh.
+const haloStrength = 1.0
+
+// haloTarget is panelBg as B, G, R (the buffer order).
+var haloTarget = [3]byte{byte(panelBg & 0xff), byte(panelBg >> 8 & 0xff), byte(panelBg >> 16 & 0xff)}
+
+// haloPass fades a one-pixel light outline in around everything the image draws, so that
 // black text and icons stay readable on a dark background. buf is BGRX, already background-filled.
 func haloPass(buf []byte, w int, img *image.RGBA, ox, oy int) {
 	ib := img.Bounds()
@@ -196,7 +202,7 @@ func haloPass(buf []byte, w int, img *image.RGBA, ox, oy int) {
 		}
 		return uint32(img.Pix[y*img.Stride+x*4+3])
 	}
-	k := uint32(curDark * 256)
+	k := uint32(curDark * haloStrength * 256)
 	for y := -1; y <= ih; y++ {
 		if oy+y < 0 || oy+y >= panelH {
 			continue
@@ -217,8 +223,8 @@ func haloPass(buf []byte, w int, img *image.RGBA, ox, oy int) {
 			h := a * k / 256 // 0..255
 			o := ((oy+y)*w + ox + x) * 4
 			for c := 0; c < 3; c++ {
-				v := uint32(buf[o+c])
-				buf[o+c] = byte(v + (255-v)*h/255)
+				v, t := uint32(buf[o+c]), uint32(haloTarget[c])
+				buf[o+c] = byte((v*(255-h) + t*h) / 255)
 			}
 		}
 	}
