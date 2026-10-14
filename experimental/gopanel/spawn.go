@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 )
@@ -18,9 +19,16 @@ import (
 // and terminates it when stopped. `gopanel restart` keeps the same pid, so children
 // find their parent still alive and just reconnect.
 type supervisor struct {
-	name      string
-	connected func() bool
-	stop      chan struct{}
+	name string
+	conn atomic.Pointer[atomic.Bool] // the panel item's "a helper is connected" flag
+	stop chan struct{}
+}
+
+func (s *supervisor) watch(it *item) { s.conn.Store(&it.conn) }
+
+func (s *supervisor) connected() bool {
+	c := s.conn.Load()
+	return c != nil && c.Load()
 }
 
 func helperPath(name string) string {

@@ -417,11 +417,15 @@ func main() {
 			}
 		}
 		for _, it := range items {
-			if it.kind != "helper" || sups[it.name] != nil {
+			if it.kind != "helper" {
 				continue
 			}
-			it := it
-			s := &supervisor{name: it.name, stop: make(chan struct{}), connected: func() bool { return it.conn.Load() }}
+			if s := sups[it.name]; s != nil {
+				s.watch(it) // a reload built a new item: the supervisor must watch that one, not the discarded one
+				continue
+			}
+			s := &supervisor{name: it.name, stop: make(chan struct{})}
+			s.watch(it)
 			sups[it.name] = s
 			go s.run()
 		}
