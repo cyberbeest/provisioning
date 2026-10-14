@@ -190,6 +190,7 @@ func (t *tray) register(sender, service string) {
 	t.mu.Unlock()
 	t.refresh(ic)
 	t.render()
+	noticeIcon()
 }
 
 func (t *tray) unregister(match func(*trayIcon) bool) {

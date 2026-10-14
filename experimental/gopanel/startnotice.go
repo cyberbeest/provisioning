@@ -79,3 +79,15 @@ func noticeHide() {
 		noticeDeadTmr.Stop()
 	}
 }
+
+// noticeIcon is called (from any goroutine) when a tray icon docks or a helper appears:
+// the app that was just started has shown its panel icon, so the notice is done.
+func noticeIcon() {
+	if noticeTip == nil || ctlCmds == nil {
+		return
+	}
+	select {
+	case ctlCmds <- "notice-icon":
+	default:
+	}
+}

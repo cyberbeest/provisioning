@@ -137,6 +137,7 @@ func (x *xtray) dock(w xproto.Window) {
 	if _, err := xproto.GetWindowAttributes(xc, w).Reply(); err != nil {
 		return
 	}
+	noticeIcon()
 	mapped := true
 	if r := getProp(w, "_XEMBED_INFO", 2); r != nil && len(r.Value) >= 8 {
 		mapped = r.Value[4]&1 != 0

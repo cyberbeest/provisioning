@@ -660,6 +660,7 @@ func main() {
 				}
 				helpers = append(helpers, he.hc)
 				bindHelper(target, he.hc)
+				noticeIcon()
 				he.hc.send(pauseLine())
 				relayout()
 				redrawAll()
@@ -796,6 +797,10 @@ func main() {
 				closePopup()
 			case "notice-timeout:" + strconv.Itoa(noticeToken): // only the latest launch's timer counts
 				noticeHide()
+			case "notice-icon":
+				if noticeTip.shown {
+					noticeHide()
+				}
 			case "record-widths":
 				saveWidths(items)
 			case "unreserve": // cached widths that nobody confirmed: give the space back
