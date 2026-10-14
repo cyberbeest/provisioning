@@ -53,12 +53,21 @@ for line in "${rows[@]}"; do
     fi
     if [ "$dir" = in ]; then
         in_total=$(( in_total + count ))
-        in_list+="${name}: ${count}"$'\n'
+        in_list+="${count} ${name}"$'\n'
     else
         out_total=$(( out_total + count ))
-        out_list+="${name}: ${count}"$'\n'
+        out_list+="${count} ${name}"$'\n'
     fi
 done
+
+# "15 outgoing connections:" / "1 incoming connection:"
+count_header() {
+    local key=connections_genmon.$1_n
+    [ "$2" -eq 1 ] && key=connections_genmon.$1_1
+    local msg
+    msg="$(t "$key")"
+    printf '%s' "${msg//%d/$2}"
+}
 
 total=$(( in_total + out_total ))
 if [ "$total" -eq 0 ]; then
@@ -66,10 +75,13 @@ if [ "$total" -eq 0 ]; then
 else
     tooltip=""
     if [ "$in_total" -gt 0 ]; then
-        tooltip+="⬇ $(t connections_genmon.incoming) ($in_total)"$'\n'"${in_list}"$'\n'
+        tooltip+="⬇ $(count_header in "$in_total")"$'\n'"${in_list}"$'\n'
     fi
-    tooltip+="$(t connections_genmon.outgoing) ($out_total)"
-    [ -n "$out_list" ] && tooltip+=$'\n'"${out_list%$'\n'}"
+    if [ "$out_total" -gt 0 ]; then
+        tooltip+="$(count_header out "$out_total")"$'\n'"${out_list%$'\n'}"
+    else
+        tooltip+="$(count_header out 0)"
+    fi
 fi
 
 marker=""
