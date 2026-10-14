@@ -60,48 +60,18 @@ else
     lock_line="${lock_line//DURATION/$(fmt "$idle_delay_min")}"
 fi
 
-# A stuck/leftover dbus Inhibit() call (from a crashed app, or one that just
-# never releases it) silently defeats auto-lock even though config looks
-# fine -- this bit us for real (2026-09-14, orphaned "libxfce4ui" inhibit
-# that outlived whatever requested it). Only worth checking when idle-lock
-# is even configured to fire.
-inhibit_app=""
-if [ "$idle_delay_min" -gt 0 ]; then
-    sc_status=$(xfce4-screensaver-command -q 2>/dev/null)
-    if printf '%s' "$sc_status" | grep -q "is being inhibited"; then
-        inhibit_app=$(printf '%s' "$sc_status" | grep -oP 'Application="\K[^"]*' | head -n1)
-        inhibit_app="${inhibit_app:-?}"
-        # Apps asking via org.freedesktop.PowerManagement.Inhibit (browsers
-        # playing media, etc.) reach xfce4-screensaver relayed by
-        # xfce4-power-manager as the generic "libxfce4ui" -- look up who
-        # really asked so the tooltip names an app the user recognises.
-        if [ "$inhibit_app" = "libxfce4ui" ]; then
-            real_app=$(busctl --user call org.freedesktop.PowerManagement \
-                /org/freedesktop/PowerManagement/Inhibit \
-                org.freedesktop.PowerManagement.Inhibit GetInhibitors 2>/dev/null \
-                | grep -oP '"\K[^"]+' | head -n1)
-            real_app="${real_app##*/}"
-            real_app="${real_app%-stable}"
-            [ -n "$real_app" ] && inhibit_app="$real_app"
-        fi
-        blocked_suffix="$(t shutdown_genmon.blocked_suffix)"
-        lock_line="${lock_line}${blocked_suffix}"
-    fi
-fi
+# Inhibits (browser playing media, stuck libxfce4ui inhibit, ...) don't
+# defeat auto-lock: lock-shutdown-watcher.sh locks explicitly once idle time
+# passes the delay, so there's nothing to flag for them here.
 
-# A configured auto-shutdown time is a no-op if the screen never auto-locks,
-# and so is an active inhibit -- flag either on the icon itself, not just in
-# the tooltip, since both silently defeat a safety feature the device
-# otherwise relies on.
+# A configured auto-shutdown time is a no-op if the screen never auto-locks --
+# flag it on the icon itself, not just in the tooltip, since it silently
+# defeats a safety feature the device otherwise relies on.
 warn_txt=""
 warn_line=""
 if [ "$idle_delay_min" -eq 0 ] && { [ "$ac_min" -gt 0 ] || [ "$bat_min" -gt 0 ]; }; then
     warn_txt=" ⚠"
     warn_line="$(t shutdown_genmon.auto_lock_off_warning)&#10;"
-elif [ -n "$inhibit_app" ]; then
-    warn_txt=" ⚠"
-    warn_line="$(t shutdown_genmon.inhibited_warning)"
-    warn_line="${warn_line//APPNAME/$inhibit_app}&#10;"
 fi
 
 click_line="$(t shutdown_genmon.click_to_change)"

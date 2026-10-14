@@ -77,6 +77,23 @@ wait_for_active_changed() {
     read -r -t "$1" -u 3 _
 }
 
+# Security concept: auto-lock always happens. xfce4-screensaver skips its own
+# idle lock while any app holds an inhibit (a browser playing media, a stuck
+# libxfce4ui inhibit, ...), so enforce it here: once X idle time passes the
+# configured delay, lock explicitly. An explicit lock request is not subject
+# to inhibits. Only acts when idle-lock is enabled and the screen is unlocked.
+enforce_idle_lock() {
+    [ "$(xfconf-query -c xfce4-screensaver -p /saver/idle-activation/enabled 2>/dev/null)" = "false" ] && return
+    local delay_min idle_ms
+    delay_min=$(xfconf-query -c xfce4-screensaver -p /saver/idle-activation/delay 2>/dev/null)
+    delay_min=${delay_min:-5}
+    idle_ms=$(xprintidle 2>/dev/null) || return
+    if [ "$idle_ms" -ge $(( delay_min * 60000 + 5000 )) ]; then
+        logger -t lock-shutdown-watcher "Idle ${idle_ms}ms >= ${delay_min}min but not locked (inhibited?), locking"
+        xfce4-screensaver-command -l
+    fi
+}
+
 on_battery() {
     [ "$(cat "$AC_ONLINE" 2>/dev/null)" = "0" ]
 }
@@ -291,6 +308,7 @@ while true; do
             windows_minimized=0
         fi
         locked_since=0
+        enforce_idle_lock
         sleep "$POLL_INTERVAL"
     fi
 done
