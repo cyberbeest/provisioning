@@ -352,11 +352,16 @@ class Win(Gtk.Window):
         btn.set_tooltip_text("New session")
         btn.connect("clicked", lambda _b: self.new_session())
         bar.pack_start(btn, False, False, 6)
+        self.search = Gtk.SearchEntry(placeholder_text="Search sessions")
+        self.search.set_width_chars(28)
+        self.search.connect("search-changed", lambda _e: self.refresh())
         bar.pack_start(self.status, True, True, 0)
+        bar.pack_end(self.search, False, False, 6)
         box.pack_start(bar, False, False, 4)
         box.pack_start(sw, True, True, 0)
         self.add(box)
         self.view.get_columns()[0].set_sort_indicator(True)
+        self.view.set_search_column(2)
         self.refresh()
         GLib.timeout_add(REFRESH_MS, self.refresh)
 
@@ -376,6 +381,12 @@ class Win(Gtk.Window):
             g.sort(key=lambda r: (r["started"], r["id"]))
             for i, r in enumerate(g, 1):
                 r["label"] = f"{r['title']} ({i}/{len(g)})" if len(g) > 1 else r["title"]
+        total = len(rows)
+        q = self.search.get_text().strip().lower()
+        if q:
+            rows = [r for r in rows if all(
+                w in " ".join((r.get("label", r["title"]), r["text"], r["cwd"], r["id"])).lower()
+                for w in q.split())]
         info = running_info()
         live = {sid: d.get("status", "running") for sid, d in info.items()}
         keys = {
@@ -426,7 +437,7 @@ class Win(Gtk.Window):
             if r["id"] == sel:
                 self.view.get_selection().select_iter(row.iter)
         self.status.set_text(
-            f"  {len(rows)} sessions  ·  {len(live)} running  ·  {n_active} busy"
+            f"  {len(rows)}{f' of {total}' if q else ''} sessions  ·  {len(live)} running  ·  {n_active} busy"
             "  ·  double-click opens the session  ·  right-click for more")
         return True
 
@@ -488,7 +499,7 @@ class Win(Gtk.Window):
     def launch(cwd, cmd):
         # interactive bash so PATH matches a normal terminal; no --title, so the
         # terminal follows the title Claude Code sets (needed by activate_terminal)
-        subprocess.Popen(["xfce4-terminal", "--working-directory", cwd,
+        subprocess.Popen(["xfce4-terminal", "--icon=claude-code", "--working-directory", cwd,
                           "-e", f"bash -ic '{cmd}'"], start_new_session=True)
 
 
