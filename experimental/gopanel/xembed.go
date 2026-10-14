@@ -26,6 +26,7 @@ type xtray struct {
 	owned  bool
 	yield  bool // another panel is about to start: leave the selection alone
 	icons  []xproto.Window
+	lastBg time.Time              // last background repaint request
 	hidden map[xproto.Window]bool // docked, but the app also has a StatusNotifier icon: shown once, not twice
 }
 
@@ -143,7 +144,8 @@ func (x *xtray) dock(w xproto.Window) {
 		mapped = r.Value[4]&1 != 0
 	}
 	xproto.ChangeWindowAttributes(xc, w, xproto.CwEventMask, []uint32{xproto.EventMaskStructureNotify | xproto.EventMaskPropertyChange})
-	xproto.ChangeSaveSet(xc, xproto.SetModeInsert, w) // survive our exit
+	xproto.ChangeWindowAttributes(xc, w, xproto.CwBackPixmap, []uint32{xproto.BackPixmapParentRelative}) // follows the panel colour
+	xproto.ChangeSaveSet(xc, xproto.SetModeInsert, w)                                                    // survive our exit
 	xproto.ConfigureWindow(xc, w, xproto.ConfigWindowWidth|xproto.ConfigWindowHeight, []uint32{uint32(iconSize), uint32(iconSize)})
 	xproto.ReparentWindow(xc, w, panelWin, 0, 0)
 	ev := xproto.ClientMessageEvent{Format: 32, Window: w, Type: A("_XEMBED"),
@@ -154,6 +156,16 @@ func (x *xtray) dock(w xproto.Window) {
 	}
 	x.icons = append(x.icons, w)
 	x.sync()
+}
+
+// repaintBg makes the docked windows show the panel's new background colour. A synthetic
+// Expose (rather than ClearArea, which blanks the window before the app repaints and shows
+// as flicker) asks the app to redraw over the parent-relative background; on every colour step.
+func (x *xtray) repaintBg() {
+	for _, w := range x.icons {
+		ev := xproto.ExposeEvent{Window: w, Width: uint16(iconSize), Height: uint16(iconSize)}
+		xproto.SendEvent(xc, false, w, xproto.EventMaskExposure, string(ev.Bytes()))
+	}
 }
 
 func (x *xtray) remove(w xproto.Window) {

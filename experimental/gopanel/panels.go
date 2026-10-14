@@ -164,6 +164,9 @@ func composite(buf []byte, w int, img *image.RGBA, holdLeft bool, bg uint32) {
 	if holdLeft {
 		ox = 0 // icons fill the held slot from the left, so they do not slide as more dock
 	}
+	if curDark > 0.01 {
+		haloPass(buf, w, img, ox, oy)
+	}
 	for y := 0; y < ib.Dy(); y++ {
 		if oy+y < 0 || oy+y >= panelH {
 			continue
@@ -175,9 +178,48 @@ func composite(buf []byte, w int, img *image.RGBA, holdLeft bool, bg uint32) {
 			p := img.Pix[y*img.Stride+x*4:]
 			o := ((oy+y)*w + ox + x) * 4
 			inv := 255 - uint32(p[3])
-			buf[o] = byte(uint32(p[2]) + bb*inv/255)
-			buf[o+1] = byte(uint32(p[1]) + bgn*inv/255)
-			buf[o+2] = byte(uint32(p[0]) + br*inv/255)
+			buf[o] = byte(uint32(p[2]) + uint32(buf[o])*inv/255)
+			buf[o+1] = byte(uint32(p[1]) + uint32(buf[o+1])*inv/255)
+			buf[o+2] = byte(uint32(p[0]) + uint32(buf[o+2])*inv/255)
+		}
+	}
+}
+
+// haloPass fades a one-pixel white outline in around everything the image draws, so that
+// black text and icons stay readable on a dark background. buf is BGRX, already background-filled.
+func haloPass(buf []byte, w int, img *image.RGBA, ox, oy int) {
+	ib := img.Bounds()
+	iw, ih := ib.Dx(), ib.Dy()
+	alpha := func(x, y int) uint32 {
+		if x < 0 || y < 0 || x >= iw || y >= ih {
+			return 0
+		}
+		return uint32(img.Pix[y*img.Stride+x*4+3])
+	}
+	k := uint32(curDark * 256)
+	for y := -1; y <= ih; y++ {
+		if oy+y < 0 || oy+y >= panelH {
+			continue
+		}
+		for x := -1; x <= iw; x++ {
+			if ox+x < 0 || ox+x >= w {
+				continue
+			}
+			var a uint32
+			for dy := -1; dy <= 1; dy++ {
+				for dx := -1; dx <= 1; dx++ {
+					a = max(a, alpha(x+dx, y+dy))
+				}
+			}
+			if a == 0 {
+				continue
+			}
+			h := a * k / 256 // 0..255
+			o := ((oy+y)*w + ox + x) * 4
+			for c := 0; c < 3; c++ {
+				v := uint32(buf[o+c])
+				buf[o+c] = byte(v + (255-v)*h/255)
+			}
 		}
 	}
 }

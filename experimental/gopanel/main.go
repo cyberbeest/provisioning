@@ -252,6 +252,7 @@ func main() {
 	pushBg := func() {
 		xproto.ChangeGC(c, bgGC, xproto.GcForeground, []uint32{curBg})
 		xproto.ChangeWindowAttributes(c, wid, xproto.CwBackPixel, []uint32{curBg})
+		xt.repaintBg()
 		for _, r := range replicas {
 			xproto.ChangeWindowAttributes(c, r.win, xproto.CwBackPixel, []uint32{curBg})
 		}
@@ -288,7 +289,7 @@ func main() {
 			pushBg()
 			return
 		}
-		bgTicker = time.NewTicker(max(d/360, 200*time.Millisecond)) // one degree of hue per step
+		bgTicker = time.NewTicker(max(d/360, tickFloor())) // one degree of hue per step
 		bgTick = bgTicker.C
 		bgStep(true)
 	}
@@ -385,6 +386,7 @@ func main() {
 	install := func(cfg map[string][]string) {
 		applyMonitorChoice(cfg)
 		reposition() // no-op unless the monitor setup or the choice changed
+		bgStyle = readPanelConf()["BG_STYLE"]
 		setBgCycle(bgPeriodOf(readPanelConf()["BG_CYCLE"]))
 		hover, hoverPanel = nil, nil
 		cancelTip()

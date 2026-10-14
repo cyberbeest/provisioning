@@ -6,6 +6,7 @@ import (
 	"image/color"
 	"image/draw"
 	"strings"
+	"sync"
 
 	"github.com/jezek/xgb/xproto"
 	"gopanel/gfx"
@@ -317,7 +318,30 @@ func (tb *taskbar) tipAt(x int) string {
 	return ""
 }
 
+type ellipsisKey struct {
+	text string
+	maxW int
+}
+
+var ellipsisMu sync.Mutex
+var ellipsisCache = map[ellipsisKey]string{} // text width does not depend on the ink; measuring is the costly part of a taskbar redraw
+
 func ellipsize(text string, maxW int, ink color.RGBA) string {
+	k := ellipsisKey{text, maxW}
+	ellipsisMu.Lock()
+	defer ellipsisMu.Unlock()
+	if s, ok := ellipsisCache[k]; ok {
+		return s
+	}
+	s := ellipsizeUncached(text, maxW, ink)
+	if len(ellipsisCache) > 512 {
+		clear(ellipsisCache)
+	}
+	ellipsisCache[k] = s
+	return s
+}
+
+func ellipsizeUncached(text string, maxW int, ink color.RGBA) string {
 	r := []rune(text)
 	for len(r) > 0 {
 		s := string(r)
@@ -378,10 +402,7 @@ func (tb *taskbar) renderImg(w int, rep *replica) *image.RGBA {
 			draw.Draw(img, image.Rect(tx, y0+(bh-ib.Dy())/2, tx+ib.Dx(), y0+(bh-ib.Dy())/2+ib.Dy()), w.icon, image.Point{}, draw.Over)
 			tx += ib.Dx() + 5
 		}
-		ink := color.RGBA{0, 0, 0, 255}
-		if w.minimized {
-			ink = color.RGBA{0x70, 0x70, 0x70, 255}
-		}
+		ink := tbInk(w.minimized)
 		title := w.title
 		if w.minimized {
 			title = "[" + title + "]"

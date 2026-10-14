@@ -239,10 +239,29 @@ func (t *tray) onSignal(s *dbus.Signal) {
 			}
 		}
 		t.mu.Unlock()
-		if hit != nil {
-			t.refresh(hit)
-			t.render()
+		if hit == nil {
+			return
 		}
+		if s.Name == itemIface+".NewToolTip" { // some apps (blueman) emit this every 2 s: re-read just the tip, nothing is redrawn
+			var v dbus.Variant
+			if t.conn.Object(hit.owner, hit.path).Call("org.freedesktop.DBus.Properties.Get", 0, itemIface, "ToolTip").Store(&v) == nil {
+				var tt trayTooltip
+				if v.Store(&tt) == nil {
+					tip := tt.Title
+					if tt.Desc != "" {
+						tip += "\n" + tt.Desc
+					}
+					if tip != "" {
+						t.mu.Lock()
+						hit.tip = tip
+						t.mu.Unlock()
+						return
+					}
+				}
+			}
+		}
+		t.refresh(hit)
+		t.render()
 	}
 }
 

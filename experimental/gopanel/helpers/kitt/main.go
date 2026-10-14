@@ -29,6 +29,7 @@ const (
 	glowCutoffSigma = 3.5
 	loadSampleEvery = 500 * time.Millisecond
 	loadSmoothing   = 0.35
+	idleLoad        = 0.12 // below this the scanner rests: the panel's own redraws would otherwise keep it moving
 	minRedrawPx     = 1.0
 )
 
@@ -351,7 +352,7 @@ func run(c *proto.Client) {
 		case now := <-frameC:
 			dt := now.Sub(last).Seconds()
 			last = now
-			rate := cfg.minRate + (cfg.maxRate-cfg.minRate)*math.Pow(cpu.load, cfg.gamma)
+			rate := cfg.minRate + (cfg.maxRate-cfg.minRate)*math.Pow(max(cpu.load-idleLoad, 0)/(1-idleLoad), cfg.gamma)
 			if rate <= 0 {
 				continue
 			}
