@@ -2281,7 +2281,16 @@ class RunGuiWindow(Gtk.Window):
         # window itself, so this one just gets out of the way.
         installed = os.path.expanduser("~/.local/bin/cyberbeest-update.sh")
         updater = installed if os.path.exists(installed) else os.path.join(DIR, "lib", "cyberbeest-update.sh")
-        subprocess.Popen([updater], start_new_session=True)
+        # The updater takes a single-instance flock that this process itself
+        # may hold (the lock fd survives the updater's exec into run-gui.py),
+        # and it silently exits if the lock is taken. Starting it immediately
+        # raced our own exit, so wait for this pid to be gone first (30 s cap).
+        subprocess.Popen(
+            ["bash", "-c",
+             'for _ in $(seq 150); do kill -0 "$1" 2>/dev/null || break; sleep 0.2; done; exec "$2"',
+             "switch-to-update", str(os.getpid()), updater],
+            start_new_session=True,
+        )
         self.destroy()
 
     def on_stop(self, _button):
