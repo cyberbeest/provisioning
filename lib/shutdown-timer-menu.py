@@ -225,7 +225,16 @@ def restart_screensaver():
     # xfce4-screensaver reads its idle-activation settings once at startup
     # and doesn't pick up live xfconf changes -- a running daemon keeps
     # locking on whatever was active when it launched until it's restarted.
-    subprocess.run(["pkill", "-f", "^xfce4-screensaver$"], check=False)
+    # Match the full command line: the daemon usually runs as
+    # /usr/bin/xfce4-screensaver, and its name is over 15 characters, so
+    # pkill -x can't match it. If the old one survives, it keeps the D-Bus
+    # name and the new one dies with a D-Bus error.
+    pat = "^(/usr/bin/)?xfce4-screensaver$"
+    subprocess.run(["pkill", "-f", pat], check=False)
+    for _ in range(20):
+        if subprocess.run(["pgrep", "-f", pat], capture_output=True).returncode != 0:
+            break
+        time.sleep(0.1)
     subprocess.Popen(
         ["xfce4-screensaver"],
         stdout=subprocess.DEVNULL,
