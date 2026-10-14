@@ -29,6 +29,9 @@
 # recording" opens it); core.py/gui.py gained the microphone-stall watchdog, the
 # last-clip timing log and the thread cap. A running Dictate keeps the old code
 # until it is quit and started again (or at next login).
+# Bumped 2026-10-14: learned word corrections ("Learn corrections" button in the
+# last-transcript window, ~/.config/dictate/corrections.json); the meter pop-up
+# follows the active window's screen. core.py/gui.py/i18n.py changed.
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG="$DIR/65-dictate.log"

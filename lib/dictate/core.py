@@ -1,5 +1,6 @@
 """Shared dictation core: config, recording, transcription, typing."""
 import json
+import re
 import logging
 import logging.handlers
 import os
@@ -78,6 +79,7 @@ DEFAULT_CONFIG = {
     "trim_silence":          True,   # cut pauses before decoding (local_stt silence trimming); no Settings field
     "recording_meter":       True,   # small level meter while recording (replaces the "Speak now" notification)
     "vad_highpass":          True,   # speech detection ignores hum below 150 Hz (mains buzz hides quiet speech from it)
+    "apply_corrections":     True,   # replace words by the learned corrections (see "Learned corrections")
     "local_stt_idle_minutes": 5,   # unload the model after this long idle when RAM is short (0 = keep loaded)
 }
 
@@ -692,6 +694,185 @@ class Recorder:
 
     def stop(self):
         return self.finish(self.detach())
+
+
+# -- learned word corrections -------------------------------------------------
+# "cloud code" -> "Claude Code". The source of truth is CORRECTION_LOG_PATH: every hand
+# correction (what the model heard, what the user made of it). The rules are rebuilt from
+# that log after each new entry. A candidate replacement (a phrase of 1..MAX_RULE_WORDS words)
+# is scored on how often the phrase was changed against how often it appeared at all; the
+# sentences where it stayed untouched count against it. It becomes a rule when it was changed
+# at least MIN_SUPPORT times and in at least MIN_PRECISION of its appearances. A changed word
+# is also tried together with the word before or after it, so "cloud" can stay alone-safe
+# while "cloud code" is a rule.
+CORRECTIONS_PATH = CONFIG_DIR / "corrections.json"
+CORRECTION_LOG_PATH = CONFIG_DIR / "correction-log.jsonl"
+MIN_SUPPORT = 2
+MIN_PRECISION = 0.8
+MAX_CHANGE_WORDS = 3   # a changed span of up to this many words on each side
+MAX_RULE_WORDS = 4
+
+
+def _load_corrections():
+    try:
+        d = json.loads(CORRECTIONS_PATH.read_text())
+        if d.get("version") == 2:
+            return d
+    except Exception:
+        pass
+    return {"version": 2, "rules": {}, "stats": {}, "blocked": []}
+
+
+def _save_corrections(d):
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    CORRECTIONS_PATH.write_text(json.dumps(d, indent=2, ensure_ascii=False))
+    try:
+        CORRECTIONS_PATH.chmod(0o600)
+    except Exception:
+        pass
+
+
+def log_correction(raw, edited, model=""):
+    """Append one hand correction (what the model heard, what the user made of it) to a
+    local log. Never written when nothing was changed."""
+    if raw == edited or not raw.strip():
+        return
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    new = not CORRECTION_LOG_PATH.exists()
+    with open(CORRECTION_LOG_PATH, "a", encoding="utf-8") as f:
+        f.write(json.dumps({"time": time.strftime("%Y-%m-%dT%H:%M:%S"), "model": model,
+                            "heard": raw, "corrected": edited}, ensure_ascii=False) + "\n")
+    if new:
+        try:
+            CORRECTION_LOG_PATH.chmod(0o600)
+        except Exception:
+            pass
+
+
+def _read_log():
+    out = []
+    try:
+        with open(CORRECTION_LOG_PATH, encoding="utf-8") as f:
+            for line in f:
+                try:
+                    e = json.loads(line)
+                    out.append((e["heard"], e["corrected"]))
+                except Exception:
+                    pass
+    except OSError:
+        pass
+    return out
+
+
+def _rule_regex(src):
+    return re.compile(r"(?<!\w)" + r"\s+".join(re.escape(w) for w in src.split()) + r"(?!\w)", re.IGNORECASE)
+
+
+def _apply(text, rules):
+    for src in sorted(rules, key=lambda k: -len(k)):
+        dst = rules[src]
+
+        def sub(m, dst=dst):
+            return dst[:1].upper() + dst[1:] if m.group(0)[:1].isupper() else dst
+        text = _rule_regex(src).sub(sub, text)
+    return text
+
+
+def apply_corrections(text):
+    """Text with the learned replacements applied (longest phrases first)."""
+    return _apply(text, _load_corrections()["rules"])
+
+
+def _words(text):
+    """(display word, comparison word) pairs: punctuation stripped from the ends."""
+    out = []
+    for w in text.split():
+        core_w = w.strip(".,;:!?\"'()[]{}„“”‚‘’»«")
+        if core_w:
+            out.append((core_w, core_w.lower()))
+    return out
+
+
+def _candidates(a, b):
+    """Yield (src words, dst words, is_core) for every span the user replaced in a -> b:
+    the span itself (is_core), and the span with the neighbouring word on either side."""
+    import difflib
+    if a and b and a[0][1] == b[0][1]:
+        b = [a[0]] + b[1:]   # a capital letter at the start of the sentence is not a correction
+    sm = difflib.SequenceMatcher(None, [w for w, _ in a], [w for w, _ in b], autojunk=False)
+    for tag, i1, i2, j1, j2 in sm.get_opcodes():
+        if tag != "replace" or not (1 <= i2 - i1 <= MAX_CHANGE_WORDS and 1 <= j2 - j1 <= MAX_CHANGE_WORDS):
+            continue
+        if i2 - i1 == 1 and j2 - j1 == 1 and a[i1][1] == b[j1][1]:
+            continue   # a lone capital letter (sentence start) is not a recognition error
+        for left in (0, 1):
+            for right in (0, 1):
+                if left and (i1 == 0 or j1 == 0 or a[i1 - 1][0] != b[j1 - 1][0]):
+                    continue
+                if right and (i2 >= len(a) or j2 >= len(b) or a[i2][0] != b[j2][0]):
+                    continue
+                src = ([a[i1 - 1][1]] if left else []) + [w for _, w in a[i1:i2]] + ([a[i2][1]] if right else [])
+                dst = ([b[j1 - 1][0]] if left else []) + [w for w, _ in b[j1:j2]] + ([b[j2][0]] if right else [])
+                if len(src) <= MAX_RULE_WORDS:
+                    yield tuple(src), tuple(dst), not (left or right)
+
+
+def rebuild_corrections():
+    """Rebuild the rules from the correction log. Returns (added, removed) rule pairs."""
+    from collections import Counter
+    d = _load_corrections()
+    old = dict(d["rules"])
+    blocked = {tuple(x) for x in d["blocked"]}
+    changed, core, appeared = Counter(), set(), Counter()
+    for heard, corrected in _read_log():
+        a, b = _words(heard), _words(corrected)
+        low = [w for _, w in a]
+        for n in range(1, MAX_RULE_WORDS + 1):
+            appeared.update(tuple(low[i:i + n]) for i in range(len(low) - n + 1))
+        for src, dst, is_core in _candidates(a, b):
+            changed[(src, dst)] += 1
+            if is_core:
+                core.add((src, dst))
+    rules, stats = {}, {}
+    ranked = sorted(changed.items(), key=lambda kv: (len(kv[0][0]), -kv[1]))
+    for (src, dst), n in ranked:
+        s_txt, d_txt = " ".join(src), " ".join(dst)
+        seen = appeared[src]
+        if (src, dst) in core:
+            stats[s_txt + "\t" + d_txt] = [n, seen]
+        if n < MIN_SUPPORT or n / seen < MIN_PRECISION or [s_txt, d_txt] in d["blocked"]:
+            continue
+        if s_txt in rules or _apply(s_txt, rules) == d_txt:
+            continue   # the src already has a better rule, or shorter rules already do this
+        rules[s_txt] = d_txt
+        stats[s_txt + "\t" + d_txt] = [n, seen]
+    d["rules"], d["stats"] = rules, stats
+    _save_corrections(d)
+    return ([(k, v) for k, v in rules.items() if old.get(k) != v],
+            [(k, v) for k, v in old.items() if rules.get(k) != v])
+
+
+def list_corrections():
+    """(rules, pending): lists of (src, dst, times changed, times the phrase appeared).
+    Pending ones were changed but do not (yet) qualify as a rule."""
+    d = _load_corrections()
+    rules, pending = [], []
+    for key, (n, seen) in d["stats"].items():
+        src, dst = key.split("\t", 1)
+        if d["rules"].get(src) == dst:
+            rules.append((src, dst, n, seen))
+        elif [src, dst] not in d["blocked"] and _apply(src, d["rules"]) != dst:
+            pending.append((src, dst, n, seen))
+    return sorted(rules), sorted(pending, key=lambda r: (-r[2], r[0]))
+
+
+def remove_correction(src, dst):
+    """Take a pair back for good: it is not learned again from the log."""
+    d = _load_corrections()
+    if [src, dst] not in d["blocked"]:
+        d["blocked"].append([src, dst])
+    _save_corrections(d)
+    rebuild_corrections()
 
 
 def transcribe(audio, cfg, speech=None, cancel=None):

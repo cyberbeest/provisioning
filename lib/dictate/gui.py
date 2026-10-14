@@ -15,7 +15,7 @@ from PyQt6.QtGui import (QAction, QActionGroup, QBitmap, QColor, QCursor, QFont,
                          QPainter, QPixmap, QRegion)
 from PyQt6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox,
-    QFormLayout, QHBoxLayout, QLabel, QLineEdit, QMainWindow, QMenu,
+    QFormLayout, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem, QMainWindow, QMenu,
     QMessageBox, QPushButton, QSpinBox, QSystemTrayIcon, QTextEdit,
     QVBoxLayout, QWidget,
 )
@@ -50,6 +50,47 @@ class Bridge(QObject):
     paste_failed = pyqtSignal(str)
     model_progress = pyqtSignal(str)
     model_done = pyqtSignal(bool, str)
+
+
+class LearnedPairsDialog(QDialog):
+    """The learned word corrections, with a way to take a wrong one back."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(_("Dictate — Learned corrections"))
+        self.setMinimumSize(420, 320)
+        layout = QVBoxLayout(self)
+        layout.addWidget(QLabel(_("Dictate replaces the left side by the right side. The numbers are how often you changed the words out of how often Dictate heard them. Grey entries do not qualify yet.")))
+        self.list = QListWidget()
+        layout.addWidget(self.list)
+        row = QHBoxLayout()
+        row.addStretch()
+        self.remove_btn = QPushButton(_("Remove"))
+        close_btn = QPushButton(_("Close"))
+        row.addWidget(self.remove_btn)
+        row.addWidget(close_btn)
+        layout.addLayout(row)
+        self.remove_btn.clicked.connect(self._remove)
+        close_btn.clicked.connect(self.accept)
+        self.list.itemSelectionChanged.connect(lambda: self.remove_btn.setEnabled(bool(self.list.selectedItems())))
+        self.refresh()
+
+    def refresh(self):
+        self.list.clear()
+        rules, pending = core.list_corrections()
+        for pairs, active in ((rules, True), (pending, False)):
+            for src, dst, n, seen in pairs:
+                item = QListWidgetItem(f"{src}  →  {dst}   ({n}/{seen})")
+                item.setData(Qt.ItemDataRole.UserRole, (src, dst))
+                if not active:
+                    item.setForeground(QColor("#888"))
+                self.list.addItem(item)
+        self.remove_btn.setEnabled(False)
+
+    def _remove(self):
+        for item in self.list.selectedItems():
+            core.remove_correction(*item.data(Qt.ItemDataRole.UserRole))
+        self.refresh()
 
 
 class SettingsDialog(QDialog):
@@ -145,6 +186,13 @@ class SettingsDialog(QDialog):
         self.autostart_box = QCheckBox(_("Start Dictate when I log in"))
         self.autostart_box.setChecked(core.autostart_enabled())
         self.form.addRow("", self.autostart_box)
+        self.corr_box = QCheckBox(_("Correct words I fixed before"))
+        self.corr_box.setChecked(bool(self.cfg.get("apply_corrections", True)))
+        self.corr_box.setToolTip(_("Dictate learns from the corrections you make in the last-transcript window\nand applies them to later dictations. Turn this off to paste exactly what was heard."))
+        self.form.addRow("", self.corr_box)
+        pairs_btn = QPushButton(_("Learned corrections..."))
+        pairs_btn.clicked.connect(lambda: LearnedPairsDialog(self).exec())
+        self.form.addRow("", pairs_btn)
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel
@@ -222,6 +270,7 @@ class SettingsDialog(QDialog):
             "dictation_notifications": self.notify_box.isChecked(),
             "recording_meter":       self.meter_box.isChecked(),
             "vad_highpass":          self.hum_box.isChecked(),
+            "apply_corrections":     self.corr_box.isChecked(),
             "autostart":             self.autostart_box.isChecked(),
         }
 
@@ -577,7 +626,7 @@ class TestDictationDialog(QDialog):
 class LastTranscriptDialog(QDialog):
     """The most recent dictation, for copying when it landed in the wrong place."""
 
-    def __init__(self, text, on_clear, parent=None):
+    def __init__(self, text, on_clear, on_learn=None, heard="", parent=None):
         super().__init__(parent)
         self.setWindowTitle(_("Dictate — Last transcript"))
         self.setMinimumSize(460, 220)
@@ -586,16 +635,40 @@ class LastTranscriptDialog(QDialog):
         self.edit = QTextEdit()
         self.edit.setPlainText(text)
         layout.addWidget(self.edit)
+        if heard and heard != text:   # learned corrections changed it: show what was actually heard
+            heard_label = QLabel(_("As heard: {text}").format(text=heard))
+            heard_label.setWordWrap(True)
+            heard_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+            heard_label.setStyleSheet("color: #777;")
+            layout.addWidget(heard_label)
+        self.learn_label = QLabel("")
+        self.learn_label.setWordWrap(True)
+        layout.addWidget(self.learn_label)
         row = QHBoxLayout()
         row.addStretch()
+        learn_btn = QPushButton(_("Learn corrections"))
+        learn_btn.setToolTip(_("Remembers the words you changed above. After you have fixed the same\nmistake twice, Dictate corrects it by itself from then on."))
+        pairs_btn = QPushButton(_("Learned pairs"))
+        pairs_btn.clicked.connect(lambda: LearnedPairsDialog(self).exec())
         copy_btn = QPushButton(_("Copy"))
         clear_btn = QPushButton(_("Clear"))
         close_btn = QPushButton(_("Close"))
         # xdotool types into the focused window; if that is this one, a space
         # or Enter in the dictated text would "press" a focused button.
-        for b in (copy_btn, clear_btn, close_btn):
+        for b in ((learn_btn, pairs_btn) if on_learn else ()) + (copy_btn, clear_btn, close_btn):
             b.setFocusPolicy(Qt.FocusPolicy.NoFocus)
             row.addWidget(b)
+        if on_learn:
+            # Only active while the text differs from what was last learned from.
+            self._baseline = text
+            learn_btn.setEnabled(False)
+            self.edit.textChanged.connect(lambda: learn_btn.setEnabled(self.edit.toPlainText() != self._baseline))
+
+            def learn():
+                self._baseline = self.edit.toPlainText()
+                learn_btn.setEnabled(False)
+                self.learn_label.setText(on_learn(self._baseline))
+            learn_btn.clicked.connect(learn)
         copy_btn.clicked.connect(lambda: QApplication.clipboard().setText(self.edit.toPlainText()))
         clear_btn.clicked.connect(on_clear)
         close_btn.clicked.connect(self.close)
@@ -640,6 +713,9 @@ class MainWindow(QMainWindow):
         self._note = None            # DictationNote of the dictation in progress
         self._target = None          # window the dictation in progress belongs to
         self.last_text = ""          # most recent dictation, kept in memory only
+        self.last_raw = ""           # the same as the model heard it, before learned corrections
+        self._raw_text = ""
+        self.last_heard = ""         # the model's own words for the last dictation, for display
         self._last_dialog = None
         # For privacy the last transcript is forgotten after a while.
         self._clear_timer = QTimer(self)
@@ -832,6 +908,8 @@ class MainWindow(QMainWindow):
 
     def clear_last_transcript(self):
         self.last_text = ""
+        self.last_raw = ""
+        self.last_heard = ""
         self._clear_timer.stop()
         if self._last_dialog is not None:
             self._last_dialog.close()
@@ -848,6 +926,21 @@ class MainWindow(QMainWindow):
         self._test_dialog.activateWindow()
         self._test_dialog.edit.setFocus()
 
+    def learn_corrections(self, edited):
+        """Learn button of the last-transcript window: message for the user."""
+        try:
+            core.log_correction(self.last_raw, edited, self.cfg.get("model", ""))
+        except Exception:
+            core.log.exception("could not write the correction log")
+        learned, forgotten = core.rebuild_corrections()
+        self.last_raw = edited   # the next click only counts what is changed after this one
+        msgs = []
+        if learned:
+            msgs.append(_("Learned: {pairs}").format(pairs=", ".join(f"{a} → {b}" for a, b in learned)))
+        if forgotten:
+            msgs.append(_("Forgotten: {pairs}").format(pairs=", ".join(f"{a} → {b}" for a, b in forgotten)))
+        return "\n".join(msgs) or _("Noted. A mistake is learned once you have fixed it a couple of times.")
+
     def show_last_transcript(self):
         if not self.last_text:
             return
@@ -855,7 +948,7 @@ class MainWindow(QMainWindow):
             self._last_dialog.raise_()
             self._last_dialog.activateWindow()
             return
-        self._last_dialog = LastTranscriptDialog(self.last_text, self.clear_last_transcript)
+        self._last_dialog = LastTranscriptDialog(self.last_text, self.clear_last_transcript, self.learn_corrections, self.last_heard)
         self._last_dialog.show()
         self._last_dialog.raise_()
         self._last_dialog.activateWindow()
@@ -1140,9 +1233,17 @@ class MainWindow(QMainWindow):
             return
         if note and note.cancelled.is_set():
             target = CANCELLED
+        self._raw_text = text
+        try:
+            if self.cfg.get("apply_corrections", True):
+                text = core.apply_corrections(text)
+        except Exception:
+            core.log.exception("applying learned corrections failed")
         self.bridge.transcribed.emit(text, target)
 
     def on_transcribed(self, text, target):
+        if text:
+            self.last_raw = self.last_heard = self._raw_text
         if text and target is CANCELLED:
             self.last_text = text   # kept under "Show last transcript", not pasted
             self._clear_timer.start()
