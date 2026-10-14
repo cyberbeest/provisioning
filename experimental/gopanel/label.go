@@ -88,6 +88,10 @@ func renderStacked(text string, right bool) *image.RGBA {
 		}
 	}
 	lines := []string{strings.Join(words[:best], " "), strings.Join(words[best:], " ")}
+	// An explicit newline in the text is the author's chosen split.
+	if a, b, ok := strings.Cut(text, "\n"); ok && !strings.Contains(b, "\n") {
+		lines = []string{strings.Join(strings.Fields(a), " "), strings.Join(strings.Fields(b), " ")}
+	}
 	var imgs [2]*image.RGBA
 	w, h := 0, 0
 	for i, l := range lines {

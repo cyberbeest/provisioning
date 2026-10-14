@@ -94,7 +94,8 @@ fi
 click_line="$(t shutdown_genmon.click_to_change)"
 
 if [ "$linked" = "true" ] || [ "$ac_min" = "$bat_min" ]; then
-    SHUTDOWN_TIMER_TXT="🔒 $(fmt "$idle_delay_min") ⏻ $(fmt "$ac_min")${warn_txt}"
+    SHUTDOWN_TIMER_TXT="🔒 $(fmt "$idle_delay_min")
+⏻ $(fmt "$ac_min")${warn_txt}"
     if [ "$ac_min" -eq 0 ]; then
         SHUTDOWN_TIMER_TOOL="${warn_line}${lock_line}&#10;$(t shutdown_genmon.disabled_both)&#10;${click_line}"
     else
@@ -103,7 +104,8 @@ if [ "$linked" = "true" ] || [ "$ac_min" = "$bat_min" ]; then
         SHUTDOWN_TIMER_TOOL="${warn_line}${lock_line}&#10;${after_both}&#10;${click_line}"
     fi
 else
-    SHUTDOWN_TIMER_TXT="🔒 $(fmt "$idle_delay_min") ⏻ $(fmt "$ac_min")/$(fmt "$bat_min")${warn_txt}"
+    SHUTDOWN_TIMER_TXT="🔒 $(fmt "$idle_delay_min")
+⏻ $(fmt "$ac_min")/$(fmt "$bat_min")${warn_txt}"
     ac_line="$(t shutdown_genmon.ac_label)"
     ac_line="${ac_line//DURATION/$(fmt "$ac_min")}"
     bat_line="$(t shutdown_genmon.battery_label)"
