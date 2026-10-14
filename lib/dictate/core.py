@@ -272,6 +272,20 @@ def active_window():
     return r.stdout.strip() if r.returncode == 0 else ""
 
 
+def active_window_center():
+    """(x, y) of the centre of the focused window, or None if it cannot be told."""
+    wid = active_window()
+    if not wid:
+        return None
+    try:
+        out = subprocess.run(["xdotool", "getwindowgeometry", "--shell", wid],
+                             capture_output=True, text=True, timeout=2).stdout
+        v = dict(l.split("=", 1) for l in out.split() if "=" in l)
+        return int(v["X"]) + int(v["WIDTH"]) // 2, int(v["Y"]) + int(v["HEIGHT"]) // 2
+    except (FileNotFoundError, subprocess.TimeoutExpired, KeyError, ValueError):
+        return None
+
+
 def paste_target():
     """Where a dictation started now should be typed. Returns the focused
     window's ID, or "" when that is nowhere to type (no window has focus, or

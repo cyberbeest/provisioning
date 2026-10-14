@@ -485,7 +485,13 @@ class MeterWindow(QWidget):
     def _place(self, below):
         """Under the icon, centred on it (above it if the icon is in the lower half of the screen);
         without an icon position, the top right corner."""
-        screen = (QApplication.screenAt(below.center()) if below is not None else None) or QApplication.primaryScreen()
+        screen = None
+        if below is not None:
+            screen = QApplication.screenAt(below.center())
+        else:   # no icon to sit under: use the screen of the window being dictated into
+            c = core.active_window_center()
+            screen = QApplication.screenAt(QPoint(*c)) if c else None
+        screen = screen or QApplication.primaryScreen()
         area = screen.availableGeometry()
         if below is None:
             self.move(area.right() - self.width() - 16, area.top() + 16)
