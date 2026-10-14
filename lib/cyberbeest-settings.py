@@ -322,6 +322,11 @@ class PanelPage(Gtk.Box):
             self.bg_combo.set_active_id("off")
         brow.pack_start(self.bg_combo, False, False, 0)
         self.pack_start(brow, False, False, 0)
+        self.wild_check = Gtk.CheckButton(label=t("panel.bg_wild"))
+        self.wild_check.set_active(read_panel_conf().get("BG_STYLE", "") == "wild")
+        self.wild_check.set_sensitive(self.bg_combo.get_active_id() != "off")
+        self.bg_combo.connect("changed", lambda c: self.wild_check.set_sensitive(c.get_active_id() != "off"))
+        self.pack_start(self.wild_check, False, False, 0)
         bnote = Gtk.Label(wrap=True, max_width_chars=44, xalign=0, label=t("panel.bg_note"))
         bnote.get_style_context().add_class("dim-label")
         self.pack_start(bnote, False, False, 0)
@@ -340,7 +345,8 @@ class PanelPage(Gtk.Box):
 
     def chosen(self):
         panel = "gopanel" if self.go_radio.get_active() else "xfce"
-        return (panel, self.mon_combo.get_active_id() if self.mon_combo else None, self.bg_combo.get_active_id())
+        return (panel, self.mon_combo.get_active_id() if self.mon_combo else None, self.bg_combo.get_active_id(),
+                self.wild_check.get_active())
 
     def set_busy(self, busy):
         # grey while the panels are being switched (a few seconds), so a second click cannot
@@ -349,12 +355,13 @@ class PanelPage(Gtk.Box):
         self.ok_btn.set_sensitive(not busy)
 
     def apply(self, then=None):
-        panel, monitor, bg = self.chosen()
+        panel, monitor, bg, wild = self.chosen()
         # the settings go first: a panel that starts below reads them at startup
         if monitor is not None:
             write_panel_conf("MONITOR", monitor or "auto")
         write_panel_conf("BG_CYCLE", bg or "off")
-        self.applied = (panel, monitor, bg)
+        write_panel_conf("BG_STYLE", "wild" if wild else "")
+        self.applied = (panel, monitor, bg, wild)
         self.set_busy(True)
         self.then = then
         # Always (re)apply the chosen panel, changed or not: `set` starts it if it is not

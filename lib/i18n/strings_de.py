@@ -75,6 +75,7 @@ STRINGS = {
     "panel.bg_5m": "Langsamer Farbverlauf, ein Durchlauf in 5 Minuten",
     "panel.bg_1m": "Langsamer Farbverlauf, ein Durchlauf in 1 Minute",
     "panel.bg_10s": "Farbverlauf, ein Durchlauf in 10 Sekunden",
+    "panel.bg_wild": "Wilder Modus: Die Farben wechseln zwischen hell und sehr dunkel",
     "panel.bg_note": "Nur die Cyberbeest-Leiste. Die Farben wandern durch helle Pastelltöne; 24 Stunden folgt der Tageszeit.",
     "panel.monitor_label": "Cyberbeest-Leiste anzeigen auf:",
     "panel.monitor_auto": "Automatisch (Hauptbildschirm)",
