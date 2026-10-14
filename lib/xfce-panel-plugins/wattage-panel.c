@@ -424,7 +424,7 @@ watt_update_label(WattPlugin *wp)
                 gdouble hours = energy_uwh / (watts * 1000000.0);
                 gint h = (gint) hours;
                 gint m = (gint) ((hours - h) * 60);
-                g_snprintf(text, sizeof(text), "%.1fW -%d:%02d", watts, h, m);
+                g_snprintf(text, sizeof(text), "%.1fW\n-%d:%02d", watts, h, m);
             } else {
                 g_snprintf(text, sizeof(text), "%.1fW", watts);
             }
@@ -432,7 +432,7 @@ watt_update_label(WattPlugin *wp)
         case BATT_CHARGING:
             /* Short on purpose: this is the whole panel label, not a
              * sentence -- "lädt" (not a translated "chg") stays terse. */
-            g_snprintf(text, sizeof(text), _("%.1fW chg"), watts);
+            g_snprintf(text, sizeof(text), _("%.1fW\nchg"), watts);
             break;
         default:
             g_snprintf(text, sizeof(text), _("AC"));
