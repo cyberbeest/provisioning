@@ -71,7 +71,7 @@ type butlerClient struct {
 	timer     *time.Timer
 	lastUse   time.Time
 	startedAt time.Time // when the running server was started: older settings changes are already in it
-	missing   bool      // butler-server is not installed
+	missing   bool      // the server reported a broken catalog or install (until the panel restarts)
 	indexing  bool      // the server is embedding new sentences (first start after a catalog change)
 }
 
@@ -206,8 +206,7 @@ func (b *butlerClient) startLocked() bool {
 	if err != nil { // autostarted panels often lack ~/.local/bin in PATH
 		home, _ := os.UserHomeDir()
 		path = filepath.Join(home, ".local/bin/butler-server")
-		if _, serr := os.Stat(path); serr != nil {
-			b.missing = true
+		if _, serr := os.Stat(path); serr != nil { // not sticky: it may be installed while the panel runs
 			return false
 		}
 	}
