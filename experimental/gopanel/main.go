@@ -761,6 +761,11 @@ func main() {
 				}
 			}
 		case cmd := <-cmds:
+			if tok, ok := strings.CutPrefix(cmd, "whisker-list:"); ok { // typing paused: update the menu list
+				n, _ := strconv.Atoi(tok)
+				wh.listTick(n)
+				continue
+			}
 			if tok, ok := strings.CutPrefix(cmd, "whisker-blink:"); ok {
 				n, _ := strconv.Atoi(tok)
 				wh.blinkTick(n)

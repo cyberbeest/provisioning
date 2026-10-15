@@ -100,6 +100,8 @@ type whisker struct {
 	ranAt                        time.Time
 	caretOn                      bool // text caret of the search box is in its visible phase
 	blinkTok                     int  // identifies the running blink timer chain
+	listPending                  bool // the query changed, the list does not show it yet
+	listTok                      int
 	catToken                     int  // identifies the pending hover-open of a category
 	dragging                     bool // the scrollbar thumb of pane dragPane is held
 	dragPane, dragOff, dragY     int  // dragOff: where in the thumb it was grabbed; dragY: latest pointer y
@@ -474,6 +476,12 @@ func (w *whisker) searchRows() []wrow {
 	var facts []wrow
 	for i := range w.hits {
 		h := &w.hits[i]
+		if h.Kind == "fact" && h.Action != "" && h.Score >= whCmdMin { // a fact with a suggested command: explanation + Enter
+			if len(cmds) < 2 && (len(cmds) == 0 || h.Score >= cmds[0].hit.Score*0.9) {
+				cmds = append(cmds, wrow{kind: rowHelp, hit: h, lines: wrapText(h.Sentence, 13, whListW-60, 4)})
+			}
+			continue
+		}
 		if h.Kind == "fact" { // answers to questions, best first; a sure command match makes them noise
 			if h.Score >= whFactMin && len(facts) < 2 && (len(facts) == 0 || h.Score >= facts[0].hit.Score*0.9) {
 				facts = append(facts, wrow{kind: rowFact, hit: h, lines: wrapText(h.Sentence, 13, whListW-60, 4)})
@@ -482,11 +490,7 @@ func (w *whisker) searchRows() []wrow {
 		}
 		// a second command only when it is nearly as good as the best one
 		if h.Score >= whCmdMin && len(cmds) < 2 && (len(cmds) == 0 || h.Score >= cmds[0].hit.Score*0.9) {
-			if h.Answer != "" {
-				cmds = append(cmds, wrow{kind: rowHelp, hit: h, lines: wrapText(h.Answer, 13, whListW-60, 4)})
-			} else {
-				cmds = append(cmds, wrow{kind: rowCmd, hit: h})
-			}
+			cmds = append(cmds, wrow{kind: rowCmd, hit: h})
 		}
 	}
 	if len(cmds) > 0 && cmds[0].hit.Score >= 0.9 {
@@ -796,7 +800,7 @@ func (w *whisker) paintPane(p *pane) *image.RGBA {
 			for li, l := range r.lines {
 				textAt(img, 46, y+22+17*li, l, whInk, false, 13, whListW-56)
 			}
-			act := "↵  " + r.hit.Sentence
+			act := "↵  " + r.hit.Action
 			switch {
 			case w.confirmID == r.hit.ID:
 				act = tr("Press Enter again to confirm")
@@ -1302,6 +1306,10 @@ func (w *whisker) keysymFor(code xproto.Keycode, state uint16) xproto.Keysym {
 func (w *whisker) key(code xproto.Keycode, state uint16) {
 	w.caretOn = true
 	ks := w.keysymFor(code, state)
+	if state&8 != 0 && (ks == 0xff09 || ks == 0xfe20 || ks == 0xffc1) { // Alt+Tab, Alt+Shift+Tab, Alt+F4: people use these to get out
+		w.close()
+		return
+	}
 	if w.valueHit != nil {
 		w.valueKey(ks)
 		return
@@ -1357,6 +1365,7 @@ func (w *whisker) key(code xproto.Keycode, state uint16) {
 		w.deleteRange(lo, hi)
 		return
 	case 0xff0d, 0xff8d: // Return
+		w.flushList()
 		if w.selRow >= 0 && w.selRow < len(w.rows) {
 			w.activate(w.selRow)
 		} else if len(w.query) > 0 {
@@ -1364,6 +1373,7 @@ func (w *whisker) key(code xproto.Keycode, state uint16) {
 		}
 		return
 	case 0xff54, 0xff52: // Down, Up
+		w.flushList()
 		if ks == 0xff52 {
 			w.moveSel(-1)
 		} else {
@@ -1371,6 +1381,7 @@ func (w *whisker) key(code xproto.Keycode, state uint16) {
 		}
 		return
 	case 0xff55, 0xff56: // Page Up/Down
+		w.flushList()
 		d := w.listHeight() / whAppRowH
 		if ks == 0xff55 {
 			d = -d
@@ -1396,7 +1407,7 @@ const whQueryMax = 300
 
 func (w *whisker) setQuery(r []rune) {
 	w.query = r
-	w.qpos, w.qanc = len(r), len(r)
+	w.qpos, w.qanc, w.listPending = len(r), len(r), false
 }
 
 func (w *whisker) selRange() (lo, hi int) {
@@ -1436,8 +1447,30 @@ func (w *whisker) replaceSel(ins []rune) {
 	q := append(append(append([]rune{}, w.query[:lo]...), ins...), w.query[hi:]...)
 	w.query = q
 	w.qpos, w.qanc = lo+len(ins), lo+len(ins)
-	w.rebuildList()
-	w.paintAll()
+	// the box shows the new text at once; the list follows when the typing pauses (backspacing through
+	// a long query rebuilt and repainted the whole list for every key and felt sluggish)
+	w.put(w.paintSearch(), 0, whSearchY)
+	w.listPending = true
+	w.listTok++
+	tok := w.listTok
+	time.AfterFunc(whListDelay, func() { ctlCmds <- "whisker-list:" + strconv.Itoa(tok) })
+}
+
+const whListDelay = 70 * time.Millisecond
+
+// flushList brings the list up to date with the query now (before Enter, arrow keys and clicks use it).
+func (w *whisker) flushList() {
+	if w.listPending {
+		w.listPending = false
+		w.rebuildList()
+		w.paintAll()
+	}
+}
+
+func (w *whisker) listTick(tok int) {
+	if w.isOpen && tok == w.listTok {
+		w.flushList()
+	}
 }
 
 func (w *whisker) deleteRange(lo, hi int) {
@@ -1616,6 +1649,7 @@ func (w *whisker) motion(px, py int) {
 }
 
 func (w *whisker) press(px, py, btn int) {
+	w.flushList()
 	if px < 0 || py < 0 || px >= whW || py >= whH {
 		w.close() // click outside
 		return

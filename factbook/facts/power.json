@@ -1,0 +1,90 @@
+{
+  "topic": { "en": "Power states and timers", "de": "Zustände und Timer" },
+  "source": "Functional-Manual-v2 sections 1.2-1.5",
+  "checked": "2026-10-15",
+  "facts": [
+    {
+      "id": "power-three-states",
+      "en": "A Cyberbeest laptop has only three states: OFF, LOCKED and UNLOCKED.",
+      "de": "Ein Cyberbeest-Laptop kennt nur drei Zustände: AUS, GESPERRT und ENTSPERRT.",
+      "manual": "1.2"
+    },
+    {
+      "id": "power-off-encrypted",
+      "en": "When a Cyberbeest is OFF, its disk is fully encrypted and unreadable without the master password.",
+      "de": "Ist ein Cyberbeest AUS, ist seine Festplatte vollständig verschlüsselt und ohne das Master-Passwort unlesbar.",
+      "manual": "1.2"
+    },
+    {
+      "id": "power-locked-state",
+      "en": "In the LOCKED state the disk is decrypted, but the desktop and your data stay out of reach until the short password is entered.",
+      "de": "Im Zustand GESPERRT ist die Festplatte entschlüsselt, aber Desktop und Daten bleiben unzugänglich, bis das kurze Passwort eingegeben wird.",
+      "manual": "1.2"
+    },
+    {
+      "id": "power-unlocked-only-risky",
+      "en": "UNLOCKED is the only dangerous state of a Cyberbeest, because the desktop and all data are visible.",
+      "de": "ENTSPERRT ist der einzige gefährliche Zustand eines Cyberbeest, denn Desktop und alle Daten sind sichtbar.",
+      "manual": "1.2"
+    },
+    {
+      "id": "power-leds-off-means-off",
+      "en": "A Cyberbeest is OFF if, and only if, all of its blue LEDs are dark.",
+      "de": "Ein Cyberbeest ist genau dann AUS, wenn alle seine blauen LEDs dunkel sind.",
+      "manual": "1.3",
+      "tip": true
+    },
+    {
+      "id": "power-locked-signs",
+      "en": "A Cyberbeest with a black screen, a lock screen or a closed lid is LOCKED, as long as some of its LEDs are lit.",
+      "de": "Ein Cyberbeest mit schwarzem Bildschirm, Sperrbildschirm oder geschlossenem Deckel ist GESPERRT, solange einige seiner LEDs leuchten.",
+      "manual": "1.3"
+    },
+    {
+      "id": "timer-autolock",
+      "en": "Cyberbeest's auto-lock timer locks the desktop after a set time without mouse movement or key presses.",
+      "de": "Der Auto-Sperre-Timer von Cyberbeest sperrt den Desktop nach einer eingestellten Zeit ohne Mausbewegung und Tastendrücke.",
+      "manual": "1.4",
+      "tip": true
+    },
+    {
+      "id": "timer-autoshutdown",
+      "en": "Cyberbeest's auto-shutdown timer turns the laptop fully off after it has been locked for a set time.",
+      "de": "Der Timer für das automatische Herunterfahren schaltet das Cyberbeest aus, nachdem es eine eingestellte Zeit gesperrt war.",
+      "manual": "1.4",
+      "tip": true
+    },
+    {
+      "id": "timer-always-safe",
+      "en": "Auto-lock and auto-shutdown together make sure an unattended Cyberbeest always ends up fully off within a fixed time.",
+      "de": "Automatisches Sperren und Herunterfahren sorgen zusammen dafür, dass ein unbeaufsichtigtes Cyberbeest innerhalb einer festen Zeit immer ganz ausgeschaltet ist.",
+      "manual": "1.4"
+    },
+    {
+      "id": "battery-shutdown-5",
+      "en": "A Cyberbeest shuts itself down when less than 5% battery charge remains, to prevent data loss.",
+      "de": "Ein Cyberbeest fährt sich selbst herunter, wenn weniger als 5 % Akkuladung übrig sind, um Datenverlust zu vermeiden.",
+      "manual": "1.4"
+    },
+    {
+      "id": "lid-close-locks",
+      "en": "Closing the lid of a Cyberbeest locks it instantly.",
+      "de": "Wenn du den Deckel eines Cyberbeest schließt, wird es sofort gesperrt.",
+      "manual": "1.5",
+      "tip": true
+    },
+    {
+      "id": "powerbutton-four-taps",
+      "en": "Pressing the power button four times quickly in a row turns a Cyberbeest fully off at once.",
+      "de": "Wenn du den Einschaltknopf schnell viermal hintereinander drückst, schaltet sich ein Cyberbeest sofort vollständig aus.",
+      "manual": "1.5",
+      "tip": true
+    },
+    {
+      "id": "powerbutton-hold-10s",
+      "en": "Holding the power button for 10 seconds cuts the power of a Cyberbeest hard, as a last resort if the four-tap method fails.",
+      "de": "Wenn du den Einschaltknopf 10 Sekunden gedrückt hältst, wird die Stromzufuhr eines Cyberbeest hart unterbrochen – als letzter Ausweg, falls die 4-Tipp-Methode nicht klappt.",
+      "manual": "1.5"
+    }
+  ]
+}

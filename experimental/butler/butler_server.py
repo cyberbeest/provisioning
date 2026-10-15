@@ -2,7 +2,7 @@
 """Butler matcher as a long-running child process, for the panel's menu (gopanel).
 
 Talks JSON lines over stdin/stdout, so it is private to whoever started it (no socket).
-  in : {"op":"match","seq":N,"text":"..."}   -> {"seq":N,"hits":[{id,sentence,category,score,needs_value,confirm}]}
+  in : {"op":"match","seq":N,"text":"..."[,"k":N,"fact_min":0.55]}   -> {"seq":N,"hits":[{id,sentence,category,score,needs_value,confirm}]}
        {"op":"run","id":"<command id>","text":"<sentence>"}  -> {"ran":"<id>","ok":bool,"reply":"..."}
        {"op":"quit"}
   out: {"commands":[{id,sentence,category,needs_value,confirm}]} first (catalog order), then
@@ -48,15 +48,14 @@ def main():
     # the command list goes out first, so a menu page can show it while the model still loads
     listing = []
     for c in cmds:
-        if c.get("answer"):   # help entries are found by symptoms, not browsed
-            continue
         vals, st = slot_vals(c, "")
         listing.append({"id": c["id"], "sentence": sentence_for(c, vals), "category": c["category"][LANG],
                         "needs_value": st == "missing", "confirm": bool(c.get("confirm"))})
     out({"commands": listing})
     from butler.matcher import Matcher
-    matcher = Matcher(cmds + loader.load_facts())
-    by_id = {c["id"]: c for c in cmds}
+    facts = loader.load_facts()
+    matcher = Matcher(cmds + facts)
+    by_id = {c["id"]: c for c in cmds + facts if "run" in c}   # only these can be run, whatever the caller sends
     out({"ready": True, "lang": LANG})
     for line in sys.stdin:
         try:
@@ -70,19 +69,21 @@ def main():
             text = str(req.get("text", ""))[:300]
             hits = []
             if len(text.strip()) >= 3:
-                for cmd, score in matcher.match(text, 4):
+                for cmd, score in matcher.match(text, min(int(req.get("k", 4)), 30)):
                     if cmd.get("kind") == "fact":
-                        if score >= FACT_MIN:
-                            hits.append({"id": cmd["id"], "kind": "fact", "sentence": cmd["answer"][LANG],
-                                         "category": cmd["category"][LANG], "score": round(score, 3)})
+                        if score >= float(req.get("fact_min", FACT_MIN)):
+                            hit = {"id": cmd["id"], "kind": "fact", "sentence": cmd["answer"][LANG],
+                                   "category": cmd["category"][LANG], "score": round(score, 3)}
+                            if "run" in cmd:   # the fact suggests a command: label, and whether Enter must be pressed twice
+                                hit.update({"action": cmd["sentence"][LANG], "confirm": bool(cmd.get("confirm"))})
+                            hits.append(hit)
                         continue
                     if score < MIN_SCORE:
                         continue
                     vals, st = slot_vals(cmd, text)
                     hits.append({"id": cmd["id"], "sentence": sentence_for(cmd, vals),
                                  "category": cmd["category"][LANG], "score": round(score, 3),
-                                 "needs_value": st == "missing", "confirm": bool(cmd.get("confirm")),
-                                 **({"answer": cmd["answer"][LANG]} if cmd.get("answer") else {})})
+                                 "needs_value": st == "missing", "confirm": bool(cmd.get("confirm"))})
             out({"seq": req.get("seq"), "hits": hits})
         elif op == "run":
             cmd = by_id.get(req.get("id"))

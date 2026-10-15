@@ -185,8 +185,6 @@ class Butler(Gtk.Window):
         """The whole command as one sentence, with the value filled in ("…" while it is still unknown)."""
         if cmd.get("kind") == "fact":
             return cmd["answer"][LANG]
-        if cmd.get("answer"):   # a help entry: explain, the action is named underneath
-            return cmd["answer"][LANG]
         if vals is None:
             vals = self.slot_for(cmd, self.sentence)[0]
         kinds = {cmd["slot"]["kind"]} if "slot" in cmd else set()
@@ -358,12 +356,12 @@ class Butler(Gtk.Window):
         if low:
             self.label(tr("unsure"), "reason")
         vals, st = self.slot_for(cmd, text)
-        self.label(self.name_of(cmd, vals), "fact" if cmd.get("kind") == "fact" or cmd.get("answer") else "pick", low=low)
+        self.label(self.name_of(cmd, vals), "fact" if cmd.get("kind") == "fact" else "pick", low=low)
         note = tr("will_ask") if st == "missing" else cmd["category"][LANG]
         if cmd.get("kind") == "fact":
             note = tr("answer") + "  ·  " + note
-        elif cmd.get("answer"):
-            note = "↵  " + cmd["sentence"][LANG]
+        if "run" in cmd:   # the fact suggests a command
+            note += "   ·   ↵  " + cmd["sentence"][LANG]
         self.label(f"{note}   ·   {score:.2f}", "reason")
         self.label(" ", "reason")
         for i, (c, sc) in enumerate(self.ranked):
@@ -374,7 +372,7 @@ class Butler(Gtk.Window):
     # --- running -----------------------------------------------------------
     def confirm(self):
         cmd, _ = self.ranked[self.idx]
-        if cmd.get("kind") == "fact":   # an answer, nothing to run
+        if cmd.get("kind") == "fact" and "run" not in cmd:   # an answer, nothing to run
             return
         self.vals, st = self.slot_for(cmd, self.sentence)
         if st == "missing":

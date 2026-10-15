@@ -66,8 +66,6 @@ def validate_command(cmd, where):
         need(set(_PLACEHOLDER.findall(t)) <= slot_names | {"level"}, f"done {l!r} has unknown placeholders")
     need(refs <= slot_names | {"arg"}, f"placeholders {refs - slot_names - {'arg'}} have no slot")
     need(isinstance(cmd.get("confirm", False), bool), "confirm must be bool")
-    if "answer" in cmd:   # a help entry: the typed symptom shows this text, Enter runs the action
-        need(all(isinstance(cmd["answer"].get(l), str) and cmd["answer"][l] for l in LANGS), f"answer needs {LANGS}")
     return errs
 
 
@@ -113,8 +111,15 @@ def load_facts(facts_dir=FACTS_DIR):
             topic = {l: data["topic"][l] for l in LANGS}
             for x in data["facts"]:
                 if all(isinstance(x.get(l), str) and x[l] for l in LANGS) and x.get("id"):
-                    out.append({"id": "fact:" + x["id"], "kind": "fact", "category": topic, "answer": {l: x[l] for l in LANGS},
-                                "examples": {l: [x[l]] for l in LANGS}, "_learned": {l: [] for l in LANGS}})
+                    ask = x.get("ask") if isinstance(x.get("ask"), dict) else {}
+                    fact = {"id": "fact:" + x["id"], "kind": "fact", "category": topic, "answer": {l: x[l] for l in LANGS},
+                            "examples": {l: [x[l]] + [a for a in ask.get(l, []) if isinstance(a, str)] for l in LANGS},
+                            "_learned": {l: [] for l in LANGS}}
+                    act = x.get("action")
+                    if isinstance(act, dict) and isinstance(act.get("run"), list) and act["run"]:   # the suggested command
+                        fact.update({"sentence": act["label"], "reply": act["label"], "confirm": bool(act.get("confirm")),
+                                     "run": {"argv": [str(a) for a in act["run"]]}})
+                    out.append(fact)
         except (OSError, ValueError, KeyError, TypeError):
             continue
     return out
