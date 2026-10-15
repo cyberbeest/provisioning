@@ -288,11 +288,36 @@ def active_window_center():
         return None
 
 
+WHISKER = "gowhisker"   # paste target: the Go panel's menu, whose search box takes the text
+
+
+def _gopanel_ask(cmd):
+    """Reply of the Go panel's control socket, "" if it does not run."""
+    import socket
+    path = os.path.join(os.environ.get("XDG_RUNTIME_DIR") or "/tmp", "gopanel.sock")
+    if not os.path.exists(path):
+        return ""
+    try:
+        with socket.socket(socket.AF_UNIX) as s:
+            s.settimeout(0.5)
+            s.connect(path)
+            s.sendall(cmd.encode() + b"\n")
+            return s.recv(64).decode().strip()
+    except OSError:
+        return ""
+
+
+def whisker_open():
+    return _gopanel_ask("whisker?") == "open"
+
+
 def paste_target():
     """Where a dictation started now should be typed. Returns the focused
-    window's ID, or "" when that is nowhere to type (no window has focus, or
+    window's ID, WHISKER when the Go panel's menu is open, or "" when that is nowhere to type (no window has focus, or
     the focus is on the desktop or a panel). None means it cannot tell, and
     typing then goes to whatever has focus, as before."""
+    if whisker_open():
+        return WHISKER
     wid = active_window()
     if not wid:
         return wid
@@ -347,7 +372,15 @@ def type_text(text, target=None):
     False when it could not be reached, so the caller can keep the text."""
     if not text:
         return True
-    dismiss_panel_popups()
+    if target == WHISKER:
+        # The menu holds the keyboard grab, so XTEST keys land in its search box. If it was
+        # closed meanwhile, the keys would hit whatever has focus: keep the text instead.
+        if not whisker_open():
+            log.warning("the menu was closed, text not typed")
+            return False
+        target = None
+    else:
+        dismiss_panel_popups()
     if target and not focus_window(target):
         log.warning("window %s is gone or would not take focus, text not typed", target)
         return False

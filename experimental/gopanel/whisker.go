@@ -9,6 +9,7 @@ import (
 	"os/user"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/jezek/xgb"
@@ -244,9 +245,7 @@ func (w *whisker) open(anchorX int) {
 		setup := xproto.Setup(w.c)
 		w.minKC = setup.MinKeycode
 		n := byte(setup.MaxKeycode-setup.MinKeycode) + 1
-		if r, err := xproto.GetKeyboardMapping(w.c, w.minKC, n).Reply(); err == nil {
-			w.keymap, w.kpc = r.Keysyms, int(r.KeysymsPerKeycode)
-		}
+		w.loadKeymap(n)
 	}
 
 	w.x = min(max(monX+anchorX, monX), monX+monW-whW)
@@ -257,6 +256,7 @@ func (w *whisker) open(anchorX int) {
 		xproto.CwOverrideRedirect|xproto.CwEventMask, []uint32{1, xproto.EventMaskExposure | xproto.EventMaskKeyPress | xproto.EventMaskKeyRelease})
 	xproto.MapWindow(w.c, wid)
 	w.win, w.isOpen = wid, true
+	whiskerOpen.Store(true)
 	w.back, _ = xproto.NewPixmapId(w.c)
 	xproto.CreatePixmap(w.c, w.scr.RootDepth, w.back, xproto.Drawable(wid), whW, whH)
 	w.superArmed, w.superRel = !w.superHeld(), 0
@@ -264,6 +264,17 @@ func (w *whisker) open(anchorX int) {
 		xproto.GrabModeAsync, xproto.GrabModeAsync, xproto.WindowNone, xproto.CursorNone, xproto.TimeCurrentTime)
 	xproto.GrabKeyboard(w.c, false, wid, xproto.TimeCurrentTime, xproto.GrabModeAsync, xproto.GrabModeAsync)
 	w.paintAll()
+}
+
+// whiskerOpen tells the control socket ("whisker?") whether the menu is up: Dictate then types into its search box.
+var whiskerOpen atomic.Bool
+
+// loadKeymap reads the keyboard mapping of n keycodes; also after a MappingNotify, since xdotool
+// remaps a spare keycode to type characters the layout lacks (umlauts).
+func (w *whisker) loadKeymap(n byte) {
+	if r, err := xproto.GetKeyboardMapping(w.c, w.minKC, n).Reply(); err == nil {
+		w.keymap, w.kpc = r.Keysyms, int(r.KeysymsPerKeycode)
+	}
 }
 
 func (w *whisker) close() {
@@ -275,6 +286,7 @@ func (w *whisker) close() {
 	xproto.DestroyWindow(w.c, w.win)
 	xproto.FreePixmap(w.c, w.back)
 	w.isOpen = false
+	whiskerOpen.Store(false)
 	w.ctx = nil
 }
 
@@ -783,6 +795,12 @@ func (w *whisker) handle(ev xgb.Event) bool {
 	case xproto.KeyReleaseEvent:
 		if w.isSuper(e.Detail) {
 			w.superArmed, w.superRel = true, e.Time
+		}
+		return true
+	case xproto.MappingNotifyEvent:
+		if w.keymap != nil {
+			setup := xproto.Setup(w.c)
+			w.loadKeymap(byte(setup.MaxKeycode-setup.MinKeycode) + 1)
 		}
 		return true
 	case xproto.KeyPressEvent:

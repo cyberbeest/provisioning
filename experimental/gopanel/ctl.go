@@ -58,6 +58,12 @@ func ctlServer(cmds chan<- string) {
 		case "reload", "restart", "quit", "menu", "yield", "calendar", "volume", "power", "dismiss", "unreserve", "profile", "layout":
 			cmds <- cmd
 			fmt.Fprintln(conn, "ok")
+		case "whisker?":
+			if whiskerOpen.Load() {
+				fmt.Fprintln(conn, "open")
+			} else {
+				fmt.Fprintln(conn, "closed")
+			}
 		case "refresh":
 			kickGenmons()
 			fmt.Fprintln(conn, "ok")
