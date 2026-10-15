@@ -9,15 +9,16 @@
 # cyberbeest-panel-choice.sh (autostart) starts the chosen panel (XFCE when there is no choice).
 # The XFCE panel stays installed and is what xfce-panel-watchdog brings back if gopanel dies.
 #
-# The binaries are not built here: release.sh (experimental/gopanel) builds them on the dev
-# machine and publishes a tarball at cyberbeest.com/gopanel/, named after its own hash. The
-# SHA-256 below is pinned in this (public, GitHub-hosted) script and verified after the
-# download, so a changed host cannot swap the panel. Publishing a new version = run
-# release.sh --publish, which updates these three pins; committing them rolls it out.
+# No binary is shipped: the panel is built here, on the machine, from the source in
+# experimental/gopanel (the Go modules it uses are fetched at build time and verified against the hashes pinned in go.sum). The Go
+# compiler (golang-1.26-go from trixie-backports, ~50 MB download) is installed for the build and
+# removed again right afterwards -- unless it was already installed (a Go developer), in which
+# case it is never touched. The build is skipped when the source is unchanged since the last
+# build, and a failed build keeps the panel that is installed now.
 #
 # Depends on: 12-xfce-panel-layout.sh (the config gopanel mirrors), 46-cyberbeest-keyboard-
 # shortcuts.sh (Super key -> cyberbeest-whisker-key.sh), 60-xfce-panel-watchdog.sh (honours the
-# "XFCE panel stopped on purpose" marker). Needs network for the download; if it fails, the
+# "XFCE panel stopped on purpose" marker). Needs network for the compiler; if the build fails, the
 # XFCE panel simply stays the panel.
 # Idempotent: safe to re-run. A running gopanel is restarted into a new version (`gopanel
 # restart`, helpers keep running); that is an update, not a switch.
@@ -28,10 +29,8 @@ exec > >(tee -a "$LOG") 2>&1
 
 echo "=== $(date) : installing the Cyberbeest panel ==="
 
-GOPANEL_VERSION="0.23.0"
-GOPANEL_SHA256="82ad4c6e863f5f07b5f8ef2fd8aff08a184f958ec84166c0f123e10f702d4a93"
-GOPANEL_BYTES=10050931
-GOPANEL_URL="https://cyberbeest.com/gopanel/gopanel-${GOPANEL_SHA256:0:12}.tar.gz"
+GOLANG_PKG=golang-1.26-go # backports; go.mod requires Go 1.26 (Debian trixie main has 1.24)
+GO_BIN=/usr/lib/go-1.26/bin/go
 
 TARGET_USER="${SUDO_USER:?SUDO_USER not set -- run this via sudo, not as a raw root shell}"
 TARGET_HOME="${GOPANEL_INSTALL_HOME:-$(getent passwd "$TARGET_USER" | cut -d: -f6)}" # the override is for testing only
@@ -41,11 +40,6 @@ BINDIR="$TARGET_HOME/.local/bin"
 CONF_DIR="$TARGET_HOME/.config/cyberbeest"
 SRC="$DIR/experimental/gopanel"
 OLD_VERSION="$(cat "$LIBDIR/VERSION" 2>/dev/null || true)" # what is installed now, before this run replaces it
-
-if [ "$GOPANEL_SHA256" = "$(printf '0%.0s' $(seq 64))" ]; then
-	echo "No release is pinned in this script yet (run experimental/gopanel/release.sh --publish) -- nothing to install." >&2
-	exit 1
-fi
 
 echo "--- Runtime packages (pactl for the volume icon, a font for the text) ---"
 need=()
@@ -57,26 +51,65 @@ if [ "${#need[@]}" -gt 0 ]; then
 	apt-get -o DPkg::Lock::Timeout=60 install -y --no-install-recommends "${need[@]}"
 fi
 
-echo "--- Panel files (version $GOPANEL_VERSION) ---"
-if [ "$(cat "$LIBDIR/.sha256" 2>/dev/null)" = "$GOPANEL_SHA256" ] && [ -x "$LIBDIR/gopanel" ]; then
-	echo "already installed, nothing to download"
+echo "--- Panel files (built from source) ---"
+# hash of everything the build depends on (sources, go.mod/sum), not of any binary
+SRC_HASH="$(cd "$SRC" && find . -type f \( -name '*.go' -o -name go.mod -o -name go.sum \) -print0 \
+	| LC_ALL=C sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1)"
+if [ "$(cat "$LIBDIR/.srchash" 2>/dev/null)" = "$SRC_HASH" ] && [ -x "$LIBDIR/gopanel" ]; then
+	echo "already built from this source, nothing to do"
 else
-	WORK="$(mktemp -d /var/tmp/gopanel-install.XXXXXX)"
-	trap 'rm -rf "$WORK"' EXIT
-	echo "Downloading $GOPANEL_URL"
-	curl -fsSL --retry 3 --connect-timeout 20 "$GOPANEL_URL" -o "$WORK/gopanel.tar.gz"
-	ACTUAL_BYTES="$(stat -c %s "$WORK/gopanel.tar.gz")"
-	ACTUAL_SHA256="$(sha256sum "$WORK/gopanel.tar.gz" | cut -d' ' -f1)"
-	if [ "$ACTUAL_SHA256" != "$GOPANEL_SHA256" ]; then
-		echo "Checksum mismatch: expected $GOPANEL_SHA256, got $ACTUAL_SHA256 ($ACTUAL_BYTES bytes) -- discarded, panel not installed." >&2
+	WORK="$(mktemp -d /var/tmp/gopanel-build.XXXXXX)"
+	WE_INSTALLED_GO=0
+	cleanup() {
+		rm -rf "$WORK"
+		# only remove the compiler if this run installed it; autoremove keeps it when something
+		# the user installed (e.g. golang-go) depends on it
+		if [ "$WE_INSTALLED_GO" = 1 ]; then
+			echo "Removing the Go compiler again"
+			apt-get -o DPkg::Lock::Timeout=60 purge -y --auto-remove "$GOLANG_PKG" golang-1.26-src >/dev/null 2>&1 \
+				|| echo "could not remove $GOLANG_PKG (harmless)" >&2
+		fi
+	}
+	trap cleanup EXIT
+	if ! dpkg -s "$GOLANG_PKG" >/dev/null 2>&1; then
+		echo "Installing the Go compiler for the build"
+		apt-get -o DPkg::Lock::Timeout=60 update -qq
+		apt-get -o DPkg::Lock::Timeout=60 install -y --no-install-recommends -t trixie-backports "$GOLANG_PKG"
+		apt-mark auto "$GOLANG_PKG" golang-1.26-src >/dev/null
+		WE_INSTALLED_GO=1
+	fi
+	cp -a "$SRC" "$WORK/src"
+	mkdir -p "$WORK/out/helpers"
+	build_env=(HOME="$WORK/home" GOCACHE="$WORK/cache" GOPATH="$WORK/gopath" GOFLAGS=-mod=readonly GOTOOLCHAIN=local CGO_ENABLED=0 PATH="/usr/lib/go-1.26/bin:$PATH")
+	echo "Building (this takes a few minutes on a slow machine)"
+	if ! ( cd "$WORK/src" && env "${build_env[@]}" "$GO_BIN" build -trimpath -ldflags="-s -w" -o "$WORK/out/gopanel" . \
+		&& for d in helpers/*/; do
+			n="$(basename "$d")"
+			env "${build_env[@]}" "$GO_BIN" build -trimpath -ldflags="-s -w" -o "$WORK/out/helpers/$n/$n" "./helpers/$n"
+		done ); then
+		if [ -x "$LIBDIR/gopanel" ]; then
+			echo "Build failed -- keeping the panel that is installed now." >&2
+			exit 0
+		fi
+		echo "Build failed -- panel not installed, the XFCE panel stays the panel." >&2
 		exit 1
 	fi
-	tar -xzf "$WORK/gopanel.tar.gz" -C "$WORK" --no-same-owner
-	[ -x "$WORK/gopanel/gopanel" ] || { echo "tarball has no gopanel binary" >&2; exit 1; }
+	GOPANEL_VERSION="$("$WORK/out/gopanel" version | awk '{print $2}')"
+	echo "$GOPANEL_VERSION" > "$WORK/out/VERSION"
+	cp "$DIR/LICENSE" "$WORK/out/LICENSE"
+	# the binaries embed third-party Go modules (BSD/MIT/Apache): ship their licence texts too
+	{
+		echo "gopanel is part of Cyberbeest (see LICENSE). It is built with these Go modules:"
+		find "$WORK/gopath/pkg/mod" -path "$WORK/gopath/pkg/mod/cache" -prune -o -type f \( -name 'LICENSE*' -o -name 'COPYING*' \) -print | LC_ALL=C sort | while read -r f; do
+			printf '\n================ %s ================\n' "${f#"$WORK"/gopath/pkg/mod/}"
+			cat "$f"
+		done
+	} > "$WORK/out/THIRD_PARTY_LICENSES.txt"
+	chmod 755 "$WORK/out" "$WORK/out/helpers" "$WORK/out/helpers"/*
+	printf '%s' "$SRC_HASH" > "$WORK/out/.srchash"
 	install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.local/lib"
 	rm -rf "$LIBDIR.new"
-	mv "$WORK/gopanel" "$LIBDIR.new"
-	printf '%s' "$GOPANEL_SHA256" > "$LIBDIR.new/.sha256"
+	mv "$WORK/out" "$LIBDIR.new"
 	chown -R "$TARGET_USER:$TARGET_USER" "$LIBDIR.new"
 	# rename over the old tree: a running panel keeps its open binary and the helpers' paths
 	# resolve to the new files at their next (re)start
@@ -84,7 +117,7 @@ else
 	[ -d "$LIBDIR" ] && mv "$LIBDIR" "$LIBDIR.old"
 	mv "$LIBDIR.new" "$LIBDIR"
 	rm -rf "$LIBDIR.old"
-	echo "installed to $LIBDIR"
+	echo "built $GOPANEL_VERSION and installed to $LIBDIR"
 fi
 
 echo "--- Launchers and switcher ---"
