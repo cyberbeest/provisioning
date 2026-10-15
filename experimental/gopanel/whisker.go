@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/jezek/xgb"
@@ -1349,6 +1350,18 @@ func (w *whisker) key(code xproto.Keycode, state uint16) {
 	ks := w.keysymFor(code, state)
 	if state&8 != 0 && (ks == 0xff09 || ks == 0xfe20 || ks == 0xffc1) { // Alt+Tab, Alt+Shift+Tab, Alt+F4: people use these to get out
 		w.close()
+		return
+	}
+	if ks == 0xff61 { // Print: the keyboard grab hides it from the global shortcut; shoot the whole screen with the menu still open, into Pictures and the clipboard (no dialog, which the grabs would block)
+		dir, _ := exec.Command("xdg-user-dir", "PICTURES").Output()
+		// an explicit file name: with a bare directory xfce4-screenshooter fell back to its dialog.
+		// The clipboard copy is xclip's: the screenshooter's own -c took ~10 s.
+		file := filepath.Join(strings.TrimSpace(string(dir)), time.Now().Format("Screenshot_2006-01-02_15-04-05.jpg"))
+		cmd := exec.Command("sh", "-c", `xfce4-screenshooter -f -s "$1" && notify-send -i camera-photo Screenshot "Saved and copied: $1" && xclip -selection clipboard -t image/jpeg -i "$1"`, "sh", file)
+		cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+		if cmd.Start() == nil {
+			go cmd.Wait()
+		}
 		return
 	}
 	if w.valueHit != nil {
