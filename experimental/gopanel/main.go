@@ -96,6 +96,7 @@ func main() {
 		ctlClient(os.Args[1])
 		return
 	}
+	startLockWatcher()
 	sweepStaleSubscribers()
 	sig := make(chan os.Signal, 1) // register first: default SIGHUP action would kill us
 	signal.Notify(sig, syscall.SIGHUP)

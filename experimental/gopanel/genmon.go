@@ -178,6 +178,14 @@ func newGenmonItem(command string, periodMs int) *item {
 			case <-it.dead:
 				return
 			}
+			// Locked: nobody sees the panel, so run nothing until unlock, then refresh at once.
+			for screenLocked() {
+				select {
+				case <-lockChanged():
+				case <-it.dead:
+					return
+				}
+			}
 		}
 	}()
 	return it
