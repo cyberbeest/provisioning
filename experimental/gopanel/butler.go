@@ -45,6 +45,7 @@ type butlerResult struct {
 
 	cmdList []butlerHit // the whole catalog, sent once at startup
 	status  bool        // the server started indexing or became ready: repaint the status line
+	weather bool        // a new weather reading is in: repaint the header
 
 	// answer to a run request (ran), or a note to clear it again (clear)
 	ran, clear bool

@@ -307,6 +307,9 @@ func (w *whisker) open(anchorX int) {
 		w.loadData()
 	}
 	w.refreshConfig()
+	if w.bc != nil {
+		weatherOpened(w.bc.out)
+	}
 	w.setQuery(nil)
 	w.catScroll, w.hoverRow, w.hoverCat, w.hoverBtn, w.selRow = 0, -1, -1, -1, -1
 	w.catIdx = catQuick
@@ -515,6 +518,12 @@ func (w *whisker) searchRows() []wrow {
 
 // onButler takes a matcher result for the current query; older ones are dropped.
 func (w *whisker) onButler(r butlerResult) {
+	if r.weather { // a new weather reading for the header
+		if w.isOpen {
+			w.put(w.paintHeader(), 0, 0)
+		}
+		return
+	}
 	if r.status { // the matcher began indexing or finished loading: update the status line
 		if w.isOpen && len(w.query) > 0 {
 			w.put(w.paintList(), whListX, whListTop)
@@ -685,6 +694,9 @@ func (w *whisker) paintHeader() *image.RGBA {
 	rect(img, img.Bounds(), whBg)
 	blit(img, w.avatar, 10, 10)
 	textAt(img, 52, 14, w.headerName(), whInk, true, 17, 300)
+	if wt := weatherText(); wt != "" {
+		textAt(img, 340, 17, wt, whDim, false, 15, 160)
+	}
 	for i, ic := range w.btnIcons {
 		x := whW - 8 - (2-i)*44 + 8
 		if i == w.hoverBtn {

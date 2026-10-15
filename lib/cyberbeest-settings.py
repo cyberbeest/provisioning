@@ -32,6 +32,9 @@ import os
 import re
 import shutil
 import subprocess
+import threading
+import urllib.parse
+import urllib.request
 
 import gi
 
@@ -39,6 +42,7 @@ gi.require_version("Gtk", "3.0")
 gi.require_version("Gdk", "3.0")
 from gi.repository import Gdk, GLib, Gtk
 
+import i18n
 from i18n import t
 
 CONFIG_DIR = os.path.expanduser("~/.config/cyberbeest")
@@ -689,6 +693,118 @@ class ButlerPage(Gtk.Box):
         write_json(self.settings_path, self.settings)
 
 
+WEATHER_PATH = os.path.join(CONFIG_DIR, "weather", "settings.json")
+LANG = "de" if i18n._LOCALE == "de" else "en"
+
+
+def geocode(query):
+    """Places matching QUERY as [(label, city, lat, lon)], via OpenStreetMap Nominatim.
+    CITY is the plain place name (a postcode search still yields the town)."""
+    url = "https://nominatim.openstreetmap.org/search?" + urllib.parse.urlencode(
+        {"q": query, "format": "json", "limit": 6, "addressdetails": 1, "accept-language": LANG})
+    req = urllib.request.Request(url, headers={"User-Agent": "Cyberbeest-Weather/1.0"})
+    with urllib.request.urlopen(req, timeout=10) as r:
+        data = json.load(r)
+    places = []
+    for d in data:
+        a = d.get("address", {})
+        city = next((a[k] for k in ("city", "town", "village", "municipality", "suburb", "county", "state")
+                     if a.get(k)), d["display_name"].split(",")[0])
+        places.append((d["display_name"], city, float(d["lat"]), float(d["lon"])))
+    return places
+
+
+class WeatherPage(Gtk.Box):
+    """Place and on/off for the weather readout in the menu header (gopanel reads
+    weather/settings.json when the menu opens). Coordinates are stored rounded to
+    two decimals (about 1 km), which is all the weather lookup needs."""
+
+    def __init__(self):
+        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        self.set_border_width(16)
+        self.settings = {"enabled": False, "name": "", "lat": 0.0, "lon": 0.0,
+                         **read_json(WEATHER_PATH, {})}
+        self.found = []
+
+        self.pack_start(Gtk.Label(wrap=True, max_width_chars=60, xalign=0,
+                                  label=t("weather.info")), False, False, 0)
+        row = Gtk.Box(spacing=8)
+        self.entry = Gtk.Entry(placeholder_text=t("weather.city"), hexpand=True)
+        self.entry.connect("activate", self.on_search)
+        button = Gtk.Button(label=t("weather.search"))
+        button.connect("clicked", self.on_search)
+        row.pack_start(self.entry, True, True, 0)
+        row.pack_start(button, False, False, 0)
+        self.pack_start(row, False, False, 0)
+        accuracy = Gtk.Label(wrap=True, max_width_chars=60, xalign=0, label=t("weather.accuracy"))
+        accuracy.get_style_context().add_class("dim-label")
+        self.pack_start(accuracy, False, False, 0)
+
+        self.combo = Gtk.ComboBoxText()
+        self.combo.connect("changed", self.on_picked)
+        self.pack_start(self.combo, False, False, 0)
+        self.status = Gtk.Label(xalign=0, wrap=True, max_width_chars=60)
+        self.pack_start(self.status, False, False, 0)
+
+        self.enabled = Gtk.CheckButton(label=t("weather.enabled"))
+        self.enabled.set_active(bool(self.settings["enabled"]) and bool(self.settings["name"]))
+        self.enabled.connect("toggled", self.on_enabled)
+        self.pack_start(self.enabled, False, False, 0)
+        note = Gtk.Label(wrap=True, max_width_chars=60, xalign=0, label=t("weather.note"))
+        note.get_style_context().add_class("dim-label")
+        self.pack_start(note, False, False, 0)
+        self.show_place()
+
+    def show_place(self):
+        name = self.settings["name"]
+        self.status.set_text(t("weather.current").format(place=name) if name else t("weather.none"))
+        self.enabled.set_sensitive(bool(name))
+
+    def save(self):
+        write_json(WEATHER_PATH, self.settings)
+
+    def on_search(self, *_):
+        query = self.entry.get_text().strip()
+        if not query:
+            return
+        self.status.set_text(t("weather.searching"))
+        threading.Thread(target=self.search_thread, args=(query,), daemon=True).start()
+
+    def search_thread(self, query):
+        try:
+            found = geocode(query)
+        except (OSError, ValueError):
+            found = None
+        GLib.idle_add(self.search_done, found)
+
+    def search_done(self, found):
+        self.combo.remove_all()
+        self.found = found or []
+        if found is None:
+            self.status.set_text(t("weather.error"))
+        elif not found:
+            self.status.set_text(t("weather.nothing"))
+        else:
+            for label, _, _, _ in found:
+                self.combo.append_text(label)
+            self.status.set_text(t("weather.pick"))
+            self.combo.popup()
+        return False
+
+    def on_picked(self, combo):
+        i = combo.get_active()
+        if i < 0 or i >= len(self.found):
+            return
+        label, city, lat, lon = self.found[i]
+        self.settings.update(name=label, city=city, lat=round(lat, 2), lon=round(lon, 2))
+        self.save()
+        self.show_place()
+
+    def on_enabled(self, check):
+        self.settings["enabled"] = check.get_active()
+        self.save()
+
+
 WALLPAPER_PACK = "/usr/share/backgrounds/cyberbeest"
 WALLPAPER_HELPER = "/usr/local/bin/cyberbeest-wallpaper-theme"
 WALLPAPER_SAVED = os.path.join(CONFIG_DIR, "wallpaper-previous.tsv")
@@ -758,6 +874,7 @@ PAGES = [
     ("power", "settings.tab_power", lambda: PowerPage()),
     ("panel", "settings.tab_panel", lambda: PanelPage(panel_choice_script()) if panel_choice_script() else None),
     ("wallpaper", "settings.tab_wallpaper", lambda: WallpaperPage() if os.access(WALLPAPER_HELPER, os.X_OK) and os.path.isdir(WALLPAPER_PACK) else None),
+    ("weather", "settings.tab_weather", lambda: WeatherPage()),
     ("butler", "settings.tab_butler", lambda: ButlerPage() if butler_catalog_dir() else None),
 ]
 

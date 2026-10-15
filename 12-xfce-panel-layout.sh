@@ -189,6 +189,22 @@ StartupNotify=true
 EOF
 chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.local/share/applications/cyberbeest-settings.desktop"
 
+# "Weather" opens the same Settings window on its Weather tab (optional menu-header readout).
+cat > "$TARGET_HOME/.local/share/applications/cyberbeest-weather.desktop" <<EOF
+[Desktop Entry]
+Type=Application
+Name=Weather
+Name[de]=Wetter
+Comment=Show the weather in the menu
+Comment[de]=Wetter im Menü anzeigen
+Exec=$TARGET_HOME/.local/bin/cyberbeest-settings.py --tab=weather
+Icon=weather-few-clouds
+Terminal=false
+Categories=Cyberbeest;Settings;
+StartupNotify=true
+EOF
+chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.local/share/applications/cyberbeest-weather.desktop"
+
 # The pulseaudio plugin's volume icon comes from Adwaita (not hicolor --
 # Tango, the active GTK icon theme, inherits from Adwaita before falling
 # back to hicolor), and at full size it's a solid, bold glyph that draws
