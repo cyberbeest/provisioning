@@ -3,7 +3,7 @@
     "en": "The desktop, menu and panel",
     "de": "Desktop, Menü und Panel"
   },
-  "source": "provisioning scripts 11-12, 25, 27-28, 33, 45-49, 61; panel plugin sources",
+  "source": "provisioning scripts 11-12, 25, 27-28, 33, 45-49, 61; panel plugin sources, 12 (weather launcher); gopanel weather.go and the Settings weather tab",
   "checked": "2026-10-15",
   "facts": [
     {
@@ -143,6 +143,33 @@
       "id": "apps-mail-bookmark",
       "en": "Proton Mail is offered on a Cyberbeest laptop as a menu link that opens mail.proton.me in the browser, not as an installed app.",
       "de": "Proton Mail gibt es auf einem Cyberbeest-Laptop als Menüverknüpfung, die mail.proton.me im Browser öffnet, nicht als installierte App."
+    },
+    {
+      "id": "weather-menu",
+      "en": "A Cyberbeest laptop can show the current temperature of a city you choose at the top of the menu; it is off until you pick a place in Settings under Weather.",
+      "de": "Ein Cyberbeest-Laptop kann oben im Menü die aktuelle Temperatur eines Ortes Ihrer Wahl anzeigen; das ist aus, bis Sie in den Einstellungen unter Wetter einen Ort wählen.",
+      "ask": {
+        "en": [
+          "how do I show the weather",
+          "can I see the temperature in the menu",
+          "turn on the weather display"
+        ],
+        "de": [
+          "wie zeige ich das Wetter an",
+          "kann ich die Temperatur im Menü sehen",
+          "Wetteranzeige einschalten"
+        ]
+      }
+    },
+    {
+      "id": "weather-privacy",
+      "en": "When the weather is on, opening the menu sends your IP address and your chosen place, rounded to about 1 km, to the German Weather Service data service Bright Sky; nothing is sent while it is off.",
+      "de": "Ist das Wetter eingeschaltet, gehen beim Öffnen des Menüs Ihre IP-Adresse und der gewählte Ort, auf etwa 1 km gerundet, an den Datendienst Bright Sky des Deutschen Wetterdienstes; solange es aus ist, wird nichts gesendet."
+    },
+    {
+      "id": "weather-accuracy",
+      "en": "The weather in the menu comes from the nearest German Weather Service station, so it can be inaccurate for places outside Germany.",
+      "de": "Das Wetter im Menü stammt von der nächsten Station des Deutschen Wetterdienstes und kann deshalb für Orte außerhalb Deutschlands ungenau sein."
     }
   ]
 }
