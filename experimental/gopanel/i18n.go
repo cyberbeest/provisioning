@@ -78,6 +78,7 @@ var deStrings = map[string]string{
 	"Add to Favorites":                            "Zu Favoriten hinzufügen",
 	"Remove from Favorites":                       "Aus Favoriten entfernen",
 	"Add to Desktop":                              "Auf die Arbeitsfläche legen",
+	"Weather Settings…":                           "Wettereinstellungen …",
 }
 
 // tr translates a UI string; unknown strings pass through.

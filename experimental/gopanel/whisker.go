@@ -43,6 +43,7 @@ const (
 	whCmdMin     = 0.80                   // matcher score a command needs to appear among the search results
 	whCatRowH    = 34
 	whAppIcon    = 32
+	whWxX        = 340 // left edge of the weather readout in the header
 	whCatIcon    = 22
 )
 
@@ -695,7 +696,7 @@ func (w *whisker) paintHeader() *image.RGBA {
 	blit(img, w.avatar, 10, 10)
 	textAt(img, 52, 14, w.headerName(), whInk, true, 17, 300)
 	if wt := weatherText(); wt != "" {
-		textAt(img, 340, 17, wt, whDim, false, 15, 160)
+		textAt(img, whWxX, 17, wt, whDim, false, 15, 160)
 	}
 	for i, ic := range w.btnIcons {
 		x := whW - 8 - (2-i)*44 + 8
@@ -1741,7 +1742,9 @@ func (w *whisker) press(px, py, btn int) {
 			w.put(w.paintList(), whListX, whListTop)
 		}
 	case 3:
-		if inList {
+		if py < whHeaderH && weatherText() != "" && px >= whWxX && px < btnRect(0).Min.X {
+			w.openCtx(px, py, nil) // right-click on the weather readout
+		} else if inList {
 			if r := w.listRowAt(py); r >= 0 {
 				if w.rows[r].kind == rowApp {
 					w.openCtx(px, py, w.rows[r].e)
@@ -1797,11 +1800,16 @@ func (w *whisker) isFavorite(id string) bool {
 }
 
 func (w *whisker) openCtx(px, py int, e *appmenu.Entry) {
-	fav := tr("Add to Favorites")
-	if w.isFavorite(e.ID) {
-		fav = tr("Remove from Favorites")
+	c := &whiskerCtx{e: e, hover: -1}
+	if e == nil { // the weather readout in the header
+		c.labels = []string{tr("Weather Settings…")}
+	} else {
+		fav := tr("Add to Favorites")
+		if w.isFavorite(e.ID) {
+			fav = tr("Remove from Favorites")
+		}
+		c.labels = []string{fav, tr("Add to Desktop")}
 	}
-	c := &whiskerCtx{e: e, labels: []string{fav, tr("Add to Desktop")}, hover: -1}
 	for _, l := range c.labels {
 		c.w = max(c.w, textWidth(l, 13)+28)
 	}
@@ -1851,6 +1859,12 @@ func (w *whisker) ctxPress(px, py, btn int) {
 }
 
 func (w *whisker) ctxAction(e *appmenu.Entry, i int) {
+	if e == nil {
+		w.close()
+		home, _ := os.UserHomeDir()
+		run(exec.Command(filepath.Join(home, ".local/bin/cyberbeest-settings.py"), "--tab=weather"))
+		return
+	}
 	switch i {
 	case 0:
 		var ids []string
