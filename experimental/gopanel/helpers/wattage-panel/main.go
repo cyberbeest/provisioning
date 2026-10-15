@@ -397,13 +397,22 @@ func run(c *proto.Client) {
 				w.screenOff = true
 			case "resume":
 				w.screenOff = false
+				if !push() { // catch the label up at once
+					return
+				}
 			}
 		case <-sampleT.C:
+			if w.screenOff { // locked or display off: nobody sees the label
+				continue
+			}
 			if !push() {
 				return
 			}
 		case <-logT.C:
 			w.persist = !xfcePluginRunning()
+			if w.screenOff {
+				w.update() // fresh reading (and tick) for the log row; nothing to send
+			}
 			w.appendLog()
 		}
 	}
