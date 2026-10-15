@@ -96,6 +96,15 @@ LAUNCH
 chown "$TARGET_USER:$TARGET_USER" "$BINDIR/butler-server"
 chmod 755 "$BINDIR/butler-server"
 
+# A running matcher keeps the old code and catalog until it exits. The panel starts a new one on
+# the next menu search, so stopping it is all the reload needed.
+echo "--- Reloading Butler if it is running ---"
+if pkill -u "$TARGET_USER" -f '[b]utler_server\.py'; then
+	echo "stopped the running matcher; the panel starts the new one on next use"
+else
+	echo "Butler not running -- nothing to reload"
+fi
+
 echo "--- Self-test (catalog check) ---"
 run_as_user bash -c "cd '$DEST' && BUTLER_FACTS='$DEST/facts' venv/bin/python -m butler.loader" || echo "WARNING: catalog check failed"
 

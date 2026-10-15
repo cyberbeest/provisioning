@@ -157,12 +157,15 @@ chown "$TARGET_USER:$TARGET_USER" \
 	"$DIRS_DIR/mail.directory"
 
 echo "--- Refreshing a live panel, if one is running ---"
-PANEL_PID="$(pgrep -u "$TARGET_USER" -x xfce4-panel | head -1)" || true
-if [ -n "$PANEL_PID" ]; then
-	DBUS_ADDR="$(cat "/proc/$PANEL_PID/environ" 2>/dev/null | tr '\0' '\n' | sed -n 's/^DBUS_SESSION_BUS_ADDRESS=//p')" || true
-	DBUS_ADDR="${DBUS_ADDR:-unix:path=/run/user/$(id -u "$TARGET_USER")/bus}"
-	rm -f "$TARGET_HOME/.cache/menus"/*.menu 2>/dev/null || true
-	su - "$TARGET_USER" -c "DISPLAY='${DISPLAY:-:0}' DBUS_SESSION_BUS_ADDRESS='$DBUS_ADDR' xfce4-panel -r" || true
+rm -f "$TARGET_HOME/.cache/menus"/*.menu 2>/dev/null || true
+. "$DIR/lib/xfce-panel-reload.sh"
+if xfce_panel_dbus_addr; then
+	xfce_panel_kill
+	xfce_panel_launch || echo "--- warning: panel reload didn't take live effect ---" >&2
 fi
+
+echo "--- Telling the Cyberbeest panel, if it is running ---"
+. "$DIR/lib/gopanel-reload.sh"
+gopanel_restart
 
 echo "=== $(date) : done ==="
