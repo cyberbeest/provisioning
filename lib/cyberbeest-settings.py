@@ -11,6 +11,8 @@ Tabs:
   panel  Which panel runs: the stock XFCE panel or the experimental Go panel.
          Only shown where the panel switcher (cyberbeest-panel-choice.sh) is
          installed, i.e. on the dev machine for now.
+  wallpaper  Single picture or an hourly-rotating nature/space photo pack
+         (70-rotating-wallpapers.sh; applied by cyberbeest-wallpaper-theme).
 
 Launch with --tab=<name> to open on a given tab (the shutdown timer menu's
 "Extended power options..." item uses --tab=power). Run as a separate process
@@ -25,6 +27,7 @@ family of scripts already uses.
 """
 
 import argparse
+import json
 import os
 import re
 import shutil
@@ -632,9 +635,130 @@ class RcPage(Gtk.Box):
         return w
 
 
+BUTLER_DIRS = [
+    os.path.expanduser("~/.local/share/cyberbeest/butler"),
+    os.path.expanduser("~/claude/provisioning/experimental/butler"),
+]
+BUTLER_CONF_DIR = os.path.join(CONFIG_DIR, "butler")
+
+
+def butler_catalog_dir():
+    for d in BUTLER_DIRS:
+        if os.path.isdir(os.path.join(d, "butler", "catalog")):
+            return os.path.join(d, "butler", "catalog")
+    return None
+
+
+def read_json(path, default):
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return default
+
+
+def write_json(path, value):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(value, f, ensure_ascii=False, indent=1)
+    os.replace(tmp, path)
+
+
+class ButlerPage(Gtk.Box):
+    """Butler on/off for the menu search (gopanel reads settings.json when the menu opens)."""
+
+    def __init__(self):
+        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        self.set_border_width(16)
+        self.settings_path = os.path.join(BUTLER_CONF_DIR, "settings.json")
+        self.settings = {"enabled": True, **read_json(self.settings_path, {})}
+
+        info = Gtk.Label(wrap=True, max_width_chars=60, xalign=0, label=t("butler.info"))
+        self.pack_start(info, False, False, 0)
+        enabled = Gtk.CheckButton(label=t("butler.enabled"))
+        enabled.set_active(bool(self.settings["enabled"]))
+        enabled.connect("toggled", self.on_enabled)
+        self.pack_start(enabled, False, False, 0)
+        note = Gtk.Label(wrap=True, xalign=0, label=t("butler.note"))
+        note.get_style_context().add_class("dim-label")
+        self.pack_start(note, False, False, 0)
+
+    def on_enabled(self, check):
+        self.settings["enabled"] = check.get_active()
+        write_json(self.settings_path, self.settings)
+
+
+WALLPAPER_PACK = "/usr/share/backgrounds/cyberbeest"
+WALLPAPER_HELPER = "/usr/local/bin/cyberbeest-wallpaper-theme"
+WALLPAPER_SAVED = os.path.join(CONFIG_DIR, "wallpaper-previous.tsv")
+
+
+def wallpaper_choice_now():
+    """nature / space while xfdesktop cycles through that pack, standard for our own
+    default picture, else previous (a picture the user chose)."""
+    def q(path):
+        r = subprocess.run(["xfconf-query", "-c", "xfce4-desktop", "-p", path],
+                           capture_output=True, text=True)
+        return r.stdout.strip() if r.returncode == 0 else ""
+    mon = subprocess.run("xrandr --current | awk '/ connected/{print $1; exit}'",
+                         shell=True, capture_output=True, text=True).stdout.strip()
+    base = f"/backdrop/screen0/monitor{mon}/workspace0"
+    image = q(base + "/last-image")
+    if q(base + "/backdrop-cycle-enable") == "true":
+        for theme in ("nature", "space"):
+            if image.startswith(f"{WALLPAPER_PACK}/{theme}/"):
+                return theme
+    if image.startswith("/usr/share/backgrounds/xfce/cyberbeest-fallback."):
+        return "standard"
+    return "previous"
+
+
+class WallpaperPage(Gtk.Box):
+    """Standard picture, the user's own picture, or an hourly-rotating photo pack
+    (xfdesktop's own cycling)."""
+
+    def __init__(self):
+        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        self.set_border_width(16)
+        self.pack_start(Gtk.Label(wrap=True, max_width_chars=60, xalign=0,
+                                  label=t("wallpaper.info")), False, False, 0)
+        current = wallpaper_choice_now()
+        group = None
+        for choice, key in (("standard", "wallpaper.standard"), ("previous", "wallpaper.previous"),
+                            ("nature", "wallpaper.nature"), ("space", "wallpaper.space")):
+            radio = Gtk.RadioButton.new_with_label_from_widget(group, t(key))
+            group = group or radio
+            radio.set_active(choice == current)
+            if choice == "previous":
+                # Only meaningful when a picture of the user's is shown or was saved.
+                has_saved = os.path.exists(WALLPAPER_SAVED) and os.path.getsize(WALLPAPER_SAVED) > 0
+                radio.set_sensitive(current == "previous" or has_saved)
+            radio.connect("toggled", self.on_toggled, choice)
+            self.pack_start(radio, False, False, 0)
+        settings = Gtk.LinkButton.new_with_label("", t("wallpaper.desktop_settings"))
+        settings.connect("activate-link", self.on_desktop_settings)
+        settings.set_halign(Gtk.Align.START)
+        self.pack_start(settings, False, False, 0)
+        credits = Gtk.LinkButton.new_with_label("file://" + WALLPAPER_PACK + "/CREDITS.md",
+                                                t("wallpaper.credits"))
+        credits.set_halign(Gtk.Align.START)
+        self.pack_start(credits, False, False, 0)
+
+    def on_toggled(self, radio, choice):
+        if radio.get_active():
+            subprocess.Popen([WALLPAPER_HELPER, choice])
+
+    def on_desktop_settings(self, button):
+        subprocess.Popen(["xfdesktop-settings"])
+        return True
+
+
 PAGES = [
     ("power", "settings.tab_power", lambda: PowerPage()),
     ("panel", "settings.tab_panel", lambda: PanelPage(panel_choice_script()) if panel_choice_script() else None),
+    ("wallpaper", "settings.tab_wallpaper", lambda: WallpaperPage() if os.access(WALLPAPER_HELPER, os.X_OK) and os.path.isdir(WALLPAPER_PACK) else None),
+    ("butler", "settings.tab_butler", lambda: ButlerPage() if butler_catalog_dir() else None),
 ]
 
 
