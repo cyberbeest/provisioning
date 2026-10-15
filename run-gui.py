@@ -519,6 +519,7 @@ SCRIPT_DURATION_ESTIMATES = {
     "60-xfce-panel-watchdog.sh": 1,
     "65-dictate.sh": 240,
     "67-drawing-app.sh": 12,
+    "69a-butler.sh": 60,
     "71-battery-report.sh": 1,
     "91-sandbox-vm.sh": 0,
 }
@@ -541,7 +542,7 @@ def log_path_for(script):
 
 
 def script_lib_dependencies(script):
-    # Best-effort static scan for lib/ paths a script's body references
+    # Best-effort static scan for lib/ and experimental/ paths a script's body references
     # (including glob patterns like "lib/i18n/strings.*.sh"), so editing a
     # shared lib/ file marks every script that installs it as pending
     # without each of them needing a manual "bump this file" comment (the
@@ -552,7 +553,7 @@ def script_lib_dependencies(script):
             text = f.read()
     except OSError:
         return deps
-    for match in re.finditer(r'lib/[^\s"\'`)]+', text):
+    for match in re.finditer(r'(?:lib|experimental)/[^\s"\'`)]+', text):
         full = os.path.join(DIR, match.group(0).rstrip(".,;:"))
         if "*" in full or "?" in full:
             deps.update(glob.glob(full))
