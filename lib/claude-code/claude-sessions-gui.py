@@ -519,6 +519,7 @@ class App(Gtk.Application):
             self.add_window(self.win)
         self.win.show_all()
         self.win.present()
+        self.win.search.grab_focus()
 
 
 if __name__ == "__main__":
