@@ -7,6 +7,7 @@ from . import loader
 MODEL_DIR = Path(__file__).resolve().parent.parent / "model"
 MODEL_TAG = "paraphrase-multilingual-MiniLM-L12-v2-q8-numnorm1"   # tag changes invalidate the embedding cache
 CACHE = Path.home() / ".cache/cyberbeest/butler"
+SEED = Path(__file__).resolve().parent.parent / "seed" / f"sentences-{MODEL_TAG}.npz"   # shipped with the catalog and factbook
 
 _NUM = re.compile(r"\d+(?:[.,]\d+)?")
 
@@ -40,11 +41,12 @@ class Matcher:
         keys = [hashlib.sha1(normalize(t).encode()).hexdigest()[:20] for t in texts]
         f = CACHE / f"sentences-{MODEL_TAG}.npz"
         known = {}
-        try:
-            with np.load(f) as z:
-                known = dict(zip(z["keys"].tolist(), z["vecs"]))
-        except (OSError, ValueError, KeyError):
-            pass
+        for src in (SEED, f):   # what ships with Butler first, then what this machine added or changed (it wins)
+            try:
+                with np.load(src) as z:
+                    known.update(zip(z["keys"].tolist(), z["vecs"].astype(np.float32)))
+            except (OSError, ValueError, KeyError):
+                pass
         missing = [i for i, k in enumerate(keys) if k not in known]
         if missing:
             if self.on_index:

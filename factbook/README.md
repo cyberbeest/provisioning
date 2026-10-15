@@ -49,3 +49,5 @@ A fact can carry two optional extras, which is all "help" there is (no separate 
 4. Facts that changed behavior bump `checked` in their file. A fact that is no longer true is deleted, not softened.
 
 Memory entries that contain a user-facing fact keep one line and point here.
+
+After editing facts, regenerate Butler's shipped embedding cache (`experimental/butler/build_seed.py`) and commit it with them.
