@@ -1,0 +1,74 @@
+{
+  "topic": {
+    "en": "Voice dictation",
+    "de": "Sprachdiktat"
+  },
+  "source": "provisioning/lib/dictate, script 65",
+  "checked": "2026-10-15",
+  "facts": [
+    {
+      "id": "dictate-what",
+      "en": "Dictate types what you say into whichever window has the focus, with no need to copy and paste.",
+      "de": "Diktieren tippt das, was Sie sagen, in das Fenster, das gerade den Fokus hat, ohne dass Sie kopieren und einfügen müssen.",
+      "tip": true
+    },
+    {
+      "id": "dictate-f9",
+      "en": "To dictate on a Cyberbeest laptop, hold the F9 key while you speak and release it when you are done.",
+      "de": "Zum Diktieren auf einem Cyberbeest-Laptop halten Sie die Taste F9 gedrückt, während Sie sprechen, und lassen sie danach los.",
+      "tip": true,
+      "ask": {
+        "en": [
+          "How do I dictate text?",
+          "Can I talk to the laptop instead of typing?",
+          "Which key starts voice input?"
+        ],
+        "de": [
+          "Wie diktiere ich einen Text?",
+          "Kann ich mit dem Laptop sprechen, statt zu tippen?",
+          "Welche Taste startet die Spracheingabe?"
+        ]
+      }
+    },
+    {
+      "id": "dictate-local",
+      "en": "Dictate recognizes speech entirely on the laptop and sends no audio or text to any server or cloud.",
+      "de": "Diktieren erkennt Sprache vollständig auf dem Laptop und sendet weder Ton noch Text an einen Server oder eine Cloud."
+    },
+    {
+      "id": "dictate-models",
+      "en": "Dictate offers a faster German-only speech model (about 140 MB) and a slower multi-language model (about 640 MB) in its Settings.",
+      "de": "Diktieren bietet in den Einstellungen ein schnelleres reines Deutsch-Modell (etwa 140 MB) und ein langsameres Mehrsprachen-Modell (etwa 640 MB)."
+    },
+    {
+      "id": "dictate-default-model",
+      "en": "A German Cyberbeest laptop starts with the German-only dictation model, and all others start with the multi-language one.",
+      "de": "Ein deutscher Cyberbeest-Laptop startet mit dem reinen Deutsch-Modell, alle anderen mit dem Mehrsprachen-Modell."
+    },
+    {
+      "id": "dictate-autostart",
+      "en": "Dictate starts at login as a small panel icon without a window, and you can turn this off in its Settings.",
+      "de": "Diktieren startet bei der Anmeldung als kleines Panel-Symbol ohne Fenster, und Sie können das in den Einstellungen abschalten."
+    },
+    {
+      "id": "dictate-ram",
+      "en": "Dictate keeps its speech model in RAM, about 800 MB, and unloads it after 5 idle minutes only when memory runs short.",
+      "de": "Diktieren hält sein Sprachmodell mit etwa 800 MB im Arbeitsspeicher und entlädt es nach 5 Minuten Pause nur, wenn der Speicher knapp wird."
+    },
+    {
+      "id": "dictate-first-press",
+      "en": "The first F9 press after login takes a few seconds longer, because Dictate loads its speech model while you start speaking.",
+      "de": "Der erste F9-Druck nach der Anmeldung dauert einige Sekunden länger, weil Diktieren sein Sprachmodell lädt, während Sie zu sprechen beginnen."
+    },
+    {
+      "id": "dictate-mic-dot",
+      "en": "While Dictate records, the red microphone dot in the panel flashes, like for any other app that uses the microphone.",
+      "de": "Während Diktieren aufnimmt, blinkt der rote Mikrofonpunkt im Panel, wie bei jedem anderen Programm, das das Mikrofon nutzt."
+    },
+    {
+      "id": "dictate-hum",
+      "en": "A laptop charger that buzzes can drown out speech for Dictate, so unplugging the charger while dictating helps.",
+      "de": "Ein brummendes Netzteil kann Sprache für Diktieren übertönen, das Abziehen des Netzteils beim Diktieren hilft dann."
+    }
+  ]
+}

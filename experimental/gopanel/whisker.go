@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"image"
 	"image/color"
 	"image/draw"
@@ -513,6 +514,12 @@ func (w *whisker) searchRows() []wrow {
 
 // onButler takes a matcher result for the current query; older ones are dropped.
 func (w *whisker) onButler(r butlerResult) {
+	if r.status { // the matcher began indexing or finished loading: update the status line
+		if w.isOpen && len(w.query) > 0 {
+			w.put(w.paintList(), whListX, whListTop)
+		}
+		return
+	}
 	if r.cmdList != nil {
 		w.allCmds = r.cmdList
 		if w.isOpen && len(w.query) == 0 && w.catIdx == catCmds {
@@ -676,7 +683,7 @@ func (w *whisker) paintHeader() *image.RGBA {
 	img := image.NewRGBA(image.Rect(0, 0, whW, whHeaderH))
 	rect(img, img.Bounds(), whBg)
 	blit(img, w.avatar, 10, 10)
-	textAt(img, 52, 14, w.userName, whInk, true, 17, 300)
+	textAt(img, 52, 14, w.headerName(), whInk, true, 17, 300)
 	for i, ic := range w.btnIcons {
 		x := whW - 8 - (2-i)*44 + 8
 		if i == w.hoverBtn {
@@ -685,6 +692,20 @@ func (w *whisker) paintHeader() *image.RGBA {
 		blit(img, ic, x+4, 14)
 	}
 	return img
+}
+
+// headerName is the user name, except for the default account: "Cyberbeest Session h:mm", the time since boot.
+func (w *whisker) headerName() string {
+	if w.userName != "cyberbeest" {
+		return w.userName
+	}
+	data, err := os.ReadFile("/proc/uptime")
+	f := strings.Fields(string(data))
+	if err != nil || len(f) == 0 {
+		return w.userName
+	}
+	secs, _ := strconv.ParseFloat(f[0], 64)
+	return fmt.Sprintf("%s %d:%02d", tr("Cyberbeest Session"), int(secs)/3600, int(secs)%3600/60)
 }
 
 func btnRect(i int) image.Rectangle {
@@ -713,7 +734,7 @@ func (w *whisker) paintSearch() *image.RGBA {
 		rect(img, image.Rect(at(min(caret, anc)), 5, at(max(caret, anc)), 27), color.RGBA{0xb3, 0xd4, 0xfc, 255})
 	}
 	if text == "" {
-		textAt(img, 40, 8, "", whDim, false, 13, 0)
+		textAt(img, 40, 8, tr("App name, command or question"), whDim, false, 13, whW-80) // placeholder
 	} else {
 		textAt(img, 40, 8, text, whInk, false, 13, whW-80)
 	}
@@ -739,8 +760,28 @@ func (w *whisker) paintList() *image.RGBA {
 		}
 		draw.Draw(img, image.Rect(0, p.cy(), whListW, p.cy()+p.ch()), w.paintPane(p), image.Point{}, draw.Src)
 	}
+	if st := w.butlerStatus(); st != "" { // Butler is not ready: say why a search takes long
+		h := img.Bounds().Dy()
+		rect(img, image.Rect(1, h-22, whListW-1, h-1), whBg)
+		rect(img, image.Rect(1, h-23, whListW-1, h-22), whSepLine)
+		textAt(img, 12, h-19, st, whDim, false, 12, whListW-24)
+	}
 	frame(img, img.Bounds(), whBorder)
 	return img
+}
+
+// butlerStatus is the text for the status line at the bottom of the list while Butler loads or indexes.
+func (w *whisker) butlerStatus() string {
+	if w.bc == nil || len(w.query) == 0 {
+		return ""
+	}
+	switch w.bc.State() {
+	case "indexing":
+		return tr("Butler is updating its knowledge…")
+	case "starting":
+		return tr("Butler is starting…")
+	}
+	return ""
 }
 
 // paintPane draws the visible rows of one pane, with its scrollbar.

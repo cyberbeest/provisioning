@@ -5,7 +5,7 @@ Talks JSON lines over stdin/stdout, so it is private to whoever started it (no s
   in : {"op":"match","seq":N,"text":"..."[,"k":N,"fact_min":0.55]}   -> {"seq":N,"hits":[{id,sentence,category,score,needs_value,confirm}]}
        {"op":"run","id":"<command id>","text":"<sentence>"}  -> {"ran":"<id>","ok":bool,"reply":"..."}
        {"op":"quit"}
-  out: {"commands":[{id,sentence,category,needs_value,confirm}]} first (catalog order), then
+  out: {"indexing":N} when N new sentences are being embedded (can take a minute), {"commands":[{id,sentence,category,needs_value,confirm}]} first (catalog order), then
        {"ready":true,"lang":"en"} once the model is loaded.
 Only commands from the catalog can run, and slot values are re-derived from the sentence here:
 the caller never supplies an argv.
@@ -13,12 +13,25 @@ the caller never supplies an argv.
 import json
 import os
 import sys
+import time
+from pathlib import Path
 
+def name_process(name="butler"):
+    """Shows up as `butler` instead of `python` in /proc comm, so the panel's CPU and memory lists can say "Butler"."""
+    try:
+        import ctypes
+        ctypes.CDLL(None).prctl(15, name.encode(), 0, 0, 0)   # PR_SET_NAME
+    except (OSError, AttributeError):
+        pass
+
+
+name_process()
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 from butler import loader, slots, runner  # noqa: E402
 
 FACT_MIN = 0.55          # facts (factbook answers) score lower than commands: they are whole sentences
+RECHECK_S = 2.0          # at most this often, look whether catalog files changed
 MIN_SCORE = 0.6          # below this a hit is not worth sending
 LANG = "de" if os.environ.get("LC_ALL", os.environ.get("LANG", "")).startswith("de") else "en"
 
@@ -40,11 +53,25 @@ def sentence_for(cmd, vals):
     return cmd["sentence"][LANG].format_map({k: vals.get(k, "…") for k in kinds})
 
 
-def main():
+def fingerprint():
+    """Names, sizes and mtimes of every file the catalog is built from: when it changes, the running server is stale."""
+    fp = []
+    for d in (loader.CATALOG_DIR, loader.FACTS_DIR, loader.USER_DIR):
+        for f in sorted(Path(d).glob("*.json")):
+            try:
+                st = f.stat()
+                fp.append((str(f), st.st_size, st.st_mtime_ns))
+            except OSError:
+                pass
+    return fp
+
+
+def build():
+    """Loads catalog and factbook and announces them. Returns (cmds, facts, matcher, by_id), or None if the catalog is broken."""
     cmds, errs = loader.load()
     if errs:
         out({"error": "; ".join(errs[:3])})
-        return 1
+        return None
     # the command list goes out first, so a menu page can show it while the model still loads
     listing = []
     for c in cmds:
@@ -54,9 +81,18 @@ def main():
     out({"commands": listing})
     from butler.matcher import Matcher
     facts = loader.load_facts()
-    matcher = Matcher(cmds + facts)
+    matcher = Matcher(cmds + facts, on_index=lambda n: out({"indexing": n}))   # first start after a catalog change: the caller can say why it takes long
     by_id = {c["id"]: c for c in cmds + facts if "run" in c}   # only these can be run, whatever the caller sends
     out({"ready": True, "lang": LANG})
+    return cmds, facts, matcher, by_id
+
+
+def main():
+    state = build()
+    if state is None:
+        return 1
+    cmds, facts, matcher, by_id = state
+    seen, checked = fingerprint(), time.monotonic()
     for line in sys.stdin:
         try:
             req = json.loads(line)
@@ -65,6 +101,14 @@ def main():
         op = req.get("op")
         if op == "quit":
             return 0
+        if op in ("match", "run") and time.monotonic() - checked > RECHECK_S:
+            checked = time.monotonic()
+            now = fingerprint()
+            if now != seen:   # catalog or factbook edited while running: pick it up without a restart
+                seen = now
+                new = build()
+                if new is not None:
+                    cmds, facts, matcher, by_id = new
         if op == "match":
             text = str(req.get("text", ""))[:300]
             hits = []

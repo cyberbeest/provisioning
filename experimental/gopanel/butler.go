@@ -44,6 +44,7 @@ type butlerResult struct {
 	hits []butlerHit
 
 	cmdList []butlerHit // the whole catalog, sent once at startup
+	status  bool        // the server started indexing or became ready: repaint the status line
 
 	// answer to a run request (ran), or a note to clear it again (clear)
 	ran, clear bool
@@ -59,16 +60,17 @@ type butlerResult struct {
 type butlerClient struct {
 	out chan<- butlerResult
 
-	mu      sync.Mutex
-	cmd     *exec.Cmd
-	stdin   io.WriteCloser
-	ready   bool
-	seq     int
-	pending string // latest text waiting for the server (not ready yet, or debounce)
-	hasPend bool
-	timer   *time.Timer
-	lastUse time.Time
-	missing bool // butler-server is not installed
+	mu       sync.Mutex
+	cmd      *exec.Cmd
+	stdin    io.WriteCloser
+	ready    bool
+	seq      int
+	pending  string // latest text waiting for the server (not ready yet, or debounce)
+	hasPend  bool
+	timer    *time.Timer
+	lastUse  time.Time
+	missing  bool // butler-server is not installed
+	indexing bool // the server is embedding new sentences (first start after a catalog change)
 }
 
 func newButlerClient(out chan<- butlerResult) *butlerClient {
@@ -96,6 +98,27 @@ func (b *butlerClient) Ask(text string) int {
 	}
 	b.timer = time.AfterFunc(butlerDebounce, b.flush)
 	return b.seq
+}
+
+// notify tells the menu to repaint its status line (indexing started, or the matcher is ready).
+func (b *butlerClient) notify() {
+	select {
+	case b.out <- butlerResult{status: true}:
+	default:
+	}
+}
+
+// State says what the matcher is busy with, for the menu's status line: "indexing", "starting" or "".
+func (b *butlerClient) State() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	switch {
+	case b.cmd == nil || b.ready:
+		return ""
+	case b.indexing:
+		return "indexing"
+	}
+	return "starting"
 }
 
 // Warm starts the server ahead of the first search (menu opened), so the model is loading
@@ -171,6 +194,7 @@ func (b *butlerClient) read(cmd *exec.Cmd, r io.Reader) {
 			LMax  int         `json:"level_max"`
 			Hits  []butlerHit `json:"hits"`
 			Cmds  []butlerHit `json:"commands"`
+			Idx   *int        `json:"indexing"`
 		}
 		var raw map[string]json.RawMessage
 		if json.Unmarshal(sc.Bytes(), &raw) != nil || json.Unmarshal(sc.Bytes(), &m) != nil {
@@ -180,13 +204,19 @@ func (b *butlerClient) read(cmd *exec.Cmd, r io.Reader) {
 		case m.Ready:
 			b.mu.Lock()
 			if b.cmd == cmd {
-				b.ready = true
+				b.ready, b.indexing = true, false
 				if b.hasPend {
 					b.sendLocked(map[string]any{"op": "match", "seq": b.seq, "text": b.pending})
 					b.hasPend = false
 				}
 			}
 			b.mu.Unlock()
+			b.notify()
+		case m.Idx != nil:
+			b.mu.Lock()
+			b.indexing = true
+			b.mu.Unlock()
+			b.notify()
 		case m.Cmds != nil:
 			b.out <- butlerResult{cmdList: m.Cmds}
 		case m.Error != "":
@@ -214,7 +244,7 @@ func (b *butlerClient) read(cmd *exec.Cmd, r io.Reader) {
 	cmd.Wait()
 	b.mu.Lock()
 	if b.cmd == cmd {
-		b.cmd, b.stdin, b.ready = nil, nil, false
+		b.cmd, b.stdin, b.ready, b.indexing = nil, nil, false, false
 	}
 	b.mu.Unlock()
 }

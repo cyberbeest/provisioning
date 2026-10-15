@@ -19,7 +19,7 @@ def normalize(text):
 
 
 class Matcher:
-    def __init__(self, cmds):
+    def __init__(self, cmds, on_index=None):
         self.tok = Tokenizer.from_file(str(MODEL_DIR / "tokenizer.json"))
         self.tok.enable_padding(); self.tok.enable_truncation(64)
         so = ort.SessionOptions(); so.intra_op_num_threads = 2
@@ -31,6 +31,7 @@ class Matcher:
             for s, neg in loader.all_examples(c):
                 texts.append(s); self.owner.append(i); self.neg.append(neg)
         self.owner = np.array(self.owner); self.neg = np.array(self.neg)
+        self.on_index = on_index   # called with the number of sentences about to be embedded, when the cache lacks some
         self.E = self._cached_embeddings(texts)
 
     def _cached_embeddings(self, texts):
@@ -46,6 +47,8 @@ class Matcher:
             pass
         missing = [i for i, k in enumerate(keys) if k not in known]
         if missing:
+            if self.on_index:
+                self.on_index(len(missing))
             new = self.embed([texts[i] for i in missing])
             known.update({keys[i]: v for i, v in zip(missing, new)})
         E = np.stack([known[k] for k in keys]).astype(np.float32)

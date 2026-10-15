@@ -30,6 +30,7 @@ T = {
     "count": {"en": "{n} of {total} facts", "de": "{n} von {total} Fakten"},
     "manual": {"en": "Manual section {s}", "de": "Handbuch, Abschnitt {s}"},
     "asking": {"en": "Butler is thinking…", "de": "Butler überlegt …"},
+    "indexing": {"en": "Butler is updating its knowledge…", "de": "Butler aktualisiert sein Wissen …"},
 }
 CSS = b"""
 .topic { font-weight: bold; font-size: 15px; padding: 14px 12px 4px 12px; }
@@ -58,7 +59,8 @@ def load(facts_dir):
 class Butler:
     """Butler's matcher as a child process (JSON lines, see butler_server.py), started on the first question."""
 
-    def __init__(self):
+    def __init__(self, on_status=None):
+        self.on_status = on_status   # called (main thread) with "indexing" or "ready"
         self.path = shutil.which("butler-server") or str(Path.home() / ".local/bin/butler-server")
         self.proc, self.seq, self.callbacks = None, 0, {}
 
@@ -82,6 +84,8 @@ class Butler:
                 msg = json.loads(line)
             except ValueError:
                 continue
+            if self.on_status and ("indexing" in msg or msg.get("ready")):
+                GLib.idle_add(self.on_status, "indexing" if "indexing" in msg else "ready")
             if "hits" in msg and msg.get("seq") in self.callbacks:
                 GLib.idle_add(self.callbacks.pop(msg["seq"]), msg["hits"])
 
@@ -103,8 +107,10 @@ class Window(Gtk.Window):
         self.total = sum(len(f) for _, f in topics)
         self.topic = None      # selected topic name, None = all
         self.asked = ""
+        self.waiting = False   # a question is out and unanswered
         self.rank = []         # fact ids Butler matched to the current search, best first
-        self.butler = Butler()
+        self.butler = Butler(self.on_status)
+        self.status = ""
         prov = Gtk.CssProvider()
         prov.load_from_data(CSS)
         Gtk.StyleContext.add_provider_for_screen(Gdk.Screen.get_default(), prov, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
@@ -243,6 +249,12 @@ class Window(Gtk.Window):
             r.meta_label.set_text("  ·  ".join(parts))
 
     # --- Butler --------------------------------------------------------------
+    def on_status(self, what):
+        self.status = what
+        if self.waiting:
+            self.count.set_text(tr("indexing") if what == "indexing" else tr("asking"))
+        return False
+
     def ask_now(self, *_):
         if self.timer:
             GLib.source_remove(self.timer)
@@ -254,7 +266,8 @@ class Window(Gtk.Window):
         if len(text) < 3 or not self.butler.available():
             return False
         self.asked = text
-        self.count.set_text(tr("asking"))
+        self.waiting = True
+        self.count.set_text(tr("indexing") if self.status == "indexing" else tr("asking"))
         try:
             self.butler.ask(text, self.on_answer)
         except OSError:
@@ -262,6 +275,7 @@ class Window(Gtk.Window):
         return False
 
     def on_answer(self, hits):
+        self.waiting = False
         if self.asked != self.query():
             return False   # typed on meanwhile
         self.rank = []
