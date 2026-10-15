@@ -1,0 +1,95 @@
+{
+  "category": {
+    "en": "Help",
+    "de": "Hilfe"
+  },
+  "commands": [
+    {
+      "id": "help_router_page",
+      "title": {
+        "en": "Router page does not open",
+        "de": "Router-Seite öffnet sich nicht"
+      },
+      "answer": {
+        "en": "Your router's page may not open because of encrypted DNS. Turn it off for now; it is back on after a restart.",
+        "de": "Die Seite deines Routers lässt sich vermutlich wegen des verschlüsselten DNS nicht öffnen. Schalte es vorübergehend aus; nach einem Neustart ist es wieder an."
+      },
+      "sentence": {
+        "en": "Turn off encrypted DNS for now",
+        "de": "Verschlüsseltes DNS vorübergehend ausschalten"
+      },
+      "reply": {
+        "en": "Turning encrypted DNS off",
+        "de": "Verschlüsseltes DNS wird ausgeschaltet"
+      },
+      "confirm": true,
+      "run": {
+        "argv": [
+          "gtk-launch",
+          "dot-disable"
+        ]
+      },
+      "examples": {
+        "en": [
+          "I can't reach my router settings page",
+          "my router page won't open",
+          "I can't open my router's login page",
+          "fritz.box doesn't load",
+          "can't get into my router",
+          "the router configuration page does not work",
+          "how do I open my router settings"
+        ],
+        "de": [
+          "Ich komme nicht auf die Einstellungen meines Routers",
+          "Die Router-Seite öffnet sich nicht",
+          "Die Fritzbox-Oberfläche lädt nicht",
+          "fritz.box geht nicht",
+          "Ich komme nicht in meinen Router",
+          "Die Seite meines Routers lässt sich nicht öffnen"
+        ]
+      }
+    },
+    {
+      "id": "help_login_page",
+      "title": {
+        "en": "Wi-Fi login page does not appear",
+        "de": "WLAN-Anmeldeseite erscheint nicht"
+      },
+      "answer": {
+        "en": "Login pages of hotel or airport Wi-Fi often don't appear with encrypted DNS. Turn it off for now; it is back on after a restart.",
+        "de": "Anmeldeseiten von Hotel- oder Flughafen-WLAN erscheinen mit verschlüsseltem DNS oft nicht. Schalte es vorübergehend aus; nach einem Neustart ist es wieder an."
+      },
+      "sentence": {
+        "en": "Turn off encrypted DNS for now",
+        "de": "Verschlüsseltes DNS vorübergehend ausschalten"
+      },
+      "reply": {
+        "en": "Turning encrypted DNS off",
+        "de": "Verschlüsseltes DNS wird ausgeschaltet"
+      },
+      "confirm": true,
+      "run": {
+        "argv": [
+          "gtk-launch",
+          "dot-disable"
+        ]
+      },
+      "examples": {
+        "en": [
+          "the hotel wifi login page doesn't show up",
+          "I'm connected to the wifi but there is no login page",
+          "the captive portal does not open",
+          "I can't log in to the airport wifi",
+          "wifi says connected but no website loads and there's no sign-in page"
+        ],
+        "de": [
+          "Die Anmeldeseite vom Hotel-WLAN erscheint nicht",
+          "Ich bin mit dem WLAN verbunden, aber es kommt keine Anmeldeseite",
+          "Das Captive Portal öffnet sich nicht",
+          "Ich kann mich im Flughafen-WLAN nicht anmelden",
+          "WLAN verbunden, aber keine Seite lädt und keine Anmeldung erscheint"
+        ]
+      }
+    }
+  ]
+}

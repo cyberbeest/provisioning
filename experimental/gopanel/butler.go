@@ -32,6 +32,8 @@ type butlerHit struct {
 	Score      float64 `json:"score"`
 	NeedsValue bool    `json:"needs_value"`
 	Confirm    bool    `json:"confirm"`
+	Answer     string  `json:"answer"` // a help entry: shown as text, Enter runs the action (Sentence)
+	Kind       string  `json:"kind"` // "fact": a factbook answer, shown as is, not run
 }
 
 type butlerResult struct {

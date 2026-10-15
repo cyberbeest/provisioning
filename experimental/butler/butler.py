@@ -44,6 +44,7 @@ T = {
     "failed": {"en": "That did not work", "de": "Das hat nicht geklappt"},
     "all_cmds": {"en": "All commands", "de": "Alle Befehle"},
     "hint_list": {"en": "Click a command to try it   ·   Esc: back", "de": "Befehl anklicken zum Ausprobieren   ·   Esc: zurück"},
+    "answer": {"en": "Answer", "de": "Antwort"},
     "no_catalog": {"en": "Catalog problem: ", "de": "Problem im Katalog: "},
 }
 
@@ -70,6 +71,7 @@ window { background: #1e2127; }
 #title { color: #e6e9ef; font-size: 22px; font-weight: bold; }
 #hint, #reason { color: #8b93a3; font-size: 13px; }
 #pick { color: #7fd1a0; font-size: 20px; font-weight: bold; }
+#fact { color: #e6e9ef; font-size: 16px; }
 #pick.low { color: #d1b27f; }
 #alt { color: #aab2c0; font-size: 15px; }
 #alt.sel { color: #7fd1a0; font-weight: bold; }
@@ -136,7 +138,7 @@ class Butler(Gtk.Window):
             if errs:
                 raise RuntimeError("; ".join(errs[:2]))
             from butler.matcher import Matcher
-            m = Matcher(cmds)
+            m = Matcher(cmds + loader.load_facts())   # factbook answers rank next to the commands
             GLib.idle_add(self._loaded, cmds, m, None)
         except Exception as e:  # noqa: BLE001 - shown in the window
             GLib.idle_add(self._loaded, None, None, str(e))
@@ -181,6 +183,10 @@ class Butler(Gtk.Window):
 
     def name_of(self, cmd, vals=None):
         """The whole command as one sentence, with the value filled in ("…" while it is still unknown)."""
+        if cmd.get("kind") == "fact":
+            return cmd["answer"][LANG]
+        if cmd.get("answer"):   # a help entry: explain, the action is named underneath
+            return cmd["answer"][LANG]
         if vals is None:
             vals = self.slot_for(cmd, self.sentence)[0]
         kinds = {cmd["slot"]["kind"]} if "slot" in cmd else set()
@@ -352,8 +358,12 @@ class Butler(Gtk.Window):
         if low:
             self.label(tr("unsure"), "reason")
         vals, st = self.slot_for(cmd, text)
-        self.label(self.name_of(cmd, vals), "pick", low=low)
+        self.label(self.name_of(cmd, vals), "fact" if cmd.get("kind") == "fact" or cmd.get("answer") else "pick", low=low)
         note = tr("will_ask") if st == "missing" else cmd["category"][LANG]
+        if cmd.get("kind") == "fact":
+            note = tr("answer") + "  ·  " + note
+        elif cmd.get("answer"):
+            note = "↵  " + cmd["sentence"][LANG]
         self.label(f"{note}   ·   {score:.2f}", "reason")
         self.label(" ", "reason")
         for i, (c, sc) in enumerate(self.ranked):
@@ -364,6 +374,8 @@ class Butler(Gtk.Window):
     # --- running -----------------------------------------------------------
     def confirm(self):
         cmd, _ = self.ranked[self.idx]
+        if cmd.get("kind") == "fact":   # an answer, nothing to run
+            return
         self.vals, st = self.slot_for(cmd, self.sentence)
         if st == "missing":
             self.state = "ask"

@@ -62,6 +62,7 @@ var deStrings = map[string]string{
 	"Favorites":                     "Favoriten",
 	"Commands":                      "Befehle",
 	"No commands available":         "Keine Befehle verfügbar",
+	"Answer":                        "Antwort",
 	"Quickstart":                    "Schnellstart",
 	"No recently used applications": "Noch nichts benutzt",
 	"Command":                       "Befehl",

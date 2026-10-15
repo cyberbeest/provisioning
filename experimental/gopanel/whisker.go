@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"image"
 	"image/color"
 	"image/draw"
@@ -36,6 +37,7 @@ const (
 	whAppRowH    = 40
 	whHeadRowH   = 26                     // section header of a pane (Recently Used / Favorites in Quickstart)
 	whCatHover   = 300 * time.Millisecond // how long the pointer must rest on a category before it opens
+	whFactMin    = 0.60                   // matcher score a factbook answer needs
 	whCmdMin     = 0.80                   // matcher score a command needs to appear among the search results
 	whCatRowH    = 34
 	whAppIcon    = 32
@@ -81,6 +83,7 @@ type whisker struct {
 	favIDs, recentIDs            []string
 	catIdx                       int
 	query                        []rune
+	qpos, qanc                   int    // caret and selection anchor in query (equal: nothing selected)
 	rows                         []wrow // what the app pane shows (apps, commands, section headers)
 	tops                         []int  // tops[i] = y of row i in the list; tops[len(rows)] = total height
 	userSel                      bool   // the selection was moved on purpose (keys/hover): keep it when results change
@@ -95,6 +98,8 @@ type whisker struct {
 	valueHit                     *butlerHit // a command that is asking for a number, and what was typed so far
 	valueBuf                     []rune
 	ranAt                        time.Time
+	caretOn                      bool // text caret of the search box is in its visible phase
+	blinkTok                     int  // identifies the running blink timer chain
 	catToken                     int  // identifies the pending hover-open of a category
 	dragging                     bool // the scrollbar thumb of pane dragPane is held
 	dragPane, dragOff, dragY     int  // dragOff: where in the thumb it was grabbed; dragY: latest pointer y
@@ -124,6 +129,8 @@ type rowKind int
 const (
 	rowApp rowKind = iota
 	rowCmd
+	rowHelp // a symptom the matcher knows: an explanation and one action to run with Enter
+	rowFact // a factbook answer: the question was a question, not a command
 )
 
 // pane is a vertically scrolling part of the app list: rows [from,to) under an optional title.
@@ -144,17 +151,30 @@ func (p pane) cy() int { // top of the rows
 func (p pane) ch() int { return p.y + p.h - p.cy() }
 
 type wrow struct {
-	kind rowKind
-	e    *appmenu.Entry // rowApp
-	hit  *butlerHit     // rowCmd
+	kind  rowKind
+	e     *appmenu.Entry // rowApp
+	hit   *butlerHit     // rowCmd, rowFact
+	lines []string       // rowFact: the answer, wrapped
+}
+
+func (r wrow) height() int {
+	switch r.kind {
+	case rowFact:
+		return 30 + 17*len(r.lines)
+	case rowHelp:
+		return 36 + 17*len(r.lines)
+	}
+	return whAppRowH
 }
 
 func (r wrow) key() string {
 	switch r.kind {
 	case rowApp:
 		return "app:" + r.e.ID
-	case rowCmd:
+	case rowCmd, rowHelp:
 		return "cmd:" + r.hit.ID
+	case rowFact:
+		return "fact:" + r.hit.ID
 	}
 	return ""
 }
@@ -283,7 +303,7 @@ func (w *whisker) open(anchorX int) {
 		w.loadData()
 	}
 	w.refreshConfig()
-	w.query = nil
+	w.setQuery(nil)
 	w.catScroll, w.hoverRow, w.hoverCat, w.hoverBtn, w.selRow = 0, -1, -1, -1, -1
 	w.catIdx = catQuick
 	if v := w.prop("default-category"); len(v) == 1 && v[0] == "2" {
@@ -308,6 +328,9 @@ func (w *whisker) open(anchorX int) {
 		}
 	}
 	w.rebuildList()
+	w.caretOn = true
+	w.blinkTok++
+	w.scheduleBlink()
 	if w.keymap == nil {
 		setup := xproto.Setup(w.c)
 		w.minKC = setup.MinKeycode
@@ -422,7 +445,7 @@ func (w *whisker) setPanes(rows []wrow, split int) {
 	w.rows = rows
 	w.tops = make([]int, len(rows)+1)
 	for i := range rows {
-		w.tops[i+1] = w.tops[i] + whAppRowH
+		w.tops[i+1] = w.tops[i] + rows[i].height()
 	}
 	h := w.listHeight()
 	if split < 0 {
@@ -436,8 +459,10 @@ func (w *whisker) setPanes(rows []wrow, split int) {
 }
 
 func (w *whisker) firstSelectable() int {
-	if len(w.rows) > 0 {
-		return 0
+	for i, r := range w.rows {
+		if r.kind != rowFact {
+			return i
+		}
 	}
 	return -1
 }
@@ -446,12 +471,28 @@ func (w *whisker) firstSelectable() int {
 // strong app matches (name equals/starts with the query) and before the weaker ones.
 func (w *whisker) searchRows() []wrow {
 	var cmds []wrow
+	var facts []wrow
 	for i := range w.hits {
+		h := &w.hits[i]
+		if h.Kind == "fact" { // answers to questions, best first; a sure command match makes them noise
+			if h.Score >= whFactMin && len(facts) < 2 && (len(facts) == 0 || h.Score >= facts[0].hit.Score*0.9) {
+				facts = append(facts, wrow{kind: rowFact, hit: h, lines: wrapText(h.Sentence, 13, whListW-60, 4)})
+			}
+			continue
+		}
 		// a second command only when it is nearly as good as the best one
-		if h := &w.hits[i]; h.Score >= whCmdMin && len(cmds) < 2 && (len(cmds) == 0 || h.Score >= w.hits[0].Score*0.9) {
-			cmds = append(cmds, wrow{kind: rowCmd, hit: h})
+		if h.Score >= whCmdMin && len(cmds) < 2 && (len(cmds) == 0 || h.Score >= cmds[0].hit.Score*0.9) {
+			if h.Answer != "" {
+				cmds = append(cmds, wrow{kind: rowHelp, hit: h, lines: wrapText(h.Answer, 13, whListW-60, 4)})
+			} else {
+				cmds = append(cmds, wrow{kind: rowCmd, hit: h})
+			}
 		}
 	}
+	if len(cmds) > 0 && cmds[0].hit.Score >= 0.9 {
+		facts = nil
+	}
+	cmds = append(cmds, facts...)
 	var rows []wrow
 	placed := false
 	for _, a := range w.scoredApps {
@@ -656,18 +697,24 @@ func (w *whisker) paintSearch() *image.RGBA {
 	frame(img, r.Inset(1), whFocus)
 	textAt(img, 18, 7, "\U0001F50D︎", whDim, false, 14, 0)
 	text := string(w.query)
+	caret, anc := w.qpos, w.qanc
 	if w.valueHit != nil {
 		text = w.valueSentence()
+		caret, anc = len([]rune(text)), len([]rune(text))
+	}
+	rs := []rune(text)
+	caret, anc = min(caret, len(rs)), min(anc, len(rs))
+	at := func(i int) int { return 40 + min(textWidth(string(rs[:i]), 13), whW-80) }
+	if caret != anc {
+		rect(img, image.Rect(at(min(caret, anc)), 5, at(max(caret, anc)), 27), color.RGBA{0xb3, 0xd4, 0xfc, 255})
 	}
 	if text == "" {
 		textAt(img, 40, 8, "", whDim, false, 13, 0)
 	} else {
 		textAt(img, 40, 8, text, whInk, false, 13, whW-80)
-		tw := gfx.Measure([]gfx.Span{{Text: text, Scale: 1, Color: whInk}}, 13).W
-		rect(img, image.Rect(40+min(tw, whW-80)+1, 7, 40+min(tw, whW-80)+2, 25), whInk)
 	}
-	if text == "" {
-		rect(img, image.Rect(40, 7, 41, 25), whInk)
+	if w.caretOn {
+		rect(img, image.Rect(at(caret)+1, 7, at(caret)+2, 25), whInk)
 	}
 	return img
 }
@@ -693,6 +740,28 @@ func (w *whisker) paintList() *image.RGBA {
 }
 
 // paintPane draws the visible rows of one pane, with its scrollbar.
+// wrapText breaks text into at most maxLines lines of width maxW; the last line keeps the rest
+// of the text and textAt cuts it with … when it does not fit.
+func wrapText(text string, px float64, maxW, maxLines int) []string {
+	var lines []string
+	cur := ""
+	for _, word := range strings.Fields(text) {
+		try := strings.TrimSpace(cur + " " + word)
+		if cur != "" && textWidth(try, px) > maxW {
+			if len(lines) == maxLines-1 {
+				return append(lines, try)
+			}
+			lines, cur = append(lines, cur), word
+			continue
+		}
+		cur = try
+	}
+	if cur != "" {
+		lines = append(lines, cur)
+	}
+	return lines
+}
+
 func (w *whisker) paintPane(p *pane) *image.RGBA {
 	h := p.ch()
 	img := image.NewRGBA(image.Rect(0, 0, whListW, h))
@@ -700,15 +769,45 @@ func (w *whisker) paintPane(p *pane) *image.RGBA {
 	base := w.tops[p.from]
 	for i := p.from; i < p.to && w.tops[i]-base-p.scroll < h; i++ {
 		y := w.tops[i] - base - p.scroll
-		if y+whAppRowH <= 0 {
+		r := w.rows[i]
+		rh := r.height()
+		if y+rh <= 0 {
 			continue
 		}
-		r := w.rows[i]
+		if r.kind == rowFact {
+			blit(img, w.icon("dialog-information", whAppIcon), 6, y+6)
+			textAt(img, 46, y+4, tr("Answer")+"  ·  "+r.hit.Category, whDim, false, 12, whListW-56)
+			for li, l := range r.lines {
+				textAt(img, 46, y+22+17*li, l, whInk, false, 13, whListW-56)
+			}
+			rect(img, image.Rect(0, y+rh-1, whListW, y+rh), whSepLine)
+			continue
+		}
 		switch {
 		case i == w.selRow:
-			rect(img, image.Rect(0, y, whListW, y+whAppRowH), whSel)
+			rect(img, image.Rect(0, y, whListW, y+rh), whSel)
 		case i == w.hoverRow:
-			rect(img, image.Rect(0, y, whListW, y+whAppRowH), whHover)
+			rect(img, image.Rect(0, y, whListW, y+rh), whHover)
+		}
+		if r.kind == rowHelp {
+			rect(img, image.Rect(0, y, 3, y+rh), whFocus)
+			blit(img, w.icon("help-browser", whAppIcon), 6, y+6)
+			textAt(img, 46, y+4, r.hit.Category, whDim, false, 12, whListW-56)
+			for li, l := range r.lines {
+				textAt(img, 46, y+22+17*li, l, whInk, false, 13, whListW-56)
+			}
+			act := "↵  " + r.hit.Sentence
+			switch {
+			case w.confirmID == r.hit.ID:
+				act = tr("Press Enter again to confirm")
+			case w.ranID == r.hit.ID && w.ranMsg != "":
+				act = "✓  " + w.ranMsg
+				if !w.ranOK {
+					act = "✗  " + w.ranMsg
+				}
+			}
+			textAt(img, 46, y+22+17*len(r.lines), act, whFocus, true, 13, whListW-56)
+			continue
 		}
 		if r.kind == rowCmd {
 			rect(img, image.Rect(0, y, 3, y+whAppRowH), whFocus) // accent bar: this row is a command
@@ -883,7 +982,7 @@ func (w *whisker) valueKey(ks xproto.Keysym) {
 		}
 		w.valueHit, w.valueBuf = nil, nil
 		if len(w.query) > 0 { // the search box now shows the full sentence: Enter repeats it, editing changes it
-			w.query = []rune(text)
+			w.setQuery([]rune(text))
 			w.rebuildList()
 		}
 		w.ranID = id
@@ -925,7 +1024,7 @@ func (w *whisker) activate(i int) {
 	switch r := w.rows[i]; r.kind {
 	case rowApp:
 		w.launch(r.e)
-	case rowCmd:
+	case rowCmd, rowHelp:
 		w.runCommand(r.hit)
 	}
 }
@@ -948,6 +1047,9 @@ func (w *whisker) moveSel(d int) {
 	}
 	for n := 0; n < absInt(d); n++ {
 		j := i + step
+		for j >= 0 && j < len(w.rows) && w.rows[j].kind == rowFact { // answers are read, not picked
+			j += step
+		}
 		if j < 0 || j >= len(w.rows) {
 			break
 		}
@@ -1021,6 +1123,9 @@ func (w *whisker) listRowAt(py int) int {
 	off := rel - p.cy() + p.scroll
 	for i := p.from; i < p.to; i++ {
 		if off < w.tops[i+1]-w.tops[p.from] {
+			if w.rows[i].kind == rowFact {
+				return -1
+			}
 			return i
 		}
 	}
@@ -1067,6 +1172,23 @@ func (w *whisker) dragStart(pi, py int) {
 		return
 	}
 	w.dragScroll(pi, py)
+}
+
+const whCaretBlink = 530 * time.Millisecond
+
+func (w *whisker) scheduleBlink() {
+	tok := w.blinkTok
+	time.AfterFunc(whCaretBlink, func() { ctlCmds <- "whisker-blink:" + strconv.Itoa(tok) })
+}
+
+// blinkTick flips the caret; typing shows it again at once (key() paints with caretOn set).
+func (w *whisker) blinkTick(tok int) {
+	if !w.isOpen || tok != w.blinkTok {
+		return
+	}
+	w.caretOn = !w.caretOn
+	w.put(w.paintSearch(), 0, whSearchY)
+	w.scheduleBlink()
 }
 
 // catTick opens the hovered category when the pointer has rested on it since the timer started.
@@ -1178,6 +1300,7 @@ func (w *whisker) keysymFor(code xproto.Keycode, state uint16) xproto.Keysym {
 }
 
 func (w *whisker) key(code xproto.Keycode, state uint16) {
+	w.caretOn = true
 	ks := w.keysymFor(code, state)
 	if w.valueHit != nil {
 		w.valueKey(ks)
@@ -1189,10 +1312,38 @@ func (w *whisker) key(code xproto.Keycode, state uint16) {
 			return
 		}
 	}
+	ctrl, shift := state&4 != 0, state&1 != 0
+	if ctrl {
+		w.ctrlKey(ks)
+		return
+	}
+	lo, hi := w.selRange()
 	switch ks {
+	case 0xff51, 0xff53: // Left, Right
+		to := w.qpos - 1
+		if ks == 0xff53 {
+			to = w.qpos + 1
+		}
+		if lo != hi && !shift { // collapse to the edge of the selection
+			to = lo
+			if ks == 0xff53 {
+				to = hi
+			}
+		}
+		w.moveCaret(to, shift)
+		return
+	case 0xff50, 0xff57: // Home, End
+		w.moveCaret(map[xproto.Keysym]int{0xff50: 0, 0xff57: len(w.query)}[ks], shift)
+		return
+	case 0xffff: // Delete
+		if lo == hi {
+			hi = min(hi+1, len(w.query))
+		}
+		w.deleteRange(lo, hi)
+		return
 	case 0xff1b: // Escape
 		if len(w.query) > 0 {
-			w.query = nil
+			w.setQuery(nil)
 			w.rebuildList()
 			w.paintAll()
 		} else {
@@ -1200,11 +1351,10 @@ func (w *whisker) key(code xproto.Keycode, state uint16) {
 		}
 		return
 	case 0xff08: // BackSpace
-		if len(w.query) > 0 {
-			w.query = w.query[:len(w.query)-1]
-			w.rebuildList()
-			w.paintAll()
+		if lo == hi {
+			lo = max(lo-1, 0)
 		}
+		w.deleteRange(lo, hi)
 		return
 	case 0xff0d, 0xff8d: // Return
 		if w.selRow >= 0 && w.selRow < len(w.rows) {
@@ -1236,10 +1386,127 @@ func (w *whisker) key(code xproto.Keycode, state uint16) {
 		r = rune(ks & 0xffffff)
 	}
 	if r != 0 {
-		w.query = append(w.query, r)
-		w.rebuildList()
-		w.paintAll()
+		w.replaceSel([]rune{r})
 	}
+}
+
+// ---- the search box as a small text field -----------------------------------------------
+
+const whQueryMax = 300
+
+func (w *whisker) setQuery(r []rune) {
+	w.query = r
+	w.qpos, w.qanc = len(r), len(r)
+}
+
+func (w *whisker) selRange() (lo, hi int) {
+	n := len(w.query)
+	p, a := min(max(w.qpos, 0), n), min(max(w.qanc, 0), n)
+	return min(p, a), max(p, a)
+}
+
+// charAt is the caret position (0..len) nearest to window x inside the search box.
+func (w *whisker) charAt(px int) int {
+	for i := 1; i <= len(w.query); i++ {
+		prev := textWidth(string(w.query[:i-1]), 13)
+		cur := textWidth(string(w.query[:i]), 13)
+		if 40+(prev+cur)/2 > px {
+			return i - 1
+		}
+	}
+	return len(w.query)
+}
+
+// moveCaret moves the caret (extend: keep the anchor, so the text in between is selected) and repaints the box.
+func (w *whisker) moveCaret(pos int, extend bool) {
+	w.qpos = min(max(pos, 0), len(w.query))
+	if !extend {
+		w.qanc = w.qpos
+	}
+	w.put(w.paintSearch(), 0, whSearchY)
+}
+
+// replaceSel replaces the selection (or inserts at the caret) and re-runs the search.
+func (w *whisker) replaceSel(ins []rune) {
+	lo, hi := w.selRange()
+	room := whQueryMax - (len(w.query) - (hi - lo))
+	if len(ins) > room {
+		ins = ins[:max(room, 0)]
+	}
+	q := append(append(append([]rune{}, w.query[:lo]...), ins...), w.query[hi:]...)
+	w.query = q
+	w.qpos, w.qanc = lo+len(ins), lo+len(ins)
+	w.rebuildList()
+	w.paintAll()
+}
+
+func (w *whisker) deleteRange(lo, hi int) {
+	if lo == hi {
+		return
+	}
+	w.qpos, w.qanc = lo, hi
+	w.replaceSel(nil)
+}
+
+// wordEdge is the start of the word before pos (dir < 0) or the end of the word after it.
+func (w *whisker) wordEdge(pos, dir int) int {
+	q := w.query
+	inRange := func(i int) bool { return i >= 0 && i < len(q) }
+	at := func(i int) rune { return q[i] } // i is checked by inRange
+	step := 0
+	if dir < 0 {
+		step = -1
+	}
+	for inRange(pos+step) && at(pos+step) == ' ' {
+		pos += dir
+	}
+	for inRange(pos+step) && at(pos+step) != ' ' {
+		pos += dir
+	}
+	return pos
+}
+
+// ctrlKey: Ctrl+A select all, Ctrl+C/X/V clipboard, Ctrl+arrows by word. Other Ctrl combinations do nothing.
+func (w *whisker) ctrlKey(ks xproto.Keysym) {
+	lo, hi := w.selRange()
+	switch ks {
+	case 'a', 'A':
+		w.qanc, w.qpos = 0, len(w.query)
+		w.put(w.paintSearch(), 0, whSearchY)
+	case 'c', 'C':
+		copyClipboard(string(w.query[lo:hi]))
+	case 'x', 'X':
+		copyClipboard(string(w.query[lo:hi]))
+		w.deleteRange(lo, hi)
+	case 'v', 'V':
+		if t := strings.Join(strings.Fields(pasteClipboard()), " "); t != "" {
+			w.replaceSel([]rune(t))
+		}
+	case 0xff51:
+		w.moveCaret(w.wordEdge(w.qpos, -1), false)
+	case 0xff53:
+		w.moveCaret(w.wordEdge(w.qpos, 1), false)
+	}
+}
+
+// The clipboard goes through xclip (installed by the provisioning for Claude Code anyway).
+func copyClipboard(s string) {
+	if s == "" {
+		return
+	}
+	cmd := exec.Command("xclip", "-selection", "clipboard", "-i")
+	cmd.Stdin = strings.NewReader(s)
+	cmd.Run() // xclip forks into the background to serve the selection
+}
+
+func pasteClipboard() string {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, "xclip", "-selection", "clipboard", "-o").Output()
+	if err != nil {
+		return ""
+	}
+	return string(out)
 }
 
 // handle consumes events while the menu is open.
@@ -1396,9 +1663,11 @@ func (w *whisker) press(px, py, btn int) {
 			if r := w.listRowAt(py); r >= 0 {
 				w.activate(r)
 			}
+		case py >= whSearchY && py < whSearchY+whSearchH && px >= 8 && px < whW-8 && w.valueHit == nil:
+			w.moveCaret(w.charAt(px), false)
 		case inCats:
 			if c := w.catAtY(py); c >= 0 {
-				w.query = nil
+				w.setQuery(nil)
 				w.catIdx = c
 				w.rebuildList()
 				w.paintAll()

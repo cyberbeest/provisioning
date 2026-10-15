@@ -5,7 +5,7 @@ User overlay: ~/.config/cyberbeest/butler/learned.json  {"<id>": {"en": [...], "
               ~/.config/cyberbeest/butler/disabled.json ["<id>", ...]
 Overlay never edits shipped files, so updates cannot clobber it.
 """
-import json, hashlib, re
+import json, hashlib, os, re
 from pathlib import Path
 
 LANGS = ("en", "de")
@@ -66,6 +66,8 @@ def validate_command(cmd, where):
         need(set(_PLACEHOLDER.findall(t)) <= slot_names | {"level"}, f"done {l!r} has unknown placeholders")
     need(refs <= slot_names | {"arg"}, f"placeholders {refs - slot_names - {'arg'}} have no slot")
     need(isinstance(cmd.get("confirm", False), bool), "confirm must be bool")
+    if "answer" in cmd:   # a help entry: the typed symptom shows this text, Enter runs the action
+        need(all(isinstance(cmd["answer"].get(l), str) and cmd["answer"][l] for l in LANGS), f"answer needs {LANGS}")
     return errs
 
 
@@ -96,6 +98,26 @@ def load(catalog_dir=CATALOG_DIR, user_dir=USER_DIR):
                     errs.append(f"example {s!r} used by both {owner[k]} and {c['id']}")
                 owner[k] = c["id"]
     return cmds, errs
+
+
+FACTS_DIR = Path(os.environ.get("BUTLER_FACTS") or HERE.parents[2] / "factbook/facts")
+
+
+def load_facts(facts_dir=FACTS_DIR):
+    """The factbook as pseudo-commands (kind "fact"): the user asks a question, the nearest fact is shown verbatim.
+    Missing or broken factbook means no facts, never an error: Butler's commands do not depend on it."""
+    out = []
+    for f in sorted(Path(facts_dir).glob("*.json")):
+        try:
+            data = json.loads(f.read_text(encoding="utf-8"))
+            topic = {l: data["topic"][l] for l in LANGS}
+            for x in data["facts"]:
+                if all(isinstance(x.get(l), str) and x[l] for l in LANGS) and x.get("id"):
+                    out.append({"id": "fact:" + x["id"], "kind": "fact", "category": topic, "answer": {l: x[l] for l in LANGS},
+                                "examples": {l: [x[l]] for l in LANGS}, "_learned": {l: [] for l in LANGS}})
+        except (OSError, ValueError, KeyError, TypeError):
+            continue
+    return out
 
 
 def all_examples(c):

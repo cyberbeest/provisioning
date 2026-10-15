@@ -761,6 +761,11 @@ func main() {
 				}
 			}
 		case cmd := <-cmds:
+			if tok, ok := strings.CutPrefix(cmd, "whisker-blink:"); ok {
+				n, _ := strconv.Atoi(tok)
+				wh.blinkTick(n)
+				continue
+			}
 			if tok, ok := strings.CutPrefix(cmd, "whisker-cat:"); ok { // hover-open timer of a menu category
 				n, _ := strconv.Atoi(tok)
 				wh.catTick(n)

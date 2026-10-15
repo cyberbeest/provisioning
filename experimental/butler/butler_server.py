@@ -18,6 +18,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 from butler import loader, slots, runner  # noqa: E402
 
+FACT_MIN = 0.55          # facts (factbook answers) score lower than commands: they are whole sentences
 MIN_SCORE = 0.6          # below this a hit is not worth sending
 LANG = "de" if os.environ.get("LC_ALL", os.environ.get("LANG", "")).startswith("de") else "en"
 
@@ -47,12 +48,14 @@ def main():
     # the command list goes out first, so a menu page can show it while the model still loads
     listing = []
     for c in cmds:
+        if c.get("answer"):   # help entries are found by symptoms, not browsed
+            continue
         vals, st = slot_vals(c, "")
         listing.append({"id": c["id"], "sentence": sentence_for(c, vals), "category": c["category"][LANG],
                         "needs_value": st == "missing", "confirm": bool(c.get("confirm"))})
     out({"commands": listing})
     from butler.matcher import Matcher
-    matcher = Matcher(cmds)
+    matcher = Matcher(cmds + loader.load_facts())
     by_id = {c["id"]: c for c in cmds}
     out({"ready": True, "lang": LANG})
     for line in sys.stdin:
@@ -67,13 +70,19 @@ def main():
             text = str(req.get("text", ""))[:300]
             hits = []
             if len(text.strip()) >= 3:
-                for cmd, score in matcher.match(text, 3):
+                for cmd, score in matcher.match(text, 4):
+                    if cmd.get("kind") == "fact":
+                        if score >= FACT_MIN:
+                            hits.append({"id": cmd["id"], "kind": "fact", "sentence": cmd["answer"][LANG],
+                                         "category": cmd["category"][LANG], "score": round(score, 3)})
+                        continue
                     if score < MIN_SCORE:
                         continue
                     vals, st = slot_vals(cmd, text)
                     hits.append({"id": cmd["id"], "sentence": sentence_for(cmd, vals),
                                  "category": cmd["category"][LANG], "score": round(score, 3),
-                                 "needs_value": st == "missing", "confirm": bool(cmd.get("confirm"))})
+                                 "needs_value": st == "missing", "confirm": bool(cmd.get("confirm")),
+                                 **({"answer": cmd["answer"][LANG]} if cmd.get("answer") else {})})
             out({"seq": req.get("seq"), "hits": hits})
         elif op == "run":
             cmd = by_id.get(req.get("id"))

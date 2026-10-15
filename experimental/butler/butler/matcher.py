@@ -1,4 +1,4 @@
-import re
+import hashlib, os, re
 import numpy as np, onnxruntime as ort
 from pathlib import Path
 from tokenizers import Tokenizer
@@ -31,13 +31,50 @@ class Matcher:
             for s, neg in loader.all_examples(c):
                 texts.append(s); self.owner.append(i); self.neg.append(neg)
         self.owner = np.array(self.owner); self.neg = np.array(self.neg)
-        key = loader.catalog_hash(cmds, MODEL_TAG)
-        f = CACHE / f"emb-{key}.npy"
-        if f.exists(): self.E = np.load(f)
-        else:
-            self.E = self.embed(texts); CACHE.mkdir(parents=True, exist_ok=True); np.save(f, self.E)
+        self.E = self._cached_embeddings(texts)
 
-    def embed(self, texts):
+    def _cached_embeddings(self, texts):
+        """Embeddings per sentence: the cache is keyed on the sentence (and model), so editing one fact or adding a
+        help entry embeds only the new sentences instead of the whole catalog. Sentences no longer used are dropped."""
+        keys = [hashlib.sha1(normalize(t).encode()).hexdigest()[:20] for t in texts]
+        f = CACHE / f"sentences-{MODEL_TAG}.npz"
+        known = {}
+        try:
+            with np.load(f) as z:
+                known = dict(zip(z["keys"].tolist(), z["vecs"]))
+        except (OSError, ValueError, KeyError):
+            pass
+        missing = [i for i, k in enumerate(keys) if k not in known]
+        if missing:
+            new = self.embed([texts[i] for i in missing])
+            known.update({keys[i]: v for i, v in zip(missing, new)})
+        E = np.stack([known[k] for k in keys]).astype(np.float32)
+        if missing or len(known) != len(set(keys)):
+            try:
+                CACHE.mkdir(parents=True, exist_ok=True)
+                used = sorted(set(keys))
+                tmp = f.with_suffix(".tmp.npz")
+                np.savez(tmp, keys=np.array(used), vecs=np.stack([known[k] for k in used]))
+                os.replace(tmp, f)
+                for old in CACHE.glob("emb-*.npy"):   # the old whole-catalog cache files
+                    old.unlink(missing_ok=True)
+            except OSError:
+                pass   # a read-only cache only costs time
+        return E
+
+    def embed(self, texts, batch=16):
+        """Unit vectors for texts. Long lists go in batches of similar length: padding every short command
+        sentence up to the longest fact made the first (uncached) run take minutes on the laptop."""
+        if len(texts) <= batch:
+            return self._embed(texts)
+        order = sorted(range(len(texts)), key=lambda i: len(texts[i]))
+        out = np.empty((len(texts), 384), dtype=np.float32)
+        for k in range(0, len(order), batch):
+            idx = order[k:k + batch]
+            out[idx] = self._embed([texts[i] for i in idx])
+        return out
+
+    def _embed(self, texts):
         enc = self.tok.encode_batch([normalize(t) for t in texts])
         ids = np.array([e.ids for e in enc], dtype=np.int64); m = np.array([e.attention_mask for e in enc], dtype=np.int64)
         feed = {"input_ids": ids, "attention_mask": m}
