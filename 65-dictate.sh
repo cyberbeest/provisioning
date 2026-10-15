@@ -28,7 +28,8 @@
 # Bumped 2026-10-13: clip_viewer.py joins the installed files (tray "Replay last
 # recording" opens it); core.py/gui.py gained the microphone-stall watchdog, the
 # last-clip timing log and the thread cap. A running Dictate keeps the old code
-# until it is quit and started again (or at next login).
+# until it is quit and started again (or at next login) -- the script now
+# reloads a running instance itself.
 # Bumped 2026-10-14: learned word corrections ("Learn corrections" button in the
 # last-transcript window, ~/.config/dictate/corrections.json); the meter pop-up
 # follows the active window's screen. core.py/gui.py/i18n.py changed.
@@ -151,5 +152,24 @@ if [ "$FIRST_INSTALL" = 1 ]; then
     chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.config/autostart/dictate.desktop"
 fi
 run_as_user update-desktop-database "$TARGET_HOME/.local/share/applications" >/dev/null 2>&1 || true
+
+# Reload a running Dictate so it picks up the new code. Only if it is running
+# (a user who quit it or turned it off is left alone). The new instance gets the
+# old one's session environment (DISPLAY, XAUTHORITY, DBus), which this root
+# shell lacks.
+echo "--- Reloading Dictate if it is running ---"
+OLD_PID="$(pgrep -u "$TARGET_USER" -f '[d]ictate/.*gui\.py' | head -n1 || true)"
+if [ -n "$OLD_PID" ] && [ -r "/proc/$OLD_PID/environ" ]; then
+    SESSION_ENV="$(tr '\0' '\n' < "/proc/$OLD_PID/environ" | grep -E '^(DISPLAY|XAUTHORITY|DBUS_SESSION_BUS_ADDRESS|XDG_RUNTIME_DIR|LANG)=' || true)"
+    OLD_CMD="$(tr '\0' ' ' < "/proc/$OLD_PID/cmdline")"
+    kill "$OLD_PID" 2>/dev/null || true
+    for _ in 1 2 3 4 5 6 7 8 9 10; do kill -0 "$OLD_PID" 2>/dev/null || break; sleep 0.5; done
+    # shellcheck disable=SC2086
+    sudo -u "$TARGET_USER" -H env $(echo $SESSION_ENV) setsid nohup $OLD_CMD >/dev/null 2>&1 </dev/null &
+    sleep 1
+    echo "Dictate restarted (was pid $OLD_PID)"
+else
+    echo "Dictate not running -- nothing to reload"
+fi
 
 echo "=== $(date) : done (Dictate starts at next login, or launch it from the menu) ==="
