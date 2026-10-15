@@ -109,7 +109,7 @@ type whisker struct {
 	icons    map[string]*image.RGBA
 	userName string
 	avatar   *image.RGBA
-	btnIcons [3]*image.RGBA
+	btnIcons [2]*image.RGBA
 	keymap   []xproto.Keysym
 	kpc      int // keysyms per keycode
 	minKC    xproto.Keycode
@@ -303,7 +303,7 @@ func (w *whisker) open(anchorX int) {
 			}
 		}
 		w.avatar = loadPNG(face, 32)
-		for i, n := range []string{"org.xfce.settings.manager", "system-lock-screen-symbolic", "system-log-out-symbolic"} {
+		for i, n := range []string{"system-lock-screen-symbolic", "system-log-out-symbolic"} {
 			w.btnIcons[i] = w.icon(n, 24)
 		}
 	}
@@ -633,7 +633,7 @@ func (w *whisker) paintHeader() *image.RGBA {
 	blit(img, w.avatar, 10, 10)
 	textAt(img, 52, 14, w.userName, whInk, true, 17, 300)
 	for i, ic := range w.btnIcons {
-		x := whW - 8 - (3-i)*44 + 8
+		x := whW - 8 - (2-i)*44 + 8
 		if i == w.hoverBtn {
 			rect(img, image.Rect(x-4, 8, x+36, 44), whHover)
 		}
@@ -643,7 +643,7 @@ func (w *whisker) paintHeader() *image.RGBA {
 }
 
 func btnRect(i int) image.Rectangle {
-	x := whW - 8 - (3-i)*44 + 8
+	x := whW - 8 - (2-i)*44 + 8
 	return image.Rect(x-4, 8, x+36, 44)
 }
 
@@ -1144,10 +1144,8 @@ func (w *whisker) runButton(i int) {
 	cmd := ""
 	switch i {
 	case 0:
-		cmd = w.cmdFromCfg("command-settings", "xfce4-settings-manager")
-	case 1:
 		cmd = w.cmdFromCfg("command-lockscreen", "xflock4")
-	case 2:
+	case 1:
 		cmd = w.cmdFromCfg("command-logout", "xfce4-session-logout")
 	}
 	w.close()
@@ -1313,7 +1311,7 @@ func (w *whisker) motion(px, py int) {
 	row, cat, btn := -1, -1, -1
 	switch {
 	case py < whHeaderH:
-		for i := 0; i < 3; i++ {
+		for i := range w.btnIcons {
 			if image.Pt(px, py).In(btnRect(i)) {
 				btn = i
 			}
@@ -1386,7 +1384,7 @@ func (w *whisker) press(px, py, btn int) {
 	case 1:
 		switch {
 		case py < whHeaderH:
-			for i := 0; i < 3; i++ {
+			for i := range w.btnIcons {
 				if image.Pt(px, py).In(btnRect(i)) {
 					w.runButton(i)
 					return
