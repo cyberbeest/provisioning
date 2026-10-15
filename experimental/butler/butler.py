@@ -20,6 +20,12 @@ import gi
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk, Gdk, GLib, Pango
 
+try:   # shows up as `butler` instead of `python` in the panel's CPU and memory lists
+    import ctypes
+    ctypes.CDLL(None).prctl(15, b"butler", 0, 0, 0)   # PR_SET_NAME
+except (OSError, AttributeError):
+    pass
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 from butler import loader, slots, runner  # noqa: E402

@@ -40,6 +40,7 @@ var aliases = map[string]string{
 	"oom_reaper":      "memory cleanup",
 	"telegram-deskto": "Telegram",
 	"tor":             "Tor network",
+	"butler":          "Butler",
 	"sshd":            "remote access (SSH)",
 	"ssh-agent":       "SSH keys",
 	"nm-applet":       "network icon",
