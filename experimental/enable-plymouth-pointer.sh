@@ -18,10 +18,11 @@
 #     of the initramfs, so while the password prompt is on screen the kernel has
 #     no /dev/input/eventN and no pointer could ever appear. The line is only
 #     added if missing, and only removed again if this script added it.
-#  3. Regenerates the initrd of the RUNNING kernel only. Every other kernel's
-#     initrd stays stock Plymouth, so GRUB's Advanced options always has a way
-#     back. (A later kernel update regenerates its initrd from the system files,
-#     so it carries the pointer too.)
+#  3. Regenerates the initrd of the RUNNING kernel and of the NEWEST installed
+#     kernel (the one GRUB boots next; after a kernel update in the same run
+#     they differ). Every older kernel's initrd stays stock Plymouth, so GRUB's
+#     Advanced options always has a way back. (A later kernel update regenerates
+#     its initrd from the system files, so it carries the pointer too.)
 #
 # Typing the password is unaffected: keyboards still reach Plymouth through the
 # console, the pointer only reads mouse-like devices.
@@ -68,6 +69,9 @@ STOCK="$BACKUP_DIR/stock"
 EVDEV_MARK="$BACKUP_DIR/added-evdev"
 MODFILE=/etc/initramfs-tools/modules
 KVER="$(uname -r)"
+NEWEST="$(find /boot -maxdepth 1 -name 'initrd.img-*' -printf '%f\n' | sed 's/^initrd.img-//' | sort -V | tail -1)"
+KVERS="$KVER"
+[ -n "$NEWEST" ] && [ "$NEWEST" != "$KVER" ] && KVERS="$KVER $NEWEST"
 
 is_fork() { grep -aq ply_pointer_new "$1" 2>/dev/null; }
 
@@ -142,35 +146,37 @@ for f in "${FILES[@]}"; do
 done
 ldconfig
 
-# 6. Regenerate the initramfs of the running kernel only
-echo "Regenerating /boot/initrd.img-$KVER ..."
-update-initramfs -u -k "$KVER" || restore_and_exit "update-initramfs failed."
+# 6. Regenerate the initramfs of the running and the newest kernel
+for KVER in $KVERS; do
+	echo "Regenerating /boot/initrd.img-$KVER ..."
+	update-initramfs -u -k "$KVER" || restore_and_exit "update-initramfs failed."
 
-# 7. Check that the new initrd really carries the pointer build
-TMP="$(mktemp -d)"
-unmkinitramfs "/boot/initrd.img-$KVER" "$TMP" 2>/dev/null
-MAIN="$(find "$TMP" -path '*usr/lib/x86_64-linux-gnu/libply-splash-core.so.5.0.0' | head -1)"
-ok=1
-if [ -z "$MAIN" ]; then
-	echo "CHECK FAILED: libply-splash-core not found in the new initrd"
-	ok=0
-else
-	ROOT="${MAIN%usr/lib/x86_64-linux-gnu/libply-splash-core.so.5.0.0}"
-	grep -aq ply_pointer_new "$MAIN" || { echo "CHECK FAILED: core library in the initrd is not the pointer build"; ok=0; }
-	grep -aq "only pointer devices are taken" "$MAIN" || { echo "CHECK FAILED: core library in the initrd is an older pointer build"; ok=0; }
-	grep -aq plymouth.disable-pointer "$ROOT/usr/lib/x86_64-linux-gnu/plymouth/renderers/drm.so" || { echo "CHECK FAILED: drm.so in the initrd is not the pointer build"; ok=0; }
-	grep -aq SetPointerMotionFunction "$ROOT/usr/lib/x86_64-linux-gnu/plymouth/script.so" || { echo "CHECK FAILED: script.so in the initrd is not the pointer build"; ok=0; }
+	# 7. Check that the new initrd really carries the pointer build
+	TMP="$(mktemp -d)"
+	unmkinitramfs "/boot/initrd.img-$KVER" "$TMP" 2>/dev/null
+	MAIN="$(find "$TMP" -path '*usr/lib/x86_64-linux-gnu/libply-splash-core.so.5.0.0' | head -1)"
+	ok=1
+	if [ -z "$MAIN" ]; then
+		echo "CHECK FAILED: libply-splash-core not found in the new initrd"
+		ok=0
+	else
+		ROOT="${MAIN%usr/lib/x86_64-linux-gnu/libply-splash-core.so.5.0.0}"
+		grep -aq ply_pointer_new "$MAIN" || { echo "CHECK FAILED: core library in the initrd is not the pointer build"; ok=0; }
+		grep -aq "only pointer devices are taken" "$MAIN" || { echo "CHECK FAILED: core library in the initrd is an older pointer build"; ok=0; }
+		grep -aq plymouth.disable-pointer "$ROOT/usr/lib/x86_64-linux-gnu/plymouth/renderers/drm.so" || { echo "CHECK FAILED: drm.so in the initrd is not the pointer build"; ok=0; }
+		grep -aq SetPointerMotionFunction "$ROOT/usr/lib/x86_64-linux-gnu/plymouth/script.so" || { echo "CHECK FAILED: script.so in the initrd is not the pointer build"; ok=0; }
 
-	# Not fatal (the boot works without it) but the pointer cannot appear at the prompt
-	find "$TMP" -name 'evdev.ko*' | grep -q . || echo "WARNING: evdev.ko is not in the new initrd, no pointer at the password prompt"
-	grep -q -E '^evdev' "$ROOT/conf/modules" 2>/dev/null || echo "WARNING: evdev is not in the initrd's early module list"
-fi
-rm -rf "$TMP"
-[ "$ok" = 1 ] || restore_and_exit "The new initrd is not what was expected."
+		# Not fatal (the boot works without it) but the pointer cannot appear at the prompt
+		find "$TMP" -name 'evdev.ko*' | grep -q . || echo "WARNING: evdev.ko is not in the new initrd, no pointer at the password prompt"
+		grep -q -E '^evdev' "$ROOT/conf/modules" 2>/dev/null || echo "WARNING: evdev is not in the initrd's early module list"
+	fi
+	rm -rf "$TMP"
+	[ "$ok" = 1 ] || restore_and_exit "The new initrd for $KVER is not what was expected."
+done
 
 cat <<EOF
 
-DONE. The initrd for $KVER now carries the Plymouth mouse pointer. Reboot to try it:
+DONE. The initrd for $KVERS now carries the Plymouth mouse pointer. Reboot to try it:
 move the mouse or touchpad at the password screen and an arrow appears.
 
   - Wrong at boot? GRUB menu, 'e', add  plymouth.disable-pointer  to the 'linux' line,
