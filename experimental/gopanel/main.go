@@ -761,6 +761,11 @@ func main() {
 				}
 			}
 		case cmd := <-cmds:
+			if tok, ok := strings.CutPrefix(cmd, "whisker-cat:"); ok { // hover-open timer of a menu category
+				n, _ := strconv.Atoi(tok)
+				wh.catTick(n)
+				continue
+			}
 			if name, ok := strings.CutPrefix(cmd, "helper-restart:"); ok { // internal (the socket does not accept it)
 				for _, hc := range helpers {
 					if hc.name == name {

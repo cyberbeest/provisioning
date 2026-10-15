@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"os/user"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -33,8 +34,9 @@ const (
 	whCatX       = 416
 	whCatW       = 176
 	whAppRowH    = 40
-	whHeadRowH   = 26   // section header of a pane (Recently Used / Favorites in Quickstart)
-	whCmdMin     = 0.80 // matcher score a command needs to appear among the search results
+	whHeadRowH   = 26                     // section header of a pane (Recently Used / Favorites in Quickstart)
+	whCatHover   = 300 * time.Millisecond // how long the pointer must rest on a category before it opens
+	whCmdMin     = 0.80                   // matcher score a command needs to appear among the search results
 	whCatRowH    = 34
 	whAppIcon    = 32
 	whCatIcon    = 22
@@ -93,6 +95,7 @@ type whisker struct {
 	valueHit                     *butlerHit // a command that is asking for a number, and what was typed so far
 	valueBuf                     []rune
 	ranAt                        time.Time
+	catToken                     int  // identifies the pending hover-open of a category
 	dragging                     bool // the scrollbar thumb of pane dragPane is held
 	dragPane, dragOff, dragY     int  // dragOff: where in the thumb it was grabbed; dragY: latest pointer y
 	dragAt                       time.Time
@@ -1066,6 +1069,17 @@ func (w *whisker) dragStart(pi, py int) {
 	w.dragScroll(pi, py)
 }
 
+// catTick opens the hovered category when the pointer has rested on it since the timer started.
+func (w *whisker) catTick(tok int) {
+	if !w.isOpen || tok != w.catToken || w.hoverCat < 0 || len(w.query) > 0 || w.hoverCat == w.catIdx {
+		return
+	}
+	w.catIdx = w.hoverCat
+	w.rebuildList()
+	w.put(w.paintList(), whListX, whListTop)
+	w.put(w.paintCats(), whCatX, whListTop)
+}
+
 // dragTick repaints for the latest pointer position at most every 16 ms. Painting the list takes
 // longer than the pointer needs to send motion events, and handling every one lags behind the mouse.
 func (w *whisker) dragTick() {
@@ -1326,10 +1340,11 @@ func (w *whisker) motion(px, py int) {
 		if v := w.prop("hover-switch-category"); len(v) == 1 && v[0] == "false" {
 			hs = false
 		}
+		w.catToken++
 		if cat >= 0 && hs && len(w.query) == 0 && cat != w.catIdx {
-			w.catIdx = cat
-			w.rebuildList()
-			w.put(w.paintList(), whListX, whListTop)
+			// opens only after the pointer rested here: crossing categories on the way to the list must not switch
+			tok := w.catToken
+			time.AfterFunc(whCatHover, func() { ctlCmds <- "whisker-cat:" + strconv.Itoa(tok) })
 		}
 		w.put(w.paintCats(), whCatX, whListTop)
 	}
