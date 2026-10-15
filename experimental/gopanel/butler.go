@@ -60,17 +60,18 @@ type butlerResult struct {
 type butlerClient struct {
 	out chan<- butlerResult
 
-	mu       sync.Mutex
-	cmd      *exec.Cmd
-	stdin    io.WriteCloser
-	ready    bool
-	seq      int
-	pending  string // latest text waiting for the server (not ready yet, or debounce)
-	hasPend  bool
-	timer    *time.Timer
-	lastUse  time.Time
-	missing  bool // butler-server is not installed
-	indexing bool // the server is embedding new sentences (first start after a catalog change)
+	mu        sync.Mutex
+	cmd       *exec.Cmd
+	stdin     io.WriteCloser
+	ready     bool
+	seq       int
+	pending   string // latest text waiting for the server (not ready yet, or debounce)
+	hasPend   bool
+	timer     *time.Timer
+	lastUse   time.Time
+	startedAt time.Time // when the running server was started: older settings changes are already in it
+	missing   bool      // butler-server is not installed
+	indexing  bool      // the server is embedding new sentences (first start after a catalog change)
 }
 
 func newButlerClient(out chan<- butlerResult) *butlerClient {
@@ -84,7 +85,7 @@ func newButlerClient(out chan<- butlerResult) *butlerClient {
 func (b *butlerClient) Ask(text string) int {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if b.missing {
+	if b.missing || !readButlerSettings().Enabled {
 		return 0
 	}
 	if b.cmd == nil && !b.startLocked() {
@@ -126,10 +127,52 @@ func (b *butlerClient) State() string {
 func (b *butlerClient) Warm() {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if b.cmd == nil && !b.missing {
+	st := readButlerSettings()
+	if b.cmd != nil && (!st.Enabled || butlerConfigNewer(b.startedAt)) { // switched off, or the settings/disabled commands changed
+		b.stopLocked()
+	}
+	if b.cmd == nil && !b.missing && st.Enabled {
 		b.startLocked()
 	}
 	b.lastUse = time.Now()
+}
+
+// stopLocked asks the server to quit, which frees its memory; the next search starts it again.
+func (b *butlerClient) stopLocked() {
+	b.sendLocked(map[string]any{"op": "quit"})
+	b.stdin.Close()
+	b.cmd, b.stdin, b.ready, b.indexing = nil, nil, false, false
+}
+
+// The Butler tab of Cyberbeest Settings writes settings.json.
+type butlerSettings struct {
+	Enabled bool `json:"enabled"` // Butler in the menu at all
+}
+
+func butlerConfigPath(name string) string {
+	dir, err := os.UserConfigDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(dir, "cyberbeest", "butler", name)
+}
+
+func readButlerSettings() butlerSettings {
+	st := butlerSettings{Enabled: true}
+	if data, err := os.ReadFile(butlerConfigPath("settings.json")); err == nil {
+		json.Unmarshal(data, &st) // a broken file keeps the defaults it did not override
+	}
+	return st
+}
+
+// butlerConfigNewer reports whether the settings or the list of disabled commands (edited by hand) changed after t.
+func butlerConfigNewer(t time.Time) bool {
+	for _, n := range []string{"settings.json", "disabled.json"} {
+		if fi, err := os.Stat(butlerConfigPath(n)); err == nil && fi.ModTime().After(t) {
+			return true
+		}
+	}
+	return false
 }
 
 func (b *butlerClient) flush() {
@@ -173,7 +216,7 @@ func (b *butlerClient) startLocked() bool {
 	if err1 != nil || err2 != nil || cmd.Start() != nil {
 		return false
 	}
-	b.cmd, b.stdin, b.ready = cmd, in, false
+	b.cmd, b.stdin, b.ready, b.startedAt = cmd, in, false, time.Now()
 	go b.read(cmd, outp)
 	return true
 }
@@ -273,9 +316,7 @@ func (b *butlerClient) reaper() {
 		time.Sleep(5 * time.Second)
 		b.mu.Lock()
 		if b.cmd != nil && time.Since(b.lastUse) > butlerIdle && !ramComfortable() {
-			b.sendLocked(map[string]any{"op": "quit"})
-			b.stdin.Close()
-			b.cmd, b.stdin, b.ready = nil, nil, false
+			b.stopLocked()
 		}
 		b.mu.Unlock()
 	}

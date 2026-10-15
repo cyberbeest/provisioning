@@ -15,7 +15,7 @@ X() { xfconf-query -c "$CH" "$@"; }
 
 # name | desktop file name | Exec | icon | comment ; names that count as "already there"
 APPS=(
-	"Claude Code|cyberbeest-claude-code.desktop|claude-code.desktop|xfce4-terminal --working-directory=$HOME/claude --title=\"Claude Code\" -e \"bash -ic claude\"|claude-code|Cloud AI assistant (sends your work to Anthropic)"
+	"Claude Code|cyberbeest-claude-code.desktop|claude-code.desktop|xfce4-terminal --icon=claude-code --working-directory=$HOME/claude --title=\"Claude Code\" -e \"bash -ic claude\"|claude-code|Cloud AI assistant (sends your work to Anthropic)"
 	"Claude Sessions|cyberbeest-claude-sessions.desktop|claude-sessions.desktop|$HOME/claude/claude-sessions-gui.py|claude-sessions|Live list of all Claude Code sessions"
 )
 

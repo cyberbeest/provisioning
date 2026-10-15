@@ -100,7 +100,7 @@ EOF
 Type=Application
 Name=Claude Code
 Comment=Cloud AI assistant (sends your work to Anthropic)
-Exec=xfce4-terminal --working-directory=$WORK --title="Claude Code" -e "bash -ic claude"
+Exec=xfce4-terminal --icon=claude-code --working-directory=$WORK --title="Claude Code" -e "bash -ic claude"
 Icon=claude-code
 Terminal=false
 Categories=Utility;
@@ -115,6 +115,17 @@ Icon=claude-sessions
 Terminal=false
 Categories=Utility;
 EOF
+
+	echo "--- Terminal window titles (no \"Terminal - \" prefix) ---"
+	trc="$HOME/.config/xfce4/terminal/terminalrc"
+	install -d "$(dirname "$trc")"
+	if [ ! -f "$trc" ]; then
+		printf '[Configuration]\nTitleMode=TERMINAL_TITLE_REPLACE\n' >"$trc"
+	elif grep -q '^TitleMode=' "$trc"; then
+		sed -i 's/^TitleMode=.*/TitleMode=TERMINAL_TITLE_REPLACE/' "$trc"
+	else
+		sed -i '/^\[Configuration\]/a TitleMode=TERMINAL_TITLE_REPLACE' "$trc"
+	fi
 
 	echo "--- Panel launchers (blue icons, only if missing) ---"
 	bash "$DIR/panel-launchers.sh" add || echo "panel launchers skipped (rc=$?)"

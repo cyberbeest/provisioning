@@ -66,7 +66,7 @@ else
 	export DISPLAY
 	command -v xfce4-terminal >/dev/null || { echo "xfce4-terminal not found (use --bg)" >&2; exit 1; }
 	# $0/$1... inside bash -c are passed as separate arguments: no quoting issues.
-	setsid nohup xfce4-terminal --title "claude: $NAME" --working-directory "$DIR" \
+	setsid nohup xfce4-terminal --icon=claude-code --title "claude: $NAME" --working-directory "$DIR" \
 		-x bash -c 'bin="$1"; pf="$2"; shift 2; "$bin" "$@" "$(cat "$pf")"; echo; echo "[session ended - shell stays open]"; exec bash' \
 		_ "$CLAUDE_BIN" "$PROMPT_FILE" "${ARGS[@]}" >/dev/null 2>&1 &
 	echo "opened a terminal window for session '$NAME' in $DIR"
