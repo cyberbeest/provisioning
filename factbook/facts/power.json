@@ -1,5 +1,8 @@
 {
-  "topic": { "en": "Power states and timers", "de": "Zustände und Timer" },
+  "topic": {
+    "en": "Power states and timers",
+    "de": "Zustände und Timer"
+  },
   "source": "Functional-Manual-v2 sections 1.2-1.5",
   "checked": "2026-10-15",
   "facts": [
@@ -85,6 +88,34 @@
       "en": "Holding the power button for 10 seconds cuts the power of a Cyberbeest hard, as a last resort if the four-tap method fails.",
       "de": "Wenn du den Einschaltknopf 10 Sekunden gedrückt hältst, wird die Stromzufuhr eines Cyberbeest hart unterbrochen – als letzter Ausweg, falls die 4-Tipp-Methode nicht klappt.",
       "manual": "1.5"
+    },
+    {
+      "id": "power-battery-report",
+      "en": "A Cyberbeest has a Battery Report in its menu that shows how long the battery lasts per charge, locked and at work, from your last weeks of use.",
+      "de": "Ein Cyberbeest hat im Menü einen Akkubericht, der zeigt, wie lange der Akku pro Ladung hält, gesperrt und bei der Arbeit, berechnet aus deinen letzten Nutzungswochen.",
+      "tip": true,
+      "ask": {
+        "en": [
+          "how long does my battery last",
+          "where can I see my battery life",
+          "how many hours will the battery run"
+        ],
+        "de": [
+          "wie lange hält mein Akku",
+          "wo sehe ich die Akkulaufzeit",
+          "wie viele Stunden läuft der Akku noch"
+        ]
+      },
+      "action": {
+        "label": {
+          "en": "Open the Battery Report",
+          "de": "Akkubericht öffnen"
+        },
+        "run": [
+          "gtk-launch",
+          "cyberbeest-battery-report"
+        ]
+      }
     }
   ]
 }

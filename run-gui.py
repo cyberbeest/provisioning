@@ -519,6 +519,7 @@ SCRIPT_DURATION_ESTIMATES = {
     "60-xfce-panel-watchdog.sh": 1,
     "65-dictate.sh": 240,
     "67-drawing-app.sh": 12,
+    "71-battery-report.sh": 1,
     "91-sandbox-vm.sh": 0,
 }
 
