@@ -37,6 +37,16 @@
       "de": "I2P-Seiten öffnen sich in einem eigenen Firefox-Profil namens Firefox (I2P), getrennt von Ihrem normalen Surfen."
     },
     {
+      "id": "apps-darknet-tor-or-i2p",
+      "en": "Most people who say \"darknet\" mean Tor, the more common choice, while I2P is a newer technology that far fewer people use.",
+      "de": "Wer \"Darknet\" sagt, meint meistens Tor, die verbreitetere Wahl, während I2P eine neuere Technik ist, die viel weniger genutzt wird."
+    },
+    {
+      "id": "apps-firefox-default",
+      "en": "Firefox is the default browser on a Cyberbeest laptop because Chrome, and even Chromium, is hard to de-Google completely.",
+      "de": "Firefox ist auf einem Cyberbeest-Laptop der Standardbrowser, weil sich Chrome und selbst Chromium kaum vollständig von Google lösen lassen."
+    },
+    {
       "id": "apps-feather-tor",
       "en": "Feather wallet starts Tor only while it is open, so no Tor service runs in the background the rest of the time.",
       "de": "Die Feather-Wallet startet Tor nur, solange sie geöffnet ist, sonst läuft im Hintergrund kein Tor-Dienst."

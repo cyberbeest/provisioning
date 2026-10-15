@@ -480,6 +480,8 @@ STRINGS = {
     "clipboard.show_in_folder": "Show in folder",
     "clipboard.show_in_folders": "Show in folders ({count} windows)",
     "clipboard.view": "View…",
+    "clipboard.convert_png": "Convert to PNG",
+    "clipboard.convert_jpeg": "Convert to JPEG",
     "clipboard.clear_clipboard": "Clear clipboard",
     "clipboard.auto_clear_settings": "Auto-clear settings…",
     "clipboard.window_title": "Clipboard",

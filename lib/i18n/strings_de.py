@@ -500,6 +500,8 @@ STRINGS = {
     "clipboard.show_in_folder": "Im Ordner zeigen",
     "clipboard.show_in_folders": "In Ordnern zeigen ({count} Fenster)",
     "clipboard.view": "Anzeigen…",
+    "clipboard.convert_png": "In PNG umwandeln",
+    "clipboard.convert_jpeg": "In JPEG umwandeln",
     "clipboard.clear_clipboard": "Zwischenablage leeren",
     "clipboard.auto_clear_settings": "Einstellungen für automatisches Leeren…",
     "clipboard.window_title": "Zwischenablage",

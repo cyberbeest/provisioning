@@ -56,13 +56,17 @@
           "open tor browser",
           "start tor",
           "I want to browse anonymously",
-          "open the tor browser"
+          "open the tor browser",
+          "I want to browse the darknet",
+          "take me to the dark web"
         ],
         "de": [
           "öffne den Tor-Browser",
           "starte Tor",
           "ich will anonym surfen",
-          "Tor-Browser starten"
+          "Tor-Browser starten",
+          "ich will im Darknet unterwegs sein",
+          "bring mich ins Darknet"
         ]
       },
       "reply": {
@@ -968,13 +972,17 @@
           "start i2p",
           "turn on the i2p network",
           "open i2p",
-          "start i2pd"
+          "start i2pd",
+          "I want to surf the darknet",
+          "I want to explore the dark web"
         ],
         "de": [
           "starte I2P",
           "schalte das I2P-Netzwerk ein",
           "öffne I2P",
-          "starte i2pd"
+          "starte i2pd",
+          "ich will im Darknet surfen",
+          "ich möchte das Dark Web erkunden"
         ]
       },
       "reply": {

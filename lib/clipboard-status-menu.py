@@ -183,6 +183,46 @@ def launch(_item, cmd):
     subprocess.Popen(cmd)
 
 
+def clipboard_targets():
+    try:
+        return subprocess.run(
+            ["xclip", "-selection", "clipboard", "-o", "-t", "TARGETS"],
+            capture_output=True, text=True, timeout=2,
+        ).stdout.split()
+    except Exception:
+        return []
+
+
+def convert_image(_item, mime, fmt):
+    """Replaces the clipboard image with a PNG/JPEG copy of itself. Some
+    sources only offer one format and some apps (Claude Code's paste, for
+    one) only accept the other."""
+    Gtk.main_quit()
+    targets = clipboard_targets()
+    # Same lossless-first preference as clipboard-show-image.py.
+    src = "image/png" if "image/png" in targets else next(
+        (t for t in targets if t.startswith("image/")), None
+    )
+    if src is None:
+        return
+    try:
+        data = subprocess.run(
+            ["xclip", "-selection", "clipboard", "-o", "-t", src],
+            capture_output=True, timeout=5, check=True,
+        ).stdout
+        flags = ["-background", "white", "-flatten", "-quality", "92"] if fmt == "jpeg" else []
+        converted = subprocess.run(
+            ["convert", "-", *flags, f"{fmt}:-"],
+            input=data, capture_output=True, timeout=15, check=True,
+        ).stdout
+        subprocess.run(
+            ["xclip", "-selection", "clipboard", "-t", mime, "-i"],
+            input=converted, timeout=2, check=True,
+        )
+    except Exception:
+        pass
+
+
 def clear_clipboard(_item):
     Gtk.main_quit()
     subprocess.run(["xclip", "-selection", "clipboard", "-i", "/dev/null"], timeout=2)
@@ -229,6 +269,17 @@ def build_menu():
         view_item = Gtk.MenuItem(label=label)
         view_item.connect("activate", launch, cmd)
         menu.append(view_item)
+
+        if clip_type in ("image", "image_file"):
+            targets = clipboard_targets()
+            for mime, fmt, key in (
+                ("image/png", "png", "clipboard.convert_png"),
+                ("image/jpeg", "jpeg", "clipboard.convert_jpeg"),
+            ):
+                if mime not in targets:
+                    item = Gtk.MenuItem(label=t(key))
+                    item.connect("activate", convert_image, mime, fmt)
+                    menu.append(item)
 
         clear_item = Gtk.MenuItem(label=t("clipboard.clear_clipboard"))
         clear_item.connect("activate", clear_clipboard)
