@@ -31,7 +31,7 @@ import (
 	"gopanel/proto"
 )
 
-const version = "0.21.23"
+const version = "0.23.0"
 
 var ctlCmds chan<- string // control commands into the main loop
 
@@ -166,6 +166,9 @@ func main() {
 	noticeTip = newTooltip(c, scr, gc)
 	menus := newMenuMgr(c, scr, gc)
 	wh := newWhisker(c, scr, gc)
+	butlerC := make(chan butlerResult, 8)
+	wh.bc = newButlerClient(butlerC)
+	cmdOSD := newOSD(c, scr, gc)
 	toggleWhisker = func() {
 		cancelTipFn()
 		wh.toggle(whiskerAnchor)
@@ -577,6 +580,10 @@ func main() {
 				tip.paint()
 				continue
 			}
+			if ee, isExp := ev.(xproto.ExposeEvent); isExp && cmdOSD.shown && ee.Window == cmdOSD.win {
+				cmdOSD.paint()
+				continue
+			}
 			if ee, isExp := ev.(xproto.ExposeEvent); isExp && noticeTip.shown && ee.Window == noticeTip.win {
 				noticeTip.paint()
 				continue
@@ -599,6 +606,21 @@ func main() {
 				continue
 			}
 			handle(ev)
+		case r := <-butlerC:
+			switch {
+			case r.osdHide:
+				cmdOSD.hideIf(r.gen)
+				continue
+			case r.ran:
+				msg := r.osd
+				if msg == "" {
+					msg = r.reply
+				}
+				if r.ok {
+					cmdOSD.show(msg, r.level, r.levelMax, butlerC)
+				}
+			}
+			wh.onButler(r)
 		case d := <-whReady:
 			if !wh.loaded {
 				wh.setData(d)
@@ -765,6 +787,8 @@ func main() {
 				log.Fatal(syscall.Exec(exe, []string{exe}, os.Environ()))
 			case "menu":
 				toggleWhisker()
+			case "whisker-drag": // trailing repaint of a throttled scrollbar drag
+				wh.dragTick()
 			case "calendar", "volume", "power": // also handy for testing; toggles
 				if curPop != nil {
 					closePopup()
