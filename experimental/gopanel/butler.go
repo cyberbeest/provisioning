@@ -7,6 +7,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -22,7 +24,8 @@ import (
 
 const (
 	butlerDebounce = 90 * time.Millisecond
-	butlerIdle     = 10 * time.Minute
+	butlerIdle     = 30 * time.Second // unload after this long idle when memory is short
+	butlerKeepRAM  = 1500             // MB available (MemAvailable): at least this much and the matcher stays loaded
 )
 
 type butlerHit struct {
@@ -216,12 +219,30 @@ func (b *butlerClient) read(cmd *exec.Cmd, r io.Reader) {
 	b.mu.Unlock()
 }
 
-// reaper stops the server (and frees its few hundred MB) after butlerIdle without use.
+// ramComfortable reports whether plenty of memory is free (the same rule Dictate uses for its model:
+// MemAvailable already leaves out what the loaded model holds). When it cannot be read: not comfortable.
+func ramComfortable() bool {
+	data, err := os.ReadFile("/proc/meminfo")
+	if err != nil {
+		return false
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		if f := strings.Fields(line); len(f) >= 2 && f[0] == "MemAvailable:" {
+			kb, _ := strconv.Atoi(f[1])
+			return kb/1024 >= butlerKeepRAM
+		}
+	}
+	return false
+}
+
+// reaper stops the server (and frees its ~480 MB) after butlerIdle without use, unless memory is plentiful:
+// then it stays loaded and the next search starts instantly. Checked every few seconds, so memory that
+// becomes scarce later still gets it unloaded.
 func (b *butlerClient) reaper() {
 	for {
-		time.Sleep(time.Minute)
+		time.Sleep(5 * time.Second)
 		b.mu.Lock()
-		if b.cmd != nil && time.Since(b.lastUse) > butlerIdle {
+		if b.cmd != nil && time.Since(b.lastUse) > butlerIdle && !ramComfortable() {
 			b.sendLocked(map[string]any{"op": "quit"})
 			b.stdin.Close()
 			b.cmd, b.stdin, b.ready = nil, nil, false
