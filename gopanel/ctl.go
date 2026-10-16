@@ -64,6 +64,19 @@ func ctlServer(cmds chan<- string) {
 			} else {
 				fmt.Fprintln(conn, "closed")
 			}
+		case "items": // read-only layout snapshot (one JSON line)
+			reply := make(chan string, 1)
+			select {
+			case itemsReq <- reply:
+				select {
+				case s := <-reply:
+					fmt.Fprintln(conn, s)
+				case <-time.After(1500 * time.Millisecond):
+					fmt.Fprintln(conn, "busy")
+				}
+			default:
+				fmt.Fprintln(conn, "busy")
+			}
 		case "refresh":
 			kickGenmons()
 			fmt.Fprintln(conn, "ok")

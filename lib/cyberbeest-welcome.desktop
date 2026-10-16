@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Cyberbeest welcome
+Comment=Shows a few tips at login until you click "Don't show again"
+Exec=/home/cyberbeest/.local/bin/cyberbeest-welcome
+NoDisplay=true
+OnlyShowIn=XFCE;
+X-XFCE-Autostart-Phase=Application

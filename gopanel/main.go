@@ -31,7 +31,7 @@ import (
 	"gopanel/proto"
 )
 
-const version = "0.23.1"
+const version = "0.23.2"
 
 var ctlCmds chan<- string // control commands into the main loop
 
@@ -762,6 +762,8 @@ func main() {
 					hc.send(pauseLine())
 				}
 			}
+		case reply := <-itemsReq:
+			reply <- itemsSnapshot(items)
 		case cmd := <-cmds:
 			if tok, ok := strings.CutPrefix(cmd, "whisker-list:"); ok { // typing paused: update the menu list
 				n, _ := strconv.Atoi(tok)
