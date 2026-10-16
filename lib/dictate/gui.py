@@ -878,11 +878,35 @@ class MainWindow(QMainWindow):
             return
         self._target_keys = set(keys)
 
+        # Holding the Windows key (the menu opens on the press) also dictates, like the
+        # main hotkey. A tap or a Super+key shortcut never gets that far.
+        super_keys = set(core.KEY_MAP["super"])
+        hold_on = self.cfg.get("super_hold", True) and not (super_keys & self._target_keys)
+        hold = {"timer": None, "started": False}
+
+        def cancel_hold():
+            t, hold["timer"] = hold["timer"], None
+            if t:
+                t.cancel()
+
+        def hold_fire():
+            hold["timer"] = None
+            if self.cfg["mode"] == "ptt":
+                hold["started"] = True
+                core.open_whisker_for_hold()
+                self.bridge.hotkey_press.emit()
+
         def on_press(k):
             try:
                 if k in self._target_keys:
                     self.bridge.hotkey_press.emit()
+                elif hold_on and k in super_keys:
+                    if hold["timer"] is None and not hold["started"]:
+                        hold["timer"] = threading.Timer(core.SUPER_HOLD_S, hold_fire)
+                        hold["timer"].daemon = True
+                        hold["timer"].start()
                 else:
+                    cancel_hold()
                     self._last_other = k
                     self.bridge.other_press.emit()
             except Exception:
@@ -892,6 +916,11 @@ class MainWindow(QMainWindow):
             try:
                 if k in self._target_keys:
                     self.bridge.hotkey_release.emit()
+                elif hold_on and k in super_keys:
+                    cancel_hold()
+                    if hold["started"]:
+                        hold["started"] = False
+                        self.bridge.hotkey_release.emit()
             except Exception:
                 pass
 

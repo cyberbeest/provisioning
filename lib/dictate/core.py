@@ -66,6 +66,8 @@ KEY_MAP.update({
 
 # A hotkey press shorter than this is an accidental tap, not a dictation (push-to-talk).
 MIN_HOLD_S = 0.5
+# Holding the Windows key this long starts a dictation (a shorter press just opens the menu).
+SUPER_HOLD_S = 0.3
 
 DEFAULT_CONFIG = {
     "mode":                  "ptt",
@@ -309,6 +311,24 @@ def _gopanel_ask(cmd):
 
 def whisker_open():
     return _gopanel_ask("whisker?") == "open"
+
+
+def open_whisker_for_hold():
+    """Hold-Windows-key dictation: open the Go panel's menu now, so the text lands in its
+    search box, and tell cyberbeest-whisker-key.sh to skip the shortcut that fires on release
+    (it would toggle the menu shut again)."""
+    if whisker_open():
+        return
+    marker = os.path.join(os.environ.get("XDG_RUNTIME_DIR") or "/tmp", "dictate-super-hold")
+    try:
+        open(marker, "w").close()
+    except OSError:
+        pass
+    _gopanel_ask("menu")
+    for _ in range(20):
+        if whisker_open():
+            return
+        time.sleep(0.05)
 
 
 def paste_target():
