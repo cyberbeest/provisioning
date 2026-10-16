@@ -120,6 +120,9 @@ STOCK_DESKTOP="/usr/share/applications/firefox-esr.desktop"
 STOCK_OVERRIDE="$TARGET_HOME/.local/share/applications/firefox-esr.desktop"
 if [ -f "$STOCK_DESKTOP" ]; then
 	cp "$STOCK_DESKTOP" "$STOCK_OVERRIDE"
+	# Hidden is not unreachable (gtk-launch, other apps by desktop id): its commands, including the
+	# new-window and private-window actions, must start the sandboxed wrapper too, never the bare binary.
+	sed -i "s#^Exec=/usr/lib/firefox-esr/firefox-esr#Exec=$TARGET_HOME/bin/browser-sandbox.sh#" "$STOCK_OVERRIDE"
 	if grep -q '^NoDisplay=' "$STOCK_OVERRIDE"; then
 		sed -i 's/^NoDisplay=.*/NoDisplay=true/' "$STOCK_OVERRIDE"
 	else

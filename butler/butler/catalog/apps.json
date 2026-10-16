@@ -34,10 +34,11 @@
         "en": "Opening the web browser.",
         "de": "Öffne den Webbrowser."
       },
+      "app": "browser-sandbox.desktop",
       "run": {
         "argv": [
           "gtk-launch",
-          "firefox-esr"
+          "browser-sandbox"
         ]
       }
     },
