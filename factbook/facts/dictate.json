@@ -4,7 +4,7 @@
     "de": "Sprachdiktat"
   },
   "source": "provisioning/lib/dictate, script 65",
-  "checked": "2026-10-15",
+  "checked": "2026-10-16",
   "facts": [
     {
       "id": "dictate-what",
@@ -27,6 +27,24 @@
           "Wie diktiere ich einen Text?",
           "Kann ich mit dem Laptop sprechen, statt zu tippen?",
           "Welche Taste startet die Spracheingabe?"
+        ]
+      }
+    },
+    {
+      "id": "dictate-super-hold",
+      "en": "Holding the Windows key a moment opens the Cyberbeest menu and starts dictating into its search box, and releasing the key ends the dictation.",
+      "de": "Wer die Windows-Taste einen Moment gedrückt hält, öffnet das Cyberbeest-Menü und diktiert in dessen Suchfeld; beim Loslassen der Taste endet das Diktat.",
+      "tip": true,
+      "ask": {
+        "en": [
+          "Can I talk to the menu instead of typing?",
+          "How do I search the menu by voice?",
+          "What happens if I hold the Windows key?"
+        ],
+        "de": [
+          "Kann ich dem Menü etwas sagen, statt zu tippen?",
+          "Wie suche ich im Menü per Sprache?",
+          "Was passiert, wenn ich die Windows-Taste gedrückt halte?"
         ]
       }
     },

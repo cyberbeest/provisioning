@@ -1,7 +1,0 @@
-[Desktop Entry]
-Type=Application
-Name=Cyberbeest panel choice
-Comment=Start the panel chosen in Cyberbeest Settings
-Exec=/home/cyberbeest/claude/provisioning/experimental/gopanel/cyberbeest-panel-choice.sh login
-Terminal=false
-X-GNOME-Autostart-enabled=true
