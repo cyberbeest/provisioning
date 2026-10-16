@@ -44,6 +44,13 @@ echo "--- Suppressing the 'security features may offer less protection' nag ---"
 install -d -m 755 /usr/lib/firefox-esr/distribution
 install -m 644 "$DIR/lib/firefox-policies.json" /usr/lib/firefox-esr/distribution/policies.json
 
+# JPEG XL: Firefox ships the decoder disabled (image.jxl.enabled=false). The
+# Preferences policy only accepts an allowlist of pref names and rejects
+# image.*, so set it as a Debian drop-in default instead (every *.js in
+# /etc/firefox-esr is loaded; firejail's private-etc keeps that dir visible).
+echo 'pref("image.jxl.enabled", true);' > /etc/firefox-esr/cyberbeest.js
+chmod 644 /etc/firefox-esr/cyberbeest.js
+
 echo "--- Installing firefox-drm.profile (DRM/Widevine seccomp override) to $TARGET_HOME/.config/firejail/ ---"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.config/firejail"
 install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 \

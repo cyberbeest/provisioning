@@ -18,7 +18,7 @@ import sys
 
 import gi
 import numpy as np
-from PIL import Image, ImageOps
+from PIL import Image, ImageOps, UnidentifiedImageError
 
 gi.require_version("Gtk", "3.0")
 gi.require_version("Gdk", "3.0")
@@ -123,6 +123,22 @@ def resize_gamma_correct(img, target_w, target_h):
     return Image.fromarray(rgb_resized, mode="RGB")
 
 
+def pixbuf_to_pil(path):
+    """Decode formats Pillow lacks (JPEG XL) through the gdk-pixbuf loader
+    plugins (libjxl-gdk-pixbuf). 8-bit RGBA, EXIF orientation applied."""
+    try:
+        pb = GdkPixbuf.Pixbuf.new_from_file(path)
+    except GLib.Error as e:
+        raise OSError(f"cannot decode {path}: {e.message}") from e
+    pb = pb.apply_embedded_orientation() or pb
+    if not pb.get_has_alpha():
+        pb = pb.add_alpha(False, 0, 0, 0)
+    w, h, stride = pb.get_width(), pb.get_height(), pb.get_rowstride()
+    return Image.frombuffer(
+        "RGBA", (w, h), pb.get_pixels(), "raw", "RGBA", stride, 1
+    ).copy()
+
+
 def pil_to_pixbuf(img):
     if img.mode not in ("RGB", "RGBA"):
         img = img.convert("RGBA" if "A" in img.mode else "RGB")
@@ -143,6 +159,7 @@ def pil_to_pixbuf(img):
 
 IMAGE_EXTS = (
     ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".tif", ".tiff", ".ico",
+    ".jxl",
 )
 
 
@@ -213,7 +230,10 @@ def load_frames(path):
     (RGBA PIL.Image, duration_ms) -- a single entry for a still image, one
     per frame for an animated GIF.
     """
-    img = Image.open(path)
+    try:
+        img = Image.open(path)
+    except UnidentifiedImageError:
+        img = pixbuf_to_pil(path)
     if img.format == "GIF" and getattr(img, "n_frames", 1) > 1:
         frames = []
         for i in range(img.n_frames):
