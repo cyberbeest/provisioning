@@ -41,6 +41,7 @@ var aliases = map[string]string{
 	"telegram-deskto": "Telegram",
 	"tor":             "Tor network",
 	"butler":          "Butler",
+	"claude-voice":    "Claude's voice",
 	"sshd":            "remote access (SSH)",
 	"ssh-agent":       "SSH keys",
 	"nm-applet":       "network icon",

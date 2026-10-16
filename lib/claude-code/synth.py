@@ -7,6 +7,18 @@ speak.py uses the timings to decide when playback can start without running dry.
 """
 import struct, sys, time
 
+
+def name_process(name="claude-voice"):
+    """Shows up as `claude-voice` instead of `python` in /proc comm, so the panel's CPU list can say "Claude's voice"."""
+    try:
+        import ctypes
+        ctypes.CDLL(None).prctl(15, name.encode(), 0, 0, 0)   # PR_SET_NAME
+    except (OSError, AttributeError):
+        pass
+
+
+name_process()
+
 from piper import PiperVoice, SynthesisConfig
 
 voice = PiperVoice.load(sys.argv[1])
