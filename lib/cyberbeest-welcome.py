@@ -514,7 +514,10 @@ class PanelSection:
 
 def factbook_launch():
     """Launcher for the full Factbook app, or None when it is not installed."""
-    info = Gio.DesktopAppInfo.new("factbook.desktop")
+    try:
+        info = Gio.DesktopAppInfo.new("factbook.desktop")   # raises TypeError when missing
+    except TypeError:
+        return None
     return (lambda _b: info.launch([], None)) if info else None
 
 
