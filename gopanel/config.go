@@ -143,6 +143,8 @@ func launchersLeft(items []*item) []*item {
 	return append(append(head, launchers...), rest...)
 }
 
+var theWhisker *whisker // set at startup: launchers record what they start in its Recently Used list
+
 func newLauncherItem(path string) *item {
 	l, icon := parseDesktop(path)
 	if l == nil {
@@ -161,6 +163,9 @@ func newLauncherItem(path string) *item {
 		if btn == 1 {
 			run(l.command())
 			noticeStart(l.name)
+			if theWhisker != nil {
+				theWhisker.noteLauncherStart(path, l.exec)
+			}
 		}
 	}
 	return it

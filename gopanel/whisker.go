@@ -583,6 +583,11 @@ func (w *whisker) searchRows() []wrow {
 
 // onButler takes a matcher result for the current query; older ones are dropped.
 func (w *whisker) onButler(r butlerResult) {
+	if r.ran && r.ok && r.app != "" {
+		if e := w.byID[r.app]; e != nil {
+			w.noteRecent(e.ID)
+		}
+	}
 	if r.weather { // a new weather reading for the header
 		if w.isOpen {
 			w.put(w.paintHeader(), 0, 0)
@@ -1201,6 +1206,21 @@ func absInt(n int) int {
 		return -n
 	}
 	return n
+}
+
+// noteLauncherStart lists an app started from a panel launcher under Recently Used: the launcher's
+// file name is usually the desktop id, otherwise the app with the same command line is taken.
+func (w *whisker) noteLauncherStart(path, exec string) {
+	if e := w.byID[filepath.Base(path)]; e != nil {
+		w.noteRecent(e.ID)
+		return
+	}
+	for _, e := range w.all {
+		if e.Exec == exec {
+			w.noteRecent(e.ID)
+			return
+		}
+	}
 }
 
 func (w *whisker) noteRecent(id string) {

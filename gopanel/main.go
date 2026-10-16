@@ -167,6 +167,7 @@ func main() {
 	noticeTip = newTooltip(c, scr, gc)
 	menus := newMenuMgr(c, scr, gc)
 	wh := newWhisker(c, scr, gc)
+	theWhisker = wh
 	butlerC := make(chan butlerResult, 8)
 	wh.bc = newButlerClient(butlerC)
 	cmdOSD := newOSD(c, scr, gc)

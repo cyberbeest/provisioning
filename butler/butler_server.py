@@ -146,10 +146,13 @@ def main():
                 out({"ran": cmd["id"], "ok": False, "reply": "needs a value"})
                 continue
             try:
-                _, _, rc, extras = runner.execute(cmd, vals, dry=False)
+                argv, _, rc, extras = runner.execute(cmd, vals, dry=False)
                 shown = {**vals, **extras}
                 done = cmd.get("done", cmd["reply"])[LANG].format_map(shown)
-                out({"ran": cmd["id"], "ok": rc == 0, "reply": cmd["reply"][LANG].format(**vals),
+                app = ""   # a command that opens an app says which, so the menu can list it under Recently Used
+                if len(argv) == 2 and argv[0] == "gtk-launch":
+                    app = argv[1] if argv[1].endswith(".desktop") else argv[1] + ".desktop"
+                out({"ran": cmd["id"], "ok": rc == 0, "app": app, "reply": cmd["reply"][LANG].format(**vals),
                      "osd": done, "level": extras.get("level", -1),
                      "level_max": extras.get("level_max", 100)})
             except Exception as e:  # noqa: BLE001 - reported to the caller

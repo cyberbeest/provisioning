@@ -50,6 +50,7 @@ type butlerResult struct {
 	// answer to a run request (ran), or a note to clear it again (clear)
 	ran, clear bool
 	id, reply  string
+	app        string // desktop id of the app the command opened, if any
 	ok         bool
 	osd        string // message for the on-screen display, and its level (0-100, -1 none)
 	level      int
@@ -262,6 +263,7 @@ func (b *butlerClient) read(cmd *exec.Cmd, r io.Reader) {
 			Ran   string      `json:"ran"`
 			OK    bool        `json:"ok"`
 			Reply string      `json:"reply"`
+			App   string      `json:"app"`
 			OSD   string      `json:"osd"`
 			Level *int        `json:"level"`
 			LMax  int         `json:"level_max"`
@@ -303,7 +305,7 @@ func (b *butlerClient) read(cmd *exec.Cmd, r io.Reader) {
 				lvl = *m.Level
 			}
 			select {
-			case b.out <- butlerResult{ran: true, id: m.Ran, ok: m.OK, reply: m.Reply, osd: m.OSD, level: lvl, levelMax: m.LMax}:
+			case b.out <- butlerResult{ran: true, id: m.Ran, ok: m.OK, reply: m.Reply, app: m.App, osd: m.OSD, level: lvl, levelMax: m.LMax}:
 			default:
 			}
 		default:
