@@ -43,6 +43,43 @@
       }
     },
     {
+      "id": "open_google",
+      "title": {
+        "en": "Open Google",
+        "de": "Google öffnen"
+      },
+      "sentence": {
+        "en": "Open Google",
+        "de": "Google öffnen"
+      },
+      "examples": {
+        "en": [
+          "open Google",
+          "go to Google",
+          "google",
+          "take me to google.com",
+          "I want to search on Google"
+        ],
+        "de": [
+          "öffne Google",
+          "geh zu Google",
+          "Google öffnen",
+          "bring mich zu google.de",
+          "ich will bei Google suchen"
+        ]
+      },
+      "reply": {
+        "en": "Opening Google.",
+        "de": "Öffne Google."
+      },
+      "run": {
+        "argv": [
+          "xdg-open",
+          "https://www.google.com"
+        ]
+      }
+    },
+    {
       "id": "open_tor",
       "title": {
         "en": "Open Tor Browser",
