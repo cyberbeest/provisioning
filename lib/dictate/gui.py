@@ -350,8 +350,13 @@ class DictationNote:
     def _show(self, msg):
         self.id = core.notify_sticky(msg)
 
-    def update(self, msg, cancellable=False):
-        """cancellable: the notification can be clicked to cancel the pasting."""
+    def update(self, msg, cancellable=False, progress=None):
+        """cancellable: the notification can be clicked to cancel the pasting.
+        progress: 0..100, drawn as a text bar after the message (the daemon's own
+        progress bar would replace the message)."""
+        if progress is not None:
+            n = progress * 4 // 100
+            msg = "%s  %s%s" % (msg, "\u25b0" * n, "\u25b1" * (4 - n))
         self._thread.join()
         if self.cancelled.is_set():
             return   # the user dismissed it: it must not come back
@@ -1196,6 +1201,21 @@ class MainWindow(QMainWindow):
             return _("Transcribing & pasting") if pasting else _("Transcribing")
         return _("Loading speech model, transcribing & pasting") if pasting else _("Loading speech model & transcribing")
 
+    def _show_progress(self, note, target, secs, stop):
+        """Move the notification's progress bar along until `stop` is set. It is an
+        estimate from earlier dictations' speed, so it waits at 95 % if decoding is slow."""
+        t0 = time.monotonic()
+        expected = core.expected_transcribe_s(secs)
+        text = self._note_text(target)
+        while not stop.wait(1.0):
+            if self._local_state() != "loaded":
+                t0 = time.monotonic()   # the model is still loading: the clock starts when it is ready
+                continue
+            pct = min(95, int(100 * (time.monotonic() - t0) / expected))
+            if stop.is_set():
+                break
+            note.update(text, cancellable=target != "", progress=pct)
+
     def _stop_and_transcribe_worker(self, take, note, target):
         try:
             self._transcribe_take(take, note, target)
@@ -1205,7 +1225,7 @@ class MainWindow(QMainWindow):
 
     def _transcribe_take(self, take, note, target):
         if note:
-            note.update(self._note_text(target), cancellable=target != "")   # the key is up: "Speak now" turns into the current step
+            note.update(self._note_text(target), cancellable=target != "", progress=0)   # the key is up: "Speak now" turns into the current step
         # Short trailing buffer: PipeWire has ~50-100ms input latency and
         # people typically finish the last syllable *after* they release the
         # hotkey. Without this the last word tends to get clipped.
@@ -1240,6 +1260,10 @@ class MainWindow(QMainWindow):
                 # the text is late, and take the message down when it is ready.
                 wait_note = core.notify_sticky(
                     _("Loading the speech model, your text follows in a moment..."))
+        was_loaded = local_stt.status() == "loaded"
+        stop_progress = threading.Event()
+        if note:
+            threading.Thread(target=self._show_progress, args=(note, target, secs, stop_progress), daemon=True).start()
         try:
             text = core.transcribe(audio, self.cfg, speech, note.cancelled if note else None)
         except local_stt.Cancelled:
@@ -1251,7 +1275,10 @@ class MainWindow(QMainWindow):
             self.bridge.error.emit(str(e))
             return
         finally:
+            stop_progress.set()
             core.close_notification(wait_note)
+        if was_loaded:
+            core.record_transcribe_speed(secs, time.monotonic() - t0)
         core.log.info("transcribed %.1fs audio, peak %d, %d chars in %.1fs",
                       secs, peak, len(text or ""), time.monotonic() - t0)
         if not text:

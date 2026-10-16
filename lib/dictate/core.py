@@ -167,11 +167,12 @@ def _gv_str(s):
     return "'" + s.replace("\\", "\\\\").replace("'", "\\'") + "'"
 
 
-def notify_sticky(msg, replace_id=None, body=None, action=None):
+def notify_sticky(msg, replace_id=None, body=None, action=None, progress=None):
     """Show a notification that stays until close_notification(); returns its
     id, or None if it could not be shown. With replace_id, that notification
     changes its text in place. With action, clicking the notification sends
     the daemon's ActionInvoked signal for this id with the key "default".
+    With progress (0..100), the daemon's own progress bar is shown (it hides the text on xfce4-notifyd).
     (notify-send -A would do that too, but it implies --wait and blocks until
     the notification is gone, which would stall the caller.)"""
     if action:
@@ -181,7 +182,8 @@ def notify_sticky(msg, replace_id=None, body=None, action=None):
                  "--object-path", "/org/freedesktop/Notifications",
                  "--method", "org.freedesktop.Notifications.Notify",
                  "Dictate", str(replace_id or 0), "", _gv_str(msg), _gv_str(body or ""),
-                 "[" + _gv_str("default") + "," + _gv_str(action) + "]", "@a{sv} {}", "0"],
+                 "[" + _gv_str("default") + "," + _gv_str(action) + "]",
+                 "{'value': <int32 %d>}" % progress if progress is not None else "@a{sv} {}", "0"],
                 check=False, capture_output=True, text=True, timeout=5)
             return int(r.stdout.split()[1].rstrip(",)"))
         except (FileNotFoundError, ValueError, IndexError, subprocess.TimeoutExpired):
@@ -190,6 +192,8 @@ def notify_sticky(msg, replace_id=None, body=None, action=None):
     cmd = ["notify-send", "-a", "Dictate", "-p", "-t", "0"]
     if replace_id is not None:
         cmd += ["-r", str(replace_id)]
+    if progress is not None:
+        cmd += ["-h", "int:value:%d" % progress]
     cmd.append(msg)
     if body:
         cmd.append(body)
@@ -926,6 +930,40 @@ def remove_correction(src, dst):
         d["blocked"].append([src, dst])
     _save_corrections(d)
     rebuild_corrections()
+
+
+# Transcribing has no real progress to report (one piece is decoded in one go), so the
+# progress bar is an estimate: a fixed start-up cost plus a per-second-of-audio cost
+# learned from earlier dictations.
+SPEED_PATH = CONFIG_DIR / "transcribe-speed.json"
+DEFAULT_S_PER_AUDIO_S = 0.4
+TRANSCRIBE_OVERHEAD_S = 0.5
+
+
+def _s_per_audio_s():
+    try:
+        v = float(json.loads(SPEED_PATH.read_text())["s_per_audio_s"])
+        if 0.02 < v < 10:
+            return v
+    except Exception:
+        pass
+    return DEFAULT_S_PER_AUDIO_S
+
+
+def expected_transcribe_s(audio_s):
+    return TRANSCRIBE_OVERHEAD_S + audio_s * _s_per_audio_s()
+
+
+def record_transcribe_speed(audio_s, took_s):
+    if audio_s < 3:
+        return   # dominated by the fixed cost
+    rate = max(0.0, took_s - TRANSCRIBE_OVERHEAD_S) / audio_s
+    new = 0.7 * _s_per_audio_s() + 0.3 * rate
+    try:
+        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        SPEED_PATH.write_text(json.dumps({"s_per_audio_s": round(new, 4)}))
+    except OSError:
+        pass
 
 
 def transcribe(audio, cfg, speech=None, cancel=None):

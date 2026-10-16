@@ -46,7 +46,13 @@ use_gopanel() {
 	bin="$(gopanel_bin)" || { echo "gopanel binary not found"; return 1; }
 	pgrep -x gopanel >/dev/null || launch "$bin"
 	wait_for 10 gopanel || { echo "gopanel did not start, keeping the XFCE panel"; return 1; }
-	sleep 1.5 # let it map its window before the other panel goes away
+	# Keep the XFCE panel until gopanel's window is really on screen, then only a short grace, so the
+	# stock panel is never visible alone and never lingers beside gopanel.
+	for _ in $(seq 20); do
+		xwininfo -root -tree 2>/dev/null | grep -q '"gopanel"' && break
+		sleep 0.25
+	done
+	sleep 0.3
 	touch "$MARKER"
 	pgrep -x xfce4-panel >/dev/null && xfce4-panel --quit
 	return 0
@@ -81,6 +87,9 @@ set)
 	esac ;;
 login)
 	if [ "$(saved)" = gopanel ]; then
+		# The session starts xfce4-panel before this autostart entry runs, so it shows briefly. Start
+		# gopanel at once, in parallel with the wait below, to keep that overlap as short as possible.
+		bin="$(gopanel_bin)" && { pgrep -x gopanel >/dev/null || launch "$bin"; }
 		wait_for 40 xfce4-panel # the session starts it; stopping it before it exists would not stick
 		use_gopanel || rm -f "$MARKER"
 	fi ;;
