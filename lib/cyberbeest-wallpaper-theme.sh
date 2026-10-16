@@ -1,8 +1,10 @@
 #!/bin/bash
 # Applies a desktop wallpaper choice: standard | nature | space | previous.
 #   standard  Cyberbeest's own default picture, no rotation.
-#   nature / space  xfdesktop's built-in image cycling on that photo pack
-#             (no daemon or timer of our own).
+#   nature / space  hourly rotation through that photo pack with a short
+#             crossfade, done by cyberbeest-wallpaper-fade (xfdesktop's own
+#             cycling is switched off; ~/.config/cyberbeest/wallpaper-rotation
+#             holds the pack name while rotation is on).
 #   previous  Whatever was set before the first switch away from a custom
 #             picture; falls back to standard when nothing was saved.
 # Before leaving a custom picture (not ours, not a pack photo) the current
@@ -20,9 +22,8 @@ for f in /usr/share/backgrounds/xfce/cyberbeest-fallback.jpg /usr/share/backgrou
 	[ -r "$f" ] && { FALLBACK="$f"; break; }
 done
 SAVED="$HOME/.config/cyberbeest/wallpaper-previous.tsv"
-# xfdesktop backdrop-cycle-period: 0 seconds, 1 minutes, 2 hours, 3 startup, 4 hourly, 5 daily
-CYCLE_PERIOD=2
-CYCLE_TIMER=1
+MARKER="$HOME/.config/cyberbeest/wallpaper-rotation"
+FADE_PID="${XDG_RUNTIME_DIR:-/tmp}/cyberbeest-wallpaper-fade.lock"
 KEYS='(workspace[0-9]+/)?(last-image|image-path|image-style|color-style|backdrop-cycle-enable)$'
 
 theme="${1:-}"
@@ -94,14 +95,7 @@ else
 			set_key "$w/last-image" string "$first"
 			set_key "$w/image-style" int 5
 			set_key "$w/color-style" int 0
-			if [ "$theme" = nature ] || [ "$theme" = space ]; then
-				set_key "$w/backdrop-cycle-enable" bool true
-				set_key "$w/backdrop-cycle-period" int "$CYCLE_PERIOD"
-				set_key "$w/backdrop-cycle-timer" uint "$CYCLE_TIMER"
-				set_key "$w/backdrop-cycle-random-order" bool true
-			else
-				set_key "$w/backdrop-cycle-enable" bool false
-			fi
+			set_key "$w/backdrop-cycle-enable" bool false
 		done
 		set_key "$base/image-path" string "$first"
 		set_key "$base/last-image" string "$first"
@@ -109,3 +103,17 @@ else
 fi
 
 xfdesktop --reload 2>/dev/null || true
+
+# Rotation daemon: running exactly while a pack is chosen.
+if [ "$theme" = nature ] || [ "$theme" = space ]; then
+	mkdir -p "$(dirname "$MARKER")"
+	echo "$theme" > "$MARKER"
+	if ! pgrep -u "$(id -u)" -f '[c]yberbeest-wallpaper-fade' >/dev/null; then
+		setsid /usr/local/bin/cyberbeest-wallpaper-fade >/dev/null 2>&1 < /dev/null &
+	fi
+else
+	rm -f "$MARKER"
+	pid="$(cat "$FADE_PID" 2>/dev/null)"
+	[ -n "$pid" ] && kill "$pid" 2>/dev/null
+	true
+fi

@@ -1,0 +1,233 @@
+#!/usr/bin/env python3
+"""Rotates the desktop wallpaper through a photo pack with a short crossfade.
+
+Runs only while a pack is active: ~/.config/cyberbeest/wallpaper-rotation holds
+the pack name (nature | space), written by cyberbeest-wallpaper-theme. xfdesktop's
+own cycling is switched off; this daemon is the timer instead, so it can fade.
+
+Every hour each monitor independently gets a new random picture from the pack
+(so two monitors usually differ). The fade is faked: a few pre-blended frames
+are set one after another through xfconf. It is only done when the desktop is
+actually visible on that monitor (no fullscreen or maximized window there);
+otherwise the picture is switched directly. While the screen is locked nothing
+is done at all (battery); a rotation that came due is made a few seconds after
+unlocking.
+
+Machines whose xfdesktop was already cycling (before this daemon existed) are
+adopted on start.
+"""
+import fcntl
+import glob
+import os
+import random
+import re
+import signal
+import subprocess
+import sys
+import time
+
+import gi
+gi.require_version("Wnck", "3.0")
+from gi.repository import Gio, GLib, Wnck
+from PIL import Image, ImageOps
+
+PACK = "/usr/share/backgrounds/cyberbeest"
+THEMES = ("nature", "space")
+CONF = os.path.expanduser("~/.config/cyberbeest")
+MARKER = os.path.join(CONF, "wallpaper-rotation")
+RUNTIME = os.environ.get("XDG_RUNTIME_DIR") or "/tmp"
+LOCK = os.path.join(RUNTIME, "cyberbeest-wallpaper-fade.lock")
+FRAME_DIR = os.path.join(RUNTIME, "cyberbeest-wallpaper-fade")
+PERIOD_S = 3600
+# Blend steps (smoothstep of 20/40/60/80 %) and the pause after each frame.
+STEPS = (0.104, 0.352, 0.648, 0.896)
+FRAME_GAP_S = 0.25
+
+
+def xq(*args):
+    r = subprocess.run(["xfconf-query", "-c", "xfce4-desktop", *args],
+                       capture_output=True, text=True)
+    return r.stdout.strip() if r.returncode == 0 else ""
+
+
+def set_image(mon, ws, path):
+    subprocess.run(["xfconf-query", "-c", "xfce4-desktop", "-p",
+                    f"/backdrop/screen0/monitor{mon}/workspace{ws}/last-image",
+                    "-n", "-t", "string", "-s", path], capture_output=True)
+
+
+def monitors():
+    """[(name, x, y, w, h)] from xrandr."""
+    out = subprocess.run(["xrandr", "--current"], capture_output=True, text=True,
+                         env={**os.environ, "LC_ALL": "C"}).stdout
+    res = []
+    for m in re.finditer(r"^(\S+) connected (?:primary )?(\d+)x(\d+)\+(\d+)\+(\d+)", out, re.M):
+        res.append((m.group(1), int(m.group(4)), int(m.group(5)), int(m.group(2)), int(m.group(3))))
+    return res
+
+
+def read_marker():
+    try:
+        theme = open(MARKER).read().strip()
+    except OSError:
+        return ""
+    return theme if theme in THEMES else ""
+
+
+def adopt_running_cycle():
+    """Take over from xfdesktop's own cycling if it was cycling a pack."""
+    mons = monitors()
+    for name, *_ in mons:
+        base = f"/backdrop/screen0/monitor{name}/workspace0"
+        if xq("-p", base + "/backdrop-cycle-enable") != "true":
+            continue
+        image = xq("-p", base + "/last-image")
+        for theme in THEMES:
+            if image.startswith(f"{PACK}/{theme}/"):
+                os.makedirs(CONF, exist_ok=True)
+                with open(MARKER, "w") as f:
+                    f.write(theme + "\n")
+                for line in xq("-l", "-v").splitlines():
+                    parts = line.split()
+                    if (len(parts) >= 2 and parts[0].endswith("/backdrop-cycle-enable")
+                            and parts[1] == "true"):
+                        subprocess.run(["xfconf-query", "-c", "xfce4-desktop", "-p", parts[0],
+                                        "-s", "false"], capture_output=True)
+                return theme
+    return ""
+
+
+class Fader:
+    def __init__(self):
+        self.screen = Wnck.Screen.get_default()
+        self.loop = GLib.MainLoop()
+        self.pending = False
+        self.bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+
+    def screensaver_active(self):
+        try:
+            r = self.bus.call_sync("org.xfce.ScreenSaver", "/org/xfce/ScreenSaver",
+                                   "org.xfce.ScreenSaver", "GetActive", None,
+                                   GLib.VariantType("(b)"), Gio.DBusCallFlags.NONE, 1000, None)
+            return r.unpack()[0]
+        except GLib.Error:
+            return False
+
+    def on_active_changed(self, _bus, _sender, _path, _iface, _signal, params):
+        if not params.unpack()[0] and self.pending:
+            GLib.timeout_add_seconds(3, self.tick_once)
+
+    def tick_once(self):
+        self.tick()
+        return False
+
+    def desktop_visible(self, mon):
+        _, mx, my, mw, mh = mon
+        self.screen.force_update()
+        ws = self.screen.get_active_workspace()
+        for w in self.screen.get_windows():
+            if w.is_minimized() or w.is_skip_tasklist():
+                continue
+            if w.get_window_type() in (Wnck.WindowType.DESKTOP, Wnck.WindowType.DOCK):
+                continue
+            if ws is not None and not w.is_on_workspace(ws):
+                continue
+            if not (w.is_fullscreen() or w.is_maximized()):
+                continue
+            x, y, ww, wh = w.get_geometry()
+            cx, cy = x + ww // 2, y + wh // 2
+            if mx <= cx < mx + mw and my <= cy < my + mh:
+                return False
+        return True
+
+    def active_workspace_index(self):
+        ws = self.screen.get_active_workspace()
+        return ws.get_number() if ws is not None else 0
+
+    def workspace_count(self):
+        n = subprocess.run(["xfconf-query", "-c", "xfwm4", "-p", "/general/workspace_count"],
+                           capture_output=True, text=True).stdout.strip()
+        return int(n) if n.isdigit() else 1
+
+    def fit(self, path, size):
+        return ImageOps.fit(Image.open(path).convert("RGB"), size, Image.BICUBIC)
+
+    def rotate_monitor(self, mon, theme):
+        name, _, _, w, h = mon
+        images = sorted(glob.glob(f"{PACK}/{theme}/*.jpg"))
+        current = xq("-p", f"/backdrop/screen0/monitor{name}/workspace0/last-image")
+        choices = [i for i in images if i != current]
+        if not choices:
+            return
+        new = random.choice(choices)
+        n_ws = self.workspace_count()
+        cur_ws = min(self.active_workspace_index(), n_ws - 1)
+
+        frames = []
+        if os.path.isfile(current) and self.desktop_visible(mon):
+            try:
+                os.makedirs(FRAME_DIR, exist_ok=True)
+                a, b = self.fit(current, (w, h)), self.fit(new, (w, h))
+                for i, t in enumerate(STEPS):
+                    p = os.path.join(FRAME_DIR, f"{name}-{i}.jpg")
+                    Image.blend(a, b, t).save(p, quality=90)
+                    frames.append(p)
+            except Exception as e:  # unreadable image etc.: fall back to a plain switch
+                print("fade prep failed:", e, file=sys.stderr)
+                frames = []
+            # The desktop may have been covered while we rendered.
+            if frames and not self.desktop_visible(mon):
+                frames = []
+        for p in frames:
+            set_image(name, cur_ws, p)
+            time.sleep(FRAME_GAP_S)
+        for ws in range(n_ws):
+            set_image(name, ws, new)
+        xq("-p", f"/backdrop/screen0/monitor{name}/last-image", "-n", "-t", "string", "-s", new)
+        for p in frames:
+            try:
+                os.unlink(p)
+            except OSError:
+                pass
+
+    def tick(self):
+        theme = read_marker()
+        if not theme:
+            self.loop.quit()
+            return False
+        if self.screensaver_active():
+            self.pending = True
+            return True
+        self.pending = False
+        for mon in monitors():
+            self.rotate_monitor(mon, theme)
+        return True
+
+    def run(self):
+        GLib.timeout_add_seconds(PERIOD_S, self.tick)
+        self.bus.signal_subscribe("org.xfce.ScreenSaver", "org.xfce.ScreenSaver", "ActiveChanged",
+                                  "/org/xfce/ScreenSaver", None, Gio.DBusSignalFlags.NONE,
+                                  self.on_active_changed)
+        GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGTERM, lambda: self.loop.quit() or False)
+        self.loop.run()
+
+
+def main():
+    os.makedirs(CONF, exist_ok=True)
+    lock = open(LOCK, "a+")
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        return 0  # already running
+    lock.seek(0)
+    lock.truncate()
+    lock.write(str(os.getpid()))
+    lock.flush()
+    if not read_marker() and not adopt_running_cycle():
+        return 0
+    Fader().run()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

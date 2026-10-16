@@ -811,7 +811,7 @@ WALLPAPER_SAVED = os.path.join(CONFIG_DIR, "wallpaper-previous.tsv")
 
 
 def wallpaper_choice_now():
-    """nature / space while xfdesktop cycles through that pack, standard for our own
+    """nature / space while the rotation daemon is on for that pack, standard for our own
     default picture, else previous (a picture the user chose)."""
     def q(path):
         r = subprocess.run(["xfconf-query", "-c", "xfce4-desktop", "-p", path],
@@ -821,7 +821,12 @@ def wallpaper_choice_now():
                          shell=True, capture_output=True, text=True).stdout.strip()
     base = f"/backdrop/screen0/monitor{mon}/workspace0"
     image = q(base + "/last-image")
-    if q(base + "/backdrop-cycle-enable") == "true":
+    try:
+        with open(os.path.join(CONFIG_DIR, "wallpaper-rotation")) as f:
+            marked = f.read().strip()
+    except OSError:
+        marked = ""
+    if marked in ("nature", "space") or q(base + "/backdrop-cycle-enable") == "true":
         for theme in ("nature", "space"):
             if image.startswith(f"{WALLPAPER_PACK}/{theme}/"):
                 return theme
@@ -832,7 +837,7 @@ def wallpaper_choice_now():
 
 class WallpaperPage(Gtk.Box):
     """Standard picture, the user's own picture, or an hourly-rotating photo pack
-    (xfdesktop's own cycling)."""
+    (cyberbeest-wallpaper-fade)."""
 
     def __init__(self):
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=12)
