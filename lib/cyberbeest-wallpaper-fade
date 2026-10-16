@@ -2,7 +2,7 @@
 """Rotates the desktop wallpaper through a photo pack with a short crossfade.
 
 Runs only while a pack is active: ~/.config/cyberbeest/wallpaper-rotation holds
-the pack name (nature | space), written by cyberbeest-wallpaper-theme. xfdesktop's
+the pack name (a directory under PACK), written by cyberbeest-wallpaper-theme. xfdesktop's
 own cycling is switched off; this daemon is the timer instead, so it can fade.
 
 Every hour each monitor independently gets a new random picture from the pack
@@ -32,7 +32,7 @@ from gi.repository import Gio, GLib, Wnck
 from PIL import Image, ImageOps
 
 PACK = "/usr/share/backgrounds/cyberbeest"
-THEMES = ("nature", "space")
+THEMES = ("nature", "space", "architecture", "cars", "cities", "coast", "art")
 CONF = os.path.expanduser("~/.config/cyberbeest")
 MARKER = os.path.join(CONF, "wallpaper-rotation")
 RUNTIME = os.environ.get("XDG_RUNTIME_DIR") or "/tmp"

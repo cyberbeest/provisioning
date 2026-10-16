@@ -1,5 +1,5 @@
 #!/bin/bash
-# Installs the nature and space wallpaper packs (lib/assets/wallpapers, photos
+# Installs the wallpaper photo packs (lib/assets/wallpapers, photos
 # from Wikimedia Commons, credits in CREDITS.md) and a small
 # helper (lib/cyberbeest-wallpaper-theme.sh, driven by the Wallpaper tab in
 # Cyberbeest Settings) that turns on hourly rotation with a short crossfade
@@ -18,7 +18,7 @@ SRC="$DIR/lib/assets/wallpapers"
 DEST="/usr/share/backgrounds/cyberbeest"
 
 echo "--- Installing wallpaper packs to $DEST ---"
-for theme in nature space; do
+for theme in nature space architecture cars cities coast art; do
 	install -d -m 755 "$DEST/$theme"
 	# Drop images removed from the pack since an earlier run.
 	for f in "$DEST/$theme"/*.jpg; do

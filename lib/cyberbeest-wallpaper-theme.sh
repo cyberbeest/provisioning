@@ -1,7 +1,7 @@
 #!/bin/bash
-# Applies a desktop wallpaper choice: standard | nature | space | previous.
+# Applies a desktop wallpaper choice: standard | previous | a photo pack (nature space architecture cars cities coast art).
 #   standard  Cyberbeest's own default picture, no rotation.
-#   nature / space  hourly rotation through that photo pack with a short
+#   <pack>    hourly rotation through that photo pack with a short
 #             crossfade, done by cyberbeest-wallpaper-fade (xfdesktop's own
 #             cycling is switched off; ~/.config/cyberbeest/wallpaper-rotation
 #             holds the pack name while rotation is on).
@@ -27,10 +27,11 @@ FADE_PID="${XDG_RUNTIME_DIR:-/tmp}/cyberbeest-wallpaper-fade.lock"
 KEYS='(workspace[0-9]+/)?(last-image|image-path|image-style|color-style|backdrop-cycle-enable)$'
 
 theme="${1:-}"
-case "$theme" in
-	standard|nature|space|previous) ;;
-	*) echo "usage: $0 standard|nature|space|previous" >&2; exit 2 ;;
-esac
+PACKS="nature space architecture cars cities coast art"
+is_pack() { case " $PACKS " in *" $1 "*) return 0 ;; esac; return 1; }
+if [ "$theme" != standard ] && [ "$theme" != previous ] && ! is_pack "$theme"; then
+	echo "usage: $0 standard|previous|${PACKS// /|}" >&2; exit 2
+fi
 
 monitors="$(xrandr --current 2>/dev/null | awk '/ connected/{print $1}')"
 workspace_count="$(xfconf-query -c xfwm4 -p /general/workspace_count 2>/dev/null)"
@@ -80,7 +81,7 @@ fi
 if [ "$theme" = previous ] && [ -s "$SAVED" ]; then
 	restore_saved
 else
-	if [ "$theme" = nature ] || [ "$theme" = space ]; then
+	if is_pack "$theme"; then
 		first="$(ls "$PACK/$theme"/*.jpg 2>/dev/null | head -1)"
 		[ -n "$first" ] || { echo "no images in $PACK/$theme" >&2; exit 1; }
 	else
@@ -105,12 +106,11 @@ fi
 xfdesktop --reload 2>/dev/null || true
 
 # Rotation daemon: running exactly while a pack is chosen.
-if [ "$theme" = nature ] || [ "$theme" = space ]; then
+if is_pack "$theme"; then
 	mkdir -p "$(dirname "$MARKER")"
 	echo "$theme" > "$MARKER"
-	if ! pgrep -u "$(id -u)" -f '[c]yberbeest-wallpaper-fade' >/dev/null; then
-		setsid /usr/local/bin/cyberbeest-wallpaper-fade >/dev/null 2>&1 < /dev/null &
-	fi
+	# A second instance exits at once (the daemon holds a lock), so no check here.
+	setsid /usr/local/bin/cyberbeest-wallpaper-fade >/dev/null 2>&1 < /dev/null &
 else
 	rm -f "$MARKER"
 	pid="$(cat "$FADE_PID" 2>/dev/null)"

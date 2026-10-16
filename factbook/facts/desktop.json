@@ -13,8 +13,8 @@
     },
     {
       "id": "menu-super-key",
-      "en": "Pressing the Super key (the key with the window symbol) opens the Cyberbeest menu.",
-      "de": "Ein Druck auf die Super-Taste (die Taste mit dem Fenstersymbol) öffnet das Cyberbeest-Menü.",
+      "en": "Pressing the Windows key opens the Cyberbeest menu.",
+      "de": "Ein Druck auf die Windows-Taste öffnet das Cyberbeest-Menü; hält man sie gedrückt, startet zusätzlich das Diktat.",
       "tip": true
     },
     {
