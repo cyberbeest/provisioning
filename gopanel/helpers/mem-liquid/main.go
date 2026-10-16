@@ -324,6 +324,61 @@ func drawCentered(dst *image.RGBA, text string, px float64, cx, cy float64, bold
 	gfx.Draw(dst, x, y, sp(fill), px)
 }
 
+// unloadable is a program holding memory it gives back under pressure (a speech
+// model, say). Programs announce themselves with a file in
+// $XDG_RUNTIME_DIR/cyberbeest/unloadable/ holding "<pid>\t<label>\t<baseline KiB>"; the size shown is the pid's
+// current RSS minus that baseline (model pages fault in lazily, so a fixed number goes stale).
+type unloadable struct {
+	label string
+	kib   uint64
+}
+
+func procRSSKiB(pid int) uint64 {
+	data, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/status")
+	if err != nil {
+		return 0
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		if f := strings.Fields(line); len(f) >= 2 && f[0] == "VmRSS:" {
+			v, _ := strconv.ParseUint(f[1], 10, 64)
+			return v
+		}
+	}
+	return 0
+}
+
+func readUnloadables() []unloadable {
+	dir := filepath.Join(os.Getenv("XDG_RUNTIME_DIR"), "cyberbeest", "unloadable")
+	ents, err := os.ReadDir(dir)
+	if err != nil || os.Getenv("XDG_RUNTIME_DIR") == "" {
+		return nil
+	}
+	var out []unloadable
+	for _, e := range ents {
+		if strings.HasPrefix(e.Name(), ".") {
+			continue
+		}
+		raw, err := os.ReadFile(filepath.Join(dir, e.Name()))
+		if err != nil {
+			continue
+		}
+		f := strings.Split(strings.TrimSpace(string(raw)), "\t")
+		if len(f) < 3 {
+			continue
+		}
+		pid, err := strconv.Atoi(f[0])
+		if err != nil {
+			continue
+		}
+		if kerr := syscall.Kill(pid, 0); kerr != nil && kerr != syscall.EPERM {
+			continue // owner is gone: stale file
+		}
+		base, _ := strconv.ParseUint(f[2], 10, 64)
+		out = append(out, unloadable{f[1], sub(procRSSKiB(pid), base)})
+	}
+	return out
+}
+
 func (s *state) tooltip(top []procinfo.MemProc) string {
 	var b strings.Builder
 	gib := func(kib uint64) float64 { return float64(kib) / 1048576 }
@@ -366,16 +421,28 @@ func (s *state) tooltip(top []procinfo.MemProc) string {
 			fmt.Fprintf(&b, "\n%s  %.1f GB (%.0f%%)", p.Name, gb, pct)
 		}
 	}
+	if ul := readUnloadables(); len(ul) > 0 {
+		b.WriteString("\n\nCan be freed when RAM runs short:")
+		for _, u := range ul {
+			if u.kib > 0 {
+				fmt.Fprintf(&b, "\n%s  %.1f GB", u.label, math.Max(float64(u.kib)/1048576, 0.1))
+			} else {
+				fmt.Fprintf(&b, "\n%s", u.label)
+			}
+		}
+	}
 	return b.String()
 }
 
 var stateForTip atomic.Pointer[state] // snapshot for the tooltip goroutine
 
 func tooltipLoop(c *proto.Client, friendly bool, stop <-chan struct{}) {
+	var last []procinfo.MemProc // previous Top RAM list, shown while the fresh scan runs
 	for {
 		if st := stateForTip.Load(); st != nil {
-			c.SetTooltip(st.tooltip(nil))
-			c.SetTooltip(st.tooltip(procinfo.TopMem(3, friendly)))
+			c.SetTooltip(st.tooltip(last))
+			last = procinfo.TopMem(3, friendly)
+			c.SetTooltip(st.tooltip(last))
 		}
 		select {
 		case <-time.After(3 * time.Second):

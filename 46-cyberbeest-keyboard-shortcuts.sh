@@ -5,7 +5,7 @@
 # Whisker on a freshly provisioned machine):
 #   - Super_L opens the application menu of whichever panel runs, through
 #     ~/.local/bin/cyberbeest-whisker-key.sh (gopanel's menu when gopanel is up,
-#     else xfce4-popup-whiskermenu; installed here, from experimental/gopanel).
+#     else xfce4-popup-whiskermenu; installed here, from gopanel).
 #   - Ctrl+Alt+Delete and the power key open cyberbeest-logout (installed by
 #     09-cyberbeest-logout-dialog.sh) instead of their Xfce defaults.
 # Everything else in this file is Debian's own stock xfce4-keyboard-shortcuts
@@ -33,7 +33,7 @@ XML_DIR="$TARGET_HOME/.config/xfce4/xfconf/xfce-perchannel-xml"
 DEST="$XML_DIR/xfce4-keyboard-shortcuts.xml"
 
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.local/bin"
-install -o "$TARGET_USER" -g "$TARGET_USER" -m 755 "$DIR/experimental/gopanel/cyberbeest-whisker-key.sh" \
+install -o "$TARGET_USER" -g "$TARGET_USER" -m 755 "$DIR/gopanel/cyberbeest-whisker-key.sh" \
 	"$TARGET_HOME/.local/bin/cyberbeest-whisker-key.sh"
 
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$XML_DIR"

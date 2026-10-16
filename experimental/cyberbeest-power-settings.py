@@ -39,7 +39,7 @@ GENMON_WIDGET_NAME = "__GENMON_WIDGET__"
 def gopanel_exe():
     """The gopanel binary: installed link, PATH, or the dev checkout."""
     for p in (os.path.expanduser("~/.local/bin/gopanel"), shutil.which("gopanel") or "",
-              os.path.expanduser("~/claude/provisioning/experimental/gopanel/gopanel"),
+              os.path.expanduser("~/claude/provisioning/gopanel/gopanel"),
               os.path.expanduser("~/claude/gopanel/gopanel")):
         if p and os.access(p, os.X_OK):
             return p

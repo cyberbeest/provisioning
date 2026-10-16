@@ -182,7 +182,7 @@ func (b *butlerClient) flush() {
 	if !b.hasPend || !b.ready || b.stdin == nil {
 		return // sent when the server announces ready
 	}
-	b.sendLocked(map[string]any{"op": "match", "seq": b.seq, "text": b.pending})
+	b.sendLocked(map[string]any{"op": "match", "seq": b.seq, "text": b.pending, "k": 14})
 	b.hasPend = false
 }
 
@@ -221,6 +221,36 @@ func (b *butlerClient) startLocked() bool {
 	return true
 }
 
+// Programs holding memory they give back under pressure announce it for the memory tank's tooltip:
+// a file "<pid>\t<label>\t<baseline KiB>" in $XDG_RUNTIME_DIR/cyberbeest/unloadable/.
+func butlerUnloadableFile() string {
+	rt := os.Getenv("XDG_RUNTIME_DIR")
+	if rt == "" {
+		return ""
+	}
+	return filepath.Join(rt, "cyberbeest", "unloadable", "butler")
+}
+
+func announceButler(pid int) {
+	path := butlerUnloadableFile()
+	if path == "" {
+		return
+	}
+	os.MkdirAll(filepath.Dir(path), 0o700)
+	tmp := path + ".tmp"
+	if os.WriteFile(tmp, []byte(strconv.Itoa(pid)+"\tButler command matcher\t0\n"), 0o600) == nil {
+		os.Rename(tmp, path)
+	}
+}
+
+// withdrawButler removes the announcement, but only our own: a newer server may already have replaced it.
+func withdrawButler(pid int) {
+	path := butlerUnloadableFile()
+	if data, err := os.ReadFile(path); err == nil && strings.HasPrefix(string(data), strconv.Itoa(pid)+"\t") {
+		os.Remove(path)
+	}
+}
+
 func (b *butlerClient) read(cmd *exec.Cmd, r io.Reader) {
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 64*1024), 1024*1024)
@@ -248,8 +278,9 @@ func (b *butlerClient) read(cmd *exec.Cmd, r io.Reader) {
 			b.mu.Lock()
 			if b.cmd == cmd {
 				b.ready, b.indexing = true, false
+				announceButler(cmd.Process.Pid)
 				if b.hasPend {
-					b.sendLocked(map[string]any{"op": "match", "seq": b.seq, "text": b.pending})
+					b.sendLocked(map[string]any{"op": "match", "seq": b.seq, "text": b.pending, "k": 14})
 					b.hasPend = false
 				}
 			}
@@ -285,6 +316,7 @@ func (b *butlerClient) read(cmd *exec.Cmd, r io.Reader) {
 		}
 	}
 	cmd.Wait()
+	withdrawButler(cmd.Process.Pid)
 	b.mu.Lock()
 	if b.cmd == cmd {
 		b.cmd, b.stdin, b.ready, b.indexing = nil, nil, false, false

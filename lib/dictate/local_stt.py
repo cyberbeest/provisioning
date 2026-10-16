@@ -8,6 +8,7 @@ import collections
 import ctypes
 import gc
 import hashlib
+import os
 import queue
 import threading
 import time
@@ -112,6 +113,41 @@ def _ram_comfortable() -> bool:
     except (OSError, ValueError, IndexError):
         pass
     return False  # cannot tell: fall back to the plain idle timeout
+
+
+# Programs holding memory they would give back under pressure announce it by
+# dropping a file here: "<pid>\t<label>\t<baseline KiB>" (the size shown is the
+# pid's current RSS minus the baseline, since model pages fault in lazily). The panel's memory tank lists
+# these in its tooltip and ignores files whose pid is gone (crash leftovers).
+UNLOADABLE_DIR = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp")) / "cyberbeest" / "unloadable"
+
+
+def _self_rss_kib() -> int:
+    try:
+        with open("/proc/self/status") as f:
+            for line in f:
+                if line.startswith("VmRSS:"):
+                    return int(line.split()[1])
+    except (OSError, ValueError, IndexError):
+        pass
+    return 0
+
+
+def _announce_unloadable(kib: int) -> None:
+    try:
+        UNLOADABLE_DIR.mkdir(parents=True, exist_ok=True)
+        tmp = UNLOADABLE_DIR / ".dictate.tmp"
+        tmp.write_text(f"{os.getpid()}\tDictate speech model\t{kib}\n")
+        tmp.replace(UNLOADABLE_DIR / "dictate")
+    except OSError:
+        pass
+
+
+def _withdraw_unloadable() -> None:
+    try:
+        (UNLOADABLE_DIR / "dictate").unlink()
+    except OSError:
+        pass
 
 
 def model_installed(model_id: Optional[str] = None) -> bool:
@@ -566,6 +602,7 @@ class LocalRecognizer:
     def _load(self) -> None:
         try:
             import sherpa_onnx
+            rss_before = _self_rss_kib()
             rec = sherpa_onnx.OfflineRecognizer.from_transducer(
                 encoder=str(self._dir / "encoder.int8.onnx"),
                 decoder=str(self._dir / "decoder.int8.onnx"),
@@ -576,6 +613,7 @@ class LocalRecognizer:
                 decoding_method="greedy_search",
             )
             self._recognizer = rec
+            _announce_unloadable(rss_before)
         except Exception as e:
             self._load_error = e
         finally:
@@ -702,6 +740,7 @@ def _unload_if_idle() -> None:
 
 def _release() -> None:
     """Give freed model memory back; callers drop their reference first."""
+    _withdraw_unloadable()
     gc.collect()
     try:
         ctypes.CDLL("libc.so.6").malloc_trim(0)  # hand the freed weights back to the OS

@@ -50,4 +50,4 @@ A fact can carry two optional extras, which is all "help" there is (no separate 
 
 Memory entries that contain a user-facing fact keep one line and point here.
 
-After editing facts, regenerate Butler's shipped embedding cache (`experimental/butler/build_seed.py`) and commit it with them.
+After editing facts, regenerate Butler's shipped embedding cache (`butler/build_seed.py`) and commit it with them.

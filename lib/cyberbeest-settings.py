@@ -55,7 +55,7 @@ GENMON_WIDGET_NAME = "__GENMON_WIDGET__"
 def gopanel_exe():
     """The gopanel binary: installed link, PATH, or the dev checkout."""
     for p in (os.path.expanduser("~/.local/bin/gopanel"), shutil.which("gopanel") or "",
-              os.path.expanduser("~/claude/provisioning/experimental/gopanel/gopanel"),
+              os.path.expanduser("~/claude/provisioning/gopanel/gopanel"),
               os.path.expanduser("~/claude/gopanel/gopanel")):
         if p and os.access(p, os.X_OK):
             return p
@@ -215,7 +215,7 @@ class PowerPage(Gtk.Box):
 
 PANEL_CHOICE_SCRIPTS = [
     os.path.expanduser("~/.local/bin/cyberbeest-panel-choice.sh"),
-    os.path.expanduser("~/claude/provisioning/experimental/gopanel/cyberbeest-panel-choice.sh"),
+    os.path.expanduser("~/claude/provisioning/gopanel/cyberbeest-panel-choice.sh"),
 ]
 PANEL_CONF = os.path.join(CONFIG_DIR, "panel.conf")
 
@@ -641,7 +641,7 @@ class RcPage(Gtk.Box):
 
 BUTLER_DIRS = [
     os.path.expanduser("~/.local/share/cyberbeest/butler"),
-    os.path.expanduser("~/claude/provisioning/experimental/butler"),
+    os.path.expanduser("~/claude/provisioning/butler"),
 ]
 BUTLER_CONF_DIR = os.path.join(CONFIG_DIR, "butler")
 
@@ -808,10 +808,11 @@ class WeatherPage(Gtk.Box):
 WALLPAPER_PACK = "/usr/share/backgrounds/cyberbeest"
 WALLPAPER_HELPER = "/usr/local/bin/cyberbeest-wallpaper-theme"
 WALLPAPER_SAVED = os.path.join(CONFIG_DIR, "wallpaper-previous.tsv")
+WALLPAPER_PACKS = ("nature", "space", "architecture", "cars", "cities", "coast", "art")
 
 
 def wallpaper_choice_now():
-    """nature / space while the rotation daemon is on for that pack, standard for our own
+    """a pack name while the rotation daemon is on for that pack, standard for our own
     default picture, else previous (a picture the user chose)."""
     def q(path):
         r = subprocess.run(["xfconf-query", "-c", "xfce4-desktop", "-p", path],
@@ -826,8 +827,8 @@ def wallpaper_choice_now():
             marked = f.read().strip()
     except OSError:
         marked = ""
-    if marked in ("nature", "space") or q(base + "/backdrop-cycle-enable") == "true":
-        for theme in ("nature", "space"):
+    if marked in WALLPAPER_PACKS or q(base + "/backdrop-cycle-enable") == "true":
+        for theme in WALLPAPER_PACKS:
             if image.startswith(f"{WALLPAPER_PACK}/{theme}/"):
                 return theme
     if image.startswith("/usr/share/backgrounds/xfce/cyberbeest-fallback."):
@@ -845,18 +846,19 @@ class WallpaperPage(Gtk.Box):
         self.pack_start(Gtk.Label(wrap=True, max_width_chars=60, xalign=0,
                                   label=t("wallpaper.info")), False, False, 0)
         current = wallpaper_choice_now()
-        group = None
-        for choice, key in (("standard", "wallpaper.standard"), ("previous", "wallpaper.previous"),
-                            ("nature", "wallpaper.nature"), ("space", "wallpaper.space")):
-            radio = Gtk.RadioButton.new_with_label_from_widget(group, t(key))
-            group = group or radio
-            radio.set_active(choice == current)
-            if choice == "previous":
-                # Only meaningful when a picture of the user's is shown or was saved.
-                has_saved = os.path.exists(WALLPAPER_SAVED) and os.path.getsize(WALLPAPER_SAVED) > 0
-                radio.set_sensitive(current == "previous" or has_saved)
-            radio.connect("toggled", self.on_toggled, choice)
-            self.pack_start(radio, False, False, 0)
+        has_saved = os.path.exists(WALLPAPER_SAVED) and os.path.getsize(WALLPAPER_SAVED) > 0
+        self.combo = Gtk.ComboBoxText()
+        self.combo.append("standard", t("wallpaper.standard"))
+        # Only meaningful when a picture of the user's is shown or was saved.
+        if current == "previous" or has_saved:
+            self.combo.append("previous", t("wallpaper.previous"))
+        for pk in WALLPAPER_PACKS:
+            if os.path.isdir(os.path.join(WALLPAPER_PACK, pk)):
+                self.combo.append(pk, t("wallpaper." + pk))
+        self.combo.set_active_id(current)
+        self.combo.connect("changed", self.on_changed)
+        self.combo.set_halign(Gtk.Align.START)
+        self.pack_start(self.combo, False, False, 0)
         settings = Gtk.LinkButton.new_with_label("", t("wallpaper.desktop_settings"))
         settings.connect("activate-link", self.on_desktop_settings)
         settings.set_halign(Gtk.Align.START)
@@ -866,8 +868,9 @@ class WallpaperPage(Gtk.Box):
         credits.set_halign(Gtk.Align.START)
         self.pack_start(credits, False, False, 0)
 
-    def on_toggled(self, radio, choice):
-        if radio.get_active():
+    def on_changed(self, combo):
+        choice = combo.get_active_id()
+        if choice:
             subprocess.Popen([WALLPAPER_HELPER, choice])
 
     def on_desktop_settings(self, button):

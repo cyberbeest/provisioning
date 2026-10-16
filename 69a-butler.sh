@@ -1,5 +1,5 @@
 #!/bin/bash
-# Installs Butler (experimental/butler): the local command matcher behind the Commands list and
+# Installs Butler (butler): the local command matcher behind the Commands list and
 # the command hits in the Cyberbeest panel's menu search ("make the display a bit brighter",
 # "set the volume to 40"). A small multilingual sentence-embedding model (MiniLM) picks one
 # command from a fixed catalog; there is no text generation and nothing leaves the machine.
@@ -26,7 +26,7 @@ echo "=== $(date) : installing Butler ==="
 
 TARGET_USER="${SUDO_USER:?SUDO_USER not set -- run this via sudo, not as a raw root shell}"
 TARGET_HOME="${BUTLER_INSTALL_HOME:-$(getent passwd "$TARGET_USER" | cut -d: -f6)}" # the override is for testing only
-SRC="$DIR/experimental/butler"
+SRC="$DIR/butler"
 DEST="$TARGET_HOME/.local/share/cyberbeest/butler"
 BINDIR="$TARGET_HOME/.local/bin"
 run_as_user() {

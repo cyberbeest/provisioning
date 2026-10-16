@@ -1,5 +1,5 @@
 #!/bin/bash
-# Installs the Cyberbeest panel (gopanel, experimental/gopanel): the pure-Go X11 panel that
+# Installs the Cyberbeest panel (gopanel, gopanel): the pure-Go X11 panel that
 # replaces the XFCE panel -- same layout and plugins (it reads the xfce4-panel config), but no
 # flicker at startup, a faster menu and far lower memory use.
 #
@@ -10,7 +10,7 @@
 # The XFCE panel stays installed and is what xfce-panel-watchdog brings back if gopanel dies.
 #
 # No binary is shipped: the panel is built here, on the machine, from the source in
-# experimental/gopanel (the Go modules it uses are fetched at build time and verified against the hashes pinned in go.sum). The Go
+# gopanel (the Go modules it uses are fetched at build time and verified against the hashes pinned in go.sum). The Go
 # compiler (golang-1.26-go from trixie-backports, ~50 MB download) is installed for the build and
 # removed again right afterwards -- unless it was already installed (a Go developer), in which
 # case it is never touched. The build is skipped when the source is unchanged since the last
@@ -38,7 +38,7 @@ TARGET_UID="$(id -u "$TARGET_USER")"
 LIBDIR="$TARGET_HOME/.local/lib/gopanel"
 BINDIR="$TARGET_HOME/.local/bin"
 CONF_DIR="$TARGET_HOME/.config/cyberbeest"
-SRC="$DIR/experimental/gopanel"
+SRC="$DIR/gopanel"
 OLD_VERSION="$(cat "$LIBDIR/VERSION" 2>/dev/null || true)" # what is installed now, before this run replaces it
 
 echo "--- Runtime packages (pactl for the volume icon, a font for the text) ---"
