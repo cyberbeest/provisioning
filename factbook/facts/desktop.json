@@ -1,0 +1,175 @@
+{
+  "topic": {
+    "en": "The desktop, menu and panel",
+    "de": "Desktop, Menü und Panel"
+  },
+  "source": "provisioning scripts 11-12, 25, 27-28, 33, 45-49, 61; panel plugin sources, 12 (weather launcher); gopanel weather.go and the Settings weather tab",
+  "checked": "2026-10-15",
+  "facts": [
+    {
+      "id": "menu-categories",
+      "en": "The Cyberbeest menu groups apps into Cyberbeest, Messengers, Wallets, Darknet and Mail, next to the usual categories.",
+      "de": "Das Cyberbeest-Menü gruppiert Programme in Cyberbeest, Messenger, Wallets, Darknet und Mail neben den üblichen Kategorien."
+    },
+    {
+      "id": "menu-super-key",
+      "en": "Pressing the Windows key opens the Cyberbeest menu.",
+      "de": "Ein Druck auf die Windows-Taste öffnet das Cyberbeest-Menü; hält man sie gedrückt, startet zusätzlich das Diktat.",
+      "tip": true
+    },
+    {
+      "id": "desktop-icons",
+      "en": "The desktop of a Cyberbeest laptop shows icons for Pictures, Downloads and the Wastebasket, but not the system's root folder.",
+      "de": "Der Desktop eines Cyberbeest-Laptops zeigt Symbole für Bilder, Downloads und den Papierkorb, aber nicht den Systemordner."
+    },
+    {
+      "id": "desktop-one-workspace",
+      "en": "A Cyberbeest laptop has a single workspace, so there is no workspace switcher and no extra shortcuts to learn.",
+      "de": "Ein Cyberbeest-Laptop hat nur eine Arbeitsfläche, es gibt also keinen Umschalter und keine zusätzlichen Tastenkürzel zu lernen."
+    },
+    {
+      "id": "desktop-files-app",
+      "en": "The file manager of a Cyberbeest laptop is called Files, and its Places list has Pictures and Downloads one click away.",
+      "de": "Der Dateimanager eines Cyberbeest-Laptops heißt Dateien, und in seiner Ortsliste sind Bilder und Downloads mit einem Klick erreichbar."
+    },
+    {
+      "id": "desktop-wallpaper",
+      "en": "A Cyberbeest laptop shows a Cyberbeest wallpaper by default, and you can pick another in the Desktop settings.",
+      "de": "Ein Cyberbeest-Laptop zeigt standardmäßig einen Cyberbeest-Hintergrund, in den Desktop-Einstellungen können Sie einen anderen wählen."
+    },
+    {
+      "id": "desktop-panel-color",
+      "en": "The Cyberbeest Panel Color app changes the panel color and keeps the colored margins of the panel meters in step.",
+      "de": "Die App Cyberbeest-Panelfarbe ändert die Farbe des Panels und gleicht die farbigen Ränder der Panel-Anzeigen an."
+    },
+    {
+      "id": "desktop-no-terminal",
+      "en": "A Cyberbeest laptop has no terminal button on the panel, because everyday use never needs one, but Xfce Terminal is in the menu.",
+      "de": "Ein Cyberbeest-Laptop hat keine Terminal-Schaltfläche im Panel, weil man im Alltag keine braucht, Xfce Terminal ist aber im Menü zu finden."
+    },
+    {
+      "id": "panel-cpu-kitt",
+      "en": "The red light sweep in the Cyberbeest panel moves faster the harder the processor works.",
+      "de": "Der rote Lichtlauf im Cyberbeest-Panel wird schneller, je stärker der Prozessor arbeitet."
+    },
+    {
+      "id": "panel-cpu-color",
+      "en": "The small colored square in the Cyberbeest panel shows processor load, from black when idle to red at full load.",
+      "de": "Das kleine farbige Quadrat im Cyberbeest-Panel zeigt die Prozessorlast, von Schwarz im Leerlauf bis Rot bei voller Last."
+    },
+    {
+      "id": "panel-disk-scanner",
+      "en": "The green vertical light sweep in the Cyberbeest panel moves faster the more data the disk reads or writes.",
+      "de": "Der grüne senkrechte Lichtlauf im Cyberbeest-Panel wird schneller, je mehr Daten die Festplatte liest oder schreibt."
+    },
+    {
+      "id": "panel-memory-tank",
+      "en": "The square tank in the Cyberbeest panel fills like liquid as RAM is used, and its tooltip also shows swap and disk space.",
+      "de": "Der quadratische Tank im Cyberbeest-Panel füllt sich wie eine Flüssigkeit, je mehr Arbeitsspeicher belegt ist, und der Tooltip zeigt auch Auslagerung und Festplattenplatz."
+    },
+    {
+      "id": "panel-wattage",
+      "en": "The wattage display in the Cyberbeest panel shows the current power draw and the battery time left.",
+      "de": "Die Wattanzeige im Cyberbeest-Panel zeigt den aktuellen Stromverbrauch und die verbleibende Akkulaufzeit."
+    },
+    {
+      "id": "panel-security-status",
+      "en": "The security icon in the Cyberbeest panel shows whether the last update check worked, and a click opens the update log.",
+      "de": "Das Sicherheitssymbol im Cyberbeest-Panel zeigt, ob die letzte Update-Prüfung geklappt hat, und ein Klick öffnet das Update-Protokoll."
+    },
+    {
+      "id": "panel-clipboard",
+      "en": "The clipboard icon in the Cyberbeest panel shows what the clipboard holds (text, image, files or nothing) and lets you view, edit or clear it.",
+      "de": "Das Zwischenablage-Symbol im Cyberbeest-Panel zeigt, was die Zwischenablage enthält (Text, Bild, Dateien oder nichts), und lässt Sie den Inhalt ansehen, bearbeiten oder löschen."
+    },
+    {
+      "id": "panel-clipboard-autoclear",
+      "en": "The Cyberbeest clipboard is emptied automatically after 15 minutes by default, since any app can read it.",
+      "de": "Die Zwischenablage eines Cyberbeest wird standardmäßig nach 15 Minuten automatisch geleert, weil jedes Programm sie lesen kann.",
+      "tip": true
+    },
+    {
+      "id": "panel-mic-dot",
+      "en": "A flashing red dot in the Cyberbeest panel means an app is recording from the microphone, and its tooltip names the app.",
+      "de": "Ein blinkender roter Punkt im Cyberbeest-Panel bedeutet, dass ein Programm das Mikrofon aufnimmt, und der Tooltip nennt das Programm.",
+      "tip": true
+    },
+    {
+      "id": "panel-connections",
+      "en": "The globe icon in the Cyberbeest panel lists which apps hold network connections, and a red mark appears for any incoming one.",
+      "de": "Das Globus-Symbol im Cyberbeest-Panel listet, welche Programme Netzwerkverbindungen halten, und bei einer eingehenden Verbindung erscheint eine rote Markierung."
+    },
+    {
+      "id": "panel-always-restarts",
+      "en": "If the Cyberbeest panel ever crashes, a watchdog restarts it automatically within moments.",
+      "de": "Stürzt das Cyberbeest-Panel einmal ab, startet ein Wächterdienst es innerhalb weniger Augenblicke automatisch neu."
+    },
+    {
+      "id": "default-pdf",
+      "en": "PDF files on a Cyberbeest laptop open in Atril, a fast and simple document viewer.",
+      "de": "PDF-Dateien öffnen sich auf einem Cyberbeest-Laptop in Atril, einem schnellen und einfachen Dokumentenbetrachter."
+    },
+    {
+      "id": "default-images",
+      "en": "Images on a Cyberbeest laptop open in the Cyberbeest Image Viewer, which shows them at full size and downscales big ones without darkening detail.",
+      "de": "Bilder öffnen sich auf einem Cyberbeest-Laptop im Cyberbeest-Bildbetrachter, der sie in voller Größe zeigt und große ohne Detailverlust in dunklen Bereichen verkleinert."
+    },
+    {
+      "id": "default-avif",
+      "en": "AVIF images on a Cyberbeest laptop open in Firefox, because the image viewer cannot read that format.",
+      "de": "AVIF-Bilder öffnen sich auf einem Cyberbeest-Laptop in Firefox, weil der Bildbetrachter dieses Format nicht lesen kann."
+    },
+    {
+      "id": "default-video",
+      "en": "Videos on a Cyberbeest laptop open in VLC, which replaced the stock Xfce player because VLC handles more files and seeks reliably.",
+      "de": "Videos öffnen sich auf einem Cyberbeest-Laptop in VLC, das den Xfce-Standardplayer ersetzt hat, weil VLC mehr Dateien abspielt und zuverlässig spult."
+    },
+    {
+      "id": "apps-drawing",
+      "en": "Cyberbeest includes Drawing, a small paint program with pencil, brush, fill, shapes, text and crop, that saves PNG, JPEG, BMP and WebP.",
+      "de": "Cyberbeest enthält Drawing, ein kleines Malprogramm mit Stift, Pinsel, Füllen, Formen, Text und Zuschneiden, das PNG, JPEG, BMP und WebP speichert."
+    },
+    {
+      "id": "apps-calculator",
+      "en": "Cyberbeest includes a simple calculator, listed in the menu as Calculator.",
+      "de": "Cyberbeest enthält einen einfachen Taschenrechner, der im Menü als Taschenrechner erscheint."
+    },
+    {
+      "id": "apps-factbook",
+      "en": "The Factbook app lists every fact about Cyberbeest in one searchable list, in English and German.",
+      "de": "Die App Faktenbuch listet alle Fakten über Cyberbeest in einer durchsuchbaren Liste, auf Englisch und Deutsch."
+    },
+    {
+      "id": "apps-mail-bookmark",
+      "en": "Proton Mail is offered on a Cyberbeest laptop as a menu link that opens mail.proton.me in the browser, not as an installed app.",
+      "de": "Proton Mail gibt es auf einem Cyberbeest-Laptop als Menüverknüpfung, die mail.proton.me im Browser öffnet, nicht als installierte App."
+    },
+    {
+      "id": "weather-menu",
+      "en": "A Cyberbeest laptop can show the current temperature of a city you choose at the top of the menu; it is off until you pick a place in Settings under Weather.",
+      "de": "Ein Cyberbeest-Laptop kann oben im Menü die aktuelle Temperatur eines Ortes Ihrer Wahl anzeigen; das ist aus, bis Sie in den Einstellungen unter Wetter einen Ort wählen.",
+      "ask": {
+        "en": [
+          "how do I show the weather",
+          "can I see the temperature in the menu",
+          "turn on the weather display"
+        ],
+        "de": [
+          "wie zeige ich das Wetter an",
+          "kann ich die Temperatur im Menü sehen",
+          "Wetteranzeige einschalten"
+        ]
+      }
+    },
+    {
+      "id": "weather-privacy",
+      "en": "When the weather is on, opening the menu sends your IP address and your chosen place, rounded to about 1 km, to the German Weather Service data service Bright Sky; nothing is sent while it is off.",
+      "de": "Ist das Wetter eingeschaltet, gehen beim Öffnen des Menüs Ihre IP-Adresse und der gewählte Ort, auf etwa 1 km gerundet, an den Datendienst Bright Sky des Deutschen Wetterdienstes; solange es aus ist, wird nichts gesendet."
+    },
+    {
+      "id": "weather-accuracy",
+      "en": "The weather in the menu comes from the nearest German Weather Service station, so it can be inaccurate for places outside Germany.",
+      "de": "Das Wetter im Menü stammt von der nächsten Station des Deutschen Wetterdienstes und kann deshalb für Orte außerhalb Deutschlands ungenau sein."
+    }
+  ]
+}

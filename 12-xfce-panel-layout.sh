@@ -28,13 +28,21 @@
 # themselves right before it.
 #
 # Bumped 2026-09-20: reserves plugin-19 (genmon) for 11a-clipboard-status.sh.
-# Also installs Cyberbeest Extended Power Options (lib/lock-power-saving-dialog.py):
+# Also installs Cyberbeest Settings (lib/cyberbeest-settings.py; its Extended power options tab):
 # a small Whisker-menu app (Cyberbeest category) for the window-minimize-delay
 # and browser-CPU-throttle settings lock-shutdown-watcher.sh applies while
 # locked. shutdown-timer-menu.py's "Power saving while locked..." item opens
 # the same script as a shortcut.
+#
+# Bumped 2026-10-13: reserves plugin-220 (genmon) for 11b-mic-recording-
+# indicator.sh, placed between the systray (where Dictate sits) and the
+# volume plugin: a red dot that flashes while an app records the microphone.
+# Bumped 2026-10-13: reserves plugin-221 (genmon) for 11c-network-
+# connections.sh, right after the clipboard icon: a globe whose tooltip lists
+# which apps hold network connections.
 # Depends on: 07-security-update-timer.sh, 09-cyberbeest-logout-dialog.sh,
-# 10-browser-sandbox.sh, 11-xfce-panel-plugins.sh, 11a-clipboard-status.sh.
+# 10-browser-sandbox.sh, 11-xfce-panel-plugins.sh, 11a-clipboard-status.sh,
+# 11b-mic-recording-indicator.sh, 11c-network-connections.sh.
 # Idempotent: safe to re-run (overwrites its own config files; backs up any
 # pre-existing xfce4-panel.xml the first time). Also removes any other panel
 # (e.g. Debian's stock second panel) so only this one is left, since a live
@@ -110,6 +118,9 @@ install -o "$TARGET_USER" -g "$TARGET_USER" -m 755 \
 # shutdown-timer-menu.py.
 install -o "$TARGET_USER" -g "$TARGET_USER" -m 755 \
 	"$DIR/lib/update-genmon-view-log.py" "$TARGET_HOME/.local/bin/update-genmon-view-log.py"
+# Opened from that dialog's Settings... button.
+install -o "$TARGET_USER" -g "$TARGET_USER" -m 755 \
+	"$DIR/lib/update-genmon-settings.py" "$TARGET_HOME/.local/bin/update-genmon-settings.py"
 # update-genmon.sh sources i18n.sh relative to its own location, so that (and
 # its strings.*.sh catalogs) need to live next to it too -- see lib/i18n.sh.
 install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 "$DIR/lib/i18n.sh" "$TARGET_HOME/.local/bin/i18n.sh"
@@ -129,12 +140,15 @@ sed "s|__GENMON_WIDGET__|genmon-211|g" "$DIR/lib/shutdown-timer-menu.py" \
 	> "$TARGET_HOME/.local/bin/shutdown-timer-menu.py"
 chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.local/bin/shutdown-timer-menu.py"
 chmod 755 "$TARGET_HOME/.local/bin/shutdown-timer-menu.py"
-# The menu's "Power saving while locked..." item launches this as a
-# separate process (see shutdown-timer-menu.py's open_power_saving_dialog).
-sed "s|__GENMON_WIDGET__|genmon-211|g" "$DIR/lib/lock-power-saving-dialog.py" \
-	> "$TARGET_HOME/.local/bin/lock-power-saving-dialog.py"
-chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.local/bin/lock-power-saving-dialog.py"
-chmod 755 "$TARGET_HOME/.local/bin/lock-power-saving-dialog.py"
+# The menu's "Extended power options..." item launches this as a separate
+# process (see shutdown-timer-menu.py's open_power_saving_dialog). It replaced
+# the standalone cyberbeest-extended-power-options.py, removed here.
+sed "s|__GENMON_WIDGET__|genmon-211|g" "$DIR/lib/cyberbeest-settings.py" \
+	> "$TARGET_HOME/.local/bin/cyberbeest-settings.py"
+chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.local/bin/cyberbeest-settings.py"
+chmod 755 "$TARGET_HOME/.local/bin/cyberbeest-settings.py"
+rm -f "$TARGET_HOME/.local/bin/cyberbeest-extended-power-options.py" \
+	"$TARGET_HOME/.local/share/applications/cyberbeest-extended-power-options.desktop"
 # i18n.py does `from i18n import t`, which only resolves if i18n.py (and its
 # strings_*.py catalogs) sit next to the installed script -- see lib/i18n.py.
 install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 "$DIR/lib/i18n.py" "$TARGET_HOME/.local/bin/i18n.py"
@@ -158,22 +172,38 @@ install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 \
 install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 \
 	"$DIR/lib/assets/Cyberbeest-black.png" "$ICONS_DIR/Cyberbeest-black.png"
 
-echo "--- Installing app menu entry for Cyberbeest Extended Power Options (Whisker menu, Cyberbeest category) ---"
+echo "--- Installing app menu entry for Cyberbeest Settings (Whisker menu, Cyberbeest category) ---"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.local/share/applications"
-cat > "$TARGET_HOME/.local/share/applications/cyberbeest-extended-power-options.desktop" <<EOF
+cat > "$TARGET_HOME/.local/share/applications/cyberbeest-settings.desktop" <<EOF
 [Desktop Entry]
 Type=Application
-Name=Cyberbeest Extended Power Options
-Name[de]=Cyberbeest Erweiterte Energieoptionen
-Comment=Window minimizing and browser CPU throttling while the screen is locked
-Comment[de]=Fenster minimieren und Browser-CPU begrenzen bei gesperrtem Bildschirm
-Exec=$TARGET_HOME/.local/bin/lock-power-saving-dialog.py
+Name=Cyberbeest Settings
+Name[de]=Cyberbeest Einstellungen
+Comment=Extended power options and more
+Comment[de]=Erweiterte Energieoptionen und mehr
+Exec=$TARGET_HOME/.local/bin/cyberbeest-settings.py
 Icon=$ICONS_DIR/Cyberbeest-black.png
 Terminal=false
 Categories=Cyberbeest;Settings;
 StartupNotify=true
 EOF
-chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.local/share/applications/cyberbeest-extended-power-options.desktop"
+chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.local/share/applications/cyberbeest-settings.desktop"
+
+# "Weather" opens the same Settings window on its Weather tab (optional menu-header readout).
+cat > "$TARGET_HOME/.local/share/applications/cyberbeest-weather.desktop" <<EOF
+[Desktop Entry]
+Type=Application
+Name=Weather
+Name[de]=Wetter
+Comment=Show the weather in the menu
+Comment[de]=Wetter im Menü anzeigen
+Exec=$TARGET_HOME/.local/bin/cyberbeest-settings.py --tab=weather
+Icon=weather-few-clouds
+Terminal=false
+Categories=Cyberbeest;Settings;
+StartupNotify=true
+EOF
+chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.local/share/applications/cyberbeest-weather.desktop"
 
 # The pulseaudio plugin's volume icon comes from Adwaita (not hicolor --
 # Tango, the active GTK icon theme, inherits from Adwaita before falling
@@ -186,6 +216,31 @@ install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.local/share/icons/
 install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 \
 	"$DIR"/lib/assets/icons-adwaita-symbolic-status/*.svg \
 	"$TARGET_HOME/.local/share/icons/Adwaita/symbolic/status/"
+
+# The pulseaudio plugin flashes a red microphone next to the volume icon
+# while any program records through the sound server (Dictate does on every
+# hotkey press). It does not cover programs that open the ALSA hardware
+# directly (Audacity), so it is no reliable mic-in-use warning, only noise.
+# The plugin has no setting to turn it off; zero-size CSS removes it without
+# leaving a gap. Kept in a marked block so a user's own gtk.css survives.
+echo "--- Hiding the panel's recording indicator (gtk.css) ---"
+GTK_CSS="$TARGET_HOME/.config/gtk-3.0/gtk.css"
+install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.config/gtk-3.0"
+touch "$GTK_CSS"
+sed -i '/^\/\* BEGIN cyberbeest-recording-indicator \*\/$/,/^\/\* END cyberbeest-recording-indicator \*\/$/d' "$GTK_CSS"
+cat >> "$GTK_CSS" <<'CSS'
+/* BEGIN cyberbeest-recording-indicator */
+.recording-indicator {
+	opacity: 0;
+	-gtk-icon-source: none;
+	min-width: 0;
+	min-height: 0;
+	margin: 0 -28px 0 0;
+	padding: 0;
+}
+/* END cyberbeest-recording-indicator */
+CSS
+chown "$TARGET_USER:$TARGET_USER" "$GTK_CSS"
 
 echo "--- Writing genmon-211.rc, kitt-scanner-214.rc, mem-liquid-215.rc ---"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.config/xfce4/panel"
@@ -230,7 +285,7 @@ PANEL_XML_TMP="$(mktemp)"
 sed -e "s|__HOME__|$TARGET_HOME|g" -e "s|__ICONS_DIR__|$ICONS_DIR|g" \
 	"$LAYOUT/xfce4-panel.xml.template" > "$PANEL_XML_TMP"
 python3 "$DIR/lib/merge-xfce-panel-plugins.py" "$PANEL_XML_OLD" "$PANEL_XML_TMP" \
-	201 202 203 204 205 206 207 208 211 212 213 214 215 217 218 219
+	201 202 203 204 205 206 207 208 211 212 213 214 215 217 218 219 220 221
 install -m 644 "$PANEL_XML_TMP" "$PANEL_XML"
 rm -f "$PANEL_XML_TMP" "$PANEL_XML_OLD"
 

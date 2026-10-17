@@ -1,9 +1,9 @@
 #!/bin/bash
-# Makes a second power-button press, within a few seconds of the first
-# (which pops up xfce4-power-manager's own "Ask" dialog), force an
-# immediate real shutdown -- bypassing that dialog. Handy when the dialog
-# is stuck behind other windows, and takes any running VMs down along
-# with the rest of the session instead of leaving them parked. See
+# Makes four quick power-button presses in a row (each xfce4-power-manager's
+# own "Ask" dialog would otherwise appear for) force an immediate real
+# shutdown -- bypassing that dialog. Handy when the dialog is stuck behind
+# other windows, and takes any running VMs down along with the rest of the
+# session instead of leaving them parked. See
 # lib/cyberbeest-powerbtn-double-press.sh.
 # Installs acpid itself -- not part of a stock Debian Xfce install (it was
 # only present on the dev machine, via acpi-support-base, which is why the

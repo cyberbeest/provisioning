@@ -33,6 +33,13 @@
 # Bumped 2026-09-23: the VPN panel icon moved from plugin-28 to plugin-228
 # (provisioning's ids now start at 200, see 12-xfce-panel-layout.sh's note
 # of the same date -- an existing plugin-28 is renumbered by that script).
+#
+# Bumped 2026-09-28: added vpn-hide-icon.sh/vpn-show-icon.sh (icon's own
+# menu gained "Remove Icon" / "Disconnect and Remove Icon") -- lets the
+# icon be dropped, connection included, without deleting the saved
+# profile(s). Writes a ~/.config/cyberbeest/vpn_icon_hidden marker that
+# vpn-restore-session.sh now checks, so a hidden icon stays hidden across a
+# reboot instead of silently reappearing.
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG="$DIR/29-wireguard-vpn-toggle.log"
@@ -67,7 +74,8 @@ install -d -m 700 -o root -g root /etc/wireguard
 echo "--- Installing unprivileged scripts to $TARGET_HOME/.local/bin ---"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.local/bin"
 for f in vpn-import.sh vpn-connect.sh vpn-disconnect.sh vpn-remove-profile.sh \
-         vpn-panel-icon.sh vpn-genmon.sh vpn-restore-session.sh; do
+         vpn-panel-icon.sh vpn-genmon.sh vpn-restore-session.sh \
+         vpn-hide-icon.sh vpn-show-icon.sh; do
     install -o "$TARGET_USER" -g "$TARGET_USER" -m 755 "$LIB/$f" "$TARGET_HOME/.local/bin/$f"
 done
 install -o "$TARGET_USER" -g "$TARGET_USER" -m 755 "$LIB/vpn-menu.py" "$TARGET_HOME/.local/bin/vpn-menu.py"

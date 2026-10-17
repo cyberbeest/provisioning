@@ -17,6 +17,9 @@ DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG="$DIR/35-boot-chime.log"
 exec > >(tee -a "$LOG") 2>&1
 
+# shellcheck disable=SC1091
+. "$DIR/lib/sounds-profile-gate.sh"
+
 echo "=== $(date) : installing boot chime ==="
 
 echo "--- Installing alsa-utils (for aplay) ---"

@@ -15,6 +15,22 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 . "$SCRIPT_DIR/i18n.sh"
 
+# Single instance: a second launch (Whisker entry, Fast Track's panel icon or
+# watcher) while a dialog or run window is already open just exits. The lock
+# fd survives the `exec python3 run-gui.py` below, so it also covers the run
+# window; it is released when that closes.
+exec 8>"${XDG_RUNTIME_DIR:-/tmp}/cyberbeest-update.lock"
+flock -n 8 || exit 0
+
+# --fast-track (used by cyberbeest-fasttrack.sh, see
+# experimental/enable-cyberbeest-fast-track.sh): same dialog and same git
+# steps, but once the user has confirmed, run-gui.py starts "Run changed"
+# by itself instead of just opening.
+RUN_GUI_ARGS=()
+if [ "${1:-}" = "--fast-track" ]; then
+	RUN_GUI_ARGS=(--run-changed)
+fi
+
 REPO_DIR=""
 for candidate in "$HOME/provisioning" "$HOME/provisioning-bleeding"; do
 	if [ -d "$candidate/.git" ]; then
@@ -256,7 +272,7 @@ if [ -n "$LOCAL_EDITS" ] || [ "$LOCAL_COMMITS" -gt 0 ]; then
 			zenity --error --no-markup --title="$(t update.title)" --width=460 --text="${failed_msg//OUTPUT/$GIT_CMD_OUTPUT}"
 			exit 1
 		fi
-		exec python3 "$REPO_DIR/run-gui.py"
+		exec python3 "$REPO_DIR/run-gui.py" "${RUN_GUI_ARGS[@]}"
 	elif [ "$answer" != "$discard_label" ]; then
 		exit 0
 	fi
@@ -277,4 +293,4 @@ if ! run_git_with_progress "$(t update.apply_message)" \
 	exit 1
 fi
 
-exec python3 "$REPO_DIR/run-gui.py"
+exec python3 "$REPO_DIR/run-gui.py" "${RUN_GUI_ARGS[@]}"

@@ -35,6 +35,12 @@ echo "--- Installing custom profiles for Sparrow and Feather ---"
 install -m 644 "$DIR/lib/sparrow.profile" /etc/firejail/sparrow.profile
 install -m 644 "$DIR/lib/feather.profile" /etc/firejail/feather.profile
 
+echo "--- Installing Viber's (empty) per-app override -- Downloads/Pictures sharing lives in globals.local (44a-shared-folders.sh) ---"
+# Also overwrites a stale "whitelist ${PICTURES}" line from before sharing
+# became one global list: that line is read before globals.local, so the
+# Shared Folders "remove" action couldn't undo it.
+install -m 644 "$DIR/lib/Viber.local" /etc/firejail/Viber.local
+
 echo "--- Installing sandbox wrapper scripts to $TARGET_HOME/bin/ ---"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/bin"
 for f in viber-sandbox.sh sparrow-sandbox.sh; do

@@ -77,6 +77,23 @@ wait_for_active_changed() {
     read -r -t "$1" -u 3 _
 }
 
+# Security concept: auto-lock always happens. xfce4-screensaver skips its own
+# idle lock while any app holds an inhibit (a browser playing media, a stuck
+# libxfce4ui inhibit, ...), so enforce it here: once X idle time passes the
+# configured delay, lock explicitly. An explicit lock request is not subject
+# to inhibits. Only acts when idle-lock is enabled and the screen is unlocked.
+enforce_idle_lock() {
+    [ "$(xfconf-query -c xfce4-screensaver -p /saver/idle-activation/enabled 2>/dev/null)" = "false" ] && return
+    local delay_min idle_ms
+    delay_min=$(xfconf-query -c xfce4-screensaver -p /saver/idle-activation/delay 2>/dev/null)
+    delay_min=${delay_min:-5}
+    idle_ms=$(xprintidle 2>/dev/null) || return
+    if [ "$idle_ms" -ge $(( delay_min * 60000 + 5000 )) ]; then
+        logger -t lock-shutdown-watcher "Idle ${idle_ms}ms >= ${delay_min}min but not locked (inhibited?), locking"
+        xfce4-screensaver-command -l
+    fi
+}
+
 on_battery() {
     [ "$(cat "$AC_ONLINE" 2>/dev/null)" = "0" ]
 }
@@ -139,6 +156,7 @@ restore_windows() {
     local tmpdir
     tmpdir=$(mktemp -d)
     local id
+    local -a pids=()
     while read -r id; do
         [ -z "$id" ] && continue
         (
@@ -157,8 +175,11 @@ restore_windows() {
             done
             is_hidden "$id" && echo failed > "$tmpdir/$id" || echo restored > "$tmpdir/$id"
         ) &
+        pids+=($!)
     done < "$MINIMIZED_STATE_FILE"
-    wait
+    # Wait on the restore jobs only: a bare `wait` also waits for the
+    # long-lived dbus-monitor process substitution (bash 5.2) and hangs forever.
+    [ "${#pids[@]}" -gt 0 ] && wait "${pids[@]}"
     local restored=0 failed=0 resultfile
     for resultfile in "$tmpdir"/*; do
         [ -f "$resultfile" ] || continue
@@ -208,6 +229,43 @@ unthrottle_browser() {
 
 windows_minimized=0
 
+# The shutdown countdown is the critical function of this script; minimizing,
+# throttling and restoring windows are conveniences. They run as background
+# jobs (serialized, each killed after UI_TASK_TIMEOUT seconds) so a hang in
+# wmctrl/xdotool/cpulimit/bash can never stall the loop below.
+UI_TASK_TIMEOUT=60
+ui_pid=""
+
+minimize_all() {
+    local throttle_percent
+    minimize_windows
+    throttle_percent=$(read_setting BROWSER_THROTTLE_PERCENT "$DEFAULT_THROTTLE_PERCENT")
+    [ "$throttle_percent" -gt 0 ] && throttle_browser "$throttle_percent"
+}
+
+restore_all() {
+    # Unthrottle before restoring: restore_windows() retries for up to 5s per
+    # window, which a CPU-capped browser would needlessly slow down.
+    unthrottle_browser
+    restore_windows
+}
+
+run_ui_task() {
+    local prev="$ui_pid"
+    (
+        if [ -n "$prev" ]; then
+            while kill -0 "$prev" 2>/dev/null; do sleep 1; done
+        fi
+        "$@" &
+        job=$!
+        ( sleep "$UI_TASK_TIMEOUT"; pkill -9 -P "$job" 2>/dev/null; kill -9 "$job" 2>/dev/null ) &
+        dog=$!
+        wait "$job"
+        kill "$dog" 2>/dev/null
+    ) </dev/null &
+    ui_pid=$!
+}
+
 while true; do
     if is_locked; then
         now=$(date +%s)
@@ -219,9 +277,7 @@ while true; do
         if [ "$windows_minimized" -eq 0 ]; then
             minimize_min=$(read_setting MINIMIZE_MINUTES "$DEFAULT_MINIMIZE_MIN")
             if [ "$minimize_min" -gt 0 ] && [ "$elapsed" -ge $(( minimize_min * 60 )) ]; then
-                minimize_windows
-                throttle_percent=$(read_setting BROWSER_THROTTLE_PERCENT "$DEFAULT_THROTTLE_PERCENT")
-                [ "$throttle_percent" -gt 0 ] && throttle_browser "$throttle_percent"
+                run_ui_task minimize_all
                 windows_minimized=1
             fi
         fi
@@ -248,15 +304,11 @@ while true; do
         fi
     else
         if [ "$windows_minimized" -eq 1 ]; then
-            # Unthrottle before restoring: restore_windows() retries for up
-            # to 5s per window via wmctrl/xdotool, and running those retries
-            # while the browser is still capped at throttle_browser()'s
-            # PERCENT% CPU needlessly slows that window's own restore down.
-            unthrottle_browser
-            restore_windows
+            run_ui_task restore_all
             windows_minimized=0
         fi
         locked_since=0
+        enforce_idle_lock
         sleep "$POLL_INTERVAL"
     fi
 done

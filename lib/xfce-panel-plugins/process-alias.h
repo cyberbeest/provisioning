@@ -57,6 +57,8 @@ static const ProcessAlias PROCESS_ALIASES[] = {
     /* Apps / tray icons */
     { "telegram-deskto",  "Telegram" },
     { "tor",              "Tor network" },
+    { "butler",           "Butler" },         /* butler_server.py renames its process (prctl) */
+    { "claude-voice",     "Claude's voice" }, /* synth.py renames its process (prctl) */
     { "sshd",             "remote access (SSH)" },
     { "ssh-agent",        "SSH keys" },
     { "nm-applet",        "network icon" },

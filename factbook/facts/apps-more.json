@@ -1,0 +1,148 @@
+{
+  "topic": {
+    "en": "Apps and software",
+    "de": "Programme und Software"
+  },
+  "source": "provisioning scripts 01-04, 22, 36-41, 44, 50, 53a, 56, 58, 65, 67, 68",
+  "checked": "2026-10-15",
+  "facts": [
+    {
+      "id": "apps-signal-sandboxed",
+      "en": "Signal on a Cyberbeest laptop runs in its own sandbox, receives updates from Signal's own repository and can see only its own data and your whitelisted folders.",
+      "de": "Signal läuft auf einem Cyberbeest-Laptop in einer eigenen Sandbox, bezieht Updates aus Signals eigener Paketquelle und sieht nur eigene Daten und Ihre zugelassenen Ordner."
+    },
+    {
+      "id": "apps-element-flagship",
+      "en": "Element, which uses the open Matrix network, is the main messenger of a Cyberbeest laptop and runs in a sandbox.",
+      "de": "Element, das auf dem offenen Matrix-Netzwerk beruht, ist der wichtigste Messenger eines Cyberbeest-Laptops und läuft in einer Sandbox."
+    },
+    {
+      "id": "apps-tor-browser",
+      "en": "Tor Browser on a Cyberbeest laptop routes your web traffic through the Tor network, which hides where you connect from.",
+      "de": "Der Tor-Browser auf einem Cyberbeest-Laptop leitet Ihren Webverkehr über das Tor-Netzwerk, das verbirgt, von wo aus Sie sich verbinden."
+    },
+    {
+      "id": "apps-i2p",
+      "en": "Cyberbeest includes I2P (i2pd), an anonymous network, but it stays off until you start it from the Darknet menu.",
+      "de": "Cyberbeest enthält I2P (i2pd), ein anonymes Netzwerk, das aber aus bleibt, bis Sie es im Menü Darknet starten."
+    },
+    {
+      "id": "apps-i2p-icon",
+      "en": "After you start I2P from the Darknet menu, a panel icon appears that shows its status and lets you stop it again.",
+      "de": "Nach dem Start von I2P im Menü Darknet erscheint ein Panel-Symbol, das den Status anzeigt und mit dem Sie es wieder beenden können."
+    },
+    {
+      "id": "apps-i2p-browser",
+      "en": "I2P sites open in a separate Firefox profile called Firefox (I2P), kept apart from your normal browsing.",
+      "de": "I2P-Seiten öffnen sich in einem eigenen Firefox-Profil namens Firefox (I2P), getrennt von Ihrem normalen Surfen."
+    },
+    {
+      "id": "apps-darknet-tor-or-i2p",
+      "en": "Most people who say \"darknet\" mean Tor, the more common choice, while I2P is a newer technology that far fewer people use.",
+      "de": "Wer \"Darknet\" sagt, meint meistens Tor, die verbreitetere Wahl, während I2P eine neuere Technik ist, die viel weniger genutzt wird."
+    },
+    {
+      "id": "apps-firefox-default",
+      "en": "Firefox is the default browser on a Cyberbeest laptop because Chrome, and even Chromium, is hard to de-Google completely.",
+      "de": "Firefox ist auf einem Cyberbeest-Laptop der Standardbrowser, weil sich Chrome und selbst Chromium kaum vollständig von Google lösen lassen."
+    },
+    {
+      "id": "apps-feather-tor",
+      "en": "Feather wallet starts Tor only while it is open, so no Tor service runs in the background the rest of the time.",
+      "de": "Die Feather-Wallet startet Tor nur, solange sie geöffnet ist, sonst läuft im Hintergrund kein Tor-Dienst."
+    },
+    {
+      "id": "apps-wallet-no-ethereum",
+      "en": "Cyberbeest ships wallets for Bitcoin and Monero only, with no Ethereum wallet, because the good ones are browser extensions.",
+      "de": "Cyberbeest liefert nur Wallets für Bitcoin und Monero mit, keine für Ethereum, denn die guten sind Browser-Erweiterungen."
+    },
+    {
+      "id": "apps-viber-on-demand",
+      "en": "Viber is not preinstalled on a Cyberbeest laptop, but a link on the cyberbeest.com page installs it and puts it in a sandbox.",
+      "de": "Viber ist auf einem Cyberbeest-Laptop nicht vorinstalliert, aber ein Link auf der Seite cyberbeest.com installiert es und setzt es in eine Sandbox."
+    },
+    {
+      "id": "apps-software-warning",
+      "en": "GNOME Software on a Cyberbeest laptop shows a risk warning at every start, since it can install anything from the Debian archive.",
+      "de": "GNOME Software zeigt auf einem Cyberbeest-Laptop bei jedem Start eine Risikowarnung, weil es alles aus dem Debian-Archiv installieren kann."
+    },
+    {
+      "id": "apps-package-manager-rows",
+      "en": "The Cyberbeest Package Manager offers qBittorrent, Mullvad VPN and Proton VPN as optional installs.",
+      "de": "Die Cyberbeest-Paketverwaltung bietet qBittorrent, Mullvad VPN und Proton VPN als optionale Installationen an."
+    },
+    {
+      "id": "apps-qbittorrent-i2p",
+      "en": "qBittorrent, once installed from the Cyberbeest Package Manager, is set up to download I2P torrents through I2P as well.",
+      "de": "qBittorrent ist nach der Installation über die Cyberbeest-Paketverwaltung so eingerichtet, dass es I2P-Torrents auch über I2P lädt."
+    },
+    {
+      "id": "apps-no-flatpak",
+      "en": "A Cyberbeest laptop uses plain Debian packages and no Flatpak or Snap, which keeps the system small and every app updated the same way.",
+      "de": "Ein Cyberbeest-Laptop nutzt normale Debian-Pakete und kein Flatpak oder Snap, das hält das System klein und alle Programme werden gleich aktualisiert."
+    },
+    {
+      "id": "apps-wipe-data",
+      "en": "Cyberbeest Wipe App Data erases the local data of one chosen app, such as chat history, wallet files or browsing data.",
+      "de": "Cyberbeest-App-Daten-Löschen entfernt die lokalen Daten einer gewählten App, etwa Chatverlauf, Wallet-Dateien oder Browserdaten.",
+      "tip": true,
+      "ask": {
+        "en": [
+          "How do I delete all my Signal messages from this laptop?",
+          "I want to erase the browsing data of Firefox.",
+          "How can I remove an app's data completely?"
+        ],
+        "de": [
+          "Wie lösche ich alle meine Signal-Nachrichten von diesem Laptop?",
+          "Ich möchte die Browserdaten von Firefox löschen.",
+          "Wie entferne ich die Daten einer App vollständig?"
+        ]
+      }
+    },
+    {
+      "id": "apps-wipe-which",
+      "en": "Cyberbeest Wipe App Data covers Signal, Element, Telegram, Viber, Sparrow, Feather, Tor Browser, Firefox, VLC, I2P and SimpleX, but only those that are installed or hold data.",
+      "de": "Cyberbeest-App-Daten-Löschen deckt Signal, Element, Telegram, Viber, Sparrow, Feather, Tor-Browser, Firefox, VLC, I2P und SimpleX ab, aber nur solche, die installiert sind oder Daten enthalten."
+    },
+    {
+      "id": "apps-wipe-no-shred",
+      "en": "Wiping app data is a plain delete, which is enough because the whole disk is encrypted.",
+      "de": "Das Löschen von App-Daten ist ein einfaches Löschen, das genügt, weil die ganze Festplatte verschlüsselt ist."
+    },
+    {
+      "id": "apps-update-app",
+      "en": "Cyberbeest Update fetches the latest Cyberbeest improvements after one confirmation and then opens the installer window, where you choose what to run.",
+      "de": "Cyberbeest-Update holt nach einer Bestätigung die neuesten Cyberbeest-Verbesserungen und öffnet dann das Installationsfenster, in dem Sie wählen, was ausgeführt wird."
+    },
+    {
+      "id": "apps-claude-optin",
+      "en": "Claude Code, a cloud AI assistant, is not installed on a Cyberbeest laptop, and the menu offers an optional install after a privacy warning.",
+      "de": "Claude Code, ein Cloud-KI-Assistent, ist auf einem Cyberbeest-Laptop nicht installiert, das Menü bietet nach einer Datenschutzwarnung eine freiwillige Installation an."
+    },
+    {
+      "id": "apps-claude-remove",
+      "en": "Claude Code can be removed again from the Cyberbeest menu, which also deletes all its data.",
+      "de": "Claude Code lässt sich über das Cyberbeest-Menü wieder entfernen, wobei auch alle seine Daten gelöscht werden."
+    },
+    {
+      "id": "apps-kvm",
+      "en": "The Cyberbeest VM runs on QEMU/KVM, and Virtual Machine Manager shows all your VMs, including the backup left by a VM update.",
+      "de": "Die Cyberbeest-VM läuft auf QEMU/KVM, und der Virtual Machine Manager zeigt alle Ihre VMs, auch die Sicherung, die ein VM-Update hinterlässt."
+    },
+    {
+      "id": "apps-bluetooth-manager",
+      "en": "The Bluetooth Manager on a Cyberbeest laptop pairs phones and headsets, and can share your phone's mobile data over Bluetooth.",
+      "de": "Der Bluetooth-Manager auf einem Cyberbeest-Laptop koppelt Handys und Headsets und kann die mobilen Daten Ihres Handys über Bluetooth nutzen."
+    },
+    {
+      "id": "apps-firefox-esr",
+      "en": "Firefox on a Cyberbeest laptop is the long-term-support version (ESR), which receives security fixes without frequent feature changes.",
+      "de": "Firefox ist auf einem Cyberbeest-Laptop die Version mit Langzeitunterstützung (ESR), die Sicherheitskorrekturen erhält, ohne dass sich ständig Funktionen ändern."
+    },
+    {
+      "id": "apps-print-settings",
+      "en": "Print Settings on a Cyberbeest laptop adds and manages printers, including network printers by IP address.",
+      "de": "Die Druckereinstellungen auf einem Cyberbeest-Laptop fügen Drucker hinzu und verwalten sie, auch Netzwerkdrucker per IP-Adresse."
+    }
+  ]
+}

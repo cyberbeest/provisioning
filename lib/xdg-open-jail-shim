@@ -1,0 +1,14 @@
+#!/bin/bash
+# Installed as /usr/local/bin/xdg-open. Inside a firejail sandbox the real
+# xdg-open cannot start a browser (no nested firejail), so hand http(s)/mailto
+# URLs to the host's OpenURI portal, which opens them in the sandboxed browser.
+if [ -e /run/firejail ] && [ -n "$1" ]; then
+	case "$1" in
+	*://*|mailto:*)
+		exec gdbus call --session --dest org.freedesktop.portal.Desktop \
+			--object-path /org/freedesktop/portal/desktop \
+			--method org.freedesktop.portal.OpenURI.OpenURI "" "$1" "{}" >/dev/null
+		;;
+	esac
+fi
+exec /usr/bin/xdg-open "$@"

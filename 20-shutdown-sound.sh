@@ -21,6 +21,9 @@ DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG="$DIR/20-shutdown-sound.log"
 exec > >(tee -a "$LOG") 2>&1
 
+# shellcheck disable=SC1091
+. "$DIR/lib/sounds-profile-gate.sh"
+
 echo "=== $(date) : installing shutdown chime ==="
 
 TARGET_USER="${SUDO_USER:?SUDO_USER not set -- run this via sudo, not as a raw root shell}"

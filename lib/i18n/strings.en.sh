@@ -13,6 +13,8 @@ Installing something here is at your own risk. For a curated, pre-approved list 
 	[plymouth.luks_success]="Hard drive unlocked"
 	[plymouth.shutdown_text]="Locking hard disk and shutting down"
 	[plymouth.grub_background]="grub-background-en.png"
+	[grub.menu_hint]="Enter to start   ·   arrow keys to choose"
+	[grub.countdown]="Starting in %d seconds"
 	[login.welcome_message]="Enter short password to unlock desktop"
 	[web_install.confirm_title]="Install app?"
 	[web_install.confirm_message]="A web page wants to install APPNAME on this computer.
@@ -64,6 +66,8 @@ Only continue if you clicked an install link on a page you trust."
 	[panel_status_genmon.security_heading]="Security updates"
 	[panel_status_genmon.ip_line]="IP address: ADDR"
 	[panel_status_genmon.ip_unknown]="no network connection"
+	[panel_status_genmon.ports_line]="Listening ports: PORTS"
+	[panel_status_genmon.ports_none]="none"
 	[update.title]="Cyberbeest Update"
 	[update.no_repo_message]="No provisioning checkout found at ~/provisioning or ~/provisioning-bleeding.
 
@@ -111,6 +115,14 @@ OUTPUT"
 	[clipboard_genmon.label_files]="file path(s)"
 	[clipboard_genmon.label_unknown]="unrecognized content"
 	[clipboard_genmon.never]="Never"
+	[mic_recording.tooltip_heading]="Microphone in use by:"
+	[connections_genmon.none]="No active network connections"
+	[connections_genmon.in_n]="%d incoming connections:"
+	[connections_genmon.in_1]="%d incoming connection:"
+	[connections_genmon.out_n]="%d outgoing connections:"
+	[connections_genmon.out_1]="%d outgoing connection:"
+	[connections_genmon.system_service]="system service"
+	[connections_genmon.unknown]="unknown (click to identify)"
 	[clipboard_genmon.auto_clear_prefix]="Auto-clear:"
 	[clipboard_genmon.empty_with_setting]="Clipboard is empty — SETTING"
 	[clipboard_genmon.status]="Clipboard: LABEL (AGE)COUNTDOWN"
@@ -142,8 +154,55 @@ OUTPUT"
 	[vpn.connect_failed_body]="Could not start VPN profile \"NAME\". Check the config file."
 	[vpn.disconnect_notify]="Disconnected"
 	[vpn.remove_notify]="Profile \"NAME\" removed"
+	[vpn.icon_removed_notify]="VPN icon removed"
 	[vpn.genmon_connected]="VPN connected: NAME"
 	[vpn.genmon_dropped]="VPN disconnected unexpectedly (was: NAME)"
 	[vpn.genmon_none]="No VPN connected."
 	[vpn.genmon_click_for_options]="Click for options."
+	[claude.warn_title]="Install Claude Code? PRIVACY WARNING"
+	[claude.warn_message]="<span size=\"xx-large\" weight=\"bold\" foreground=\"#c00000\">⚠  PRIVACY WARNING</span>
+
+<span size=\"large\" weight=\"bold\">Claude Code is NOT private. It is a cloud service.</span>
+
+Everything you do with it is sent over the internet to Anthropic's servers: your messages, the contents of every file and folder it reads, the output of every command it runs, and anything shown on screen that it looks at. Anthropic may store it. Cyberbeest's encryption, firewall and offline-by-default design <b>do not protect anything you give to Claude Code</b>.
+
+• Never use it with passwords, keys, wallets, private documents, or other people's data.
+• It can run commands on this computer. You decide what it may do, but a wrong approval can delete or leak your files.
+• You need your own Claude account (a paid plan or API credit). Cyberbeest is not affiliated with Anthropic.
+• Download size: about 1.2 GB (Claude Code, helper tools, spoken-reply voices).
+
+It is installed only in your own account, and the menu entry \"Remove Claude Code\" deletes everything again.
+
+<b>Only continue if you accept that your work leaves this computer.</b>"
+	[claude.warn_install]="I understand - install"
+	[claude.warn_cancel]="Cancel"
+	[claude.installing]="Installing Claude Code (this takes a few minutes)..."
+	[claude.install_done_title]="Claude Code installed"
+	[claude.install_done_message]="Done. Open \"Claude Code\" from the menu. On first start it asks you to log in with your Claude account.
+
+Reminder: everything you type there is sent to Anthropic."
+	[claude.install_failed_title]="Installation failed"
+	[claude.install_failed_message]="Something went wrong. Nothing else on your system was changed. Details: LOG"
+	[claude.remove_title]="Remove Claude Code"
+	[claude.remove_message]="Claude Code, its login, the helper tools, voices and menu entries are removed either way.
+
+<b>Remove, keep my data</b> (recommended)
+Keeps your settings, your saved conversations and the ~/claude folder with your projects. A later reinstall picks them up again.
+
+<b>Remove everything</b>
+Also deletes your settings, all saved conversations and the whole ~/claude folder, including your own files in it.
+
+Your Claude account itself is not affected."
+	[claude.remove_keep_button]="Remove, keep my data"
+	[claude.remove_all_button]="Remove everything"
+	[claude.remove_cancel]="Cancel"
+	[claude.remove_confirm_title]="Are you sure?"
+	[claude.remove_confirm_keep]="Claude Code will be removed now. Your settings, saved conversations and ~/claude projects stay."
+	[claude.remove_confirm_all]="<b>This cannot be undone.</b>
+
+Claude Code, your settings, all saved conversations and the whole ~/claude folder (including your own files) will be deleted permanently."
+	[claude.remove_confirm_yes]="Yes, remove"
+	[claude.remove_done_title]="Claude Code removed"
+	[claude.remove_done_message]="Claude Code and everything that came with it is gone."
+	[claude.remove_none_message]="Claude Code is not installed in this account."
 )

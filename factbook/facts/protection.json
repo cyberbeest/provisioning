@@ -1,0 +1,155 @@
+{
+  "topic": {
+    "en": "Protection tools and network",
+    "de": "Schutzwerkzeuge und Netzwerk"
+  },
+  "source": "provisioning scripts 29, 37, 43, 51, 59, 62-63, 99; lib/cyberbeest_*_gui.py",
+  "checked": "2026-10-15",
+  "facts": [
+    {
+      "id": "scan-how",
+      "en": "The Cyberbeest Malware Scanner checks system files against their packages, scans for known malware, and searches for rootkits.",
+      "de": "Der Cyberbeest-Malware-Scanner prüft Systemdateien gegen ihre Pakete, sucht nach bekannter Schadsoftware und nach Rootkits."
+    },
+    {
+      "id": "scan-verdict",
+      "en": "The Cyberbeest Malware Scanner ends with a clear verdict, written by fixed rules and not by an AI.",
+      "de": "Der Cyberbeest-Malware-Scanner endet mit einem klaren Urteil, das nach festen Regeln und nicht von einer KI erstellt wird."
+    },
+    {
+      "id": "scan-manual",
+      "en": "The Cyberbeest Malware Scanner runs only when you start it, because its virus database needs about 1 GB of RAM while scanning.",
+      "de": "Der Cyberbeest-Malware-Scanner läuft nur, wenn Sie ihn starten, weil seine Virendatenbank beim Scannen etwa 1 GB Arbeitsspeicher braucht."
+    },
+    {
+      "id": "scan-signatures",
+      "en": "The malware signatures of a Cyberbeest laptop are refreshed automatically in the background, so a scan always uses current data.",
+      "de": "Die Malware-Signaturen eines Cyberbeest-Laptops werden im Hintergrund automatisch aktualisiert, ein Scan nutzt also immer aktuelle Daten."
+    },
+    {
+      "id": "intrusion-checks",
+      "en": "Cyberbeest Intrusion Watch checks for failed logins, new USB devices, odd DNS activity, unexpected open ports and new autostart entries.",
+      "de": "Cyberbeest-Intrusion-Watch prüft auf fehlgeschlagene Anmeldungen, neue USB-Geräte, auffällige DNS-Anfragen, unerwartet offene Ports und neue Autostart-Einträge."
+    },
+    {
+      "id": "intrusion-result",
+      "en": "Each Intrusion Watch check shows OK, WARN, ALERT or N/A, and N/A means it could not look, never a silent OK.",
+      "de": "Jede Prüfung in Intrusion Watch zeigt OK, WARNUNG, ALARM oder k. A., wobei k. A. heißt, dass sie nicht nachsehen konnte, nie ein stilles OK."
+    },
+    {
+      "id": "intrusion-manual",
+      "en": "Intrusion Watch scans when you press Scan Now, or on a timer if you switch the automatic scan on.",
+      "de": "Intrusion Watch prüft, wenn Sie auf Jetzt scannen drücken, oder nach einem Zeitplan, wenn Sie die automatische Prüfung einschalten."
+    },
+    {
+      "id": "news-tabs",
+      "en": "Linux Security News has tabs for Debian security advisories, serious CVEs, new Exploit-DB entries and this laptop's own update history.",
+      "de": "Linux Security News hat Reiter für Debian-Sicherheitshinweise, schwere CVEs, neue Exploit-DB-Einträge und den Update-Verlauf dieses Laptops."
+    },
+    {
+      "id": "news-history-permanent",
+      "en": "A Cyberbeest laptop keeps a permanent record of every package it installed or upgraded, beyond the usual yearly log rotation.",
+      "de": "Ein Cyberbeest-Laptop führt ein dauerhaftes Protokoll aller installierten oder aktualisierten Pakete, über die übliche jährliche Protokollrotation hinaus."
+    },
+    {
+      "id": "net-firewall-default",
+      "en": "The firewall of a Cyberbeest laptop drops all unsolicited incoming connections and allows only replies to connections the laptop opened itself.",
+      "de": "Die Firewall eines Cyberbeest-Laptops verwirft alle ungebetenen eingehenden Verbindungen und lässt nur Antworten auf selbst aufgebaute Verbindungen durch."
+    },
+    {
+      "id": "net-firewall-vm",
+      "en": "The Cyberbeest firewall coexists with the VM networking, so starting or stopping the Cyberbeest VM never removes its rules.",
+      "de": "Die Cyberbeest-Firewall verträgt sich mit dem VM-Netzwerk, Starten oder Beenden der Cyberbeest-VM entfernt ihre Regeln also nie."
+    },
+    {
+      "id": "net-ping",
+      "en": "A Cyberbeest laptop answers ping, which the firewall allows so that networks and IPv6 keep working.",
+      "de": "Ein Cyberbeest-Laptop antwortet auf Ping, was die Firewall erlaubt, damit Netzwerke und IPv6 funktionieren."
+    },
+    {
+      "id": "net-no-ssh",
+      "en": "A Cyberbeest laptop has no SSH server installed, so there is no remote login at all.",
+      "de": "Auf einem Cyberbeest-Laptop ist kein SSH-Server installiert, es gibt also keine Fernanmeldung."
+    },
+    {
+      "id": "net-fail2ban",
+      "en": "If an SSH server is ever installed on a Cyberbeest laptop, fail2ban installs itself automatically to block repeated login guesses.",
+      "de": "Wird je ein SSH-Server auf einem Cyberbeest-Laptop installiert, installiert sich fail2ban automatisch und sperrt wiederholte Anmeldeversuche."
+    },
+    {
+      "id": "net-dns-provider",
+      "en": "Encrypted DNS on a Cyberbeest laptop sends name lookups encrypted to Cloudflare through a local resolver.",
+      "de": "Verschlüsseltes DNS sendet auf einem Cyberbeest-Laptop Namensabfragen über einen lokalen Resolver verschlüsselt an Cloudflare."
+    },
+    {
+      "id": "net-dns-reboot",
+      "en": "Turning encrypted DNS off for troubleshooting lasts only until the next restart of a Cyberbeest laptop.",
+      "de": "Das Abschalten des verschlüsselten DNS zur Fehlersuche gilt auf einem Cyberbeest-Laptop nur bis zum nächsten Neustart."
+    },
+    {
+      "id": "net-vpn-icon",
+      "en": "The Cyberbeest VPN panel icon connects and disconnects a VPN with one click, once you have imported a WireGuard file.",
+      "de": "Das VPN-Symbol im Cyberbeest-Panel verbindet und trennt ein VPN mit einem Klick, sobald Sie eine WireGuard-Datei importiert haben."
+    },
+    {
+      "id": "net-vpn-dns-leak",
+      "en": "The Cyberbeest VPN tool sends DNS queries through the VPN as well, so name lookups do not leak outside it.",
+      "de": "Das Cyberbeest-VPN-Werkzeug leitet auch DNS-Anfragen durch das VPN, Namensabfragen gelangen also nicht daran vorbei."
+    },
+    {
+      "id": "net-vpn-killswitch-auto",
+      "en": "The Cyberbeest VPN tool adds a kill switch automatically to imported WireGuard files that do not have one.",
+      "de": "Das Cyberbeest-VPN-Werkzeug fügt importierten WireGuard-Dateien, die keinen haben, automatisch einen Notausschalter hinzu."
+    },
+    {
+      "id": "net-vpn-optional",
+      "en": "The Mullvad and Proton VPN apps are optional installs, because each runs a permanent background service.",
+      "de": "Die Apps von Mullvad und Proton VPN sind optionale Installationen, weil jede einen dauerhaften Hintergrunddienst startet."
+    },
+    {
+      "id": "net-printer-reboot",
+      "en": "Turning on LAN printer discovery lasts only until the next restart of a Cyberbeest laptop.",
+      "de": "Das Einschalten der Druckererkennung im Heimnetz gilt auf einem Cyberbeest-Laptop nur bis zum nächsten Neustart."
+    },
+    {
+      "id": "net-printer-why-off",
+      "en": "LAN printer discovery is off by default because it announces the laptop's name to everyone on the local network.",
+      "de": "Die Druckererkennung im Heimnetz ist standardmäßig aus, weil sie den Namen des Laptops allen im lokalen Netzwerk mitteilt."
+    },
+    {
+      "id": "net-bluetooth-risk",
+      "en": "Bluetooth stays off until you enable it, so no one can pair with a Cyberbeest laptop by default.",
+      "de": "Bluetooth bleibt aus, bis Sie es einschalten, sodass sich standardmäßig niemand mit einem Cyberbeest-Laptop koppeln kann."
+    },
+    {
+      "id": "updates-vendor-repos",
+      "en": "Signal, Element and Google Chrome get updated automatically from their makers' own repositories, just like Debian's packages.",
+      "de": "Signal, Element und Google Chrome werden automatisch aus den Paketquellen ihrer Hersteller aktualisiert, genau wie die Debian-Pakete."
+    },
+    {
+      "id": "updates-timer-limit",
+      "en": "The security update check on a Cyberbeest laptop runs every 120 minutes and notes the result in the panel.",
+      "de": "Die Prüfung auf Sicherheitsupdates läuft auf einem Cyberbeest-Laptop alle 120 Minuten und zeigt das Ergebnis im Panel an."
+    },
+    {
+      "id": "sandbox-firejail",
+      "en": "Cyberbeest sandboxes are made with Firejail, which hides everything except an app's own data and your whitelisted folders.",
+      "de": "Cyberbeest-Sandboxen bestehen aus Firejail, das alles außer den eigenen Daten einer App und Ihren zugelassenen Ordnern verbirgt."
+    },
+    {
+      "id": "sandbox-firefox-nag",
+      "en": "Firefox in its Cyberbeest sandbox will not show the warning about unsupported sandboxing, because the sandbox is intended.",
+      "de": "Firefox zeigt in seiner Cyberbeest-Sandbox keine Warnung über nicht unterstütztes Sandboxing, weil die Sandbox gewollt ist."
+    },
+    {
+      "id": "sandbox-vm-vs-jail",
+      "en": "A sandbox limits what an app can see, and the Cyberbeest VM goes further by running the whole app in a separate system.",
+      "de": "Eine Sandbox begrenzt, was eine App sehen kann, und die Cyberbeest-VM geht weiter, indem sie die ganze App in einem getrennten System ausführt."
+    },
+    {
+      "id": "open-source",
+      "en": "The Cyberbeest setup scripts are public on GitHub, so anyone can read exactly what a Cyberbeest laptop does.",
+      "de": "Die Cyberbeest-Einrichtungsskripte sind öffentlich auf GitHub einsehbar, jeder kann also nachlesen, was ein Cyberbeest-Laptop genau tut."
+    }
+  ]
+}

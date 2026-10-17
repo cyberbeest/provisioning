@@ -1,0 +1,412 @@
+{
+  "category": {
+    "en": "Audio",
+    "de": "Ton"
+  },
+  "commands": [
+    {
+      "id": "volume_up",
+      "title": {
+        "en": "Louder",
+        "de": "Lauter"
+      },
+      "sentence": {
+        "en": "Make the volume louder by {percent}%",
+        "de": "Lautstärke um {percent} % erhöhen"
+      },
+      "done": {
+        "en": "Volume now {level}%",
+        "de": "Lautstärke jetzt {level} %"
+      },
+      "examples": {
+        "en": [
+          "make it louder",
+          "turn the volume up",
+          "increase the volume",
+          "louder please",
+          "I can't hear anything",
+          "turn up the sound",
+          "pump up the volume",
+          "I can barely hear it",
+          "I can hardly hear the video",
+          "it's too quiet",
+          "I can't hear what they say",
+          "a little louder",
+          "turn it up",
+          "can you turn it up a bit"
+        ],
+        "de": [
+          "mach es lauter",
+          "lauter",
+          "Lautstärke erhöhen",
+          "lauter bitte",
+          "ich höre nichts",
+          "ich kann kaum etwas hören",
+          "es ist zu leise",
+          "ich verstehe nichts",
+          "Ton lauter stellen",
+          "etwas lauter"
+        ]
+      },
+      "reply": {
+        "en": "Louder.",
+        "de": "Lauter."
+      },
+      "slot": {
+        "kind": "percent",
+        "mode": "relative",
+        "default": 10,
+        "words": {
+          "en": {
+            "a bit": 5,
+            "slightly": 5,
+            "a little": 5,
+            "a lot": 20,
+            "much": 20
+          },
+          "de": {
+            "ein bisschen": 5,
+            "etwas": 5,
+            "leicht": 5,
+            "viel": 20,
+            "deutlich": 20
+          }
+        },
+        "max": 150
+      },
+      "run": {
+        "builtin": "volume",
+        "args": {
+          "op": "step",
+          "sign": 1,
+          "percent": "{percent}"
+        }
+      }
+    },
+    {
+      "id": "volume_down",
+      "title": {
+        "en": "Quieter",
+        "de": "Leiser"
+      },
+      "sentence": {
+        "en": "Make the volume quieter by {percent}%",
+        "de": "Lautstärke um {percent} % verringern"
+      },
+      "done": {
+        "en": "Volume now {level}%",
+        "de": "Lautstärke jetzt {level} %"
+      },
+      "examples": {
+        "en": [
+          "make it quieter",
+          "turn the volume down",
+          "decrease the volume",
+          "quieter please",
+          "it's too loud",
+          "turn down the sound",
+          "lower the volume",
+          "a little quieter",
+          "turn it down",
+          "can you turn it down a bit"
+        ],
+        "de": [
+          "mach es leiser",
+          "leiser",
+          "Lautstärke verringern",
+          "leiser bitte",
+          "das ist zu laut",
+          "Ton leiser stellen",
+          "etwas leiser"
+        ]
+      },
+      "reply": {
+        "en": "Quieter.",
+        "de": "Leiser."
+      },
+      "slot": {
+        "kind": "percent",
+        "mode": "relative",
+        "default": 10,
+        "words": {
+          "en": {
+            "a bit": 5,
+            "slightly": 5,
+            "a little": 5,
+            "a lot": 20,
+            "much": 20
+          },
+          "de": {
+            "ein bisschen": 5,
+            "etwas": 5,
+            "leicht": 5,
+            "viel": 20,
+            "deutlich": 20
+          }
+        },
+        "max": 150
+      },
+      "run": {
+        "builtin": "volume",
+        "args": {
+          "op": "step",
+          "sign": -1,
+          "percent": "{percent}"
+        }
+      }
+    },
+    {
+      "id": "volume_set",
+      "title": {
+        "en": "Set volume",
+        "de": "Lautstärke einstellen"
+      },
+      "sentence": {
+        "en": "Set the volume to {percent}%",
+        "de": "Lautstärke auf {percent} % setzen"
+      },
+      "done": {
+        "en": "Volume now {level}%",
+        "de": "Lautstärke jetzt {level} %"
+      },
+      "examples": {
+        "en": [
+          "set the volume to 50 percent",
+          "volume 30%",
+          "set the volume to half",
+          "volume to maximum",
+          "make the volume 70 percent",
+          "set the volume",
+          "change the volume",
+          "adjust the volume",
+          "volume",
+          "set the volume to 40 %",
+          "volume to 25 percent",
+          "set volume to 75",
+          "make the volume 20%"
+        ],
+        "de": [
+          "stelle die Lautstärke auf 50 Prozent",
+          "Lautstärke 30%",
+          "Lautstärke auf die Hälfte",
+          "Lautstärke auf Maximum",
+          "Lautstärke einstellen",
+          "Lautstärke ändern",
+          "Lautstärke anpassen",
+          "Lautstärke",
+          "Lautstärke auf 40 %",
+          "Lautstärke auf 75 setzen",
+          "stelle die Lautstärke auf 25 Prozent"
+        ]
+      },
+      "reply": {
+        "en": "Volume {percent}%.",
+        "de": "Lautstärke {percent} %."
+      },
+      "slot": {
+        "kind": "percent",
+        "mode": "absolute",
+        "required": true,
+        "ask": {
+          "en": "Volume to what percent?",
+          "de": "Lautstärke auf wie viel Prozent?"
+        },
+        "words": {
+          "en": {
+            "half": 50,
+            "maximum": 100,
+            "full": 100,
+            "max": 100,
+            "minimum": 5
+          },
+          "de": {
+            "die Hälfte": 50,
+            "halb": 50,
+            "Maximum": 100,
+            "voll": 100,
+            "Minimum": 5
+          }
+        },
+        "max": 150
+      },
+      "run": {
+        "builtin": "volume",
+        "args": {
+          "op": "set",
+          "percent": "{percent}"
+        }
+      }
+    },
+    {
+      "id": "mute",
+      "title": {
+        "en": "Mute",
+        "de": "Stummschalten"
+      },
+      "sentence": {
+        "en": "Mute the sound",
+        "de": "Ton stummschalten"
+      },
+      "done": {
+        "en": "Sound muted",
+        "de": "Ton stummgeschaltet"
+      },
+      "examples": {
+        "en": [
+          "mute the sound",
+          "mute",
+          "silence the speakers",
+          "turn the sound off",
+          "sound off",
+          "mute the volume"
+        ],
+        "de": [
+          "Ton aus",
+          "stumm schalten",
+          "Ton ausschalten",
+          "stumm",
+          "Ton stummschalten"
+        ]
+      },
+      "reply": {
+        "en": "Muted.",
+        "de": "Stumm."
+      },
+      "run": {
+        "builtin": "volume",
+        "args": {
+          "op": "mute"
+        }
+      }
+    },
+    {
+      "id": "unmute",
+      "title": {
+        "en": "Unmute",
+        "de": "Ton an"
+      },
+      "sentence": {
+        "en": "Unmute the sound",
+        "de": "Ton wieder einschalten"
+      },
+      "done": {
+        "en": "Sound on, volume {level}%",
+        "de": "Ton an, Lautstärke {level} %"
+      },
+      "examples": {
+        "en": [
+          "unmute the sound",
+          "turn the sound back on",
+          "unmute",
+          "sound on",
+          "turn the sound on",
+          "I want sound again",
+          "bring the sound back"
+        ],
+        "de": [
+          "Ton wieder an",
+          "Stummschaltung aufheben",
+          "Ton einschalten",
+          "Ton an",
+          "Ton wieder einschalten"
+        ]
+      },
+      "reply": {
+        "en": "Sound on.",
+        "de": "Ton an."
+      },
+      "run": {
+        "builtin": "volume",
+        "args": {
+          "op": "unmute"
+        }
+      }
+    },
+    {
+      "id": "mic_mute",
+      "title": {
+        "en": "Mute microphone",
+        "de": "Mikrofon stumm"
+      },
+      "sentence": {
+        "en": "Mute the microphone",
+        "de": "Mikrofon stummschalten"
+      },
+      "done": {
+        "en": "Microphone muted",
+        "de": "Mikrofon stummgeschaltet"
+      },
+      "examples": {
+        "en": [
+          "mute the microphone",
+          "turn the microphone off",
+          "mic off",
+          "mute my mic",
+          "switch off the microphone"
+        ],
+        "de": [
+          "Mikrofon stumm schalten",
+          "Mikrofon ausschalten",
+          "Mikrofon aus",
+          "Mikro stumm",
+          "Mikrofon stummschalten"
+        ]
+      },
+      "reply": {
+        "en": "Microphone muted.",
+        "de": "Mikrofon stumm."
+      },
+      "run": {
+        "argv": [
+          "pactl",
+          "set-source-mute",
+          "@DEFAULT_SOURCE@",
+          "1"
+        ]
+      }
+    },
+    {
+      "id": "mic_unmute",
+      "title": {
+        "en": "Unmute microphone",
+        "de": "Mikrofon an"
+      },
+      "sentence": {
+        "en": "Unmute the microphone",
+        "de": "Mikrofon wieder einschalten"
+      },
+      "done": {
+        "en": "Microphone on",
+        "de": "Mikrofon an"
+      },
+      "examples": {
+        "en": [
+          "unmute the microphone",
+          "turn the microphone on",
+          "mic on",
+          "unmute my mic",
+          "switch on the microphone"
+        ],
+        "de": [
+          "Mikrofon einschalten",
+          "Mikrofon an",
+          "Mikrofon wieder aktivieren",
+          "Mikro an",
+          "Mikrofon wieder einschalten"
+        ]
+      },
+      "reply": {
+        "en": "Microphone on.",
+        "de": "Mikrofon an."
+      },
+      "run": {
+        "argv": [
+          "pactl",
+          "set-source-mute",
+          "@DEFAULT_SOURCE@",
+          "0"
+        ]
+      }
+    }
+  ]
+}

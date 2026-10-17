@@ -1,0 +1,37 @@
+#!/bin/sh
+# Installed to /etc/initramfs-tools/scripts/local-top/cyberbeest-mount-boot,
+# a NEW script (not an override -- there's no stock equivalent). Mounts
+# /boot read-write, early, before cryptroot runs.
+#
+# /boot is a separate, unencrypted partition, which is
+# why GRUB can read the kernel/initrd from it directly without a
+# passphrase -- but that does NOT mean the initramfs itself has it
+# mounted at /boot. By default it's just an empty directory in the
+# initramfs's own throwaway tmpfs until the real root is mounted and
+# systemd processes /etc/fstab -- discovered live 2026-09-28 when the
+# Boot Fresh marker check and its own debug log both silently no-op'd
+# against that empty directory instead of the real partition, with no
+# error of any kind (a bare `[ -e /boot/... ]` and a log write to a
+# writable-but-wrong path both "succeed" silently).
+#
+# PREREQ="" (no dependencies) so this schedules as early as possible in
+# local-top, before cryptroot (PREREQ=cryptroot-prepare, i.e. strictly
+# later in the topological order) -- confirmed by reading
+# /usr/share/initramfs-tools/scripts/local-top/cryptroot's own PREREQ
+# line directly, not assumed. cyberbeest-askpass-boot-fresh (the
+# crypttab keyscript, which needs /boot mounted to check/clear the
+# marker) only runs once cryptroot invokes it, so this only needs to beat
+# cryptroot itself, not necessarily every other local-top script.
+#
+# Mounted read-write, not read-only: the Ctrl+F path in
+# cyberbeest-askpass-boot-fresh needs to rm the marker, not just read it.
+# Gets discarded automatically when the initramfs's own root (and
+# everything mounted within its mount namespace) is thrown away at
+# pivot_root -- the real, fstab-driven /boot mount that follows normal
+# boot afterward is unaffected.
+PREREQ=""
+prereqs() { echo "$PREREQ"; }
+case $1 in prereqs) prereqs; exit 0 ;; esac
+
+mkdir -p /boot
+mount -t ext4 -o rw UUID=__BOOT_UUID__ /boot 2>/dev/null || true

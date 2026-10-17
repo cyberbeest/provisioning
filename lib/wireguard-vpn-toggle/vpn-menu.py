@@ -72,6 +72,11 @@ def remove_profile(_item, name):
     Gtk.main_quit()
 
 
+def hide_icon(_item):
+    launch(f"{BIN}/vpn-hide-icon.sh")
+    Gtk.main_quit()
+
+
 def build_menu():
     menu = Gtk.Menu()
     profiles = get_profiles()
@@ -117,6 +122,12 @@ def build_menu():
         remove_root = Gtk.MenuItem(label=t("vpn.menu_remove"))
         remove_root.set_submenu(remove_menu)
         menu.append(remove_root)
+
+    menu.append(Gtk.SeparatorMenuItem())
+    hide_label = t("vpn.menu_hide_icon_connected") if active else t("vpn.menu_hide_icon")
+    hide_item = Gtk.MenuItem(label=hide_label)
+    hide_item.connect("activate", hide_icon)
+    menu.append(hide_item)
 
     menu.show_all()
     return menu

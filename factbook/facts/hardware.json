@@ -1,0 +1,124 @@
+{
+  "topic": {
+    "en": "The laptop itself",
+    "de": "Der Laptop selbst"
+  },
+  "source": "reference unit (dev machine) hardware inventory, hardware-specs/",
+  "checked": "2026-10-15",
+  "facts": [
+    {
+      "id": "hw-cpu",
+      "en": "A Cyberbeest laptop has a dual-core Intel Celeron N3350 processor, which is built for low power draw rather than speed.",
+      "de": "Ein Cyberbeest-Laptop hat einen Zweikern-Prozessor Intel Celeron N3350, der auf geringen Stromverbrauch statt auf Geschwindigkeit ausgelegt ist."
+    },
+    {
+      "id": "hw-ram",
+      "en": "A Cyberbeest laptop has 6 GB of RAM, which is enough for everyday use but not for running many heavy apps at once.",
+      "de": "Ein Cyberbeest-Laptop hat 6 GB Arbeitsspeicher, genug für den Alltag, aber nicht für viele schwere Programme gleichzeitig."
+    },
+    {
+      "id": "hw-ssd",
+      "en": "A Cyberbeest laptop stores everything on a 128 GB solid-state drive, which has no moving parts and is completely encrypted.",
+      "de": "Ein Cyberbeest-Laptop speichert alles auf einer 128-GB-SSD, die keine beweglichen Teile hat und vollständig verschlüsselt ist."
+    },
+    {
+      "id": "hw-screen",
+      "en": "The display of a Cyberbeest laptop is 14 inches (about 35 cm) across with a resolution of 1366 x 768 pixels.",
+      "de": "Das Display eines Cyberbeest-Laptops misst 14 Zoll (etwa 35 cm) in der Diagonale und löst mit 1366 x 768 Pixeln auf."
+    },
+    {
+      "id": "hw-wifi-bt",
+      "en": "A Cyberbeest laptop has built-in Wi-Fi (802.11ac) and Bluetooth, so it needs no adapters to connect.",
+      "de": "Ein Cyberbeest-Laptop hat WLAN (802.11ac) und Bluetooth eingebaut und braucht keine Adapter, um sich zu verbinden."
+    },
+    {
+      "id": "hw-webcam",
+      "en": "A Cyberbeest laptop has a built-in HD webcam above the screen.",
+      "de": "Ein Cyberbeest-Laptop hat über dem Bildschirm eine eingebaute HD-Webcam."
+    },
+    {
+      "id": "hw-sd-slot",
+      "en": "A Cyberbeest laptop has an SD card slot, and a card in the slot cannot wake the laptop from its locked state.",
+      "de": "Ein Cyberbeest-Laptop hat einen SD-Kartenleser, und eine eingesteckte Karte kann den gesperrten Laptop nicht aufwecken."
+    },
+    {
+      "id": "hw-mic-mono",
+      "en": "A Cyberbeest laptop has a single working microphone, so recordings are mono even though the case shows two small holes.",
+      "de": "Ein Cyberbeest-Laptop hat nur ein funktionierendes Mikrofon, Aufnahmen sind also mono, obwohl das Gehäuse zwei kleine Löcher zeigt."
+    },
+    {
+      "id": "hw-no-amt",
+      "en": "The processor in a Cyberbeest laptop has no Intel AMT, so the laptop cannot be remotely administered below the operating system.",
+      "de": "Der Prozessor in einem Cyberbeest-Laptop hat kein Intel AMT, der Laptop lässt sich also nicht unterhalb des Betriebssystems aus der Ferne verwalten."
+    },
+    {
+      "id": "hw-charger",
+      "en": "The charger of a Cyberbeest laptop delivers 12 volts at 2 amps through a round plug with a 3.5 mm outer and 1.35 mm inner diameter.",
+      "de": "Das Netzteil eines Cyberbeest-Laptops liefert 12 Volt bei 2 Ampere über einen runden Stecker mit 3,5 mm Außen- und 1,35 mm Innendurchmesser."
+    },
+    {
+      "id": "hw-battery-size",
+      "en": "The battery of a Cyberbeest laptop holds about 29 watt-hours, and the panel shows its live power draw and the remaining time.",
+      "de": "Der Akku eines Cyberbeest-Laptops fasst etwa 29 Wattstunden, und das Panel zeigt den aktuellen Verbrauch und die Restlaufzeit an."
+    },
+    {
+      "id": "hw-blue-leds",
+      "en": "A Cyberbeest laptop has blue status LEDs that stay lit while the laptop is on or locked and go dark only when it is fully off.",
+      "de": "Ein Cyberbeest-Laptop hat blaue Status-LEDs, die leuchten, solange er an oder gesperrt ist, und nur bei vollständigem Ausschalten dunkel werden."
+    },
+    {
+      "id": "hw-touchpad-tap",
+      "en": "The touchpad of a Cyberbeest laptop is tuned for tapping: a light tap clicks, and this also works on the login screen.",
+      "de": "Das Touchpad eines Cyberbeest-Laptops ist aufs Tippen abgestimmt: Ein leichtes Antippen klickt, auch auf dem Anmeldebildschirm.",
+      "tip": true
+    },
+    {
+      "id": "hw-no-sleep",
+      "en": "A Cyberbeest laptop never suspends or hibernates, because those sleep states are switched off on purpose.",
+      "de": "Ein Cyberbeest-Laptop geht nie in den Ruhezustand oder Energiesparmodus, denn diese Schlafzustände sind absichtlich abgeschaltet."
+    },
+    {
+      "id": "hw-sound-volume",
+      "en": "A Cyberbeest laptop starts with speaker and microphone volume at 100%, and you can turn them down for good.",
+      "de": "Ein Cyberbeest-Laptop startet mit Lautsprecher- und Mikrofonlautstärke auf 100 %, und Sie können beides dauerhaft leiser stellen."
+    },
+    {
+      "id": "hw-display-off",
+      "en": "The display of a Cyberbeest laptop turns off after 6 minutes without input, and screen dimming is disabled so it never dims before locking.",
+      "de": "Das Display eines Cyberbeest-Laptops schaltet sich nach 6 Minuten ohne Eingabe aus, und das Abdunkeln ist abgeschaltet, es dimmt also nie vor dem Sperren."
+    },
+    {
+      "id": "hw-linux-debian",
+      "en": "A Cyberbeest laptop runs Debian 13 (Trixie) with the lightweight Xfce desktop, set up and tuned by the Cyberbeest provisioning scripts.",
+      "de": "Ein Cyberbeest-Laptop läuft mit Debian 13 (Trixie) und dem schlanken Xfce-Desktop, eingerichtet und abgestimmt durch die Cyberbeest-Provisionierungsskripte."
+    },
+    {
+      "id": "hw-lid-open",
+      "en": "Opening the lid of a locked Cyberbeest laptop wakes the display and shows the lock screen.",
+      "de": "Wird der Deckel eines gesperrten Cyberbeest-Laptops geöffnet, geht das Display wieder an und der Sperrbildschirm erscheint."
+    },
+    {
+      "id": "hw-battery-36h",
+      "en": "A fully charged Cyberbeest laptop lasts over 36 hours with the screen off and a messenger running, measured at about 0.73 to 0.79 watts.",
+      "de": "Ein voll geladener Cyberbeest-Laptop hält bei ausgeschaltetem Bildschirm und laufendem Messenger über 36 Stunden durch, gemessen mit etwa 0,73 bis 0,79 Watt.",
+      "tip": true,
+      "ask": {
+        "en": [
+          "How long does the battery last?",
+          "What is the battery life of a Cyberbeest?",
+          "Can I leave it running for a whole day without charging?"
+        ],
+        "de": [
+          "Wie lange hält der Akku?",
+          "Wie lange ist die Akkulaufzeit eines Cyberbeest?",
+          "Kann ich ihn einen ganzen Tag ohne Laden laufen lassen?"
+        ]
+      }
+    },
+    {
+      "id": "hw-battery-screen-on",
+      "en": "The 36-hour battery figure of a Cyberbeest laptop applies with the screen off, for example when you only wait for message notifications, and actively using the screen drains the battery faster.",
+      "de": "Die Akkulaufzeit von 36 Stunden bei einem Cyberbeest-Laptop gilt bei ausgeschaltetem Bildschirm, etwa wenn Sie nur auf Nachrichten warten, und aktive Nutzung entleert den Akku schneller."
+    }
+  ]
+}

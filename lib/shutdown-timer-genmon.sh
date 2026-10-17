@@ -60,41 +60,25 @@ else
     lock_line="${lock_line//DURATION/$(fmt "$idle_delay_min")}"
 fi
 
-# A stuck/leftover dbus Inhibit() call (from a crashed app, or one that just
-# never releases it) silently defeats auto-lock even though config looks
-# fine -- this bit us for real (2026-09-14, orphaned "libxfce4ui" inhibit
-# that outlived whatever requested it). Only worth checking when idle-lock
-# is even configured to fire.
-inhibit_app=""
-if [ "$idle_delay_min" -gt 0 ]; then
-    sc_status=$(xfce4-screensaver-command -q 2>/dev/null)
-    if printf '%s' "$sc_status" | grep -q "is being inhibited"; then
-        inhibit_app=$(printf '%s' "$sc_status" | grep -oP 'Application="\K[^"]*' | head -n1)
-        inhibit_app="${inhibit_app:-?}"
-        blocked_suffix="$(t shutdown_genmon.blocked_suffix)"
-        lock_line="${lock_line}${blocked_suffix}"
-    fi
-fi
+# Inhibits (browser playing media, stuck libxfce4ui inhibit, ...) don't
+# defeat auto-lock: lock-shutdown-watcher.sh locks explicitly once idle time
+# passes the delay, so there's nothing to flag for them here.
 
-# A configured auto-shutdown time is a no-op if the screen never auto-locks,
-# and so is an active inhibit -- flag either on the icon itself, not just in
-# the tooltip, since both silently defeat a safety feature the device
-# otherwise relies on.
+# A configured auto-shutdown time is a no-op if the screen never auto-locks --
+# flag it on the icon itself, not just in the tooltip, since it silently
+# defeats a safety feature the device otherwise relies on.
 warn_txt=""
 warn_line=""
 if [ "$idle_delay_min" -eq 0 ] && { [ "$ac_min" -gt 0 ] || [ "$bat_min" -gt 0 ]; }; then
     warn_txt=" ⚠"
     warn_line="$(t shutdown_genmon.auto_lock_off_warning)&#10;"
-elif [ -n "$inhibit_app" ]; then
-    warn_txt=" ⚠"
-    warn_line="$(t shutdown_genmon.inhibited_warning)"
-    warn_line="${warn_line//APPNAME/$inhibit_app}&#10;"
 fi
 
 click_line="$(t shutdown_genmon.click_to_change)"
 
 if [ "$linked" = "true" ] || [ "$ac_min" = "$bat_min" ]; then
-    SHUTDOWN_TIMER_TXT="🔒 $(fmt "$idle_delay_min") ⏻ $(fmt "$ac_min")${warn_txt}"
+    SHUTDOWN_TIMER_TXT="🔒 $(fmt "$idle_delay_min")
+⏻ $(fmt "$ac_min")${warn_txt}"
     if [ "$ac_min" -eq 0 ]; then
         SHUTDOWN_TIMER_TOOL="${warn_line}${lock_line}&#10;$(t shutdown_genmon.disabled_both)&#10;${click_line}"
     else
@@ -103,7 +87,8 @@ if [ "$linked" = "true" ] || [ "$ac_min" = "$bat_min" ]; then
         SHUTDOWN_TIMER_TOOL="${warn_line}${lock_line}&#10;${after_both}&#10;${click_line}"
     fi
 else
-    SHUTDOWN_TIMER_TXT="🔒 $(fmt "$idle_delay_min") ⏻ $(fmt "$ac_min")/$(fmt "$bat_min")${warn_txt}"
+    SHUTDOWN_TIMER_TXT="🔒 $(fmt "$idle_delay_min")
+⏻ $(fmt "$ac_min")/$(fmt "$bat_min")${warn_txt}"
     ac_line="$(t shutdown_genmon.ac_label)"
     ac_line="${ac_line//DURATION/$(fmt "$ac_min")}"
     bat_line="$(t shutdown_genmon.battery_label)"

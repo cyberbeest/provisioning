@@ -1,0 +1,2119 @@
+diff -ruN a/src/libply-splash-core/meson.build b/src/libply-splash-core/meson.build
+--- a/src/libply-splash-core/meson.build	2024-01-04 22:08:14.000000000 +0100
++++ b/src/libply-splash-core/meson.build	2026-09-29 15:14:09.242385464 +0200
+@@ -6,6 +6,7 @@
+   'ply-keyboard.c',
+   'ply-pixel-buffer.c',
+   'ply-pixel-display.c',
++  'ply-pointer.c',
+   'ply-renderer.c',
+   'ply-rich-text.c',
+   'ply-terminal.c',
+@@ -61,6 +62,7 @@
+   'ply-keyboard.h',
+   'ply-pixel-buffer.h',
+   'ply-pixel-display.h',
++  'ply-pointer.h',
+   'ply-renderer-plugin.h',
+   'ply-renderer.h',
+   'ply-rich-text.h',
+diff -ruN a/src/libply-splash-core/ply-device-manager.c b/src/libply-splash-core/ply-device-manager.c
+--- a/src/libply-splash-core/ply-device-manager.c	2026-10-09 23:54:46.000000000 +0200
++++ b/src/libply-splash-core/ply-device-manager.c	2026-10-09 15:48:48.170365886 +0200
+@@ -53,6 +53,8 @@
+ #endif
+ 
+ static void create_non_graphical_devices (ply_device_manager_t *manager);
++static void remove_input_device_from_renderers (ply_device_manager_t *manager,
++                                                ply_input_device_t   *input_device);
+ static bool create_devices_for_terminal_and_renderer_type (ply_device_manager_t *manager,
+                                                            const char           *device_path,
+                                                            ply_terminal_t       *terminal,
+@@ -290,10 +292,23 @@
+                                ply_input_device_t   *input_device)
+ {
+         const char *device_path = ply_input_device_get_path (input_device);
+-        if (ply_hashtable_lookup (manager->input_devices, (void *) device_path) != NULL) {
+-                ply_trace ("Input device '%s' already added, skipping...", ply_input_device_get_name (input_device));
+-                ply_input_device_free (input_device);
+-                return;
++        ply_input_device_t *existing = ply_hashtable_lookup (manager->input_devices, (void *) device_path);
++
++        if (existing != NULL) {
++                if (ply_input_device_is_alive (existing)) {
++                        ply_trace ("Input device '%s' already added, skipping...", ply_input_device_get_name (input_device));
++                        ply_input_device_free (input_device);
++                        return;
++                }
++
++                /* A driver handing a device over (hid-generic to hid-multitouch) reuses the
++                 * event node. If the add event beats the hang-up of the old device, keeping
++                 * the old entry would drop the new device and then lose both.
++                 */
++                ply_trace ("Input device '%s' replaces a removed device at %s",
++                           ply_input_device_get_name (input_device), device_path);
++                remove_input_device_from_renderers (manager, existing);
++                ply_input_device_free (existing);
+         }
+         ply_hashtable_insert (manager->input_devices, (void *) device_path, input_device);
+         ply_hashtable_foreach (manager->renderers,
+@@ -414,12 +429,14 @@
+                         if (ply_string_has_prefix (device_sysname, "event")) {
+                                 ply_trace ("found input device %s", device_path);
+ 
+-                                assert (manager->xkb_keymap != NULL);
+-
++                                /* Without a keymap only pointers are taken from evdev, keyboards
++                                 * keep coming in through the terminal.
++                                 */
+                                 ply_input_device_t *input_device = ply_input_device_open (manager->xkb_context, manager->xkb_keymap, device_path);
+                                 if (input_device != NULL) {
+                                         ply_input_device_set_disconnect_handler (input_device, (ply_input_device_disconnect_handler_t) remove_input_device_from_renderers, manager);
+-                                        if (ply_input_device_is_keyboard (input_device)) {
++                                        if ((manager->xkb_keymap != NULL && ply_input_device_is_keyboard (input_device)) ||
++                                            ply_input_device_is_pointer (input_device)) {
+                                                 add_input_device_to_renderers (manager, input_device);
+                                         } else {
+                                                 ply_input_device_free (input_device);
+@@ -469,10 +486,8 @@
+                         return false;
+                 }
+ 
+-                if (manager->xkb_keymap == NULL) {
+-                        ply_trace ("Not creating devices for subsystem " SUBSYSTEM_INPUT " because there is no configure XKB layout");
+-                        return false;
+-                }
++                if (manager->xkb_keymap == NULL)
++                        ply_trace ("No XKB layout, so only pointer devices are taken from subsystem " SUBSYSTEM_INPUT);
+         }
+ 
+         ply_trace ("creating objects for %s devices",
+@@ -688,7 +703,7 @@
+ 
+                 udev_monitor_filter_add_match_subsystem_devtype (manager->udev_monitor, SUBSYSTEM_DRM, NULL);
+                 udev_monitor_filter_add_match_subsystem_devtype (manager->udev_monitor, SUBSYSTEM_FRAME_BUFFER, NULL);
+-                if (!ply_kernel_command_line_has_argument ("plymouth.use-legacy-input") && manager->xkb_keymap != NULL)
++                if (!ply_kernel_command_line_has_argument ("plymouth.use-legacy-input"))
+                         udev_monitor_filter_add_match_subsystem_devtype (manager->udev_monitor, SUBSYSTEM_INPUT, NULL);
+                 udev_monitor_enable_receiving (manager->udev_monitor);
+         }
+diff -ruN a/src/libply-splash-core/ply-input-device.c b/src/libply-splash-core/ply-input-device.c
+--- a/src/libply-splash-core/ply-input-device.c	2024-01-04 22:08:14.000000000 +0100
++++ b/src/libply-splash-core/ply-input-device.c	2026-10-09 15:48:48.170365886 +0200
+@@ -27,6 +27,7 @@
+ 
+ #include <libevdev-1.0/libevdev/libevdev.h>
+ #include <linux/input.h>
++#include <sys/ioctl.h>
+ #include <unistd.h>
+ #include <xkbcommon/xkbcommon.h>
+ #include <xkbcommon/xkbcommon-keysyms.h>
+@@ -45,6 +46,19 @@
+  */
+ #define PLY_XKB_KEYSYM_TO_UTF8_BUFFER_SIZE 7
+ 
++typedef enum
++{
++        PLY_POINTER_KIND_NONE,
++        PLY_POINTER_KIND_RELATIVE,  /* mice, trackpoints */
++        PLY_POINTER_KIND_ABSOLUTE,  /* tablets, touchscreens, VM pointers */
++        PLY_POINTER_KIND_TOUCHPAD,  /* absolute finger position, moves the pointer relatively */
++} ply_pointer_kind_t;
++
++/* How far a finger has to travel on a touchpad to move the pointer one
++ * millimeter's worth, in pixels
++ */
++#define TOUCHPAD_PIXELS_PER_MM 10.0
++
+ struct _ply_input_device
+ {
+         int                       fd;
+@@ -63,6 +77,22 @@
+ 
+         struct libevdev          *dev;
+ 
++        ply_list_t               *pointer_handlers;
++        double                    pending_x;
++        double                    pending_y;
++        bool                      pending_motion;
++
++        ply_pointer_kind_t        pointer_kind;
++        bool                      pointer_event_seen;
++
++        /* Touchpads report where the finger is; motion is the change between reports */
++        int                       touchpad_last_x;
++        int                       touchpad_last_y;
++        double                    touchpad_scale_x;
++        double                    touchpad_scale_y;
++        bool                      touchpad_one_finger;
++        bool                      touchpad_has_last;
++
+         uint32_t                  kernel_has_vts : 1;
+         uint32_t                  leds_state_invalid : 1;
+ };
+@@ -167,6 +197,219 @@
+         }
+ }
+ 
++typedef struct
++{
++        ply_input_device_pointer_handler_t handler;
++        void                              *user_data;
++} pointer_handler_closure_t;
++
++static void
++send_pointer_event (ply_input_device_t        *input_device,
++                    const ply_pointer_event_t *event)
++{
++        ply_list_node_t *node, *next;
++
++        if (!input_device->pointer_event_seen) {
++                input_device->pointer_event_seen = true;
++                ply_trace ("First pointer event from '%s' (%d handlers)",
++                           libevdev_get_name (input_device->dev),
++                           ply_list_get_length (input_device->pointer_handlers));
++        }
++
++        for (node = ply_list_get_first_node (input_device->pointer_handlers); node != NULL; node = next) {
++                pointer_handler_closure_t *closure = ply_list_node_get_data (node);
++
++                next = ply_list_get_next_node (input_device->pointer_handlers, node);
++                closure->handler (closure->user_data, input_device, event);
++        }
++}
++
++static ply_pointer_kind_t
++detect_pointer_kind (struct libevdev *dev)
++{
++        if (libevdev_has_event_code (dev, EV_REL, REL_X) &&
++            libevdev_has_event_code (dev, EV_REL, REL_Y))
++                return PLY_POINTER_KIND_RELATIVE;
++
++        if (!libevdev_has_event_code (dev, EV_ABS, ABS_X) ||
++            !libevdev_has_event_code (dev, EV_ABS, ABS_Y))
++                return PLY_POINTER_KIND_NONE;
++
++        /* Joysticks and gamepads */
++        if (libevdev_has_event_code (dev, EV_KEY, BTN_JOYSTICK))
++                return PLY_POINTER_KIND_NONE;
++
++        /* Touchscreens and drawing tablets map straight onto the screen */
++        if (libevdev_has_property (dev, INPUT_PROP_DIRECT))
++                return PLY_POINTER_KIND_ABSOLUTE;
++
++        if (libevdev_has_event_code (dev, EV_KEY, BTN_TOOL_FINGER))
++                return PLY_POINTER_KIND_TOUCHPAD;
++
++        /* VM pointers (virtio, USB tablets) */
++        if (libevdev_has_event_code (dev, EV_KEY, BTN_LEFT) ||
++            libevdev_has_event_code (dev, EV_KEY, BTN_TOUCH))
++                return PLY_POINTER_KIND_ABSOLUTE;
++
++        return PLY_POINTER_KIND_NONE;
++}
++
++static double
++touchpad_scale (struct libevdev *dev,
++                int              axis)
++{
++        int resolution = libevdev_get_abs_resolution (dev, axis);
++        int range = libevdev_get_abs_maximum (dev, axis) - libevdev_get_abs_minimum (dev, axis);
++
++        /* Resolution is in units per mm. Without it, assume the pad is about 100mm across */
++        if (resolution > 0)
++                return TOUCHPAD_PIXELS_PER_MM / resolution;
++        if (range > 0)
++                return TOUCHPAD_PIXELS_PER_MM * 100.0 / range;
++        return 0.1;
++}
++
++static void
++setup_pointer (ply_input_device_t *input_device)
++{
++        input_device->pointer_kind = detect_pointer_kind (input_device->dev);
++
++        ply_trace ("Input device '%s' (%s): pointer kind %d (0 none, 1 relative, 2 absolute, 3 touchpad)",
++                   libevdev_get_name (input_device->dev), input_device->path, input_device->pointer_kind);
++
++        if (input_device->pointer_kind == PLY_POINTER_KIND_TOUCHPAD) {
++                input_device->touchpad_scale_x = touchpad_scale (input_device->dev, ABS_X);
++                input_device->touchpad_scale_y = touchpad_scale (input_device->dev, ABS_Y);
++        }
++}
++
++/* Mouse, tablet and touch buttons; a touch only counts as a click on devices where
++ * touching the surface means pressing at that spot (a touchpad clicks with BTN_LEFT)
++ */
++static bool
++is_pointer_button (ply_input_device_t *input_device,
++                   int                 code)
++{
++        if (code >= BTN_MISC && code < BTN_JOYSTICK)
++                return true;
++
++        return code == BTN_TOUCH && input_device->pointer_kind == PLY_POINTER_KIND_ABSOLUTE;
++}
++
++static double
++normalized_abs_position (ply_input_device_t *input_device,
++                         int                 axis)
++{
++        int min = libevdev_get_abs_minimum (input_device->dev, axis);
++        int max = libevdev_get_abs_maximum (input_device->dev, axis);
++
++        if (max <= min)
++                return 0.0;
++
++        return (libevdev_get_event_value (input_device->dev, EV_ABS, axis) - min) / (double) (max - min);
++}
++
++static void
++send_pending_pointer_motion (ply_input_device_t *input_device)
++{
++        ply_pointer_event_t event = { .type = PLY_POINTER_EVENT_MOTION };
++
++        if (!input_device->pending_motion)
++                return;
++
++        event.absolute = input_device->pointer_kind == PLY_POINTER_KIND_ABSOLUTE;
++        event.x = input_device->pending_x;
++        event.y = input_device->pending_y;
++
++        input_device->pending_motion = false;
++        if (!event.absolute)
++                input_device->pending_x = input_device->pending_y = 0;
++
++        send_pointer_event (input_device, &event);
++}
++
++/* The other tool buttons: pen tools, mouse, lens, and two to five fingers */
++static bool
++is_other_tool_button (int code)
++{
++        return (code >= BTN_TOOL_PEN && code <= BTN_TOOL_QUINTTAP && code != BTN_TOOL_FINGER) ||
++               (code >= BTN_TOOL_DOUBLETAP && code <= BTN_TOOL_QUADTAP);
++}
++
++static void
++handle_touchpad_report (ply_input_device_t *input_device)
++{
++        int x, y;
++
++        if (!input_device->touchpad_one_finger)
++                return;
++
++        /* The device state has the finger position even when this report did not repeat it,
++         * which matters at the start of a stroke (e.g. going from two fingers to one)
++         */
++        x = libevdev_get_event_value (input_device->dev, EV_ABS, ABS_X);
++        y = libevdev_get_event_value (input_device->dev, EV_ABS, ABS_Y);
++
++        if (input_device->touchpad_has_last && (x != input_device->touchpad_last_x || y != input_device->touchpad_last_y)) {
++                input_device->pending_x += (x - input_device->touchpad_last_x) * input_device->touchpad_scale_x;
++                input_device->pending_y += (y - input_device->touchpad_last_y) * input_device->touchpad_scale_y;
++                input_device->pending_motion = true;
++        }
++
++        input_device->touchpad_last_x = x;
++        input_device->touchpad_last_y = y;
++        input_device->touchpad_has_last = true;
++}
++
++static void
++handle_pointer_event (ply_input_device_t *input_device,
++                      struct input_event *ev)
++{
++        if (ply_list_get_length (input_device->pointer_handlers) == 0)
++                return;
++
++        if (ev->type == EV_REL && input_device->pointer_kind == PLY_POINTER_KIND_RELATIVE) {
++                if (ev->code == REL_X)
++                        input_device->pending_x += ev->value;
++                else if (ev->code == REL_Y)
++                        input_device->pending_y += ev->value;
++                else
++                        return;
++                input_device->pending_motion = true;
++        } else if (ev->type == EV_ABS && (ev->code == ABS_X || ev->code == ABS_Y)) {
++                if (input_device->pointer_kind == PLY_POINTER_KIND_ABSOLUTE) {
++                        input_device->pending_x = normalized_abs_position (input_device, ABS_X);
++                        input_device->pending_y = normalized_abs_position (input_device, ABS_Y);
++                        input_device->pending_motion = true;
++                }
++        } else if (ev->type == EV_SYN && ev->code == SYN_REPORT) {
++                if (input_device->pointer_kind == PLY_POINTER_KIND_TOUCHPAD)
++                        handle_touchpad_report (input_device);
++                send_pending_pointer_motion (input_device);
++        } else if (ev->type == EV_KEY) {
++                if (input_device->pointer_kind == PLY_POINTER_KIND_TOUCHPAD &&
++                    (ev->code == BTN_TOOL_FINGER || (ev->value != 0 && is_other_tool_button (ev->code)))) {
++                        /* One finger moves the pointer. Any other count of fingers (or a lifted
++                         * finger) ends the stroke, and the next one starts fresh so the pointer
++                         * does not jump. The kernel reports going from several fingers to one as
++                         * BTN_TOOL_FINGER on and then the other tool off, so only turning a tool
++                         * on can end the single finger state.
++                         */
++                        input_device->touchpad_one_finger = ev->code == BTN_TOOL_FINGER && ev->value != 0;
++                        input_device->touchpad_has_last = false;
++                } else if (is_pointer_button (input_device, ev->code) && ev->value != 2) {
++                        ply_pointer_event_t event = {
++                                .type = PLY_POINTER_EVENT_BUTTON,
++                                .button = ev->code,
++                                .pressed = ev->value == 1,
++                        };
++
++                        send_pending_pointer_motion (input_device);
++                        send_pointer_event (input_device, &event);
++                }
++        }
++}
++
+ static void
+ on_input (ply_input_device_t *input_device)
+ {
+@@ -217,9 +460,18 @@
+                                    ev.value);
+                 }
+ 
++                handle_pointer_event (input_device, &ev);
++
++                if (input_device->keyboard_state == NULL)
++                        continue;
++
+                 if (!libevdev_event_is_type (&ev, EV_KEY))
+                         continue;
+ 
++                /* Mouse and touch buttons are not keys */
++                if (is_pointer_button (input_device, ev.code))
++                        continue;
++
+                 /* According to `https://docs.kernel.org/input/event-codes.html#ev-key`:
+                  * if ev.value = 2, then the key is being held down. libxkbcommon doesn't appear to define this
+                  * if ev.value = 1, then key was pressed down
+@@ -322,6 +574,7 @@
+         ply_trigger_set_instance (input_device->input_trigger, input_device);
+ 
+         input_device->leds_changed_trigger = ply_trigger_new (NULL);
++        input_device->pointer_handlers = ply_list_new ();
+         input_device->loop = ply_event_loop_get_default ();
+ 
+         input_device->fd = open (path, O_RDWR | O_NONBLOCK);
+@@ -337,20 +590,29 @@
+                 goto error;
+         }
+ 
++        setup_pointer (input_device);
++
+         input_device->fd_watch = ply_event_loop_watch_fd (
+                 input_device->loop, input_device->fd, PLY_EVENT_LOOP_FD_STATUS_HAS_DATA,
+                 (ply_event_handler_t) on_input, (ply_event_handler_t) on_disconnect,
+                 input_device);
+ 
+-        input_device->keymap = xkb_keymap_ref (xkb_keymap);
+-        input_device->keyboard_state = xkb_state_new (input_device->keymap);
+-        if (input_device->keyboard_state == NULL) {
+-                ply_error ("Failed to initialize input device \"%s\" keyboard_state", path);
+-                goto error;
++        /* Without a keymap (the initramfs has no xkb data) this is a pointer only device:
++         * it never types, keyboards keep coming in through the terminal.
++         */
++        if (xkb_keymap != NULL) {
++                input_device->keymap = xkb_keymap_ref (xkb_keymap);
++                input_device->keyboard_state = xkb_state_new (input_device->keymap);
++                if (input_device->keyboard_state == NULL) {
++                        ply_error ("Failed to initialize input device \"%s\" keyboard_state", path);
++                        goto error;
++                }
++                if (xkb_context != NULL) {
++                        input_device->compose_table = xkb_compose_table_new_from_locale (xkb_context, locale, XKB_COMPOSE_COMPILE_NO_FLAGS);
++                        if (input_device->compose_table)
++                                input_device->compose_state = xkb_compose_state_new (input_device->compose_table, XKB_COMPOSE_STATE_NO_FLAGS);
++                }
+         }
+-        input_device->compose_table = xkb_compose_table_new_from_locale (xkb_context, locale, XKB_COMPOSE_COMPILE_NO_FLAGS);
+-        if (input_device->compose_table)
+-                input_device->compose_state = xkb_compose_state_new (input_device->compose_table, XKB_COMPOSE_STATE_NO_FLAGS);
+ 
+         input_device->kernel_has_vts = ply_character_device_exists ("/dev/tty0");
+ 
+@@ -387,6 +649,58 @@
+         return libevdev_has_event_type (input_device->dev, EV_KEY);
+ }
+ 
++bool
++ply_input_device_is_pointer (ply_input_device_t *input_device)
++{
++        return input_device->pointer_kind != PLY_POINTER_KIND_NONE;
++}
++
++bool
++ply_input_device_has_keyboard (ply_input_device_t *input_device)
++{
++        return input_device->keyboard_state != NULL;
++}
++
++bool
++ply_input_device_is_alive (ply_input_device_t *input_device)
++{
++        int version;
++
++        /* evdev answers -ENODEV once the device behind the fd is gone */
++        return ioctl (input_device->fd, EVIOCGVERSION, &version) >= 0;
++}
++
++void
++ply_input_device_add_pointer_handler (ply_input_device_t                *input_device,
++                                      ply_input_device_pointer_handler_t callback,
++                                      void                              *user_data)
++{
++        pointer_handler_closure_t *closure = malloc (sizeof(pointer_handler_closure_t));
++
++        closure->handler = callback;
++        closure->user_data = user_data;
++        ply_list_append_data (input_device->pointer_handlers, closure);
++}
++
++void
++ply_input_device_remove_pointer_handler (ply_input_device_t                *input_device,
++                                         ply_input_device_pointer_handler_t callback,
++                                         void                              *user_data)
++{
++        ply_list_node_t *node;
++
++        for (node = ply_list_get_first_node (input_device->pointer_handlers); node != NULL;
++             node = ply_list_get_next_node (input_device->pointer_handlers, node)) {
++                pointer_handler_closure_t *closure = ply_list_node_get_data (node);
++
++                if (closure->handler == callback && closure->user_data == user_data) {
++                        free (closure);
++                        ply_list_remove_node (input_device->pointer_handlers, node);
++                        return;
++                }
++        }
++}
++
+ int
+ ply_input_device_is_keyboard_with_leds (ply_input_device_t *input_device)
+ {
+@@ -413,6 +727,9 @@
+ ply_input_device_set_state (ply_input_device_t       *input_device,
+                             ply_xkb_keyboard_state_t *xkb_state)
+ {
++        if (input_device->keyboard_state == NULL)
++                return;
++
+         static struct
+         {
+                 ply_led_t      ply_led;
+@@ -493,12 +810,18 @@
+ bool
+ ply_input_device_get_capslock_state (ply_input_device_t *input_device)
+ {
++        if (input_device->keyboard_state == NULL)
++                return false;
++
+         return xkb_state_led_name_is_active (input_device->keyboard_state, XKB_LED_NAME_CAPS);
+ }
+ 
+ const char *
+ ply_input_device_get_keymap (ply_input_device_t *input_device)
+ {
++        if (input_device->keymap == NULL)
++                return NULL;
++
+         xkb_layout_index_t num_indices = xkb_keymap_num_layouts (input_device->keymap);
+         ply_trace ("xkb layout has %d groups", num_indices);
+         if (num_indices == 0) {
+@@ -552,6 +875,15 @@
+         if (input_device->dev)
+                 libevdev_free (input_device->dev);
+ 
++        if (input_device->pointer_handlers != NULL) {
++                ply_list_node_t *node;
++
++                for (node = ply_list_get_first_node (input_device->pointer_handlers); node != NULL;
++                     node = ply_list_get_next_node (input_device->pointer_handlers, node))
++                        free (ply_list_node_get_data (node));
++                ply_list_free (input_device->pointer_handlers);
++        }
++
+         ply_trigger_free (input_device->input_trigger);
+         ply_trigger_free (input_device->leds_changed_trigger);
+         ply_trigger_free (input_device->disconnect_trigger);
+diff -ruN a/src/libply-splash-core/ply-input-device.h b/src/libply-splash-core/ply-input-device.h
+--- a/src/libply-splash-core/ply-input-device.h	2024-01-04 22:08:14.000000000 +0100
++++ b/src/libply-splash-core/ply-input-device.h	2026-10-09 15:48:23.542469606 +0200
+@@ -52,6 +52,33 @@
+                                                          ply_input_device_t *input_device);
+ typedef void (*ply_input_device_disconnect_handler_t) (void               *user_data,
+                                                        ply_input_device_t *input_device);
++typedef enum
++{
++        PLY_POINTER_EVENT_MOTION,
++        PLY_POINTER_EVENT_BUTTON,
++} ply_pointer_event_type_t;
++
++typedef struct
++{
++        ply_pointer_event_type_t type;
++
++        /* MOTION: relative devices report x/y in device units since the last
++         * event (absolute == false); absolute devices report the position
++         * normalized to 0.0 - 1.0 (absolute == true).
++         */
++        bool                     absolute;
++        double                   x;
++        double                   y;
++
++        /* BUTTON: evdev code (BTN_LEFT, BTN_TOUCH, ...), pressed or released */
++        int                      button;
++        bool                     pressed;
++} ply_pointer_event_t;
++
++typedef void (*ply_input_device_pointer_handler_t) (void                      *user_data,
++                                                    ply_input_device_t        *input_device,
++                                                    const ply_pointer_event_t *event);
++
+ typedef struct
+ {
+         xkb_mod_mask_t mods_depressed;
+@@ -86,6 +113,17 @@
+                                               void                                 *user_data);
+ int ply_input_device_get_fd (ply_input_device_t *input_device);
+ int  ply_input_device_is_keyboard (ply_input_device_t *input_device);
++bool ply_input_device_is_pointer (ply_input_device_t *input_device);
++/* False once the device has been unplugged or removed, even if its fd is still open */
++bool ply_input_device_is_alive (ply_input_device_t *input_device);
++/* False for pointer only devices, which exist when there is no xkb keymap */
++bool ply_input_device_has_keyboard (ply_input_device_t *input_device);
++void ply_input_device_add_pointer_handler (ply_input_device_t                *input_device,
++                                           ply_input_device_pointer_handler_t callback,
++                                           void                              *user_data);
++void ply_input_device_remove_pointer_handler (ply_input_device_t                *input_device,
++                                              ply_input_device_pointer_handler_t callback,
++                                              void                              *user_data);
+ int  ply_input_device_is_keyboard_with_leds (ply_input_device_t *input_device);
+ const char *ply_input_device_get_name (ply_input_device_t *input_device);
+ bool ply_input_device_get_capslock_state (ply_input_device_t *input_device);
+diff -ruN a/src/libply-splash-core/ply-keyboard.c b/src/libply-splash-core/ply-keyboard.c
+--- a/src/libply-splash-core/ply-keyboard.c	2024-01-04 22:08:14.000000000 +0100
++++ b/src/libply-splash-core/ply-keyboard.c	2026-09-28 22:32:41.484790204 +0200
+@@ -43,6 +43,7 @@
+ #define KEY_CTRL_U ('\100' ^ 'U')
+ #define KEY_CTRL_W ('\100' ^ 'W')
+ #define KEY_CTRL_V ('\100' ^ 'V')
++#define KEY_CTRL_F ('\100' ^ 'F')
+ #define KEY_ESCAPE ('\100' ^ '[')
+ #define KEY_RETURN '\n'
+ #define KEY_BACKSPACE '\177'
+@@ -95,6 +96,7 @@
+         ply_buffer_t                *line_buffer;
+ 
+         ply_list_t                  *keyboard_input_handler_list;
++        ply_list_t                  *pointer_handler_list;
+         ply_list_t                  *backspace_handler_list;
+         ply_list_t                  *escape_handler_list;
+         ply_list_t                  *enter_handler_list;
+@@ -112,6 +114,7 @@
+         keyboard = calloc (1, sizeof(ply_keyboard_t));
+         keyboard->line_buffer = ply_buffer_new ();
+         keyboard->keyboard_input_handler_list = ply_list_new ();
++        keyboard->pointer_handler_list = ply_list_new ();
+         keyboard->backspace_handler_list = ply_list_new ();
+         keyboard->escape_handler_list = ply_list_new ();
+         keyboard->enter_handler_list = ply_list_new ();
+@@ -134,6 +137,7 @@
+         keyboard = calloc (1, sizeof(ply_keyboard_t));
+         keyboard->line_buffer = ply_buffer_new ();
+         keyboard->keyboard_input_handler_list = ply_list_new ();
++        keyboard->pointer_handler_list = ply_list_new ();
+         keyboard->backspace_handler_list = ply_list_new ();
+         keyboard->escape_handler_list = ply_list_new ();
+         keyboard->enter_handler_list = ply_list_new ();
+@@ -236,6 +240,13 @@
+                         ply_buffer_clear (keyboard->line_buffer);
+                         return;
+ 
++                case KEY_CTRL_F:
++                        /* Reserved for theme scripts (e.g. Cyberbeest's skip-hibernate-
++                         * resume toggle at the LUKS prompt): forwarded to the script's
++                         * keyboard handler below without polluting the password buffer.
++                         */
++                        break;
++
+                 default:
+                         ply_buffer_append_bytes (keyboard->line_buffer,
+                                                  keyboard_input, character_size);
+@@ -368,6 +379,26 @@
+         }
+ }
+ 
++static void
++on_renderer_pointer (ply_keyboard_t                *keyboard,
++                     ply_renderer_pointer_action_t  action,
++                     ply_renderer_head_t           *head,
++                     int                            x,
++                     int                            y,
++                     int                            button)
++{
++        ply_list_node_t *node;
++
++        for (node = ply_list_get_first_node (keyboard->pointer_handler_list);
++             node; node = ply_list_get_next_node (keyboard->pointer_handler_list, node)) {
++                ply_keyboard_closure_t *closure = ply_list_node_get_data (node);
++                ply_keyboard_pointer_handler_t pointer_handler =
++                        (ply_keyboard_pointer_handler_t) closure->function;
++
++                pointer_handler (closure->user_data, action, head, x, y, button);
++        }
++}
++
+ static bool
+ ply_keyboard_watch_for_renderer_input (ply_keyboard_t *keyboard)
+ {
+@@ -386,6 +417,10 @@
+                                                    (ply_renderer_input_source_handler_t)
+                                                    on_key_event,
+                                                    keyboard);
++
++        ply_renderer_set_pointer_handler (keyboard->provider.if_renderer->renderer,
++                                          (ply_renderer_pointer_handler_t) on_renderer_pointer,
++                                          keyboard);
+         return true;
+ }
+ 
+@@ -394,6 +429,8 @@
+ {
+         ply_trace ("No longer watching for keyboard input from renderer");
+ 
++        ply_renderer_set_pointer_handler (keyboard->provider.if_renderer->renderer, NULL, NULL);
++
+         ply_renderer_set_handler_for_input_source (keyboard->provider.if_renderer->renderer,
+                                                    keyboard->provider.if_renderer->input_source,
+                                                    (ply_renderer_input_source_handler_t)
+@@ -508,6 +545,7 @@
+         ply_keyboard_stop_watching_for_input (keyboard);
+ 
+         ply_buffer_free (keyboard->line_buffer);
++        ply_list_free (keyboard->pointer_handler_list);
+ 
+         if (keyboard->provider_type == PLY_KEYBOARD_PROVIDER_TYPE_RENDERER) {
+                 free (keyboard->provider.if_renderer);
+@@ -538,6 +576,39 @@
+ }
+ 
+ void
++ply_keyboard_add_pointer_handler (ply_keyboard_t                *keyboard,
++                                  ply_keyboard_pointer_handler_t pointer_handler,
++                                  void                          *user_data)
++{
++        ply_keyboard_closure_t *closure;
++
++        assert (keyboard != NULL);
++
++        closure = ply_keyboard_closure_new ((ply_keyboard_handler_t) pointer_handler,
++                                            user_data);
++        ply_list_append_data (keyboard->pointer_handler_list, closure);
++}
++
++void
++ply_keyboard_remove_pointer_handler (ply_keyboard_t                *keyboard,
++                                     ply_keyboard_pointer_handler_t pointer_handler)
++{
++        ply_list_node_t *node;
++
++        assert (keyboard != NULL);
++
++        for (node = ply_list_get_first_node (keyboard->pointer_handler_list);
++             node; node = ply_list_get_next_node (keyboard->pointer_handler_list, node)) {
++                ply_keyboard_closure_t *closure = ply_list_node_get_data (node);
++                if ((ply_keyboard_pointer_handler_t) closure->function == pointer_handler) {
++                        ply_keyboard_closure_free (closure);
++                        ply_list_remove_node (keyboard->pointer_handler_list, node);
++                        return;
++                }
++        }
++}
++
++void
+ ply_keyboard_add_input_handler (ply_keyboard_t              *keyboard,
+                                 ply_keyboard_input_handler_t input_handler,
+                                 void                        *user_data)
+diff -ruN a/src/libply-splash-core/ply-keyboard.h b/src/libply-splash-core/ply-keyboard.h
+--- a/src/libply-splash-core/ply-keyboard.h	2024-01-04 22:08:14.000000000 +0100
++++ b/src/libply-splash-core/ply-keyboard.h	2026-09-28 22:32:14.843473059 +0200
+@@ -36,6 +36,13 @@
+                                               const char *keyboard_input,
+                                               size_t      character_size);
+ 
++typedef void (*ply_keyboard_pointer_handler_t) (void                          *user_data,
++                                                ply_renderer_pointer_action_t  action,
++                                                ply_renderer_head_t           *head,
++                                                int                            x,
++                                                int                            y,
++                                                int                            button);
++
+ typedef void (*ply_keyboard_backspace_handler_t) (void *user_data);
+ 
+ typedef void (*ply_keyboard_escape_handler_t) (void *user_data);
+@@ -53,6 +60,11 @@
+                                      void                        *user_data);
+ void ply_keyboard_remove_input_handler (ply_keyboard_t              *keyboard,
+                                         ply_keyboard_input_handler_t input_handler);
++void ply_keyboard_add_pointer_handler (ply_keyboard_t                *keyboard,
++                                       ply_keyboard_pointer_handler_t pointer_handler,
++                                       void                          *user_data);
++void ply_keyboard_remove_pointer_handler (ply_keyboard_t                *keyboard,
++                                          ply_keyboard_pointer_handler_t pointer_handler);
+ void ply_keyboard_add_backspace_handler (ply_keyboard_t                  *keyboard,
+                                          ply_keyboard_backspace_handler_t backspace_handler,
+                                          void                            *user_data);
+diff -ruN a/src/libply-splash-core/ply-pointer.c b/src/libply-splash-core/ply-pointer.c
+--- a/src/libply-splash-core/ply-pointer.c	1970-01-01 01:00:00.000000000 +0100
++++ b/src/libply-splash-core/ply-pointer.c	2026-09-29 15:14:09.174383373 +0200
+@@ -0,0 +1,242 @@
++/* ply-pointer.c - mouse pointer position and image
++ *
++ * Copyright (C) 2026
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2, or (at your option)
++ * any later version.
++ */
++#include "config.h"
++#include "ply-pointer.h"
++
++#include <stdlib.h>
++
++/* Premultiplied ARGB of the arrow's fill. Override at build time (with
++ * -Dc_args=-DPLY_POINTER_FILL_COLOR=0xffff0000) to tell it apart when testing.
++ */
++#ifndef PLY_POINTER_FILL_COLOR
++#define PLY_POINTER_FILL_COLOR 0xffffffff
++#endif
++
++/* Build with -DPLY_POINTER_MIRRORED=1 to flip the arrow (the hotspot moves to
++ * its top right), which tells it apart from the host pointer in a VM window.
++ */
++#ifndef PLY_POINTER_MIRRORED
++#define PLY_POINTER_MIRRORED 0
++#endif
++
++/* Classic arrow, hotspot at the top left. X is outline, . is fill. */
++static const char *arrow[] = {
++        "X           ",
++        "XX          ",
++        "X.X         ",
++        "X..X        ",
++        "X...X       ",
++        "X....X      ",
++        "X.....X     ",
++        "X......X    ",
++        "X.......X   ",
++        "X........X  ",
++        "X.....XXXXX ",
++        "X..X..X     ",
++        "X.X X..X    ",
++        "XX  X..X    ",
++        "X    X..X   ",
++        "     X..X   ",
++        "      X..X  ",
++        "      X..X  ",
++        "       XX   ",
++};
++
++#define ARROW_WIDTH  12
++#define ARROW_HEIGHT ((int) (sizeof(arrow) / sizeof(arrow[0])))
++
++/* Panels at least this tall get an arrow twice the size */
++#define LARGE_PANEL_HEIGHT 1600
++
++struct _ply_pointer
++{
++        double x;
++        double y;
++        int    scale;
++        bool   visible;
++};
++
++ply_pointer_t *
++ply_pointer_new (void)
++{
++        ply_pointer_t *pointer = calloc (1, sizeof(ply_pointer_t));
++
++        pointer->scale = 1;
++        return pointer;
++}
++
++void
++ply_pointer_free (ply_pointer_t *pointer)
++{
++        free (pointer);
++}
++
++void
++ply_pointer_handle_motion (ply_pointer_t             *pointer,
++                           const ply_pointer_event_t *event,
++                           const ply_rectangle_t     *bounds)
++{
++        double left = bounds->x, top = bounds->y;
++        double right = bounds->x + (double) bounds->width - 1;
++        double bottom = bounds->y + (double) bounds->height - 1;
++
++        if (!pointer->visible) {
++                pointer->x = bounds->x + bounds->width / 2.0;
++                pointer->y = bounds->y + bounds->height / 2.0;
++                pointer->scale = bounds->height >= LARGE_PANEL_HEIGHT ? 2 : 1;
++                pointer->visible = true;
++        }
++
++        if (event->absolute) {
++                pointer->x = left + event->x * (bounds->width - 1);
++                pointer->y = top + event->y * (bounds->height - 1);
++        } else {
++                pointer->x += event->x;
++                pointer->y += event->y;
++        }
++
++        if (pointer->x < left)
++                pointer->x = left;
++        if (pointer->y < top)
++                pointer->y = top;
++        if (pointer->x > right)
++                pointer->x = right;
++        if (pointer->y > bottom)
++                pointer->y = bottom;
++}
++
++bool
++ply_pointer_is_visible (ply_pointer_t *pointer)
++{
++        return pointer->visible;
++}
++
++double
++ply_pointer_get_x (ply_pointer_t *pointer)
++{
++        return pointer->x;
++}
++
++double
++ply_pointer_get_y (ply_pointer_t *pointer)
++{
++        return pointer->y;
++}
++
++int
++ply_pointer_get_width (ply_pointer_t *pointer)
++{
++        return ARROW_WIDTH * pointer->scale;
++}
++
++int
++ply_pointer_get_height (ply_pointer_t *pointer)
++{
++        return ARROW_HEIGHT * pointer->scale;
++}
++
++int
++ply_pointer_get_hotspot_x (ply_pointer_t *pointer)
++{
++        return PLY_POINTER_MIRRORED ? ply_pointer_get_width (pointer) - 1 : 0;
++}
++
++uint32_t
++ply_pointer_get_pixel (ply_pointer_t *pointer,
++                       int            x,
++                       int            y)
++{
++        int column = PLY_POINTER_MIRRORED ? ply_pointer_get_width (pointer) - 1 - x : x;
++        char pixel;
++
++        if (x < 0 || y < 0 || x >= ply_pointer_get_width (pointer) || y >= ply_pointer_get_height (pointer))
++                return 0;
++
++        pixel = arrow[y / pointer->scale][column / pointer->scale];
++
++        if (pixel == 'X')
++                return 0xff000000;
++        if (pixel == '.')
++                return PLY_POINTER_FILL_COLOR;
++        return 0;
++}
++
++void
++ply_pointer_limit_size (ply_pointer_t *pointer,
++                        int            max_width,
++                        int            max_height)
++{
++        while (pointer->scale > 1 &&
++               (ply_pointer_get_width (pointer) > max_width ||
++                ply_pointer_get_height (pointer) > max_height))
++                pointer->scale--;
++}
++
++bool
++ply_pointer_is_on_head (ply_pointer_t         *pointer,
++                        const ply_rectangle_t *head_area)
++{
++        return pointer->x >= head_area->x &&
++               pointer->x < head_area->x + (double) head_area->width &&
++               pointer->y >= head_area->y &&
++               pointer->y < head_area->y + (double) head_area->height;
++}
++
++bool
++ply_pointer_get_area_on_head (ply_pointer_t         *pointer,
++                              const ply_rectangle_t *head_area,
++                              long                  *left,
++                              long                  *top,
++                              ply_rectangle_t       *visible)
++{
++        long right, bottom;
++
++        if (!ply_pointer_is_on_head (pointer, head_area))
++                return false;
++
++        *left = (long) (pointer->x - head_area->x) - ply_pointer_get_hotspot_x (pointer);
++        *top = (long) (pointer->y - head_area->y);
++
++        right = *left + ply_pointer_get_width (pointer);
++        bottom = *top + ply_pointer_get_height (pointer);
++
++        visible->x = *left < 0 ? 0 : *left;
++        visible->y = *top < 0 ? 0 : *top;
++        visible->width = (right > (long) head_area->width ? (long) head_area->width : right) - visible->x;
++        visible->height = (bottom > (long) head_area->height ? (long) head_area->height : bottom) - visible->y;
++
++        return true;
++}
++
++bool
++ply_pointer_draw_xrgb32 (ply_pointer_t         *pointer,
++                         const ply_rectangle_t *head_area,
++                         char                  *map_address,
++                         unsigned long          row_stride,
++                         ply_rectangle_t       *drawn)
++{
++        long left, top, x, y;
++
++        if (!ply_pointer_get_area_on_head (pointer, head_area, &left, &top, drawn))
++                return false;
++
++        for (y = drawn->y; y < (long) (drawn->y + drawn->height); y++) {
++                uint32_t *dst = (uint32_t *) (map_address + y * row_stride);
++
++                for (x = drawn->x; x < (long) (drawn->x + drawn->width); x++) {
++                        uint32_t pixel = ply_pointer_get_pixel (pointer, x - left, y - top);
++
++                        if (pixel >> 24)
++                                dst[x] = pixel & 0x00ffffff;
++                }
++        }
++
++        return true;
++}
+diff -ruN a/src/libply-splash-core/ply-pointer.h b/src/libply-splash-core/ply-pointer.h
+--- a/src/libply-splash-core/ply-pointer.h	1970-01-01 01:00:00.000000000 +0100
++++ b/src/libply-splash-core/ply-pointer.h	2026-09-29 15:14:09.174383373 +0200
+@@ -0,0 +1,69 @@
++/* ply-pointer.h - mouse pointer position and image
++ *
++ * Copyright (C) 2026
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2, or (at your option)
++ * any later version.
++ */
++#ifndef PLY_POINTER_H
++#define PLY_POINTER_H
++
++#include <stdbool.h>
++#include <stdint.h>
++
++#include "ply-input-device.h"
++#include "ply-rectangle.h"
++
++typedef struct _ply_pointer ply_pointer_t;
++
++#ifndef PLY_HIDE_FUNCTION_DECLARATIONS
++ply_pointer_t *ply_pointer_new (void);
++void ply_pointer_free (ply_pointer_t *pointer);
++
++/* Applies a motion event; bounds is the area the pointer may move in. The
++ * pointer becomes visible on the first motion, in the middle of bounds.
++ */
++void ply_pointer_handle_motion (ply_pointer_t             *pointer,
++                                const ply_pointer_event_t *event,
++                                const ply_rectangle_t     *bounds);
++bool ply_pointer_is_visible (ply_pointer_t *pointer);
++double ply_pointer_get_x (ply_pointer_t *pointer);
++double ply_pointer_get_y (ply_pointer_t *pointer);
++
++/* The image, in premultiplied ARGB. Alpha is 0 for transparent pixels. */
++int ply_pointer_get_width (ply_pointer_t *pointer);
++int ply_pointer_get_height (ply_pointer_t *pointer);
++int ply_pointer_get_hotspot_x (ply_pointer_t *pointer);
++uint32_t ply_pointer_get_pixel (ply_pointer_t *pointer,
++                                int            x,
++                                int            y);
++/* Shrinks the image to fit a fixed size buffer (hardware cursors) */
++void ply_pointer_limit_size (ply_pointer_t *pointer,
++                             int            max_width,
++                             int            max_height);
++
++/* Where the image lands on a head: the position of its top left corner (may be
++ * negative) and the part that is visible, all relative to the head. Returns
++ * false if the pointer is not on this head.
++ */
++bool ply_pointer_is_on_head (ply_pointer_t         *pointer,
++                             const ply_rectangle_t *head_area);
++bool ply_pointer_get_area_on_head (ply_pointer_t         *pointer,
++                                   const ply_rectangle_t *head_area,
++                                   long                  *left,
++                                   long                  *top,
++                                   ply_rectangle_t       *visible);
++
++/* Draws the image into a mapped 32 bit XRGB scan-out buffer of a head.
++ * drawn gets the area that was written. Returns false if nothing was drawn.
++ */
++bool ply_pointer_draw_xrgb32 (ply_pointer_t         *pointer,
++                              const ply_rectangle_t *head_area,
++                              char                  *map_address,
++                              unsigned long          row_stride,
++                              ply_rectangle_t       *drawn);
++#endif
++
++#endif /* PLY_POINTER_H */
+diff -ruN a/src/libply-splash-core/ply-renderer.c b/src/libply-splash-core/ply-renderer.c
+--- a/src/libply-splash-core/ply-renderer.c	2024-01-04 22:08:14.000000000 +0100
++++ b/src/libply-splash-core/ply-renderer.c	2026-09-28 22:32:14.839472858 +0200
+@@ -395,6 +395,20 @@
+         renderer->plugin_interface->remove_input_device (renderer->backend, input_device);
+ }
+ 
++void
++ply_renderer_set_pointer_handler (ply_renderer_t               *renderer,
++                                  ply_renderer_pointer_handler_t handler,
++                                  void                          *user_data)
++{
++        assert (renderer != NULL);
++        assert (renderer->plugin_interface != NULL);
++
++        if (!renderer->plugin_interface->set_pointer_handler)
++                return;
++
++        renderer->plugin_interface->set_pointer_handler (renderer->backend, handler, user_data);
++}
++
+ ply_renderer_input_source_t *
+ ply_renderer_get_input_source (ply_renderer_t *renderer)
+ {
+diff -ruN a/src/libply-splash-core/ply-renderer.h b/src/libply-splash-core/ply-renderer.h
+--- a/src/libply-splash-core/ply-renderer.h	2024-01-04 22:08:14.000000000 +0100
++++ b/src/libply-splash-core/ply-renderer.h	2026-09-28 22:32:14.839472858 +0200
+@@ -45,6 +45,23 @@
+         PLY_RENDERER_TYPE_X11
+ } ply_renderer_type_t;
+ 
++typedef enum
++{
++        PLY_RENDERER_POINTER_MOVED,
++        PLY_RENDERER_POINTER_PRESSED,
++        PLY_RENDERER_POINTER_RELEASED,
++} ply_renderer_pointer_action_t;
++
++/* x and y are in pixels relative to the top left of head. button is 1 (left,
++ * or touch), 2 (right) or 3 (middle) for PRESSED and RELEASED, 0 for MOVED.
++ */
++typedef void (*ply_renderer_pointer_handler_t) (void                          *user_data,
++                                                ply_renderer_pointer_action_t  action,
++                                                ply_renderer_head_t           *head,
++                                                int                            x,
++                                                int                            y,
++                                                int                            button);
++
+ typedef void (*ply_renderer_input_source_handler_t) (void                        *user_data,
+                                                      ply_buffer_t                *key_buffer,
+                                                      ply_renderer_input_source_t *input_source);
+@@ -75,6 +92,10 @@
+ void ply_renderer_remove_input_device (ply_renderer_t     *renderer,
+                                        ply_input_device_t *input_device);
+ 
++void ply_renderer_set_pointer_handler (ply_renderer_t               *renderer,
++                                       ply_renderer_pointer_handler_t handler,
++                                       void                          *user_data);
++
+ ply_renderer_input_source_t *ply_renderer_get_input_source (ply_renderer_t *renderer);
+ bool ply_renderer_open_input_source (ply_renderer_t              *renderer,
+                                      ply_renderer_input_source_t *input_source);
+diff -ruN a/src/libply-splash-core/ply-renderer-plugin.h b/src/libply-splash-core/ply-renderer-plugin.h
+--- a/src/libply-splash-core/ply-renderer-plugin.h	2024-01-04 22:08:14.000000000 +0100
++++ b/src/libply-splash-core/ply-renderer-plugin.h	2026-09-28 22:32:14.839472858 +0200
+@@ -82,6 +82,10 @@
+                                  ply_input_device_t     *input_device);
+         void (*remove_input_device)(ply_renderer_backend_t *backend,
+                                     ply_input_device_t     *input_device);
++
++        void (*set_pointer_handler)(ply_renderer_backend_t       *backend,
++                                    ply_renderer_pointer_handler_t handler,
++                                    void                        *user_data);
+ } ply_renderer_plugin_interface_t;
+ 
+ #endif /* PLY_RENDERER_PLUGIN_H */
+diff -ruN a/src/plugins/renderers/drm/plugin.c b/src/plugins/renderers/drm/plugin.c
+--- a/src/plugins/renderers/drm/plugin.c	2024-01-04 22:08:14.000000000 +0100
++++ b/src/plugins/renderers/drm/plugin.c	2026-10-09 15:48:48.170365886 +0200
+@@ -42,6 +42,7 @@
+ #include <values.h>
+ #include <unistd.h>
+ 
++#include <linux/input-event-codes.h>
+ #include <drm.h>
+ #include <drm_mode.h>
+ #include <xf86drm.h>
+@@ -52,6 +53,7 @@
+ #include "ply-event-loop.h"
+ #include "ply-input-device.h"
+ #include "ply-list.h"
++#include "ply-pointer.h"
+ #include "ply-logger.h"
+ #include "ply-hashtable.h"
+ #include "ply-rectangle.h"
+@@ -88,6 +90,12 @@
+ 
+         int                     gamma_size;
+         uint16_t               *gamma;
++
++        bool                    cursor_shown;
++
++        /* Software cursor: area of the scan-out buffer the arrow currently covers */
++        bool                    sw_cursor_drawn;
++        ply_rectangle_t         sw_cursor_area;
+ };
+ 
+ struct _ply_renderer_input_source
+@@ -158,6 +166,16 @@
+         int32_t                     dither_green;
+         int32_t                     dither_blue;
+ 
++        /* Mouse pointer, drawn with the hardware cursor plane */
++        uint32_t                    cursor_handle;
++        uint32_t                    cursor_width;
++        uint32_t                    cursor_height;
++        bool                        cursor_software;
++        ply_pointer_t              *pointer;
++
++        ply_renderer_pointer_handler_t pointer_handler;
++        void                       *pointer_handler_user_data;
++
+         uint32_t                    is_active : 1;
+         uint32_t                    requires_explicit_flushing : 1;
+         uint32_t                    input_source_is_open : 1;
+@@ -176,6 +194,7 @@
+                                ply_renderer_input_source_t *input_source);
+ static void flush_head (ply_renderer_backend_t *backend,
+                         ply_renderer_head_t    *head);
++static void update_cursor (ply_renderer_backend_t *backend);
+ 
+ static bool
+ ply_renderer_buffer_map (ply_renderer_backend_t *backend,
+@@ -733,6 +752,10 @@
+         }
+ 
+         ply_renderer_head_clear_plane_rotation (backend, head);
++
++        /* A modeset can reset the cursor plane */
++        head->cursor_shown = false;
++        update_cursor (backend);
+         return true;
+ }
+ 
+@@ -878,6 +901,274 @@
+         }
+ }
+ 
++
++static void
++draw_software_cursor (ply_renderer_backend_t *backend,
++                      ply_renderer_head_t    *head,
++                      char                   *map_address)
++{
++        ply_rectangle_t area;
++
++        if (head->sw_cursor_drawn) {
++                ply_renderer_head_flush_area (head, &head->sw_cursor_area, map_address);
++                head->sw_cursor_drawn = false;
++        }
++
++        if (ply_pointer_draw_xrgb32 (backend->pointer, &head->area, map_address,
++                                     head->row_stride, &area)) {
++                head->sw_cursor_area = area;
++                head->sw_cursor_drawn = true;
++        }
++}
++
++static void
++update_software_cursor (ply_renderer_backend_t *backend)
++{
++        ply_list_node_t *node;
++
++        ply_list_foreach (backend->heads, node) {
++                ply_renderer_head_t *head = ply_list_node_get_data (node);
++                char *map_address;
++
++                if (!head->scan_out_buffer_id)
++                        continue;
++
++                map_address = begin_flush (backend, head->scan_out_buffer_id);
++                draw_software_cursor (backend, head, map_address);
++                end_flush (backend, head->scan_out_buffer_id);
++        }
++}
++
++static bool
++create_cursor_buffer (ply_renderer_backend_t *backend)
++{
++        struct drm_mode_create_dumb create = { 0 };
++        struct drm_mode_map_dumb map = { 0 };
++        uint64_t width = 64, height = 64;
++        uint8_t *pixels;
++        int x, y;
++
++        drmGetCap (backend->device_fd, DRM_CAP_CURSOR_WIDTH, &width);
++        drmGetCap (backend->device_fd, DRM_CAP_CURSOR_HEIGHT, &height);
++
++        ply_pointer_limit_size (backend->pointer, width, height);
++
++        create.width = width;
++        create.height = height;
++        create.bpp = 32;
++
++        if (drmIoctl (backend->device_fd, DRM_IOCTL_MODE_CREATE_DUMB, &create) < 0) {
++                ply_trace ("Couldn't create cursor buffer: %m");
++                return false;
++        }
++
++        map.handle = create.handle;
++        if (drmIoctl (backend->device_fd, DRM_IOCTL_MODE_MAP_DUMB, &map) < 0)
++                goto fail;
++
++        pixels = mmap (NULL, create.size, PROT_READ | PROT_WRITE, MAP_SHARED,
++                       backend->device_fd, map.offset);
++        if (pixels == MAP_FAILED)
++                goto fail;
++
++        memset (pixels, 0, create.size);
++        for (y = 0; y < ply_pointer_get_height (backend->pointer); y++) {
++                uint32_t *out = (uint32_t *) (pixels + y * create.pitch);
++
++                for (x = 0; x < ply_pointer_get_width (backend->pointer); x++)
++                        out[x] = ply_pointer_get_pixel (backend->pointer, x, y);
++        }
++        munmap (pixels, create.size);
++
++        ply_trace ("Created %dx%d hardware cursor buffer",
++                   (int) width, (int) height);
++        backend->cursor_handle = create.handle;
++        backend->cursor_width = width;
++        backend->cursor_height = height;
++        return true;
++
++fail:
++        ply_trace ("Couldn't map cursor buffer: %m");
++        {
++                struct drm_mode_destroy_dumb destroy = { .handle = create.handle };
++                drmIoctl (backend->device_fd, DRM_IOCTL_MODE_DESTROY_DUMB, &destroy);
++        }
++        return false;
++}
++
++static void
++update_cursor (ply_renderer_backend_t *backend)
++{
++        ply_list_node_t *node;
++        int hotspot_x;
++
++        if (!ply_pointer_is_visible (backend->pointer) || !backend->is_active)
++                return;
++
++        if (backend->cursor_software) {
++                update_software_cursor (backend);
++                return;
++        }
++
++        if (backend->cursor_handle == 0 && !create_cursor_buffer (backend)) {
++                ply_trace ("Hardware cursor not available, drawing the mouse pointer in software");
++                backend->cursor_software = true;
++                update_software_cursor (backend);
++                return;
++        }
++
++        hotspot_x = ply_pointer_get_hotspot_x (backend->pointer);
++
++        ply_list_foreach (backend->heads, node) {
++                ply_renderer_head_t *head = ply_list_node_get_data (node);
++
++                if (ply_pointer_is_on_head (backend->pointer, &head->area)) {
++                        if (!head->cursor_shown) {
++                                if (drmModeSetCursor2 (backend->device_fd, head->controller_id,
++                                                       backend->cursor_handle,
++                                                       backend->cursor_width,
++                                                       backend->cursor_height,
++                                                       hotspot_x, 0) < 0) {
++                                        ply_trace ("Couldn't set cursor on controller %d: %m, drawing the mouse pointer in software",
++                                                   head->controller_id);
++                                        backend->cursor_software = true;
++                                        update_software_cursor (backend);
++                                        return;
++                                }
++                                head->cursor_shown = true;
++                                ply_trace ("Showing mouse pointer on controller %d",
++                                           head->controller_id);
++                        }
++                        drmModeMoveCursor (backend->device_fd, head->controller_id,
++                                           (int) (ply_pointer_get_x (backend->pointer) - head->area.x) - hotspot_x,
++                                           (int) (ply_pointer_get_y (backend->pointer) - head->area.y));
++                } else if (head->cursor_shown) {
++                        drmModeSetCursor (backend->device_fd, head->controller_id, 0, 0, 0);
++                        head->cursor_shown = false;
++                }
++        }
++}
++
++static bool
++get_pointer_bounds (ply_renderer_backend_t *backend,
++                    ply_rectangle_t        *bounds)
++{
++        ply_list_node_t *node;
++        long x2 = 0, y2 = 0;
++        bool first = true;
++
++        ply_list_foreach (backend->heads, node) {
++                ply_renderer_head_t *head = ply_list_node_get_data (node);
++
++                if (first || head->area.x < bounds->x)
++                        bounds->x = head->area.x;
++                if (first || head->area.y < bounds->y)
++                        bounds->y = head->area.y;
++                if (first || head->area.x + (long) head->area.width > x2)
++                        x2 = head->area.x + head->area.width;
++                if (first || head->area.y + (long) head->area.height > y2)
++                        y2 = head->area.y + head->area.height;
++                first = false;
++        }
++
++        if (first)
++                return false;
++
++        bounds->width = x2 - bounds->x;
++        bounds->height = y2 - bounds->y;
++        return true;
++}
++
++/* Tell the splash where the pointer is, relative to the head it is on */
++static void
++notify_pointer (ply_renderer_backend_t         *backend,
++                ply_renderer_pointer_action_t   action,
++                int                             button)
++{
++        ply_list_node_t *node;
++
++        if (backend->pointer_handler == NULL || !ply_pointer_is_visible (backend->pointer))
++                return;
++
++        ply_list_foreach (backend->heads, node) {
++                ply_renderer_head_t *head = ply_list_node_get_data (node);
++
++                if (ply_pointer_is_on_head (backend->pointer, &head->area)) {
++                        backend->pointer_handler (backend->pointer_handler_user_data,
++                                                  action, head,
++                                                  (int) (ply_pointer_get_x (backend->pointer) - head->area.x),
++                                                  (int) (ply_pointer_get_y (backend->pointer) - head->area.y),
++                                                  button);
++                        return;
++                }
++        }
++}
++
++static int
++pointer_button_number (int code)
++{
++        switch (code) {
++        case BTN_LEFT:
++        case BTN_TOUCH:
++                return 1;
++        case BTN_RIGHT:
++                return 2;
++        case BTN_MIDDLE:
++                return 3;
++        }
++        return 0;
++}
++
++static void
++on_pointer_event (ply_renderer_backend_t *backend,
++                  ply_input_device_t     *input_device,
++                  const ply_pointer_event_t *event)
++{
++        ply_rectangle_t bounds = { 0 };
++
++        if (event->type == PLY_POINTER_EVENT_BUTTON) {
++                int button = pointer_button_number (event->button);
++
++                if (button != 0)
++                        notify_pointer (backend,
++                                        event->pressed ? PLY_RENDERER_POINTER_PRESSED : PLY_RENDERER_POINTER_RELEASED,
++                                        button);
++                return;
++        }
++
++        if (!get_pointer_bounds (backend, &bounds)) {
++                ply_trace ("Pointer motion, but there are no heads to move on");
++                return;
++        }
++
++        if (!ply_pointer_is_visible (backend->pointer)) {
++                ply_trace ("First pointer motion, area %ldx%ld, renderer %s",
++                           (long) bounds.width, (long) bounds.height,
++                           backend->is_active ? "active" : "NOT active");
++                /* Drawn into the framebuffer by default, so it shows up everywhere the
++                 * splash does (VM windows, remote consoles, drivers without a cursor plane)
++                 */
++                if (ply_kernel_command_line_has_argument ("plymouth.hardware-pointer"))
++                        ply_trace ("Using the hardware cursor plane for the mouse pointer, as requested");
++                else
++                        backend->cursor_software = true;
++        }
++
++        ply_pointer_handle_motion (backend->pointer, event, &bounds);
++
++        update_cursor (backend);
++        notify_pointer (backend, PLY_RENDERER_POINTER_MOVED, 0);
++}
++
++static void
++set_pointer_handler (ply_renderer_backend_t         *backend,
++                     ply_renderer_pointer_handler_t  handler,
++                     void                           *user_data)
++{
++        backend->pointer_handler = handler;
++        backend->pointer_handler_user_data = user_data;
++}
++
+ static ply_renderer_backend_t *
+ create_backend (const char     *device_name,
+                 ply_terminal_t *terminal)
+@@ -904,6 +1195,7 @@
+         backend->output_buffers = ply_hashtable_new (ply_hashtable_direct_hash,
+                                                      ply_hashtable_direct_compare);
+         backend->heads_by_controller_id = ply_hashtable_new (NULL, NULL);
++        backend->pointer = ply_pointer_new ();
+ 
+         return backend;
+ }
+@@ -924,6 +1216,7 @@
+         ply_hashtable_free (backend->output_buffers);
+         ply_hashtable_free (backend->heads_by_controller_id);
+         ply_list_free (backend->input_source.input_devices);
++        ply_pointer_free (backend->pointer);
+ 
+         free (backend->outputs);
+         free (backend);
+@@ -944,8 +1237,11 @@
+                 head = (ply_renderer_head_t *) ply_list_node_get_data (node);
+                 /* Flush out any pending drawing to the buffer */
+                 flush_head (backend, head);
++                head->cursor_shown = false;
++                head->sw_cursor_drawn = false;
+                 node = ply_list_get_next_node (backend->heads, node);
+         }
++        update_cursor (backend);
+ }
+ 
+ static void
+@@ -1052,6 +1348,7 @@
+         ply_trace ("closing device");
+ 
+         free_heads (backend);
++        backend->cursor_handle = 0;
+ 
+         if (backend->terminal != NULL) {
+                 ply_terminal_stop_watching_for_active_vt_change (backend->terminal,
+@@ -1748,6 +2045,9 @@
+                 node = ply_list_get_next_node (areas_to_flush, node);
+         }
+ 
++        if (dirty && backend->cursor_software && ply_pointer_is_visible (backend->pointer))
++                draw_software_cursor (backend, head, map_address);
++
+         if (set_mode_on_redraws == PLY_SET_MODE_ON_REDRAWS_ENABLED) {
+                 dirty = true;
+                 head->scan_out_buffer_needs_reset = true;
+@@ -1866,7 +2166,8 @@
+                                           (ply_input_device_leds_changed_handler_t) on_input_leds_changed,
+                                           &backend->input_source);
+ 
+-        ply_terminal_set_disabled_input (backend->terminal);
++        if (backend->terminal != NULL)
++                ply_terminal_set_disabled_input (backend->terminal);
+ }
+ 
+ static void
+@@ -2045,6 +2346,17 @@
+ add_input_device (ply_renderer_backend_t *backend,
+                   ply_input_device_t     *input_device)
+ {
++        /* plymouth.disable-pointer on the kernel command line turns the mouse pointer off */
++        if (ply_input_device_is_pointer (input_device) &&
++            !ply_kernel_command_line_has_argument ("plymouth.disable-pointer"))
++                ply_input_device_add_pointer_handler (input_device,
++                                                      (ply_input_device_pointer_handler_t) on_pointer_event,
++                                                      backend);
++
++        /* Pointer only devices (no keymap, as in the initramfs) take no part in typing */
++        if (!ply_input_device_has_keyboard (input_device))
++                return;
++
+         ply_list_append_data (backend->input_source.input_devices, input_device);
+ 
+         if (backend->input_source_is_open)
+@@ -2058,6 +2370,9 @@
+                      ply_input_device_t     *input_device)
+ {
+         ply_list_remove_data (backend->input_source.input_devices, input_device);
++        ply_input_device_remove_pointer_handler (input_device,
++                                                 (ply_input_device_pointer_handler_t) on_pointer_event,
++                                                 backend);
+ 
+         sync_input_devices (backend);
+ }
+@@ -2090,6 +2405,7 @@
+                 .get_keymap                   = get_keymap,
+                 .add_input_device             = add_input_device,
+                 .remove_input_device          = remove_input_device,
++                .set_pointer_handler          = set_pointer_handler,
+         };
+ 
+         return &plugin_interface;
+diff -ruN a/src/plugins/renderers/frame-buffer/plugin.c b/src/plugins/renderers/frame-buffer/plugin.c
+--- a/src/plugins/renderers/frame-buffer/plugin.c	2024-01-04 22:08:14.000000000 +0100
++++ b/src/plugins/renderers/frame-buffer/plugin.c	2026-10-09 15:48:48.190365800 +0200
+@@ -42,12 +42,14 @@
+ #include <unistd.h>
+ 
+ #include <linux/fb.h>
++#include <linux/input-event-codes.h>
+ 
+ #include "ply-buffer.h"
+ #include "ply-event-loop.h"
+ #include "ply-input-device.h"
+ #include "ply-list.h"
+ #include "ply-logger.h"
++#include "ply-pointer.h"
+ #include "ply-rectangle.h"
+ #include "ply-region.h"
+ #include "ply-terminal.h"
+@@ -108,6 +110,13 @@
+         unsigned int                bytes_per_pixel;
+         unsigned int                row_stride;
+ 
++        /* Mouse pointer, drawn into the frame buffer since there is no cursor plane */
++        ply_pointer_t              *pointer;
++        bool                        pointer_drawn;
++        ply_rectangle_t             pointer_area;
++        ply_renderer_pointer_handler_t pointer_handler;
++        void                       *pointer_handler_user_data;
++
+         uint32_t                    is_active : 1;
+         uint32_t                    input_source_is_open : 1;
+ 
+@@ -264,6 +273,7 @@
+         backend->heads = ply_list_new ();
+         backend->input_source.key_buffer = ply_buffer_new ();
+         backend->input_source.input_devices = ply_list_new ();
++        backend->pointer = ply_pointer_new ();
+         backend->terminal = terminal;
+ 
+         return backend;
+@@ -303,6 +313,7 @@
+                    backend->device_name);
+         free (backend->device_name);
+         ply_list_free (backend->input_source.input_devices);
++        ply_pointer_free (backend->pointer);
+         uninitialize_head (backend, &backend->head);
+ 
+         ply_list_free (backend->heads);
+@@ -573,6 +584,46 @@
+         }
+ }
+ 
++/* Puts the pixels back from the pixel buffer, then draws the arrow on top in
++ * whatever pixel format the frame buffer uses.
++ */
++static void
++draw_pointer (ply_renderer_backend_t *backend,
++              ply_renderer_head_t    *head)
++{
++        ply_rectangle_t area;
++        long left, top, x, y;
++
++        if (head->map_address == MAP_FAILED)
++                return;
++
++        if (backend->pointer_drawn) {
++                backend->flush_area (backend, head, &backend->pointer_area);
++                backend->pointer_drawn = false;
++        }
++
++        if (!ply_pointer_is_visible (backend->pointer) ||
++            !ply_pointer_get_area_on_head (backend->pointer, &head->area, &left, &top, &area))
++                return;
++
++        for (y = area.y; y < (long) (area.y + area.height); y++) {
++                for (x = area.x; x < (long) (area.x + area.width); x++) {
++                        uint32_t pixel = ply_pointer_get_pixel (backend->pointer, x - left, y - top);
++                        uint_fast32_t device_pixel;
++
++                        if (!(pixel >> 24))
++                                continue;
++
++                        device_pixel = argb32_pixel_value_to_device_pixel_value (backend, pixel);
++                        memcpy (&head->map_address[y * backend->row_stride + x * backend->bytes_per_pixel],
++                                &device_pixel, backend->bytes_per_pixel);
++                }
++        }
++
++        backend->pointer_area = area;
++        backend->pointer_drawn = true;
++}
++
+ static void
+ flush_head (ply_renderer_backend_t *backend,
+             ply_renderer_head_t    *head)
+@@ -581,6 +632,7 @@
+         ply_list_t *areas_to_flush;
+         ply_list_node_t *node;
+         ply_pixel_buffer_t *pixel_buffer;
++        bool dirty = false;
+ 
+         assert (backend != NULL);
+         assert (&backend->head == head);
+@@ -611,10 +663,14 @@
+                 next_node = ply_list_get_next_node (areas_to_flush, node);
+ 
+                 backend->flush_area (backend, head, area_to_flush);
++                dirty = true;
+ 
+                 node = next_node;
+         }
+ 
++        if (dirty)
++                draw_pointer (backend, head);
++
+         ply_region_clear (updated_region);
+ }
+ 
+@@ -732,7 +788,8 @@
+                                           (ply_input_device_leds_changed_handler_t) on_input_leds_changed,
+                                           &backend->input_source);
+ 
+-        ply_terminal_set_disabled_input (backend->terminal);
++        if (backend->terminal != NULL)
++                ply_terminal_set_disabled_input (backend->terminal);
+ }
+ 
+ static void
+@@ -890,10 +947,84 @@
+         }
+ }
+ 
++/* Tell the splash where the pointer is */
++static void
++notify_pointer (ply_renderer_backend_t       *backend,
++                ply_renderer_pointer_action_t action,
++                int                           button)
++{
++        if (backend->pointer_handler == NULL || !ply_pointer_is_visible (backend->pointer))
++                return;
++
++        backend->pointer_handler (backend->pointer_handler_user_data, action, &backend->head,
++                                  (int) (ply_pointer_get_x (backend->pointer) - backend->head.area.x),
++                                  (int) (ply_pointer_get_y (backend->pointer) - backend->head.area.y),
++                                  button);
++}
++
++static void
++on_pointer_event (ply_renderer_backend_t    *backend,
++                  ply_input_device_t        *input_device,
++                  const ply_pointer_event_t *event)
++{
++        if (event->type == PLY_POINTER_EVENT_BUTTON) {
++                int button = 0;
++
++                switch (event->button) {
++                case BTN_LEFT:
++                case BTN_TOUCH:
++                        button = 1;
++                        break;
++                case BTN_RIGHT:
++                        button = 2;
++                        break;
++                case BTN_MIDDLE:
++                        button = 3;
++                        break;
++                }
++
++                if (button != 0)
++                        notify_pointer (backend,
++                                        event->pressed ? PLY_RENDERER_POINTER_PRESSED : PLY_RENDERER_POINTER_RELEASED,
++                                        button);
++                return;
++        }
++
++        if (!ply_pointer_is_visible (backend->pointer))
++                ply_trace ("First pointer motion on the frame buffer, renderer %s",
++                           backend->is_active ? "active" : "NOT active");
++
++        ply_pointer_handle_motion (backend->pointer, event, &backend->head.area);
++
++        if (backend->is_active)
++                draw_pointer (backend, &backend->head);
++        notify_pointer (backend, PLY_RENDERER_POINTER_MOVED, 0);
++}
++
++static void
++set_pointer_handler (ply_renderer_backend_t         *backend,
++                     ply_renderer_pointer_handler_t  handler,
++                     void                           *user_data)
++{
++        backend->pointer_handler = handler;
++        backend->pointer_handler_user_data = user_data;
++}
++
+ static void
+ add_input_device (ply_renderer_backend_t *backend,
+                   ply_input_device_t     *input_device)
+ {
++        /* plymouth.disable-pointer on the kernel command line turns the mouse pointer off */
++        if (ply_input_device_is_pointer (input_device) &&
++            !ply_kernel_command_line_has_argument ("plymouth.disable-pointer"))
++                ply_input_device_add_pointer_handler (input_device,
++                                                      (ply_input_device_pointer_handler_t) on_pointer_event,
++                                                      backend);
++
++        /* Pointer only devices (no keymap, as in the initramfs) take no part in typing */
++        if (!ply_input_device_has_keyboard (input_device))
++                return;
++
+         ply_list_append_data (backend->input_source.input_devices, input_device);
+ 
+         if (backend->input_source_is_open)
+@@ -907,6 +1038,9 @@
+                      ply_input_device_t     *input_device)
+ {
+         ply_list_remove_data (backend->input_source.input_devices, input_device);
++        ply_input_device_remove_pointer_handler (input_device,
++                                                 (ply_input_device_pointer_handler_t) on_pointer_event,
++                                                 backend);
+ 
+         sync_input_devices (backend);
+ }
+@@ -937,6 +1071,7 @@
+                 .get_keymap                   = get_keymap,
+                 .add_input_device             = add_input_device,
+                 .remove_input_device          = remove_input_device,
++                .set_pointer_handler          = set_pointer_handler,
+         };
+ 
+         return &plugin_interface;
+diff -ruN a/src/plugins/splash/script/plugin.c b/src/plugins/splash/script/plugin.c
+--- a/src/plugins/splash/script/plugin.c	2024-01-04 22:08:14.000000000 +0100
++++ b/src/plugins/splash/script/plugin.c	2026-09-28 22:33:34.355255906 +0200
+@@ -100,6 +100,12 @@
+ static void detach_from_event_loop (ply_boot_splash_plugin_t *plugin);
+ static void stop_animation (ply_boot_splash_plugin_t *plugin);
+ ply_boot_splash_plugin_interface_t *ply_boot_splash_plugin_get_interface (void);
++static void on_pointer (ply_boot_splash_plugin_t     *plugin,
++                        ply_renderer_pointer_action_t action,
++                        ply_renderer_head_t          *head,
++                        int                           x,
++                        int                           y,
++                        int                           button);
+ static void on_keyboard_input (ply_boot_splash_plugin_t *plugin,
+                                const char               *keyboard_input,
+                                size_t                    character_size);
+@@ -286,6 +292,10 @@
+                 ply_keyboard_add_input_handler (plugin->keyboard,
+                                                 (ply_keyboard_input_handler_t)
+                                                 on_keyboard_input, plugin);
++        if (plugin->keyboard != NULL)
++                ply_keyboard_add_pointer_handler (plugin->keyboard,
++                                                  (ply_keyboard_pointer_handler_t)
++                                                  on_pointer, plugin);
+         on_timeout (plugin);
+ 
+         return true;
+@@ -325,6 +335,9 @@
+                 ply_keyboard_remove_input_handler (plugin->keyboard,
+                                                    (ply_keyboard_input_handler_t)
+                                                    on_keyboard_input);
++                ply_keyboard_remove_pointer_handler (plugin->keyboard,
++                                                     (ply_keyboard_pointer_handler_t)
++                                                     on_pointer);
+                 plugin->keyboard = NULL;
+         }
+ 
+@@ -374,6 +387,32 @@
+ }
+ 
+ static void
++on_pointer (ply_boot_splash_plugin_t     *plugin,
++            ply_renderer_pointer_action_t action,
++            ply_renderer_head_t          *head,
++            int                           x,
++            int                           y,
++            int                           button)
++{
++        int canvas_x, canvas_y;
++
++        if (!script_lib_sprite_head_to_canvas (plugin->script_sprite_lib, head,
++                                               x, y, &canvas_x, &canvas_y))
++                return;
++
++        if (action == PLY_RENDERER_POINTER_MOVED)
++                script_lib_plymouth_on_pointer_motion (plugin->script_state,
++                                                       plugin->script_plymouth_lib,
++                                                       canvas_x, canvas_y);
++        else
++                script_lib_plymouth_on_pointer_button (plugin->script_state,
++                                                       plugin->script_plymouth_lib,
++                                                       button,
++                                                       action == PLY_RENDERER_POINTER_PRESSED,
++                                                       canvas_x, canvas_y);
++}
++
++static void
+ set_keyboard (ply_boot_splash_plugin_t *plugin,
+               ply_keyboard_t           *keyboard)
+ {
+diff -ruN a/src/plugins/splash/script/script-lib-plymouth.c b/src/plugins/splash/script/script-lib-plymouth.c
+--- a/src/plugins/splash/script/script-lib-plymouth.c	2024-01-04 22:08:14.000000000 +0100
++++ b/src/plugins/splash/script/script-lib-plymouth.c	2026-09-28 22:33:34.355255906 +0200
+@@ -58,6 +58,22 @@
+         return script_return_obj_null ();
+ }
+ 
++static script_return_t plymouth_get_pointer_x (script_state_t *state,
++                                               void           *user_data)
++{
++        script_lib_plymouth_data_t *data = user_data;
++
++        return script_return_obj (script_obj_new_number (data->pointer_x));
++}
++
++static script_return_t plymouth_get_pointer_y (script_state_t *state,
++                                               void           *user_data)
++{
++        script_lib_plymouth_data_t *data = user_data;
++
++        return script_return_obj (script_obj_new_number (data->pointer_y));
++}
++
+ static script_return_t plymouth_get_mode (script_state_t *state,
+                                           void           *user_data)
+ {
+@@ -123,6 +139,10 @@
+         data->script_boot_progress_func = script_obj_new_null ();
+         data->script_root_mounted_func = script_obj_new_null ();
+         data->script_keyboard_input_func = script_obj_new_null ();
++        data->script_pointer_motion_func = script_obj_new_null ();
++        data->script_pointer_button_func = script_obj_new_null ();
++        data->pointer_x = 0;
++        data->pointer_y = 0;
+         data->script_update_status_func = script_obj_new_null ();
+         data->script_display_normal_func = script_obj_new_null ();
+         data->script_display_password_func = script_obj_new_null ();
+@@ -171,6 +191,28 @@
+                                     "function",
+                                     NULL);
+         script_add_native_function (plymouth_hash,
++                                    "SetPointerMotionFunction",
++                                    plymouth_set_function,
++                                    &data->script_pointer_motion_func,
++                                    "function",
++                                    NULL);
++        script_add_native_function (plymouth_hash,
++                                    "SetPointerButtonFunction",
++                                    plymouth_set_function,
++                                    &data->script_pointer_button_func,
++                                    "function",
++                                    NULL);
++        script_add_native_function (plymouth_hash,
++                                    "GetPointerX",
++                                    plymouth_get_pointer_x,
++                                    data,
++                                    NULL);
++        script_add_native_function (plymouth_hash,
++                                    "GetPointerY",
++                                    plymouth_get_pointer_y,
++                                    data,
++                                    NULL);
++        script_add_native_function (plymouth_hash,
+                                     "SetUpdateStatusFunction",
+                                     plymouth_set_function,
+                                     &data->script_update_status_func,
+@@ -263,6 +305,8 @@
+         script_obj_unref (data->script_boot_progress_func);
+         script_obj_unref (data->script_root_mounted_func);
+         script_obj_unref (data->script_keyboard_input_func);
++        script_obj_unref (data->script_pointer_motion_func);
++        script_obj_unref (data->script_pointer_button_func);
+         script_obj_unref (data->script_update_status_func);
+         script_obj_unref (data->script_display_normal_func);
+         script_obj_unref (data->script_display_password_func);
+@@ -318,6 +362,62 @@
+         script_obj_unref (ret.object);
+ }
+ 
++void script_lib_plymouth_on_pointer_motion (script_state_t             *state,
++                                            script_lib_plymouth_data_t *data,
++                                            int                         x,
++                                            int                         y)
++{
++        script_obj_t *x_obj = script_obj_new_number (x);
++        script_obj_t *y_obj = script_obj_new_number (y);
++        script_return_t ret;
++
++        data->pointer_x = x;
++        data->pointer_y = y;
++
++        ret = script_execute_object (state,
++                                     data->script_pointer_motion_func,
++                                     NULL,
++                                     x_obj,
++                                     y_obj,
++                                     NULL);
++
++        script_obj_unref (x_obj);
++        script_obj_unref (y_obj);
++        script_obj_unref (ret.object);
++}
++
++void script_lib_plymouth_on_pointer_button (script_state_t             *state,
++                                            script_lib_plymouth_data_t *data,
++                                            int                         button,
++                                            bool                        pressed,
++                                            int                         x,
++                                            int                         y)
++{
++        script_obj_t *button_obj = script_obj_new_number (button);
++        script_obj_t *pressed_obj = script_obj_new_number (pressed ? 1 : 0);
++        script_obj_t *x_obj = script_obj_new_number (x);
++        script_obj_t *y_obj = script_obj_new_number (y);
++        script_return_t ret;
++
++        data->pointer_x = x;
++        data->pointer_y = y;
++
++        ret = script_execute_object (state,
++                                     data->script_pointer_button_func,
++                                     NULL,
++                                     button_obj,
++                                     pressed_obj,
++                                     x_obj,
++                                     y_obj,
++                                     NULL);
++
++        script_obj_unref (button_obj);
++        script_obj_unref (pressed_obj);
++        script_obj_unref (x_obj);
++        script_obj_unref (y_obj);
++        script_obj_unref (ret.object);
++}
++
+ void script_lib_plymouth_on_keyboard_input (script_state_t             *state,
+                                             script_lib_plymouth_data_t *data,
+                                             const char                 *keyboard_input)
+diff -ruN a/src/plugins/splash/script/script-lib-plymouth.h b/src/plugins/splash/script/script-lib-plymouth.h
+--- a/src/plugins/splash/script/script-lib-plymouth.h	2024-01-04 22:08:14.000000000 +0100
++++ b/src/plugins/splash/script/script-lib-plymouth.h	2026-09-28 22:33:34.355255906 +0200
+@@ -32,6 +32,10 @@
+         script_obj_t          *script_boot_progress_func;
+         script_obj_t          *script_root_mounted_func;
+         script_obj_t          *script_keyboard_input_func;
++        script_obj_t          *script_pointer_motion_func;
++        script_obj_t          *script_pointer_button_func;
++        int                    pointer_x;
++        int                    pointer_y;
+         script_obj_t          *script_update_status_func;
+         script_obj_t          *script_display_normal_func;
+         script_obj_t          *script_display_password_func;
+@@ -65,6 +69,16 @@
+ void script_lib_plymouth_on_keyboard_input (script_state_t             *state,
+                                             script_lib_plymouth_data_t *data,
+                                             const char                 *keyboard_input);
++void script_lib_plymouth_on_pointer_motion (script_state_t             *state,
++                                            script_lib_plymouth_data_t *data,
++                                            int                         x,
++                                            int                         y);
++void script_lib_plymouth_on_pointer_button (script_state_t             *state,
++                                            script_lib_plymouth_data_t *data,
++                                            int                         button,
++                                            bool                        pressed,
++                                            int                         x,
++                                            int                         y);
+ void script_lib_plymouth_on_update_status (script_state_t             *state,
+                                            script_lib_plymouth_data_t *data,
+                                            const char                 *new_status);
+diff -ruN a/src/plugins/splash/script/script-lib-sprite.c b/src/plugins/splash/script/script-lib-sprite.c
+--- a/src/plugins/splash/script/script-lib-sprite.c	2024-01-04 22:08:14.000000000 +0100
++++ b/src/plugins/splash/script/script-lib-sprite.c	2026-09-28 22:33:34.355255906 +0200
+@@ -881,3 +881,29 @@
+         free (data);
+         data = NULL;
+ }
++
++/* Displays sit at their own offset in the canvas that sprites live in, so a
++ * position on a head is that position plus the offset of the head's display.
++ */
++bool script_lib_sprite_head_to_canvas (script_lib_sprite_data_t *data,
++                                       ply_renderer_head_t      *head,
++                                       int                       x,
++                                       int                       y,
++                                       int                      *canvas_x,
++                                       int                      *canvas_y)
++{
++        ply_list_node_t *node;
++
++        ply_list_foreach (data->displays, node) {
++                script_lib_display_t *display = ply_list_node_get_data (node);
++
++                if (ply_pixel_display_get_renderer_head (display->pixel_display) != head)
++                        continue;
++
++                *canvas_x = x + display->x;
++                *canvas_y = y + display->y;
++                return true;
++        }
++
++        return false;
++}
+diff -ruN a/src/plugins/splash/script/script-lib-sprite.h b/src/plugins/splash/script/script-lib-sprite.h
+--- a/src/plugins/splash/script/script-lib-sprite.h	2024-01-04 22:08:14.000000000 +0100
++++ b/src/plugins/splash/script/script-lib-sprite.h	2026-09-28 22:33:34.351255727 +0200
+@@ -72,6 +72,12 @@
+ void script_lib_sprite_pixel_display_removed (script_lib_sprite_data_t *data,
+                                               ply_pixel_display_t      *pixel_display);
+ void script_lib_sprite_refresh (script_lib_sprite_data_t *data);
++bool script_lib_sprite_head_to_canvas (script_lib_sprite_data_t *data,
++                                       ply_renderer_head_t      *head,
++                                       int                       x,
++                                       int                       y,
++                                       int                      *canvas_x,
++                                       int                      *canvas_y);
+ void script_lib_sprite_destroy (script_lib_sprite_data_t *data);
+ 
+ #endif /* SCRIPT_LIB_SPRITE_H */

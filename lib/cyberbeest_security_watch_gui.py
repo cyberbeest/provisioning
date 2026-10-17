@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Cyberbeest Security Watch.
+"""Linux Security News.
 
 Manually launched (Whisker menu) tabbed window with the latest posts from a
 few security feeds, plus this machine's own permanent update history:
@@ -322,7 +322,7 @@ class UpdateHistoryTab(Gtk.Box):
 
 class SecurityWatchWindow(Gtk.Window):
     def __init__(self):
-        super().__init__(title="Cyberbeest Security Watch")
+        super().__init__(title="Linux Security News")
         self.set_default_size(760, 560)
         self.set_position(Gtk.WindowPosition.CENTER)
         self.connect("destroy", Gtk.main_quit)

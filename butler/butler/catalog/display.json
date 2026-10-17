@@ -1,0 +1,551 @@
+{
+  "category": {
+    "en": "Display",
+    "de": "Bildschirm"
+  },
+  "commands": [
+    {
+      "id": "brightness_up",
+      "title": {
+        "en": "Brighter",
+        "de": "Heller"
+      },
+      "sentence": {
+        "en": "Make the display brighter by {percent}%",
+        "de": "Bildschirm um {percent} % heller machen"
+      },
+      "done": {
+        "en": "Display brightness now {level}%",
+        "de": "Helligkeit jetzt {level} %"
+      },
+      "examples": {
+        "en": [
+          "make the display brighter",
+          "increase screen brightness",
+          "more light on the screen",
+          "the screen is too dark",
+          "I can't see anything on the screen",
+          "brighten up the display",
+          "make it brighter",
+          "brighter",
+          "brighter please",
+          "make it a bit brighter",
+          "a little brighter",
+          "make the screen brighter"
+        ],
+        "de": [
+          "mach den Bildschirm heller",
+          "Helligkeit erhöhen",
+          "der Bildschirm ist zu dunkel",
+          "ich sehe nichts auf dem Bildschirm",
+          "mehr Licht bitte",
+          "Display heller stellen",
+          "mach es heller",
+          "heller",
+          "heller bitte",
+          "mach es ein bisschen heller",
+          "etwas heller"
+        ]
+      },
+      "negative": {
+        "en": [
+          "make it louder"
+        ],
+        "de": [
+          "mach es lauter"
+        ]
+      },
+      "reply": {
+        "en": "Brighter.",
+        "de": "Heller."
+      },
+      "slot": {
+        "kind": "percent",
+        "mode": "relative",
+        "default": 10,
+        "words": {
+          "en": {
+            "a bit": 10,
+            "slightly": 5,
+            "a little": 10,
+            "a lot": 30,
+            "much": 30
+          },
+          "de": {
+            "ein bisschen": 10,
+            "etwas": 10,
+            "leicht": 5,
+            "viel": 30,
+            "deutlich": 30
+          }
+        }
+      },
+      "run": {
+        "builtin": "backlight",
+        "args": {
+          "op": "step",
+          "sign": 1,
+          "percent": "{percent}"
+        }
+      }
+    },
+    {
+      "id": "brightness_down",
+      "title": {
+        "en": "Dimmer",
+        "de": "Dunkler"
+      },
+      "sentence": {
+        "en": "Make the display dimmer by {percent}%",
+        "de": "Bildschirm um {percent} % dunkler machen"
+      },
+      "done": {
+        "en": "Display brightness now {level}%",
+        "de": "Helligkeit jetzt {level} %"
+      },
+      "examples": {
+        "en": [
+          "make the display dimmer",
+          "decrease screen brightness",
+          "the screen is too bright",
+          "dim the screen",
+          "it's blinding me",
+          "turn the brightness down",
+          "make it dimmer",
+          "dimmer",
+          "darker please",
+          "make it darker",
+          "a little dimmer",
+          "make the screen darker"
+        ],
+        "de": [
+          "mach den Bildschirm dunkler",
+          "Helligkeit verringern",
+          "der Bildschirm ist zu hell",
+          "Display dimmen",
+          "der Bildschirm blendet",
+          "Helligkeit runter",
+          "mach es dunkler",
+          "dunkler",
+          "dunkler bitte",
+          "mach es ein bisschen dunkler",
+          "etwas dunkler"
+        ]
+      },
+      "reply": {
+        "en": "Dimmer.",
+        "de": "Dunkler."
+      },
+      "slot": {
+        "kind": "percent",
+        "mode": "relative",
+        "default": 10,
+        "words": {
+          "en": {
+            "a bit": 10,
+            "slightly": 5,
+            "a little": 10,
+            "a lot": 30,
+            "much": 30
+          },
+          "de": {
+            "ein bisschen": 10,
+            "etwas": 10,
+            "leicht": 5,
+            "viel": 30,
+            "deutlich": 30
+          }
+        }
+      },
+      "run": {
+        "builtin": "backlight",
+        "args": {
+          "op": "step",
+          "sign": -1,
+          "percent": "{percent}"
+        }
+      }
+    },
+    {
+      "id": "brightness_set",
+      "title": {
+        "en": "Set brightness",
+        "de": "Helligkeit einstellen"
+      },
+      "sentence": {
+        "en": "Set the display brightness to {percent}%",
+        "de": "Bildschirmhelligkeit auf {percent} % setzen"
+      },
+      "done": {
+        "en": "Display brightness now {level}%",
+        "de": "Helligkeit jetzt {level} %"
+      },
+      "examples": {
+        "en": [
+          "set the brightness to 50 percent",
+          "brightness 70%",
+          "screen brightness to half",
+          "set the display brightness to maximum",
+          "make the screen 30 percent bright",
+          "make the display half bright",
+          "make it half as bright",
+          "set the screen to full brightness",
+          "make the screen half bright",
+          "make the screen 50 percent bright",
+          "set the brightness to 40 %",
+          "brightness to 25 percent",
+          "set brightness to 75",
+          "set the brightness",
+          "change the brightness",
+          "adjust the brightness",
+          "brightness",
+          "set the screen brightness to"
+        ],
+        "de": [
+          "stelle die Helligkeit auf 50 Prozent",
+          "Helligkeit 70%",
+          "Bildschirmhelligkeit auf die Hälfte",
+          "Helligkeit auf Maximum",
+          "Display auf 30 Prozent",
+          "mach den Bildschirm halb hell",
+          "Display auf halbe Helligkeit",
+          "Bildschirm auf volle Helligkeit",
+          "mach den Bildschirm 50 Prozent hell",
+          "Helligkeit einstellen",
+          "Helligkeit ändern",
+          "Helligkeit",
+          "Helligkeit anpassen"
+        ]
+      },
+      "reply": {
+        "en": "Brightness {percent}%.",
+        "de": "Helligkeit {percent} %."
+      },
+      "slot": {
+        "kind": "percent",
+        "mode": "absolute",
+        "required": true,
+        "ask": {
+          "en": "Brightness to what percent?",
+          "de": "Helligkeit auf wie viel Prozent?"
+        },
+        "words": {
+          "en": {
+            "half": 50,
+            "maximum": 100,
+            "full": 100,
+            "max": 100,
+            "minimum": 5
+          },
+          "de": {
+            "die Hälfte": 50,
+            "halb": 50,
+            "Maximum": 100,
+            "voll": 100,
+            "Minimum": 5
+          }
+        }
+      },
+      "run": {
+        "builtin": "backlight",
+        "args": {
+          "op": "set",
+          "percent": "{percent}"
+        }
+      }
+    },
+    {
+      "id": "night_light_on",
+      "title": {
+        "en": "Night light on",
+        "de": "Nachtlicht an"
+      },
+      "sentence": {
+        "en": "Turn the night light on",
+        "de": "Nachtlicht einschalten"
+      },
+      "examples": {
+        "en": [
+          "turn on night light",
+          "reduce the blue light",
+          "warmer screen colors",
+          "my eyes hurt from the blue light",
+          "enable the blue light filter"
+        ],
+        "de": [
+          "Nachtlicht einschalten",
+          "Blaulichtfilter an",
+          "wärmere Bildschirmfarben",
+          "meine Augen tun vom Blaulicht weh",
+          "weniger Blaulicht bitte"
+        ]
+      },
+      "reply": {
+        "en": "Night light on.",
+        "de": "Nachtlicht an."
+      },
+      "run": {
+        "builtin": "night_light",
+        "args": {
+          "on": true
+        }
+      }
+    },
+    {
+      "id": "night_light_off",
+      "title": {
+        "en": "Night light off",
+        "de": "Nachtlicht aus"
+      },
+      "sentence": {
+        "en": "Turn the night light off",
+        "de": "Nachtlicht ausschalten"
+      },
+      "examples": {
+        "en": [
+          "turn off night light",
+          "normal screen colors",
+          "disable the blue light filter",
+          "the colors look too yellow",
+          "switch the night light off"
+        ],
+        "de": [
+          "Nachtlicht ausschalten",
+          "normale Bildschirmfarben",
+          "Blaulichtfilter aus",
+          "die Farben sind zu gelb",
+          "Nachtlicht deaktivieren"
+        ]
+      },
+      "reply": {
+        "en": "Night light off.",
+        "de": "Nachtlicht aus."
+      },
+      "run": {
+        "builtin": "night_light",
+        "args": {
+          "on": false
+        }
+      }
+    },
+    {
+      "id": "screenshot",
+      "title": {
+        "en": "Screenshot",
+        "de": "Bildschirmfoto"
+      },
+      "sentence": {
+        "en": "Take a screenshot of the whole screen",
+        "de": "Bildschirmfoto vom ganzen Bildschirm aufnehmen"
+      },
+      "examples": {
+        "en": [
+          "take a screenshot",
+          "capture the screen",
+          "take a picture of what's on screen",
+          "screenshot please"
+        ],
+        "de": [
+          "mach einen Screenshot",
+          "Bildschirmfoto aufnehmen",
+          "fotografiere den Bildschirm",
+          "Screenshot bitte"
+        ]
+      },
+      "reply": {
+        "en": "Screenshot.",
+        "de": "Bildschirmfoto."
+      },
+      "run": {
+        "argv": [
+          "xfce4-screenshooter",
+          "--fullscreen"
+        ]
+      }
+    },
+    {
+      "id": "screenshot_region",
+      "title": {
+        "en": "Screenshot of an area",
+        "de": "Bildschirmfoto eines Bereichs"
+      },
+      "sentence": {
+        "en": "Take a screenshot of an area you select",
+        "de": "Bildschirmfoto von einem gewählten Bereich aufnehmen"
+      },
+      "examples": {
+        "en": [
+          "take a screenshot of part of the screen",
+          "capture a region",
+          "screenshot of an area",
+          "let me select an area to capture"
+        ],
+        "de": [
+          "mach einen Screenshot von einem Bereich",
+          "einen Ausschnitt aufnehmen",
+          "Bildschirmfoto eines Bereichs",
+          "ich möchte einen Bereich auswählen"
+        ]
+      },
+      "reply": {
+        "en": "Select an area.",
+        "de": "Bereich auswählen."
+      },
+      "run": {
+        "argv": [
+          "xfce4-screenshooter",
+          "--region"
+        ]
+      }
+    },
+    {
+      "id": "fullscreen",
+      "title": {
+        "en": "Fullscreen",
+        "de": "Vollbild"
+      },
+      "sentence": {
+        "en": "Toggle fullscreen for the active window",
+        "de": "Vollbild für das aktive Fenster umschalten"
+      },
+      "examples": {
+        "en": [
+          "make it fullscreen",
+          "go fullscreen",
+          "make this window big",
+          "full screen please"
+        ],
+        "de": [
+          "Vollbild",
+          "mach das Fenster im Vollbild",
+          "Fenster ganz groß machen",
+          "Vollbildmodus bitte"
+        ]
+      },
+      "reply": {
+        "en": "Fullscreen.",
+        "de": "Vollbild."
+      },
+      "run": {
+        "argv": [
+          "wmctrl",
+          "-r",
+          ":ACTIVE:",
+          "-b",
+          "toggle,fullscreen"
+        ]
+      }
+    },
+    {
+      "id": "maximize_window",
+      "title": {
+        "en": "Maximize window",
+        "de": "Fenster maximieren"
+      },
+      "sentence": {
+        "en": "Maximize the active window",
+        "de": "Aktives Fenster maximieren"
+      },
+      "examples": {
+        "en": [
+          "maximize the window",
+          "make the window as large as the screen",
+          "enlarge this window",
+          "maximize it"
+        ],
+        "de": [
+          "Fenster maximieren",
+          "mach das Fenster so groß wie den Bildschirm",
+          "Fenster vergrößern",
+          "maximiere es"
+        ]
+      },
+      "reply": {
+        "en": "Maximized.",
+        "de": "Maximiert."
+      },
+      "run": {
+        "argv": [
+          "wmctrl",
+          "-r",
+          ":ACTIVE:",
+          "-b",
+          "toggle,maximized_vert,maximized_horz"
+        ]
+      }
+    },
+    {
+      "id": "show_desktop",
+      "title": {
+        "en": "Show desktop",
+        "de": "Desktop anzeigen"
+      },
+      "sentence": {
+        "en": "Minimize all windows and show the desktop",
+        "de": "Alle Fenster minimieren und den Desktop zeigen"
+      },
+      "examples": {
+        "en": [
+          "show the desktop",
+          "minimize all windows",
+          "hide everything",
+          "clear the screen of windows"
+        ],
+        "de": [
+          "Desktop anzeigen",
+          "alle Fenster minimieren",
+          "alles ausblenden",
+          "zeig mir den Schreibtisch"
+        ]
+      },
+      "reply": {
+        "en": "Desktop.",
+        "de": "Desktop."
+      },
+      "run": {
+        "argv": [
+          "wmctrl",
+          "-k",
+          "on"
+        ]
+      }
+    },
+    {
+      "id": "screen_off",
+      "title": {
+        "en": "Screen off",
+        "de": "Bildschirm aus"
+      },
+      "sentence": {
+        "en": "Turn the screen off",
+        "de": "Bildschirm ausschalten"
+      },
+      "examples": {
+        "en": [
+          "turn off the screen",
+          "switch the display off",
+          "screen off",
+          "black out the screen"
+        ],
+        "de": [
+          "Bildschirm ausschalten",
+          "Display aus",
+          "schalte den Bildschirm aus",
+          "Bildschirm schwarz schalten"
+        ]
+      },
+      "reply": {
+        "en": "Screen off.",
+        "de": "Bildschirm aus."
+      },
+      "run": {
+        "argv": [
+          "xset",
+          "dpms",
+          "force",
+          "off"
+        ]
+      }
+    }
+  ]
+}

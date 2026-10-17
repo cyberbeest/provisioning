@@ -69,8 +69,24 @@ else
 	echo "WARNING: no VT-x/AMD-V flag found in /proc/cpuinfo -- KVM acceleration unavailable" >&2
 fi
 
-echo "--- Adding $TARGET_USER to the libvirt and kvm groups ---"
-usermod -aG libvirt,kvm "$TARGET_USER"
+# The root libvirtd (qemu:///system) is not used by anything on a normal machine: the
+# sandbox VM and the user's other VMs all run under the unprivileged qemu:///session.
+# Membership of the `libvirt` group is polkit-granted, passwordless root-equivalence
+# (a VM definition can pass through the host disk), and the system daemon's sockets are
+# world-connectable, so both are left out. Only a machine that builds the release images
+# (cyberbeest-tools/release-build drives qemu:///system and its `default` NAT network) keeps
+# them; it opts in with an empty root-owned marker file, /etc/cyberbeest/release-builder.
+RELEASE_BUILDER=false
+[ -e /etc/cyberbeest/release-builder ] && RELEASE_BUILDER=true
+
+if [ "$RELEASE_BUILDER" = true ]; then
+	echo "--- Adding $TARGET_USER to the libvirt and kvm groups (release builder) ---"
+	usermod -aG libvirt,kvm "$TARGET_USER"
+else
+	echo "--- Adding $TARGET_USER to the kvm group; removing from libvirt ---"
+	usermod -aG kvm "$TARGET_USER"
+	gpasswd -d "$TARGET_USER" libvirt 2>/dev/null || true
+fi
 
 echo "--- Configuring qemu:///session to not try raising RLIMIT_CORE ---"
 # libvirt's QEMU session driver always tries to raise the guest process's
@@ -167,8 +183,19 @@ fi
 rm -f /usr/share/glib-2.0/schemas/95-cyberbeest-gnome-boxes.gschema.override
 glib-compile-schemas /usr/share/glib-2.0/schemas/
 
-echo "--- Enabling libvirtd ---"
-systemctl enable --now libvirtd
+if [ "$RELEASE_BUILDER" = true ]; then
+	echo "--- Enabling libvirtd (release builder) ---"
+	systemctl enable --now libvirtd
+else
+	echo "--- Switching off the root libvirt daemons (sessions use their own) ---"
+	# Sockets first so nothing re-activates a service. Disabled, not masked or purged: a
+	# machine that does need qemu:///system can turn it back on with `systemctl enable --now`.
+	for unit in libvirtd.socket libvirtd-ro.socket libvirtd-admin.socket libvirtd.service \
+		virtlogd.socket virtlogd-admin.socket virtlogd.service \
+		virtlockd.socket virtlockd-admin.socket virtlockd.service libvirt-guests.service; do
+		systemctl disable --now "$unit" 2>/dev/null || true
+	done
+fi
 
 echo "--- Removing VirtualBox, if a previous provisioning run installed it ---"
 # Cleanup for machines provisioned before 2026-09-19, when 53-virtualbox.sh

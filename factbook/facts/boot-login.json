@@ -1,0 +1,147 @@
+{
+  "topic": {
+    "en": "Starting up, logging in and locking",
+    "de": "Starten, Anmelden und Sperren"
+  },
+  "source": "provisioning scripts 00a, 15, 16, 17, 21, 30, 54, 64, 66; Cyberbeest Settings",
+  "checked": "2026-10-15",
+  "facts": [
+    {
+      "id": "boot-logo-prompt",
+      "en": "At startup a Cyberbeest laptop shows its logo and asks for the master password before anything else is loaded.",
+      "de": "Beim Start zeigt ein Cyberbeest-Laptop sein Logo und fragt zuerst nach dem Master-Passwort, bevor irgendetwas anderes geladen wird."
+    },
+    {
+      "id": "boot-wrong-master",
+      "en": "If the master password is wrong, a Cyberbeest laptop simply asks again and stays encrypted, and nothing on the disk can be read.",
+      "de": "Ist das Master-Passwort falsch, fragt ein Cyberbeest-Laptop einfach erneut und bleibt verschlüsselt, auf der Festplatte ist nichts lesbar."
+    },
+    {
+      "id": "boot-no-menu",
+      "en": "A Cyberbeest laptop starts without showing a boot menu, so after the master password the login comes straight up.",
+      "de": "Ein Cyberbeest-Laptop startet ohne Bootmenü, nach dem Master-Passwort erscheint also direkt die Anmeldung."
+    },
+    {
+      "id": "boot-pointer",
+      "en": "The boot screen of a Cyberbeest laptop shows a working mouse pointer, so the pointer is visible even at the password prompt.",
+      "de": "Der Startbildschirm eines Cyberbeest-Laptops zeigt einen funktionierenden Mauszeiger, der auch bei der Passwortabfrage sichtbar ist."
+    },
+    {
+      "id": "boot-first-login-15",
+      "en": "A Cyberbeest laptop shuts itself down if nobody logs in within 15 minutes after the master password was entered.",
+      "de": "Ein Cyberbeest-Laptop fährt sich selbst herunter, wenn sich nicht innerhalb von 15 Minuten nach der Eingabe des Master-Passworts jemand anmeldet."
+    },
+    {
+      "id": "login-one-account",
+      "en": "A Cyberbeest laptop has a single user account, and the login screen and lock screen ask only for its short password.",
+      "de": "Ein Cyberbeest-Laptop hat nur ein Benutzerkonto, und Anmelde- und Sperrbildschirm fragen nur nach dessen kurzem Passwort."
+    },
+    {
+      "id": "login-avatar",
+      "en": "The picture next to the login name on a Cyberbeest laptop is the Cyberhornet, the Cyberbeest mascot.",
+      "de": "Das Bild neben dem Anmeldenamen auf einem Cyberbeest-Laptop zeigt den Cyberhornet, das Maskottchen von Cyberbeest."
+    },
+    {
+      "id": "lock-shutdown-button",
+      "en": "The lock screen of a Cyberbeest laptop has a Shut Down button next to Unlock, so you can switch off without logging in.",
+      "de": "Der Sperrbildschirm eines Cyberbeest-Laptops hat neben Entsperren eine Schaltfläche Herunterfahren, man kann also ohne Anmeldung ausschalten."
+    },
+    {
+      "id": "lock-curtain",
+      "en": "When a Cyberbeest laptop locks, an opaque cover hides the screen at once, so no content shows even for a split second.",
+      "de": "Sobald sich ein Cyberbeest-Laptop sperrt, verdeckt eine undurchsichtige Abdeckung sofort den Bildschirm, es ist also auch für einen Sekundenbruchteil nichts zu sehen."
+    },
+    {
+      "id": "lock-warning-10s",
+      "en": "A Cyberbeest laptop shows a notification 10 seconds before auto-lock, so moving the mouse keeps you logged in.",
+      "de": "Ein Cyberbeest-Laptop zeigt 10 Sekunden vor der automatischen Sperre eine Benachrichtigung, eine Mausbewegung hält Sie dann angemeldet.",
+      "tip": true
+    },
+    {
+      "id": "lock-default-5min",
+      "en": "A new Cyberbeest laptop locks after 5 minutes without mouse or keyboard input.",
+      "de": "Ein neuer Cyberbeest-Laptop sperrt sich nach 5 Minuten ohne Maus- oder Tastatureingabe."
+    },
+    {
+      "id": "lock-default-shutdown-60",
+      "en": "A new Cyberbeest laptop shuts down after being locked for 60 minutes, whether it runs on mains power or on battery.",
+      "de": "Ein neuer Cyberbeest-Laptop fährt herunter, nachdem er 60 Minuten gesperrt war, egal ob am Netz oder im Akkubetrieb."
+    },
+    {
+      "id": "lock-minimize-windows",
+      "en": "One minute after locking, a Cyberbeest laptop minimizes all windows and caps the browser at 10% CPU to save power.",
+      "de": "Eine Minute nach dem Sperren minimiert ein Cyberbeest-Laptop alle Fenster und begrenzt den Browser auf 10 % Prozessorlast, um Strom zu sparen."
+    },
+    {
+      "id": "settings-power-tab",
+      "en": "The Extended power options tab in Cyberbeest Settings sets the pre-lock warning, the cover on lock, window minimizing and the browser CPU limit.",
+      "de": "Der Reiter Erweiterte Energieoptionen in den Cyberbeest-Einstellungen steuert die Warnung vor dem Sperren, die Abdeckung beim Sperren, das Minimieren der Fenster und die Browser-Prozessorgrenze."
+    },
+    {
+      "id": "timer-change-panel",
+      "en": "To change the auto-shutdown time, click the timer text in the Cyberbeest panel and pick a preset.",
+      "de": "Um die Zeit bis zum automatischen Herunterfahren zu ändern, klicken Sie im Cyberbeest-Panel auf den Timer-Text und wählen eine Voreinstellung.",
+      "tip": true,
+      "ask": {
+        "en": [
+          "How do I change how long the laptop stays locked before it shuts down?",
+          "The laptop shuts down too early when I leave it locked.",
+          "I want the auto-shutdown timer to be longer."
+        ],
+        "de": [
+          "Wie ändere ich, wie lange der Laptop gesperrt bleibt, bevor er herunterfährt?",
+          "Der Laptop fährt zu früh herunter, wenn ich ihn gesperrt lasse.",
+          "Ich möchte den Timer für das automatische Herunterfahren verlängern."
+        ]
+      }
+    },
+    {
+      "id": "power-dialog",
+      "en": "Pressing the power button once or Ctrl+Alt+Delete on a Cyberbeest laptop opens a dialog with Lock, Restart and Shut Down.",
+      "de": "Ein einmaliger Druck auf den Einschaltknopf oder Strg+Alt+Entf öffnet auf einem Cyberbeest-Laptop einen Dialog mit Sperren, Neustart und Herunterfahren."
+    },
+    {
+      "id": "battery-warnings",
+      "en": "A Cyberbeest laptop warns you at 15% battery charge, warns again more urgently at 8%, and shuts down cleanly at 5%.",
+      "de": "Ein Cyberbeest-Laptop warnt bei 15 % Akkuladung, warnt bei 8 % dringender und fährt bei 5 % sauber herunter."
+    },
+    {
+      "id": "pw-nag",
+      "en": "A Cyberbeest laptop reminds you at every login to change its initial passwords until both the master and the short password are changed.",
+      "de": "Ein Cyberbeest-Laptop erinnert bei jeder Anmeldung daran, die Anfangspasswörter zu ändern, bis sowohl Master- als auch kurzes Passwort geändert sind."
+    },
+    {
+      "id": "pw-change-app",
+      "en": "You change the master password and the short password in the Cyberbeest Passwords & Boot app from the menu.",
+      "de": "Das Master-Passwort und das kurze Passwort ändern Sie im Menü in der App Cyberbeest-Passwörter & Start.",
+      "tip": true,
+      "ask": {
+        "en": [
+          "How do I change my password?",
+          "I want to change the master password.",
+          "Where can I change the short password?"
+        ],
+        "de": [
+          "Wie ändere ich mein Passwort?",
+          "Ich möchte das Master-Passwort ändern.",
+          "Wo kann ich das kurze Passwort ändern?"
+        ]
+      }
+    },
+    {
+      "id": "disk-luks-swap",
+      "en": "The whole disk of a Cyberbeest laptop is encrypted with LUKS, including the swap space that holds overflow memory.",
+      "de": "Die gesamte Festplatte eines Cyberbeest-Laptops ist mit LUKS verschlüsselt, auch der Auslagerungsspeicher für überlaufenden Arbeitsspeicher."
+    },
+    {
+      "id": "setup-language",
+      "en": "During setup you choose your country, which picks the language (English or German), the keyboard layout and the time zone.",
+      "de": "Bei der Einrichtung wählen Sie Ihr Land, das Sprache (Englisch oder Deutsch), Tastaturbelegung und Zeitzone vorschlägt."
+    },
+    {
+      "id": "setup-languages-only",
+      "en": "Cyberbeest apps and menus come in English and German, and no other languages are offered yet.",
+      "de": "Cyberbeest-Programme und -Menüs gibt es auf Englisch und Deutsch, weitere Sprachen werden noch nicht angeboten."
+    }
+  ]
+}

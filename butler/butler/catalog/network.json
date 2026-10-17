@@ -1,0 +1,242 @@
+{
+  "category": {
+    "en": "Network and windows",
+    "de": "Netzwerk und Fenster"
+  },
+  "commands": [
+    {
+      "id": "wifi_on",
+      "title": {
+        "en": "Wi-Fi on",
+        "de": "WLAN an"
+      },
+      "sentence": {
+        "en": "Turn Wi-Fi on",
+        "de": "WLAN einschalten"
+      },
+      "examples": {
+        "en": [
+          "turn on wifi",
+          "switch wifi on",
+          "enable the wireless",
+          "connect to the wifi",
+          "I have no internet, turn wifi on",
+          "wireless on"
+        ],
+        "de": [
+          "WLAN einschalten",
+          "schalte das WLAN an",
+          "WLAN aktivieren",
+          "mach das WLAN an",
+          "ich habe kein Internet, schalte WLAN ein",
+          "WLAN an"
+        ]
+      },
+      "reply": {
+        "en": "Wi-Fi on.",
+        "de": "WLAN an."
+      },
+      "run": {
+        "argv": [
+          "nmcli",
+          "radio",
+          "wifi",
+          "on"
+        ]
+      }
+    },
+    {
+      "id": "wifi_off",
+      "title": {
+        "en": "Wi-Fi off",
+        "de": "WLAN aus"
+      },
+      "sentence": {
+        "en": "Turn Wi-Fi off",
+        "de": "WLAN ausschalten"
+      },
+      "examples": {
+        "en": [
+          "turn off wifi",
+          "switch wifi off",
+          "disable the wireless",
+          "disconnect from the wifi",
+          "wireless off",
+          "go offline"
+        ],
+        "de": [
+          "WLAN ausschalten",
+          "schalte das WLAN aus",
+          "WLAN deaktivieren",
+          "mach das WLAN aus",
+          "WLAN aus",
+          "geh offline"
+        ]
+      },
+      "reply": {
+        "en": "Wi-Fi off.",
+        "de": "WLAN aus."
+      },
+      "run": {
+        "argv": [
+          "nmcli",
+          "radio",
+          "wifi",
+          "off"
+        ]
+      }
+    },
+    {
+      "id": "bluetooth_on",
+      "title": {
+        "en": "Bluetooth on",
+        "de": "Bluetooth an"
+      },
+      "sentence": {
+        "en": "Turn Bluetooth on",
+        "de": "Bluetooth einschalten"
+      },
+      "examples": {
+        "en": [
+          "turn on bluetooth",
+          "switch bluetooth on",
+          "enable bluetooth",
+          "I want to connect my headphones, bluetooth on",
+          "bluetooth on"
+        ],
+        "de": [
+          "Bluetooth einschalten",
+          "schalte Bluetooth an",
+          "Bluetooth aktivieren",
+          "ich will meine Kopfhörer verbinden, Bluetooth an",
+          "Bluetooth an"
+        ]
+      },
+      "reply": {
+        "en": "Bluetooth on.",
+        "de": "Bluetooth an."
+      },
+      "run": {
+        "argv": [
+          "rfkill",
+          "unblock",
+          "bluetooth"
+        ]
+      }
+    },
+    {
+      "id": "bluetooth_off",
+      "title": {
+        "en": "Bluetooth off",
+        "de": "Bluetooth aus"
+      },
+      "sentence": {
+        "en": "Turn Bluetooth off",
+        "de": "Bluetooth ausschalten"
+      },
+      "examples": {
+        "en": [
+          "turn off bluetooth",
+          "switch bluetooth off",
+          "disable bluetooth",
+          "bluetooth off",
+          "stop bluetooth"
+        ],
+        "de": [
+          "Bluetooth ausschalten",
+          "schalte Bluetooth aus",
+          "Bluetooth deaktivieren",
+          "Bluetooth aus",
+          "Bluetooth abschalten"
+        ]
+      },
+      "reply": {
+        "en": "Bluetooth off.",
+        "de": "Bluetooth aus."
+      },
+      "run": {
+        "argv": [
+          "rfkill",
+          "block",
+          "bluetooth"
+        ]
+      }
+    },
+    {
+      "id": "window_close",
+      "title": {
+        "en": "Close window",
+        "de": "Fenster schließen"
+      },
+      "sentence": {
+        "en": "Close the active window",
+        "de": "Aktives Fenster schließen"
+      },
+      "examples": {
+        "en": [
+          "close this window",
+          "close the window",
+          "close it",
+          "get rid of this window",
+          "close the active window"
+        ],
+        "de": [
+          "schließe dieses Fenster",
+          "Fenster schließen",
+          "mach das Fenster zu",
+          "schließ es",
+          "das aktive Fenster schließen"
+        ]
+      },
+      "reply": {
+        "en": "Closed.",
+        "de": "Geschlossen."
+      },
+      "run": {
+        "argv": [
+          "wmctrl",
+          "-c",
+          ":ACTIVE:"
+        ]
+      }
+    },
+    {
+      "id": "window_minimize",
+      "title": {
+        "en": "Minimize window",
+        "de": "Fenster minimieren"
+      },
+      "sentence": {
+        "en": "Minimize the active window",
+        "de": "Aktives Fenster minimieren"
+      },
+      "examples": {
+        "en": [
+          "minimize this window",
+          "minimize the window",
+          "hide this window",
+          "put the window away",
+          "minimize it"
+        ],
+        "de": [
+          "minimiere dieses Fenster",
+          "Fenster minimieren",
+          "verstecke das Fenster",
+          "leg das Fenster weg",
+          "minimiere es"
+        ]
+      },
+      "reply": {
+        "en": "Minimized.",
+        "de": "Minimiert."
+      },
+      "run": {
+        "argv": [
+          "xdotool",
+          "getactivewindow",
+          "windowminimize"
+        ]
+      }
+    }
+  ]
+}

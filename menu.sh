@@ -97,7 +97,8 @@ echo "=== all selected provisioning scripts completed ==="
 # user's D-Bus session bus directly -- drop back to that user for the reload,
 # reading the bus address off their actual running panel process (most
 # reliable) rather than assuming the standard /run/user/<uid>/bus path.
-if command -v xfce4-panel >/dev/null 2>&1; then
+# only if it is running: with gopanel as the panel, `xfce4-panel -r` would start a second panel
+if command -v xfce4-panel >/dev/null 2>&1 && pgrep -x xfce4-panel >/dev/null 2>&1; then
 	echo "Reloading xfce4-panel to pick up new/changed desktop entries..."
 	if [ "$(id -u)" -eq 0 ] && [ -n "${SUDO_USER:-}" ]; then
 		TARGET_UID="$(id -u "$SUDO_USER")"

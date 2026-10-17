@@ -13,7 +13,7 @@
 #
 # Reads the same config file as lock-shutdown-watcher.sh and
 # shutdown-timer-menu.py (WARN_BEFORE_LOCK_ENABLED / WARN_SECONDS_BEFORE_LOCK /
-# NO_MERCY_LOCK_ENABLED, set from lock-power-saving-dialog.py's "Extended
+# NO_MERCY_LOCK_ENABLED, set from cyberbeest-extended-power-options.py's "Extended
 # Power Options" window). Polls xprintidle every second -- cheap enough for
 # second-level precision, unlike the 15s poll lock-shutdown-watcher.sh uses
 # for its much coarser post-lock deadlines.
@@ -109,7 +109,7 @@ while true; do
     # xfce4-screensaver's own idle timer (video playback, a presentation,
     # or a stuck/orphaned inhibit -- see the 2026-09-14 postmortem where an
     # orphaned inhibit silently defeated auto-lock for hours). Opt-in via
-    # lock-power-saving-dialog.py's "Extended Power Options" window;
+    # cyberbeest-extended-power-options.py's "Extended Power Options" window;
     # deliberately no extra warning beyond the notification below.
     no_mercy=$(read_setting NO_MERCY_LOCK_ENABLED "$DEFAULT_NO_MERCY_ENABLED")
     if [ "$no_mercy" = "true" ] && [ "$remaining" -le 0 ] && is_inhibited; then

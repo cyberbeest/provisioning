@@ -1,0 +1,28 @@
+#!/bin/sh
+# Installed as /lib/cryptsetup/cyberbeest-askpass-words and referenced by
+# /etc/crypttab's keyscript= option (see enable-passphrase-words.sh) in
+# place of the default /lib/cryptsetup/askpass. Called exactly like askpass
+# (run_keyscript in /lib/cryptsetup/functions execs it with crypttab's key
+# field as $1 and pipes its stdout into cryptsetup), so it behaves as a
+# passthrough except that the typed passphrase is normalized by the shared
+# filter (lib/cyberbeest-passphrase-filter): "Tiger  Lamp.ocean " unlocks a
+# disk whose passphrase is "tiger-lamp-ocean". The Plymouth theme
+# (cyberbeest.script, word_mode) draws the same rules as check marks +
+# bullets, so the two must stay in sync.
+#
+# The passphrase stored in the LUKS header MUST already be in canonical
+# form -- disk_password_gui.py generates and normalizes it.
+#
+# Machines with Boot Fresh keep cyberbeest-askpass-boot-fresh as their
+# keyscript instead; it applies the same filter (crypttab holds only one).
+set -eu
+
+PROMPT="${1:-}"
+if [ "$PROMPT" = "none" ] || [ -z "$PROMPT" ]; then
+	PROMPT="Enter master password to decrypt hard drive: "
+fi
+
+# The two overrides exist so enable-passphrase-words.sh can test this exact
+# code against a candidate passphrase; both are unset in the initramfs.
+. "${CYBERBEEST_FILTER:-/lib/cryptsetup/cyberbeest-passphrase-filter}"
+${CYBERBEEST_ASKPASS:-/lib/cryptsetup/askpass} "$PROMPT" | cyberbeest_normalize_passphrase

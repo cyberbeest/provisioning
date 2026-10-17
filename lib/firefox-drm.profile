@@ -17,3 +17,12 @@
 # only widens two syscalls needed for DRM playback to work at all.
 include firefox-esr.profile
 seccomp !chroot,!mount
+
+# Zoom sign-in (Google/SSO): Zoom's page redirects to a zoommtg:// link, which
+# Firefox hands to /usr/bin/zoom *inside* this sandbox. Zoom is single-instance
+# via a unix socket in ~/.config/zoom; without this the sandboxed launch can't
+# see it and starts a second, blank Zoom instead of passing the login token to
+# the running one. The directory holds only that socket and its lock file.
+# mkdir so the whitelist doesn't error on machines without Zoom.
+mkdir ${HOME}/.config/zoom
+whitelist ${HOME}/.config/zoom

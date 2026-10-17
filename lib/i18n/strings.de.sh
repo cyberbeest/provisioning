@@ -15,6 +15,8 @@ Die Installation hier erfolgt auf eigenes Risiko. Für eine kuratierte, freigege
 	[plymouth.luks_success]="Festplatte entsperrt"
 	[plymouth.shutdown_text]="Festplatte wird gesperrt und heruntergefahren"
 	[plymouth.grub_background]="grub-background-de.png"
+	[grub.menu_hint]="Eingabetaste zum Starten   ·   Pfeiltasten zum Auswählen"
+	[grub.countdown]="Start in %d Sekunden"
 	[login.welcome_message]="Kurzes Passwort eingeben, um den Desktop zu entsperren"
 	[web_install.confirm_title]="App installieren?"
 	[web_install.confirm_message]="Eine Webseite möchte APPNAME auf diesem Computer installieren.
@@ -66,6 +68,8 @@ Fahre nur fort, wenn du einen Installations-Link auf einer vertrauenswürdigen S
 	[panel_status_genmon.security_heading]="Sicherheitsupdates"
 	[panel_status_genmon.ip_line]="IP-Adresse: ADDR"
 	[panel_status_genmon.ip_unknown]="keine Netzwerkverbindung"
+	[panel_status_genmon.ports_line]="Offene Ports: PORTS"
+	[panel_status_genmon.ports_none]="keine"
 	[update.title]="Cyberbeest-Update"
 	[update.no_repo_message]="Kein Provisioning-Checkout unter ~/provisioning oder ~/provisioning-bleeding gefunden.
 
@@ -113,6 +117,14 @@ OUTPUT"
 	[clipboard_genmon.label_files]="Dateipfad(e)"
 	[clipboard_genmon.label_unknown]="unbekannter Inhalt"
 	[clipboard_genmon.never]="Nie"
+	[mic_recording.tooltip_heading]="Mikrofon wird verwendet von:"
+	[connections_genmon.none]="Keine aktiven Netzwerkverbindungen"
+	[connections_genmon.in_n]="%d eingehende Verbindungen:"
+	[connections_genmon.in_1]="%d eingehende Verbindung:"
+	[connections_genmon.out_n]="%d ausgehende Verbindungen:"
+	[connections_genmon.out_1]="%d ausgehende Verbindung:"
+	[connections_genmon.system_service]="Systemdienst"
+	[connections_genmon.unknown]="unbekannt (zum Klären anklicken)"
 	[clipboard_genmon.auto_clear_prefix]="Automatisch leeren:"
 	[clipboard_genmon.empty_with_setting]="Zwischenablage ist leer — SETTING"
 	[clipboard_genmon.status]="Zwischenablage: LABEL (AGE)COUNTDOWN"
@@ -144,8 +156,55 @@ OUTPUT"
 	[vpn.connect_failed_body]="VPN-Profil \"NAME\" konnte nicht gestartet werden. Prüfe die Konfigurationsdatei."
 	[vpn.disconnect_notify]="Getrennt"
 	[vpn.remove_notify]="Profil \"NAME\" entfernt"
+	[vpn.icon_removed_notify]="VPN-Symbol entfernt"
 	[vpn.genmon_connected]="VPN verbunden: NAME"
 	[vpn.genmon_dropped]="VPN unerwartet getrennt (war: NAME)"
 	[vpn.genmon_none]="Kein VPN verbunden."
 	[vpn.genmon_click_for_options]="Klicken für Optionen."
+	[claude.warn_title]="Claude Code installieren? DATENSCHUTZ-WARNUNG"
+	[claude.warn_message]="<span size=\"xx-large\" weight=\"bold\" foreground=\"#c00000\">⚠  DATENSCHUTZ-WARNUNG</span>
+
+<span size=\"large\" weight=\"bold\">Claude Code ist NICHT privat. Es ist ein Cloud-Dienst.</span>
+
+Alles, was du damit machst, geht über das Internet an die Server von Anthropic: deine Nachrichten, der Inhalt jeder Datei und jedes Ordners, die es liest, die Ausgabe jedes Befehls, den es ausführt, und alles auf dem Bildschirm, was es sich ansieht. Anthropic kann das speichern. Verschlüsselung, Firewall und die Offline-Voreinstellung von Cyberbeest <b>schützen nichts davon, was du Claude Code gibst</b>.
+
+• Nie mit Passwörtern, Schlüsseln, Wallets, privaten Dokumenten oder Daten anderer Personen verwenden.
+• Es kann Befehle auf diesem Computer ausführen. Du bestimmst, was es darf, aber eine falsche Freigabe kann Dateien löschen oder preisgeben.
+• Du brauchst ein eigenes Claude-Konto (Bezahl-Tarif oder API-Guthaben). Cyberbeest ist nicht mit Anthropic verbunden.
+• Download-Größe: etwa 1,2 GB (Claude Code, Hilfswerkzeuge, Sprachausgabe-Stimmen).
+
+Die Installation betrifft nur dein eigenes Benutzerkonto, und der Menüeintrag „Claude Code entfernen“ löscht alles wieder.
+
+<b>Nur fortfahren, wenn du akzeptierst, dass deine Arbeit diesen Computer verlässt.</b>"
+	[claude.warn_install]="Verstanden - installieren"
+	[claude.warn_cancel]="Abbrechen"
+	[claude.installing]="Claude Code wird installiert (dauert einige Minuten)..."
+	[claude.install_done_title]="Claude Code installiert"
+	[claude.install_done_message]="Fertig. Öffne „Claude Code“ im Menü. Beim ersten Start wirst du gebeten, dich mit deinem Claude-Konto anzumelden.
+
+Zur Erinnerung: Alles, was du dort eintippst, geht an Anthropic."
+	[claude.install_failed_title]="Installation fehlgeschlagen"
+	[claude.install_failed_message]="Etwas ist schiefgelaufen. Sonst wurde nichts an deinem System geändert. Einzelheiten: LOG"
+	[claude.remove_title]="Claude Code entfernen"
+	[claude.remove_message]="Claude Code, die Anmeldung, die Hilfswerkzeuge, Stimmen und Menüeinträge werden in jedem Fall entfernt.
+
+<b>Entfernen, Daten behalten</b> (empfohlen)
+Behält deine Einstellungen, deine gespeicherten Gespräche und den Ordner ~/claude mit deinen Projekten. Eine spätere Neuinstallation nutzt sie wieder.
+
+<b>Alles entfernen</b>
+Löscht zusätzlich deine Einstellungen, alle gespeicherten Gespräche und den ganzen Ordner ~/claude samt deiner eigenen Dateien darin.
+
+Dein Claude-Konto selbst bleibt unberührt."
+	[claude.remove_keep_button]="Entfernen, Daten behalten"
+	[claude.remove_all_button]="Alles entfernen"
+	[claude.remove_cancel]="Abbrechen"
+	[claude.remove_confirm_title]="Wirklich?"
+	[claude.remove_confirm_keep]="Claude Code wird jetzt entfernt. Deine Einstellungen, gespeicherten Gespräche und Projekte in ~/claude bleiben."
+	[claude.remove_confirm_all]="<b>Das lässt sich nicht rückgängig machen.</b>
+
+Claude Code, deine Einstellungen, alle gespeicherten Gespräche und der ganze Ordner ~/claude (samt deiner eigenen Dateien) werden endgültig gelöscht."
+	[claude.remove_confirm_yes]="Ja, entfernen"
+	[claude.remove_done_title]="Claude Code entfernt"
+	[claude.remove_done_message]="Claude Code und alles, was dazugehörte, ist entfernt."
+	[claude.remove_none_message]="Claude Code ist in diesem Benutzerkonto nicht installiert."
 )

@@ -1,0 +1,173 @@
+{
+  "category": {
+    "en": "Power",
+    "de": "Energie"
+  },
+  "commands": [
+    {
+      "id": "shutdown",
+      "title": {
+        "en": "Shut down",
+        "de": "Herunterfahren"
+      },
+      "sentence": {
+        "en": "Shut the laptop down",
+        "de": "Laptop herunterfahren"
+      },
+      "examples": {
+        "en": [
+          "shut down",
+          "shut the laptop down",
+          "turn off the computer",
+          "power off",
+          "switch the laptop off",
+          "turn it off",
+          "I'm done for today, shut down",
+          "shutdown please"
+        ],
+        "de": [
+          "fahr den Rechner herunter",
+          "herunterfahren",
+          "Laptop ausschalten",
+          "schalte den Computer aus",
+          "mach den Laptop aus",
+          "ich bin fertig, fahr runter",
+          "bitte ausschalten",
+          "Computer abschalten"
+        ]
+      },
+      "reply": {
+        "en": "Shutting down.",
+        "de": "Fahre herunter."
+      },
+      "run": {
+        "argv": [
+          "systemctl",
+          "poweroff"
+        ]
+      },
+      "confirm": true
+    },
+    {
+      "id": "restart",
+      "title": {
+        "en": "Restart",
+        "de": "Neustarten"
+      },
+      "sentence": {
+        "en": "Restart the laptop",
+        "de": "Laptop neu starten"
+      },
+      "examples": {
+        "en": [
+          "restart",
+          "reboot the laptop",
+          "restart the computer",
+          "reboot",
+          "restart it please",
+          "turn it off and on again",
+          "the laptop is acting up, restart it"
+        ],
+        "de": [
+          "neu starten",
+          "starte den Rechner neu",
+          "Laptop neu starten",
+          "Neustart bitte",
+          "Computer neu booten",
+          "starte den Laptop neu",
+          "der Laptop spinnt, starte ihn neu"
+        ]
+      },
+      "reply": {
+        "en": "Restarting.",
+        "de": "Starte neu."
+      },
+      "run": {
+        "argv": [
+          "systemctl",
+          "reboot"
+        ]
+      },
+      "confirm": true
+    },
+    {
+      "id": "lock",
+      "title": {
+        "en": "Lock",
+        "de": "Sperren"
+      },
+      "sentence": {
+        "en": "Lock the screen",
+        "de": "Bildschirm sperren"
+      },
+      "examples": {
+        "en": [
+          "lock the screen",
+          "lock the laptop",
+          "lock it",
+          "lock the computer",
+          "I'm stepping away, lock it",
+          "secure the screen",
+          "lock my session"
+        ],
+        "de": [
+          "Bildschirm sperren",
+          "sperre den Laptop",
+          "sperr den Rechner",
+          "Computer sperren",
+          "ich gehe kurz weg, sperre ihn",
+          "sperre meine Sitzung",
+          "Sperrbildschirm aktivieren"
+        ]
+      },
+      "reply": {
+        "en": "Locking.",
+        "de": "Sperre."
+      },
+      "run": {
+        "argv": [
+          "xfce4-screensaver-command",
+          "--lock"
+        ]
+      }
+    },
+    {
+      "id": "power_dialog",
+      "title": {
+        "en": "Power options",
+        "de": "Energie-Optionen"
+      },
+      "sentence": {
+        "en": "Show the power options",
+        "de": "Energie-Optionen anzeigen"
+      },
+      "examples": {
+        "en": [
+          "show the power options",
+          "open the shutdown menu",
+          "show me the lock, restart and shut down options",
+          "power menu",
+          "open the power dialog",
+          "what are my power options"
+        ],
+        "de": [
+          "Energie-Optionen anzeigen",
+          "öffne das Ausschaltmenü",
+          "zeig mir Sperren, Neustart und Herunterfahren",
+          "Ausschaltmenü",
+          "öffne den Energiedialog",
+          "welche Energie-Optionen gibt es"
+        ]
+      },
+      "reply": {
+        "en": "Here are the power options.",
+        "de": "Hier sind die Energie-Optionen."
+      },
+      "run": {
+        "argv": [
+          "cyberbeest-logout"
+        ]
+      }
+    }
+  ]
+}

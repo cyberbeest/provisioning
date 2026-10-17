@@ -9,8 +9,8 @@ msgstr ""
 msgid "no battery"
 msgstr "kein Akku"
 
-msgid "%.1fW chg"
-msgstr "%.1fW lädt"
+msgid "%.1fW\nchg"
+msgstr "%.1fW\nlädt"
 
 msgid "AC"
 msgstr "Netz"

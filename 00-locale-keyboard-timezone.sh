@@ -233,6 +233,25 @@ debconf-set-selections <<-EOF
 	keyboard-configuration keyboard-configuration/variantcode string
 	keyboard-configuration keyboard-configuration/xkb-keymap select $KEYBOARD
 EOF
+
+# debconf-set-selections + dpkg-reconfigure alone does NOT actually apply this
+# on a machine that already has a keyboard layout configured -- same class of
+# bug as the locale one above (see its comment): keyboard-configuration's own
+# postinst re-derives keyboard-configuration/layoutcode and xkb-keymap from
+# whatever's already in /etc/default/keyboard and overwrites our preseed with
+# that before dpkg-reconfigure ever applies it, so the old (default "us")
+# layout silently wins regardless of what was picked here -- confirmed via a
+# 2026-09-26 VM repro where "de" was chosen, logged, and debconf-set-selections
+# ran, but debconf-show kept reporting layoutcode=us/xkb-keymap=us afterwards.
+# Write /etc/default/keyboard directly first; dpkg-reconfigure below then just
+# reaffirms debconf's own state to match what's now on disk.
+cat > /etc/default/keyboard <<-EOF
+	XKBMODEL="pc105"
+	XKBLAYOUT="$KEYBOARD"
+	XKBVARIANT=""
+	XKBOPTIONS=""
+	BACKSPACE="guess"
+EOF
 dpkg-reconfigure -f noninteractive keyboard-configuration
 setupcon || true
 

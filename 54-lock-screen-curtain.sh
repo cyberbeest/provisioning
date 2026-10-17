@@ -5,7 +5,7 @@
 # password dialog has painted over it. Toggle is CURTAIN_ENABLED in
 # ~/.config/cyberbeest/power-settings.conf (default true), surfaced as a
 # checkbox in the Extended Power Options dialog (see
-# lib/lock-power-saving-dialog.py). See lib/lock-screen-curtain.sh.
+# lib/cyberbeest-extended-power-options.py). See lib/lock-screen-curtain.sh.
 # Idempotent: safe to re-run.
 #
 # Bumped 2026-09-10: lib/lock-screen-curtain.sh's watchdog fail-safe used a

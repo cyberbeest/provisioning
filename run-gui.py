@@ -205,6 +205,29 @@ PROFILE_FILE = os.path.join(DIR, ".provisioning-profile.env")
 PERSISTED_PROFILE_FILE = os.path.expanduser("~/.config/cyberbeest/run-gui-profile.json")
 
 
+# Scripts whose confirmation the user refused: skipped (with a log note) in
+# later batch runs until the user runs them explicitly on their own.
+DECLINED_SCRIPTS_FILE = os.path.expanduser("~/.config/cyberbeest/run-gui-declined-scripts.json")
+
+
+def load_declined_scripts():
+    try:
+        with open(DECLINED_SCRIPTS_FILE) as f:
+            data = json.load(f)
+        return set(data) if isinstance(data, list) else set()
+    except (OSError, ValueError, TypeError):
+        return set()
+
+
+def save_declined_scripts(scripts):
+    try:
+        os.makedirs(os.path.dirname(DECLINED_SCRIPTS_FILE), exist_ok=True)
+        with open(DECLINED_SCRIPTS_FILE, "w") as f:
+            json.dump(sorted(scripts), f)
+    except OSError:
+        pass
+
+
 def load_persisted_profile():
     try:
         with open(PERSISTED_PROFILE_FILE) as f:
@@ -395,6 +418,16 @@ APT_TRANSIENT_RE = re.compile(
     re.MULTILINE,
 )
 APT_RETRY_DELAYS_S = (60, 120, 240)
+
+# sudo's own failure messages when the cached/typed password is wrong or the
+# askpass dialog was cancelled -- e.g. "Sorry, try again." x N followed by
+# "sudo: 3 incorrect password attempts", or "sudo: no password was
+# provided" / "sudo: a password is required" on cancel. This is a mistyped
+# password, not a script bug, so it shouldn't prompt to send a report.
+SUDO_AUTH_FAIL_RE = re.compile(
+    r"^sudo: (\d+ incorrect password attempts?|no password was provided|a password is required)$",
+    re.MULTILINE,
+)
 REBOOT_TODO_KEY = "__reboot__"
 # One "send a report" todo per failed script, removed again once it succeeds.
 REPORT_TODO_PREFIX = "__report__:"
@@ -431,11 +464,14 @@ SCRIPT_DURATION_ESTIMATES = {
     "10-browser-sandbox.sh": 23,
     "11-xfce-panel-plugins.sh": 99,
     "11a-clipboard-status.sh": 19,
+    "11b-mic-recording-indicator.sh": 8,
+    "11c-network-connections.sh": 8,
     "12-xfce-panel-layout.sh": 20,
     "13-lock-shutdown-watcher.sh": 16,
     "13a-lock-warning-watcher.sh": 6,
     "14-user-avatar.sh": 0,
     "15-grub-plymouth-theme.sh": 69,
+    "15a-plymouth-pointer.sh": 40,
     "16-power-lock-config.sh": 8,
     "17-login-lock-screen.sh": 0,
     "18-desktop-background.sh": 1,
@@ -460,10 +496,12 @@ SCRIPT_DURATION_ESTIMATES = {
     "38-jail-messengers.sh": 4,
     "39-feather-tor-ondemand.sh": 4,
     "40-jail-wallets-viber.sh": 6,
+    "40a-jail-chrome.sh": 3,
     "41-bookmark-seeder.sh": 5,
     "42-security-watch.sh": 17,
     "43-intrusion-watch.sh": 5,
     "44-wipe-app-data.sh": 5,
+    "44a-shared-folders.sh": 4,
     "45-hide-redundant-terminals.sh": 1,
     "46-cyberbeest-keyboard-shortcuts.sh": 0,
     "47-set-max-volume.sh": 0,
@@ -479,6 +517,10 @@ SCRIPT_DURATION_ESTIMATES = {
     "58-cyberbeest-image-viewer.sh": 36,
     "59-cyberbeest-scanner.sh": 144,
     "60-xfce-panel-watchdog.sh": 1,
+    "65-dictate.sh": 240,
+    "67-drawing-app.sh": 12,
+    "69a-butler.sh": 60,
+    "71-battery-report.sh": 1,
     "91-sandbox-vm.sh": 0,
 }
 
@@ -500,7 +542,7 @@ def log_path_for(script):
 
 
 def script_lib_dependencies(script):
-    # Best-effort static scan for lib/ paths a script's body references
+    # Best-effort static scan for lib/ and experimental/ paths a script's body references
     # (including glob patterns like "lib/i18n/strings.*.sh"), so editing a
     # shared lib/ file marks every script that installs it as pending
     # without each of them needing a manual "bump this file" comment (the
@@ -511,7 +553,7 @@ def script_lib_dependencies(script):
             text = f.read()
     except OSError:
         return deps
-    for match in re.finditer(r'lib/[^\s"\'`)]+', text):
+    for match in re.finditer(r'(?:lib|experimental)/[^\s"\'`)]+', text):
         full = os.path.join(DIR, match.group(0).rstrip(".,;:"))
         if "*" in full or "?" in full:
             deps.update(glob.glob(full))
@@ -624,6 +666,20 @@ def mark_script_result(script, succeeded):
             open(marker, "w").close()
     except OSError:
         pass
+
+
+def mark_script_done(script):
+    # Same state a successful run leaves behind: a log newer than the script
+    # and its lib deps, no failed marker, and a fresh i18n fingerprint.
+    log = log_path_for(script)
+    try:
+        if not os.path.exists(log):
+            open(log, "w").close()
+        os.utime(log)
+    except OSError:
+        return False
+    mark_script_result(script, True)
+    return True
 
 
 def script_is_done(script):
@@ -911,6 +967,27 @@ class ProvisioningProfileDialog(Gtk.Dialog):
         self.touchpad_tuning.set_active(prev.get("PROVISIONING_TOUCHPAD_TUNING", "yes") != "no")
         add_row(t("run_gui.profile_touchpad_label"), self.touchpad_tuning)
 
+        # Gated inside the scripts themselves via lib/sounds-profile-gate.sh
+        # (20-shutdown-sound, 35-boot-chime, 47-set-max-volume).
+        self.sounds = Gtk.CheckButton(label=t("run_gui.profile_sounds_checkbox"))
+        self.sounds.set_active(prev.get("PROVISIONING_SOUNDS", "yes") != "no")
+        add_row(t("run_gui.profile_sounds_label"), self.sounds)
+
+        # Mouse pointer on the boot screen (15a-plymouth-pointer.sh); reads
+        # the answer straight from the profile file. Unticking on a machine
+        # that has it puts stock Plymouth back.
+        self.plymouth_pointer = Gtk.CheckButton(label=t("run_gui.profile_plymouth_pointer_checkbox"))
+        self.plymouth_pointer.set_active(prev.get("PROVISIONING_PLYMOUTH_POINTER", "yes") != "no")
+        add_row(t("run_gui.profile_plymouth_pointer_label"), self.plymouth_pointer)
+
+        # Dictation speech model (65-dictate.sh): Dictate itself always
+        # installs; this only controls the 140-640 MB model download, so test
+        # runs in VMs can skip it. Dictate fetches a missing model on first
+        # use anyway. 65- reads the answer straight from the profile file.
+        self.dictation_model = Gtk.CheckButton(label=t("run_gui.profile_dictation_model_checkbox"))
+        self.dictation_model.set_active(prev.get("PROVISIONING_DICTATION_MODEL", "yes") != "no")
+        add_row(t("run_gui.profile_dictation_model_label"), self.dictation_model)
+
         # VM image download (56-cyberbeest-sandbox-vm-kvm.sh): the
         # hypervisor itself (53a-qemu-kvm-virt-manager.sh, KVM -- the only one
         # provisioning ships, VirtualBox was dropped entirely 2026-09-19)
@@ -1024,6 +1101,9 @@ class ProvisioningProfileDialog(Gtk.Dialog):
             "PROVISIONING_MENU_KEY_REMAP": "yes" if self.menu_key_remap.get_active() else "no",
             "PROVISIONING_TIMEZONE": self.tz_combo.get_child().get_text().strip() or "UTC",
             "PROVISIONING_TOUCHPAD_TUNING": "yes" if self.touchpad_tuning.get_active() else "no",
+            "PROVISIONING_SOUNDS": "yes" if self.sounds.get_active() else "no",
+            "PROVISIONING_PLYMOUTH_POINTER": "yes" if self.plymouth_pointer.get_active() else "no",
+            "PROVISIONING_DICTATION_MODEL": "yes" if self.dictation_model.get_active() else "no",
             "PROVISIONING_VM_IMAGE": "yes" if self.vm_image.get_active() else "no",
             "PROVISIONING_VM_UPDATE": "yes" if self.vm_update and self.vm_update.get_active() else "no",
         }
@@ -1087,6 +1167,7 @@ class RunGuiWindow(Gtk.Window):
         button_box.pack_start(button_row1, False, False, 0)
 
         self.run_changed_button = Gtk.Button(label=t("run_gui.button_run_changed"))
+        self.run_changed_button.get_style_context().add_class("suggested-action")
         self.run_changed_button.connect("clicked", lambda _b: self.start_sequence(changed_only=True))
         button_row1.pack_start(self.run_changed_button, False, False, 0)
 
@@ -1240,6 +1321,7 @@ class RunGuiWindow(Gtk.Window):
         self.listbox.set_activate_on_single_click(False)
         self.listbox.connect("row-activated", self.on_row_activated)
         self.listbox.connect("selected-rows-changed", self.on_selection_changed)
+        self.listbox.connect("button-press-event", self.on_listbox_button_press)
         self.listbox.set_filter_func(self._row_matches_filter)
         self.sidebar_scroller.add(self.listbox)
 
@@ -1551,6 +1633,19 @@ class RunGuiWindow(Gtk.Window):
             t("run_gui.button_run_changed_count").format(count=changed_count)
         )
         self.run_changed_button.set_sensitive(not self.busy and changed_count > 0)
+        # The status line's resting text doubles as a hint about what to
+        # click; only swap it while it still shows one of the two idle texts.
+        idle_text = (
+            t("run_gui.status_idle_changed").format(count=changed_count)
+            if changed_count > 0
+            else t("run_gui.status_idle")
+        )
+        if self.status_label.get_text() in (
+            t("run_gui.status_idle"),
+            getattr(self, "_idle_changed_text", None),
+        ):
+            self.status_label.set_text(idle_text)
+            self._idle_changed_text = idle_text
 
     def _update_run_selected_sensitivity(self):
         has_selection = bool(self.listbox.get_selected_rows())
@@ -1681,6 +1776,45 @@ class RunGuiWindow(Gtk.Window):
                 count=len(self.listbox.get_selected_rows())
             )
         )
+
+    def on_listbox_button_press(self, listbox, event):
+        if event.type != Gdk.EventType.BUTTON_PRESS or event.button != 3:
+            return False
+        row = listbox.get_row_at_y(int(event.y))
+        if row is None:
+            return False
+        # Right-clicking inside a multi-selection acts on all of it;
+        # right-clicking outside it acts on just that row.
+        selected = listbox.get_selected_rows()
+        scripts = [r.script for r in selected] if row in selected else [row.script]
+        menu = Gtk.Menu()
+        run_item = Gtk.MenuItem(label=t("run_gui.menu_run_script" if len(scripts) == 1 else "run_gui.menu_run_scripts").format(count=len(scripts), script=scripts[0]))
+        run_item.set_sensitive(not self.busy)
+        run_item.connect("activate", lambda _i: self._run_scripts_from_menu(scripts))
+        menu.append(run_item)
+        done_item = Gtk.MenuItem(label=t("run_gui.menu_mark_done" if len(scripts) == 1 else "run_gui.menu_mark_dones").format(count=len(scripts), script=scripts[0]))
+        done_item.set_sensitive(not self.busy)
+        done_item.connect("activate", lambda _i: self._mark_done_from_menu(scripts))
+        menu.append(done_item)
+        menu.show_all()
+        menu.popup_at_pointer(event)
+        return True
+
+    def _run_scripts_from_menu(self, scripts):
+        if self.busy:
+            return
+        if len(scripts) == 1:
+            self._start_run(scripts, label=t("run_gui.label_run_single").format(script=scripts[0]), batch=False)
+        else:
+            self._start_run(scripts, label=t("run_gui.button_run_selected"), batch=True)
+
+    def _mark_done_from_menu(self, scripts):
+        if self.busy:
+            return
+        for script in scripts:
+            if mark_script_done(script):
+                self.set_row_status(script, "done")
+        self.status_label.set_text(t("run_gui.status_marked_done").format(count=len(scripts)))
 
     def on_row_activated(self, _listbox, row):
         if self.busy:
@@ -1910,7 +2044,22 @@ class RunGuiWindow(Gtk.Window):
             has_work_check = CONFIRMATION_SKIP_IF_NOOP.get(script)
             if has_work_check is not None and not has_work_check():
                 confirm_message = None
-            if confirm_message and not self._confirm(script, confirm_message):
+            if confirm_message:
+                declined = load_declined_scripts()
+                if script in declined and self.current_run_is_batch:
+                    GLib.idle_add(self.append_log, script, t("run_gui.log_skipped_declined").format(script=script))
+                    GLib.idle_add(self.set_row_status, script, "skipped")
+                    GLib.idle_add(self._bump_progress)
+                    continue
+                if self._confirm(script, confirm_message):
+                    if script in declined:
+                        declined.discard(script)
+                        save_declined_scripts(declined)
+                else:
+                    declined.add(script)
+                    save_declined_scripts(declined)
+                    confirm_message = "declined"
+            if confirm_message == "declined":
                 GLib.idle_add(self.append_log, script, t("run_gui.log_skipped").format(script=script))
                 GLib.idle_add(self.set_row_status, script, "skipped")
                 GLib.idle_add(self._bump_progress)
@@ -1927,11 +2076,17 @@ class RunGuiWindow(Gtk.Window):
             # so it no longer needs the xterm/TTY treatment -- runs piped
             # like everything else.
             profile_driven = self.profile_env is not None and script in PROFILE_SCRIPTS
+            # Only the piped path captures its output for inspection below
+            # (a NEEDS_TERMINAL script's sudo prompt happens directly in the
+            # xterm, uncaptured) -- stays "" rather than carrying over
+            # whatever an earlier, unrelated piped script left behind.
+            piped_output = ""
             if script in NEEDS_TERMINAL and not profile_driven:
                 status = self._run_in_terminal(script)
             else:
                 GLib.idle_add(self.append_log, script, t("run_gui.log_running_marker").format(script=script))
                 status = self._run_piped(script)
+                piped_output = self.last_piped_output
                 # Scripts are idempotent, so re-running the whole script
                 # after a transient package-server error is safe.
                 for attempt, delay in enumerate(APT_RETRY_DELAYS_S, 1):
@@ -1947,6 +2102,7 @@ class RunGuiWindow(Gtk.Window):
                         break
                     GLib.idle_add(self.append_log, script, t("run_gui.log_running_marker").format(script=script))
                     status = self._run_piped(script)
+                    piped_output = self.last_piped_output
             # For a NEEDS_TERMINAL script this includes however long the
             # xterm sat open waiting for someone to work through its
             # whiptail menus, not just the script's own work -- expected,
@@ -1977,13 +2133,19 @@ class RunGuiWindow(Gtk.Window):
                     ),
                 )
                 GLib.idle_add(self.set_row_status, script, "failed", duration)
-                GLib.idle_add(
-                    self._add_todo,
-                    REPORT_TODO_PREFIX + script,
-                    t("run_gui.todo_report_text").format(script=script),
-                    (t("run_gui.todo_report_action"),
-                     lambda _b, s=script, st=status: self._open_report(s, st)),
-                )
+                if SUDO_AUTH_FAIL_RE.search(piped_output):
+                    GLib.idle_add(
+                        self.append_log, script,
+                        t("run_gui.log_failed_password").format(script=script),
+                    )
+                else:
+                    GLib.idle_add(
+                        self._add_todo,
+                        REPORT_TODO_PREFIX + script,
+                        t("run_gui.todo_report_text").format(script=script),
+                        (t("run_gui.todo_report_action"),
+                         lambda _b, s=script, st=status: self._open_report(s, st)),
+                    )
                 if remaining:
                     GLib.idle_add(
                         self.append_log,
@@ -2121,7 +2283,16 @@ class RunGuiWindow(Gtk.Window):
         # window itself, so this one just gets out of the way.
         installed = os.path.expanduser("~/.local/bin/cyberbeest-update.sh")
         updater = installed if os.path.exists(installed) else os.path.join(DIR, "lib", "cyberbeest-update.sh")
-        subprocess.Popen([updater], start_new_session=True)
+        # The updater takes a single-instance flock that this process itself
+        # may hold (the lock fd survives the updater's exec into run-gui.py),
+        # and it silently exits if the lock is taken. Starting it immediately
+        # raced our own exit, so wait for this pid to be gone first (30 s cap).
+        subprocess.Popen(
+            ["bash", "-c",
+             'for _ in $(seq 150); do kill -0 "$1" 2>/dev/null || break; sleep 0.2; done; exec "$2"',
+             "switch-to-update", str(os.getpid()), updater],
+            start_new_session=True,
+        )
         self.destroy()
 
     def on_stop(self, _button):
@@ -2152,7 +2323,12 @@ def main():
             sys.exit(1)
         print(version)
         return
-    RunGuiWindow()
+    window = RunGuiWindow()
+    # Used by Fast Track (cyberbeest-update.sh --fast-track): the user has
+    # already confirmed the update in its dialog, so start "Run changed"
+    # straight away instead of waiting for a click.
+    if "--run-changed" in sys.argv[1:]:
+        GLib.idle_add(lambda: window.start_sequence(changed_only=True) and False)
     Gtk.main()
 
 

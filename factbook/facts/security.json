@@ -1,0 +1,253 @@
+{
+  "topic": {
+    "en": "Passwords, updates and protection",
+    "de": "Passwörter, Updates und Schutz"
+  },
+  "source": "Functional-Manual-v2 sections 1.1, 1.6-1.11, 2",
+  "checked": "2026-10-15",
+  "facts": [
+    {
+      "id": "pw-two-passwords",
+      "en": "Each Cyberbeest has a master password of 3 random English words and a short password of 2 random English words.",
+      "de": "Jedes Cyberbeest hat ein Master-Passwort aus 3 zufälligen englischen Wörtern und ein kurzes Passwort aus 2 zufälligen englischen Wörtern.",
+      "manual": "1.1"
+    },
+    {
+      "id": "pw-five-words",
+      "en": "Cyberbeest passwords use no special characters or numbers, so there are just 5 plain words to remember in total.",
+      "de": "Cyberbeest-Passwörter enthalten keine Sonderzeichen und Zahlen, du musst dir also insgesamt nur 5 gewöhnliche Wörter merken.",
+      "manual": "1.1"
+    },
+    {
+      "id": "pw-master-vs-short",
+      "en": "On a Cyberbeest the master password unlocks the encrypted disk at startup, and the short password unlocks the desktop.",
+      "de": "Auf einem Cyberbeest entsperrt das Master-Passwort beim Start die verschlüsselte Festplatte und das kurze Passwort den Desktop.",
+      "manual": "1.2"
+    },
+    {
+      "id": "updates-every-2h",
+      "en": "A Cyberbeest checks for security updates every 2 hours and installs them automatically.",
+      "de": "Ein Cyberbeest sucht alle 2 Stunden nach Sicherheitsupdates und installiert sie automatisch.",
+      "manual": "1.6"
+    },
+    {
+      "id": "updates-scope",
+      "en": "Cyberbeest's automatic security updates cover the Linux system itself and most of the installed apps.",
+      "de": "Die automatischen Sicherheitsupdates von Cyberbeest umfassen das Linux-System selbst und die meisten installierten Apps.",
+      "manual": "1.6"
+    },
+    {
+      "id": "updates-messengers-metered",
+      "en": "On a Cyberbeest, messenger updates install on the normal 2-hour schedule on DSL or fiber, but are held back for up to 7 days on a mobile connection to save bandwidth.",
+      "de": "Messenger-Updates werden auf einem Cyberbeest im normalen 2-Stunden-Takt installiert, wenn eine DSL- oder Glasfaserverbindung besteht, und bei Mobilfunk bis zu 7 Tage zurückgehalten, um Datenvolumen zu sparen.",
+      "manual": "1.6"
+    },
+    {
+      "id": "vm-second-copy",
+      "en": "Cyberbeest includes a full virtual machine with a second copy of all apps, for an additional layer of protection.",
+      "de": "Cyberbeest enthält eine vollständige virtuelle Maschine mit einer zweiten Kopie aller Apps – als zusätzliche Schutzschicht.",
+      "manual": "1.7",
+      "tip": true
+    },
+    {
+      "id": "vm-isolated",
+      "en": "Apps running inside the Cyberbeest VM can never access or change data stored outside of the VM.",
+      "de": "Apps in der Cyberbeest-VM können niemals auf Daten außerhalb der VM zugreifen oder sie ändern.",
+      "manual": "1.7"
+    },
+    {
+      "id": "vm-own-data",
+      "en": "Apps inside the Cyberbeest VM have their own data folders, independent from the apps outside of it.",
+      "de": "Apps in der Cyberbeest-VM haben eigene Datenordner, unabhängig von den Apps außerhalb.",
+      "manual": "1.7"
+    },
+    {
+      "id": "vm-close-hibernates",
+      "en": "Closing the Cyberbeest VM window normally hibernates the VM, so the windows you had open inside it come back the next time you start it.",
+      "de": "Wenn du das Fenster der Cyberbeest-VM schließt, wird die VM normalerweise in den Ruhezustand versetzt, und deine geöffneten Fenster sind beim nächsten Start wieder da.",
+      "manual": "1.7"
+    },
+    {
+      "id": "vm-updates-when-running",
+      "en": "The Cyberbeest VM gets its security updates every 2 hours like the main system, but only if the VM is running when the 2-hour window turns over.",
+      "de": "Die Cyberbeest-VM bekommt ihre Sicherheitsupdates alle 2 Stunden wie das Hauptsystem, aber nur, wenn die VM zu Beginn des 2-Stunden-Intervalls läuft.",
+      "manual": "1.7"
+    },
+    {
+      "id": "vm-ram",
+      "en": "The Cyberbeest VM occupies about 2 GB of the laptop's 6 GB of RAM, so avoid heavy multitasking while it is running.",
+      "de": "Die Cyberbeest-VM belegt etwa 2 GB der 6 GB Arbeitsspeicher, vermeide also intensives Multitasking, solange sie läuft.",
+      "manual": "1.7",
+      "tip": true
+    },
+    {
+      "id": "vpn-any-provider",
+      "en": "Cyberbeest ships with its own VPN tool, which can install a VPN from any provider.",
+      "de": "Cyberbeest wird mit einem eigenen VPN-Werkzeug ausgeliefert, mit dem du ein VPN eines beliebigen Anbieters einrichten kannst.",
+      "manual": "1.8",
+      "tip": true
+    },
+    {
+      "id": "vpn-killswitch-1",
+      "en": "Cyberbeest's VPN tool has a level 1 kill switch that cuts the connection when the VPN becomes unreachable, but only after you have connected to the VPN.",
+      "de": "Das VPN-Werkzeug von Cyberbeest hat einen Stufe-1-Kill-Switch, der die Verbindung trennt, wenn das VPN nicht erreichbar ist – aber erst, nachdem du dich mit dem VPN verbunden hast.",
+      "manual": "1.8"
+    },
+    {
+      "id": "vpn-killswitch-2",
+      "en": "Mullvad and Proton VPN can also be installed on a Cyberbeest with a level 2 kill switch, which is always active and blocks all Internet access except through the VPN.",
+      "de": "Mullvad und Proton VPN lassen sich auf einem Cyberbeest auch mit einem Stufe-2-Kill-Switch installieren, der immer aktiv ist und jeden Internetzugang außer über das VPN blockiert.",
+      "manual": "1.8"
+    },
+    {
+      "id": "sandbox-each-app",
+      "en": "Every security-sensitive networking app on a Cyberbeest runs in its own sandbox and can only see its own data and the shared folders.",
+      "de": "Jede sicherheitsrelevante Netzwerk-App auf einem Cyberbeest läuft in einer eigenen Sandbox und sieht nur ihre eigenen Daten und die gemeinsamen Ordner.",
+      "manual": "1.9"
+    },
+    {
+      "id": "sandbox-containment",
+      "en": "Cyberbeest sandboxes exist so that a security incident in one app cannot spill over into the rest of the system.",
+      "de": "Die Sandboxes von Cyberbeest sorgen dafür, dass ein Sicherheitsvorfall in einer App nicht auf den Rest des Systems übergreift.",
+      "manual": "1.9"
+    },
+    {
+      "id": "sandbox-which-apps",
+      "en": "On a Cyberbeest the browser, all messengers and the crypto wallets run in sandboxes.",
+      "de": "Auf einem Cyberbeest laufen der Browser, alle Messenger und die Krypto-Wallets in Sandboxes.",
+      "manual": "1.9"
+    },
+    {
+      "id": "folders-default",
+      "en": "By default, sandboxed apps on a Cyberbeest can see the shared folders Pictures and Downloads.",
+      "de": "Standardmäßig sehen Apps in der Sandbox auf einem Cyberbeest die gemeinsamen Ordner Bilder und Downloads.",
+      "manual": "1.9"
+    },
+    {
+      "id": "folders-whitelisted-app",
+      "en": "To let sandboxed apps see more folders, open Whitelisted Folders from the menu, then use + to add a folder and − to remove one.",
+      "de": "Damit Apps in der Sandbox weitere Ordner sehen können, öffne im Menü „Zugelassene Ordner“ und füge mit + einen Ordner hinzu oder entferne ihn mit −.",
+      "manual": "1.10",
+      "tip": true
+    },
+    {
+      "id": "folders-all-apps-read-write",
+      "en": "Every sandboxed app on a Cyberbeest sees every folder on the Whitelisted Folders list and can read and change what is inside.",
+      "de": "Jede App in der Sandbox auf einem Cyberbeest sieht jeden Ordner der Liste „Zugelassene Ordner“ und kann lesen und ändern, was darin liegt.",
+      "manual": "1.10"
+    },
+    {
+      "id": "folders-restart-apps",
+      "en": "After changing the Whitelisted Folders list, click Restart apps… so the sandboxed apps reopen with the change, and save your work first.",
+      "de": "Klicke nach einer Änderung der Liste „Zugelassene Ordner“ auf „Apps neu starten…“, damit die Apps in der Sandbox mit der Änderung neu starten, und speichere vorher deine Arbeit.",
+      "manual": "1.10"
+    },
+    {
+      "id": "folders-missing-grey",
+      "en": "A whitelisted folder that is missing, such as an unplugged USB drive, stays on the list in grey as “Not found” and works again when the folder returns.",
+      "de": "Ein fehlender zugelassener Ordner, zum Beispiel ein nicht angeschlossener USB-Stick, bleibt grau als „Nicht gefunden“ in der Liste und funktioniert wieder, sobald der Ordner zurück ist.",
+      "manual": "1.10"
+    },
+    {
+      "id": "folders-not-allowed",
+      "en": "Your whole home folder and hidden folders, whose names start with a dot such as .ssh, cannot be added to the Whitelisted Folders list.",
+      "de": "Dein gesamter Persönlicher Ordner und versteckte Ordner, deren Namen mit einem Punkt beginnen wie .ssh, lassen sich nicht zu den zugelassenen Ordnern hinzufügen.",
+      "manual": "1.10"
+    },
+    {
+      "id": "firewall-incoming",
+      "en": "A Cyberbeest is completely firewalled in software, and incoming connections on any port are blocked.",
+      "de": "Ein Cyberbeest ist softwareseitig vollständig durch eine Firewall geschützt, und eingehende Verbindungen sind auf allen Ports blockiert.",
+      "manual": "1.11"
+    },
+    {
+      "id": "dns-encrypted",
+      "en": "Encrypted DNS is on by default on a Cyberbeest, so a malicious router can neither see nor tamper with your server address lookups.",
+      "de": "Verschlüsseltes DNS ist auf einem Cyberbeest standardmäßig aktiviert, sodass ein bösartiger Router deine Serveradress-Abfragen weder einsehen noch manipulieren kann.",
+      "manual": "2.1"
+    },
+    {
+      "id": "dns-router-page",
+      "en": "If your router's config page won't open in Firefox, turn off encrypted DNS temporarily: fritz.box works fine with it, but other router brands may not.",
+      "de": "Wenn sich die Konfigurationsseite deines Routers in Firefox nicht öffnen lässt, schalte das verschlüsselte DNS vorübergehend aus: fritz.box funktioniert problemlos damit, andere Router-Marken eventuell nicht.",
+      "manual": "2.1",
+      "tip": true,
+      "ask": {
+        "en": [
+          "I can't reach my router settings page",
+          "my router page won't open",
+          "I can't open my router's login page",
+          "fritz.box doesn't load",
+          "can't get into my router",
+          "the router configuration page does not work",
+          "how do I open my router settings"
+        ],
+        "de": [
+          "Ich komme nicht auf die Einstellungen meines Routers",
+          "Die Router-Seite öffnet sich nicht",
+          "Die Fritzbox-Oberfläche lädt nicht",
+          "fritz.box geht nicht",
+          "Ich komme nicht in meinen Router",
+          "Die Seite meines Routers lässt sich nicht öffnen"
+        ]
+      },
+      "action": {
+        "label": {
+          "en": "Turn off encrypted DNS for now",
+          "de": "Verschlüsseltes DNS vorübergehend ausschalten"
+        },
+        "run": [
+          "gtk-launch",
+          "dot-disable"
+        ],
+        "confirm": true
+      }
+    },
+    {
+      "id": "dns-captive-portal",
+      "en": "If the login page of a hotel or airport Wi-Fi never appears, turn off encrypted DNS temporarily: such pages need plain DNS, and it is back on after a restart.",
+      "de": "Erscheint die Anmeldeseite eines Hotel- oder Flughafen-WLANs nicht, schalte das verschlüsselte DNS vorübergehend aus: solche Seiten brauchen normales DNS, und nach einem Neustart ist es wieder an.",
+      "manual": "2.1",
+      "ask": {
+        "en": [
+          "the hotel wifi login page doesn't show up",
+          "I'm connected to the wifi but there is no login page",
+          "the captive portal does not open",
+          "I can't log in to the airport wifi",
+          "wifi says connected but no website loads and there's no sign-in page"
+        ],
+        "de": [
+          "Die Anmeldeseite vom Hotel-WLAN erscheint nicht",
+          "Ich bin mit dem WLAN verbunden, aber es kommt keine Anmeldeseite",
+          "Das Captive Portal öffnet sich nicht",
+          "Ich kann mich im Flughafen-WLAN nicht anmelden",
+          "WLAN verbunden, aber keine Seite lädt und keine Anmeldung erscheint"
+        ]
+      },
+      "action": {
+        "label": {
+          "en": "Turn off encrypted DNS for now",
+          "de": "Verschlüsseltes DNS vorübergehend ausschalten"
+        },
+        "run": [
+          "gtk-launch",
+          "dot-disable"
+        ],
+        "confirm": true
+      }
+    },
+    {
+      "id": "printers-discovery-off",
+      "en": "Automatic printer discovery on the local network is off by default on a Cyberbeest, and you can switch it on by running Enable LAN Printer Discovery.",
+      "de": "Die automatische Druckererkennung im lokalen Netzwerk ist auf einem Cyberbeest standardmäßig aus und lässt sich mit „Enable LAN Printer Discovery“ einschalten.",
+      "manual": "2.2",
+      "tip": true
+    },
+    {
+      "id": "printers-by-ip",
+      "en": "On a Cyberbeest you can always add a printer by its IP address, even with automatic printer discovery switched off.",
+      "de": "Auf einem Cyberbeest kannst du einen Drucker immer über seine IP-Adresse hinzufügen, auch wenn die automatische Druckererkennung aus ist.",
+      "manual": "2.2"
+    }
+  ]
+}

@@ -20,6 +20,7 @@ does its own independent read_setting().
 """
 
 import os
+import shutil
 import subprocess
 
 import gi
@@ -34,6 +35,30 @@ CONFIG_PATH = os.path.join(CONFIG_DIR, "power-settings.conf")
 
 # Substituted at install time to match the panel-layout template's genmon plugin id.
 GENMON_WIDGET_NAME = "__GENMON_WIDGET__"
+
+def gopanel_exe():
+    """The gopanel binary: installed link, PATH, or the dev checkout."""
+    for p in (os.path.expanduser("~/.local/bin/gopanel"), shutil.which("gopanel") or "",
+              os.path.expanduser("~/claude/provisioning/gopanel/gopanel"),
+              os.path.expanduser("~/claude/gopanel/gopanel")):
+        if p and os.access(p, os.X_OK):
+            return p
+    return None
+
+
+def refresh_genmon():
+    """Ask the running panel to re-run the status genmon now: gopanel's own refresh when it is
+    the panel, else XFCE's plugin event, nothing when neither runs (xfce4-panel would pop up an
+    error dialog instead)."""
+    def running(name):
+        return subprocess.run(["pgrep", "-x", name], capture_output=True).returncode == 0
+    if running("gopanel"):
+        exe = gopanel_exe()
+        if exe:
+            subprocess.Popen([exe, "refresh"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    elif running("xfce4-panel"):
+        subprocess.Popen(["xfce4-panel", f"--plugin-event={GENMON_WIDGET_NAME}:refresh:bool:true"])
+
 
 DEFAULTS = {
     "NOTIFICATIONS_WHEN_LOCKED": "false",  # experimental, off by default
@@ -83,7 +108,7 @@ def write_setting(key, value):
         for k in DEFAULTS:
             f.write(f"{k}={settings[k]}\n")
     # Otherwise the panel icon only catches up at its next 30s poll.
-    subprocess.Popen(["xfce4-panel", f"--plugin-event={GENMON_WIDGET_NAME}:refresh:bool:true"])
+    refresh_genmon()
 
 
 class PowerSettingsPage(Gtk.Box):

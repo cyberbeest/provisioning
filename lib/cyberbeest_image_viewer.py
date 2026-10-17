@@ -18,7 +18,7 @@ import sys
 
 import gi
 import numpy as np
-from PIL import Image, ImageOps
+from PIL import Image, ImageOps, UnidentifiedImageError
 
 gi.require_version("Gtk", "3.0")
 gi.require_version("Gdk", "3.0")
@@ -30,6 +30,12 @@ try:
 
     HAVE_GL = True
 except ImportError:
+    HAVE_GL = False
+
+# The GL path produced black flicker (whole image going black) under the
+# compositor, so the CPU path is the default for now. CYBERBEEST_IMAGE_VIEWER_GL=1
+# opts back into GL.
+if not os.environ.get("CYBERBEEST_IMAGE_VIEWER_GL"):
     HAVE_GL = False
 
 # Leave room for window decorations / panel so a fit-to-screen image
@@ -71,17 +77,19 @@ void main() {
 """
 
 
-def srgb_to_linear(u8):
-    a = u8.astype(np.float64) / 255.0
-    return np.where(a <= 0.04045, a / 12.92, ((a + 0.055) / 1.055) ** 2.4)
+def _build_srgb_luts():
+    # 8-bit sRGB -> 16-bit linear, and back. Done as lookup tables so the
+    # per-pixel pow() runs 256/65536 times instead of once per pixel.
+    a = np.arange(256) / 255.0
+    lin = np.where(a <= 0.04045, a / 12.92, ((a + 0.055) / 1.055) ** 2.4)
+    decode = np.round(lin * 65535).astype(np.uint16)
+    lin = np.arange(65536) / 65535.0
+    enc = np.where(lin <= 0.0031308, lin * 12.92, 1.055 * np.power(lin, 1.0 / 2.4) - 0.055)
+    encode = np.clip(np.round(enc * 255), 0, 255).astype(np.uint8)
+    return decode, encode
 
 
-def linear_to_srgb(lin):
-    lin = np.clip(lin, 0.0, 1.0)
-    a = np.where(
-        lin <= 0.0031308, lin * 12.92, 1.055 * np.power(lin, 1.0 / 2.4) - 0.055
-    )
-    return np.clip(a * 255.0 + 0.5, 0, 255).astype(np.uint8)
+_SRGB_DECODE_LUT, _SRGB_ENCODE_LUT = _build_srgb_luts()
 
 
 def resize_gamma_correct(img, target_w, target_h):
@@ -89,20 +97,23 @@ def resize_gamma_correct(img, target_w, target_h):
 
     Alpha (if present) is not gamma-encoded, so it's resized directly
     alongside the linearized color channels rather than through the
-    sRGB round-trip.
+    sRGB round-trip. The color channels are resized as 16-bit linear
+    ("I;16"), which Pillow does in C, far faster than float32.
+
+    Only downscaling averages pixels in a way that darkens, so upscaling
+    (zoom beyond native size) skips the linear-light round-trip.
     """
+    if target_w >= img.width and target_h >= img.height:
+        return img.resize((target_w, target_h), Image.LANCZOS)
     has_alpha = img.mode == "RGBA"
     arr = np.asarray(img)
-    rgb = arr[:, :, :3]
-    linear = srgb_to_linear(rgb)
 
     channels = []
     for c in range(3):
-        chan = Image.fromarray(linear[:, :, c].astype(np.float32), mode="F")
+        chan = Image.fromarray(_SRGB_DECODE_LUT[arr[:, :, c]])
         chan = chan.resize((target_w, target_h), Image.LANCZOS)
-        channels.append(np.asarray(chan))
-    linear_resized = np.stack(channels, axis=-1)
-    rgb_resized = linear_to_srgb(linear_resized)
+        channels.append(_SRGB_ENCODE_LUT[np.asarray(chan)])
+    rgb_resized = np.stack(channels, axis=-1)
 
     if has_alpha:
         alpha_img = Image.fromarray(arr[:, :, 3])
@@ -110,6 +121,22 @@ def resize_gamma_correct(img, target_w, target_h):
         out = np.dstack([rgb_resized, alpha_resized])
         return Image.fromarray(out, mode="RGBA")
     return Image.fromarray(rgb_resized, mode="RGB")
+
+
+def pixbuf_to_pil(path):
+    """Decode formats Pillow lacks (JPEG XL) through the gdk-pixbuf loader
+    plugins (libjxl-gdk-pixbuf). 8-bit RGBA, EXIF orientation applied."""
+    try:
+        pb = GdkPixbuf.Pixbuf.new_from_file(path)
+    except GLib.Error as e:
+        raise OSError(f"cannot decode {path}: {e.message}") from e
+    pb = pb.apply_embedded_orientation() or pb
+    if not pb.get_has_alpha():
+        pb = pb.add_alpha(False, 0, 0, 0)
+    w, h, stride = pb.get_width(), pb.get_height(), pb.get_rowstride()
+    return Image.frombuffer(
+        "RGBA", (w, h), pb.get_pixels(), "raw", "RGBA", stride, 1
+    ).copy()
 
 
 def pil_to_pixbuf(img):
@@ -132,6 +159,7 @@ def pil_to_pixbuf(img):
 
 IMAGE_EXTS = (
     ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".tif", ".tiff", ".ico",
+    ".jxl",
 )
 
 
@@ -202,7 +230,10 @@ def load_frames(path):
     (RGBA PIL.Image, duration_ms) -- a single entry for a still image, one
     per frame for an animated GIF.
     """
-    img = Image.open(path)
+    try:
+        img = Image.open(path)
+    except UnidentifiedImageError:
+        img = pixbuf_to_pil(path)
     if img.format == "GIF" and getattr(img, "n_frames", 1) > 1:
         frames = []
         for i in range(img.n_frames):
@@ -425,20 +456,33 @@ def make_cpu_image_widget(frames):
 
 
 _BLACK_BG_CSS = Gtk.CssProvider()
-_BLACK_BG_CSS.load_from_data(b"window { background-color: black; }")
+# Only the image area is black, not the whole window: with a black window,
+# any partial redraw of the control bar (hover over a button, the zoom
+# label) could flash black through its transparent children.
+_BLACK_BG_CSS.load_from_data(b".image-backdrop, .image-backdrop viewport { background-color: black; }")
 
-# The window itself is black (image backdrop), so the control bar needs
-# the theme's normal background back to be readable.
 _BAR_CSS = Gtk.CssProvider()
 _BAR_CSS.load_from_data(b"box { background-color: @theme_bg_color; padding: 2px 4px; }")
+
+# GTK animates a button's transparent normal state to its hover color
+# through transparent black, which flashes dark over the black window.
+# Providers only style the widget they're added to, so this goes on
+# each button individually.
+_NO_TRANSITION_CSS = Gtk.CssProvider()
+_NO_TRANSITION_CSS.load_from_data(b"button { transition: none; }")
+
 
 CONFIG_DIR = os.path.expanduser("~/.config/cyberbeest")
 BAR_COLLAPSED_FILE = os.path.join(CONFIG_DIR, "image-viewer-bar-collapsed")
 
 
+TOOLTIP_TIMEOUT_MS = 4000
+
+
 def _icon_button(icon_name, tooltip, handler):
     button = Gtk.Button.new_from_icon_name(icon_name, Gtk.IconSize.BUTTON)
     button.set_relief(Gtk.ReliefStyle.NONE)
+    button.get_style_context().add_provider(_NO_TRANSITION_CSS, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
     button.set_tooltip_text(tooltip)
     # Keep keyboard focus off the bar, so arrow keys / Enter keep going
     # to the viewer instead of moving between or clicking bar buttons.
@@ -615,7 +659,7 @@ _clipboard_owner = None
 class ImageViewerWindow(Gtk.Window):
     def __init__(self, path):
         super().__init__()
-        self.get_style_context().add_provider(_BLACK_BG_CSS, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+        Gtk.StyleContext.add_provider_for_screen(Gdk.Screen.get_default(), _BLACK_BG_CSS, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
         self.folder_images = folder_images_by_date(path)
         path = os.path.abspath(path)
         try:
@@ -651,10 +695,12 @@ class ImageViewerWindow(Gtk.Window):
         vbox.reorder_child(self.control_bar, 0)
 
         overlay = Gtk.Overlay()
+        overlay.get_style_context().add_class("image-backdrop")
         vbox.pack_start(overlay, True, True, 0)
         overlay.show()
 
         self.scroller = Gtk.ScrolledWindow()
+        self.scroller.get_style_context().add_class("image-backdrop")
         self.scroller.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
         self.scroller.connect("size-allocate", self.on_viewport_allocate)
         overlay.add(self.scroller)
@@ -693,14 +739,17 @@ class ImageViewerWindow(Gtk.Window):
         # Zoom controls sit centered in the window; the menu and collapse
         # buttons stay at the right edge.
         zoom_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=2)
+        zoom_box.pack_start(_icon_button("zoom-original-symbolic", "Zoom 1:1 (0)", self.zoom_to_native), False, False, 0)
         zoom_box.pack_start(_icon_button("zoom-out-symbolic", "Zoom Out (-)", lambda: self.zoom_by(1 / ZOOM_STEP)), False, False, 0)
         # Fixed width so the buttons don't shift as the percentage changes.
         self.zoom_label = Gtk.Label(width_chars=10)
         zoom_box.pack_start(self.zoom_label, False, False, 0)
         zoom_box.pack_start(_icon_button("zoom-in-symbolic", "Zoom In (+)", lambda: self.zoom_by(ZOOM_STEP)), False, False, 0)
-        zoom_box.pack_start(_icon_button("zoom-original-symbolic", "Zoom 1:1 (0)", self.zoom_to_native), False, False, 0)
         zoom_box.pack_start(_icon_button("zoom-fit-best-symbolic", "Zoom Fit (f)", self.zoom_to_fit), False, False, 0)
         bar.set_center_widget(zoom_box)
+
+        bar.pack_start(_icon_button("go-previous-symbolic", "Previous Image (Left)", lambda: self.show_offset(-1)), False, False, 0)
+        bar.pack_start(_icon_button("go-next-symbolic", "Next Image (Right)", lambda: self.show_offset(1)), False, False, 0)
 
         bar.pack_end(_icon_button("pan-up-symbolic", "Hide control bar", lambda: self.set_bar_collapsed(True)), False, False, 0)
 
@@ -709,6 +758,7 @@ class ImageViewerWindow(Gtk.Window):
         menu.append(_menu_item_with_hotkey("Copy Image", "Ctrl+C", self.copy_image))
         menu.show_all()
         menu_button = Gtk.MenuButton(popup=menu, relief=Gtk.ReliefStyle.NONE, can_focus=False)
+        menu_button.get_style_context().add_provider(_NO_TRANSITION_CSS, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
         menu_button.set_image(Gtk.Image.new_from_icon_name("open-menu-symbolic", Gtk.IconSize.BUTTON))
         menu_button.set_tooltip_text("Menu")
         bar.pack_end(menu_button, False, False, 0)
@@ -780,9 +830,70 @@ class ImageViewerWindow(Gtk.Window):
         title_stem = filename.rsplit(".", 1)[0] if "." in filename else filename
         self.set_title(f"{title_stem} - Cyberbeest Images")
         native_w, native_h = self.native_size
-        self.image_widget.set_tooltip_text(
+        self._tooltip_text = (
             f"{path}\n{native_w} × {native_h}\n{human_file_size(os.path.getsize(path))}"
         )
+        self._show_tooltip()
+
+    def _show_tooltip(self):
+        if not getattr(self.image_widget, "_tooltip_hooked", False):
+            self.image_widget.connect("query-tooltip", self.on_query_tooltip)
+            self.image_widget._tooltip_hooked = True
+        self.image_widget.set_has_tooltip(True)
+
+    def _pixel_rgb_at(self, widget, x, y):
+        # Pointer position in widget coords -> pixel of the native-size image.
+        if not self.frames or self.native_size is None:
+            return None
+        aw, ah = widget.get_allocated_width(), widget.get_allocated_height()
+        if not (0 <= x < aw and 0 <= y < ah):
+            return None
+        nw, nh = self.native_size
+        px = min(nw - 1, int(x * nw / aw))
+        py = min(nh - 1, int(y * nh / ah))
+        try:
+            return self.frames[0][0].getpixel((px, py))[:3]
+        except Exception:
+            return None
+
+    def on_query_tooltip(self, widget, x, y, keyboard_mode, tooltip):
+        text = self._tooltip_text
+        rgb = self._pixel_rgb_at(widget, x, y)
+        if rgb is not None:
+            text += "\nRGB " + ", ".join(str(c) for c in rgb)
+        label = Gtk.Label(label=text)
+        label.set_xalign(0)
+        label.show()
+        # Make the tooltip window click-through, so the pointer moving over
+        # it still counts as being over the image and doesn't dismiss it.
+        label.connect("map", self._make_tooltip_input_transparent)
+        tooltip.set_custom(label)
+        return True
+
+    @staticmethod
+    def _make_tooltip_input_transparent(label):
+        try:
+            import cairo
+        except ImportError:
+            return
+        gdk_window = label.get_toplevel().get_window()
+        if gdk_window is not None:
+            gdk_window.input_shape_combine_region(cairo.Region(), 0, 0)
+
+    def _hide_tooltip(self):
+        self._tooltip_timer = None
+        self.image_widget.set_has_tooltip(False)
+        self.image_widget.trigger_tooltip_query()
+        return False
+
+    def _restart_tooltip_timer(self):
+        # Tooltip vanishes after a few seconds without pointer movement;
+        # any motion over the image brings it back and restarts the clock.
+        if getattr(self, "_tooltip_timer", None) is None:
+            self._show_tooltip()
+        else:
+            GLib.source_remove(self._tooltip_timer)
+        self._tooltip_timer = GLib.timeout_add(TOOLTIP_TIMEOUT_MS, self._hide_tooltip)
 
     def _update_rename_bar(self, path):
         fix = mismatched_extension_fix(path)
@@ -853,6 +964,18 @@ class ImageViewerWindow(Gtk.Window):
             self.set_frames = set_frames
             self.scroller.add(image_widget)
             image_widget.show()
+            # Gtk.Image (CPU path) has no GdkWindow of its own and never
+            # sees pointer events; they land on the Viewport around it.
+            viewport = self.scroller.get_child()
+            if viewport is not image_widget:
+                viewport.add_events(
+                    Gdk.EventMask.BUTTON_PRESS_MASK
+                    | Gdk.EventMask.BUTTON_RELEASE_MASK
+                    | Gdk.EventMask.POINTER_MOTION_MASK
+                )
+                viewport.connect("button-press-event", self.on_image_button_press)
+                viewport.connect("button-release-event", self.on_image_button_release)
+                viewport.connect("motion-notify-event", self.on_image_motion)
 
         self._set_title_and_tooltip(path)
         self._update_rename_bar(path)
@@ -969,6 +1092,7 @@ class ImageViewerWindow(Gtk.Window):
         return False
 
     def on_image_motion(self, widget, event):
+        self._restart_tooltip_timer()
         if self.drag_state is None:
             return False
         start_x, start_y, h0, v0 = self.drag_state

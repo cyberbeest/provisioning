@@ -8,6 +8,7 @@ than importing it, matching how the genmon script also keeps its own copy.
 """
 
 import os
+import shutil
 import subprocess
 import time
 
@@ -26,11 +27,35 @@ CONFIG_PATH = os.path.join(CONFIG_DIR, "power-settings.conf")
 # the merged security-status/shutdown-timer widget -- see panel-status-genmon.sh).
 GENMON_WIDGET_NAME = "__GENMON_WIDGET__"
 
+def gopanel_exe():
+    """The gopanel binary: installed link, PATH, or the dev checkout."""
+    for p in (os.path.expanduser("~/.local/bin/gopanel"), shutil.which("gopanel") or "",
+              os.path.expanduser("~/claude/provisioning/gopanel/gopanel"),
+              os.path.expanduser("~/claude/gopanel/gopanel")):
+        if p and os.access(p, os.X_OK):
+            return p
+    return None
+
+
+def refresh_genmon():
+    """Ask the running panel to re-run the status genmon now: gopanel's own refresh when it is
+    the panel, else XFCE's plugin event, nothing when neither runs (xfce4-panel would pop up an
+    error dialog instead)."""
+    def running(name):
+        return subprocess.run(["pgrep", "-x", name], capture_output=True).returncode == 0
+    if running("gopanel"):
+        exe = gopanel_exe()
+        if exe:
+            subprocess.Popen([exe, "refresh"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    elif running("xfce4-panel"):
+        subprocess.Popen(["xfce4-panel", f"--plugin-event={GENMON_WIDGET_NAME}:refresh:bool:true"])
+
+
 DEFAULTS = {
     "AC_SHUTDOWN_MINUTES": "60",
     "BATTERY_SHUTDOWN_MINUTES": "60",
     "LINK_AC_BATTERY": "true",
-    # Not surfaced in this menu (see lock-power-saving-dialog.py instead) --
+    # Not surfaced in this menu (see cyberbeest-settings.py's power tab instead) --
     # kept here anyway so this menu's own write_settings() calls don't drop
     # them from the config file when saving an unrelated setting.
     "MINIMIZE_MINUTES": "1",
@@ -86,7 +111,7 @@ def write_settings(updates):
         for k in DEFAULTS:
             f.write(f"{k}={settings[k]}\n")
     # Otherwise the panel icon only catches up at its next 30s poll.
-    subprocess.Popen(["xfce4-panel", f"--plugin-event={GENMON_WIDGET_NAME}:refresh:bool:true"])
+    refresh_genmon()
 
 
 def fmt(mins):
@@ -98,6 +123,21 @@ def fmt(mins):
     if mins >= 60:
         return f"{mins // 60}h{mins % 60}m"
     return f"{mins}m"
+
+
+def presets_including(presets, current):
+    """presets, plus `current` slotted in (before the trailing 0 "Never") if
+    it isn't one of them, so a hand-edited value shows up as the selected
+    entry. Without this no radio item matches, and GTK leaves the group's
+    first item active, which reads as if that preset were the setting."""
+    try:
+        current = int(current)
+    except (TypeError, ValueError):
+        return list(presets)
+    if current in presets:
+        return list(presets)
+    timed = sorted([m for m in presets if m != 0] + [current])
+    return timed + ([0] if 0 in presets else [])
 
 
 def get_idle_delay_minutes():
@@ -185,7 +225,16 @@ def restart_screensaver():
     # xfce4-screensaver reads its idle-activation settings once at startup
     # and doesn't pick up live xfconf changes -- a running daemon keeps
     # locking on whatever was active when it launched until it's restarted.
-    subprocess.run(["pkill", "-f", "^xfce4-screensaver$"], check=False)
+    # Match the full command line: the daemon usually runs as
+    # /usr/bin/xfce4-screensaver, and its name is over 15 characters, so
+    # pkill -x can't match it. If the old one survives, it keeps the D-Bus
+    # name and the new one dies with a D-Bus error.
+    pat = "^(/usr/bin/)?xfce4-screensaver$"
+    subprocess.run(["pkill", "-f", pat], check=False)
+    for _ in range(20):
+        if subprocess.run(["pgrep", "-f", pat], capture_output=True).returncode != 0:
+            break
+        time.sleep(0.1)
     subprocess.Popen(
         ["xfce4-screensaver"],
         stdout=subprocess.DEVNULL,
@@ -194,9 +243,38 @@ def restart_screensaver():
     )
 
 
+# Sentinel, not a real argv -- see cyberbeest-logout.py's copy of this for
+# why the splash is launched here, before the real hibernate command,
+# rather than from a systemd-sleep hook.
+HIBERNATE_ACTION = object()
+
+
 def run_logout_action(_item, cmd):
     Gtk.main_quit()
-    subprocess.Popen(cmd)
+    if cmd is HIBERNATE_ACTION:
+        subprocess.Popen([os.path.expanduser("~/.local/bin/cyberbeest-hibernate-splash.py")])
+        time.sleep(0.5)
+        subprocess.Popen(["xfce4-session-logout", "--hibernate"])
+    else:
+        subprocess.Popen(cmd)
+
+
+def hibernate_available():
+    # Same check cyberbeest-logout.py uses -- see its hibernate_available()
+    # for why this only ever returns True on a machine that opted in via
+    # experimental/enable-hibernation.sh.
+    try:
+        # loginctl has no manager-properties subcommand on this system
+        # (systemd 257) -- see cyberbeest-logout.py's copy of this
+        # function for why this goes straight to the D-Bus call instead.
+        out = subprocess.run(
+            ["busctl", "call", "org.freedesktop.login1", "/org/freedesktop/login1",
+             "org.freedesktop.login1.Manager", "CanHibernate"],
+            capture_output=True, text=True, timeout=2,
+        ).stdout.strip()
+        return out == 's "yes"'
+    except Exception:
+        return False
 
 
 def open_power_saving_dialog(_item):
@@ -206,7 +284,7 @@ def open_power_saving_dialog(_item):
     # that would tear down a nested dialog.run() loop started in the same
     # process before the user got to see it.
     Gtk.main_quit()
-    subprocess.Popen([os.path.expanduser("~/.local/bin/lock-power-saving-dialog.py")])
+    subprocess.Popen([os.path.expanduser("~/.local/bin/cyberbeest-settings.py"), "--tab=power"])
 
 
 def add_preset_section(menu, label, key, current, linked):
@@ -224,7 +302,7 @@ def add_preset_section(menu, label, key, current, linked):
     # actually persist whichever preset happened to be first (15m).
     items = []
     group = None
-    for preset in PRESETS:
+    for preset in presets_including(PRESETS, current):
         item = Gtk.RadioMenuItem.new_with_label_from_widget(group, fmt(preset))
         group = item
         item.set_active(preset == current)
@@ -257,7 +335,7 @@ def add_lock_delay_section(menu):
     # Same two-phase construction as add_preset_section, for the same reason.
     items = []
     group = None
-    for preset in LOCK_PRESETS:
+    for preset in presets_including(LOCK_PRESETS, current):
         item = Gtk.RadioMenuItem.new_with_label_from_widget(group, fmt(preset))
         group = item
         item.set_active(preset == current)
@@ -272,7 +350,7 @@ def add_lock_delay_section(menu):
             # set_idle_delay_minutes doesn't touch power-settings.conf, so it
             # can't go through write_settings()'s refresh -- but the warning
             # icon depends on this value too, so it needs the same nudge.
-            subprocess.Popen(["xfce4-panel", f"--plugin-event={GENMON_WIDGET_NAME}:refresh:bool:true"])
+            refresh_genmon()
             Gtk.main_quit()
 
         item.connect("toggled", on_toggled)
@@ -287,11 +365,14 @@ def build_menu():
     menu = Gtk.Menu()
 
     # Same actions/commands as the Power launcher's cyberbeest-logout dialog.
-    for label, cmd in (
+    logout_actions = [
         (t("timer.lock_now"), ["xflock4"]),
         (t("timer.restart_now"), ["xfce4-session-logout", "--reboot"]),
         (t("timer.shutdown_now"), ["xfce4-session-logout", "--halt"]),
-    ):
+    ]
+    if hibernate_available():
+        logout_actions.append((t("timer.hibernate_now"), HIBERNATE_ACTION))
+    for label, cmd in logout_actions:
         logout_item = Gtk.MenuItem(label=label)
         logout_item.connect("activate", run_logout_action, cmd)
         menu.append(logout_item)

@@ -1,0 +1,7 @@
+{
+  "name": "local-mods",
+  "owner": { "name": "cyberbeest" },
+  "plugins": [
+    { "name": "speak-replies", "source": "./mods/speak-replies", "description": "Speaks Claude's replies aloud with Piper TTS; /speak toggles it." }
+  ]
+}

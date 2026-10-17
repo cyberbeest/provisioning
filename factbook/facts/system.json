@@ -1,0 +1,120 @@
+{
+  "topic": { "en": "Desktop, sound and apps", "de": "Desktop, Ton und Apps" },
+  "source": "Functional-Manual-v2 sections 3-4",
+  "checked": "2026-10-15",
+  "facts": [
+    {
+      "id": "chime-start-stop",
+      "en": "A Cyberbeest plays a short sound at startup, after the master password is entered, and another when it shuts down.",
+      "de": "Ein Cyberbeest spielt beim Start, nachdem das Master-Passwort eingegeben wurde, einen kurzen Ton ab und beim Herunterfahren noch einen.",
+      "manual": "3.1"
+    },
+    {
+      "id": "chime-disable",
+      "en": "You can switch off the Cyberbeest start-up and shutdown sounds in the Cyberbeest Passwords & Boot app.",
+      "de": "Die Start- und Herunterfahrtöne von Cyberbeest kannst du in der App „Cyberbeest-Passwörter & Start“ abschalten.",
+      "manual": "3.1",
+      "tip": true
+    },
+    {
+      "id": "sound-chip-reset",
+      "en": "If a Cyberbeest's speakers, microphone and start-up sound all stop working at once, shut it down, unplug the charger, hold the power button for 30 seconds while it is off, then plug in and start as usual.",
+      "de": "Fallen bei einem Cyberbeest Lautsprecher, Mikrofon und Startton gleichzeitig aus, fahre es herunter, ziehe das Netzteil ab, halte bei ausgeschaltetem Gerät den Einschaltknopf 30 Sekunden gedrückt, stecke dann das Netzteil wieder an und starte wie gewohnt.",
+      "manual": "3.2",
+      "tip": true
+    },
+    {
+      "id": "sound-reset-harmless",
+      "en": "The 30-second power reset for a stuck sound chip on a Cyberbeest is harmless and does not touch your data.",
+      "de": "Der 30-Sekunden-Strom-Reset bei einem hängenden Soundchip ist auf einem Cyberbeest ungefährlich und berührt deine Daten nicht.",
+      "manual": "3.2"
+    },
+    {
+      "id": "pkg-managers",
+      "en": "You can install additional software on a Cyberbeest with GNOME Software or the Cyberbeest Package Manager.",
+      "de": "Zusätzliche Software kannst du auf einem Cyberbeest mit GNOME Software oder der Cyberbeest-Paketverwaltung installieren.",
+      "manual": "4.1",
+      "tip": true
+    },
+    {
+      "id": "panel-custom",
+      "en": "The panel at the top of a Cyberbeest screen was custom-designed for the project and starts with a hornet-shaped start button.",
+      "de": "Das Panel am oberen Rand eines Cyberbeest-Bildschirms wurde eigens für das Projekt entworfen und beginnt mit einem hornissenförmigen Startknopf.",
+      "manual": "4.2"
+    },
+    {
+      "id": "panel-indicators",
+      "en": "The Cyberbeest panel always shows running apps, a Bluetooth icon, a pulsating LED activity indicator, a sloshing-liquid memory meter, the security update status, the auto-lock and auto-shutdown timers, and a clipboard indicator.",
+      "de": "Das Cyberbeest-Panel zeigt immer die laufenden Apps, ein Bluetooth-Symbol, eine pulsierende LED-Aktivitätsanzeige, eine Arbeitsspeicher-Anzeige mit schwappender Flüssigkeit, den Status der Sicherheitsupdates, die Timer für automatisches Sperren und Herunterfahren sowie eine Zwischenablage-Anzeige.",
+      "manual": "4.2"
+    },
+    {
+      "id": "bluetooth-default-off",
+      "en": "Bluetooth is off by default on a Cyberbeest, and the Bluetooth icon in the panel opens its configuration.",
+      "de": "Bluetooth ist auf einem Cyberbeest standardmäßig aus, und das Bluetooth-Symbol im Panel öffnet die Einstellungen.",
+      "manual": "4.2"
+    },
+    {
+      "id": "apps-messengers",
+      "en": "Cyberbeest includes the secure messengers Signal, Element and Telegram, each in its own sandbox.",
+      "de": "Cyberbeest enthält die sicheren Messenger Signal, Element und Telegram, jeden in seiner eigenen Sandbox.",
+      "manual": "4.3"
+    },
+    {
+      "id": "apps-firefox",
+      "en": "The web browser on a Cyberbeest is Firefox, which runs in a sandbox.",
+      "de": "Der Webbrowser auf einem Cyberbeest ist Firefox, der in einer Sandbox läuft.",
+      "manual": "4.3"
+    },
+    {
+      "id": "apps-tor-unsandboxed",
+      "en": "Tor Browser is included on a Cyberbeest but does not run in a sandbox.",
+      "de": "Der Tor Browser ist auf einem Cyberbeest enthalten, läuft aber nicht in einer Sandbox.",
+      "manual": "4.3"
+    },
+    {
+      "id": "apps-installable",
+      "en": "Viber and Google Chrome can be installed on a Cyberbeest, and both then run in a sandbox.",
+      "de": "Viber und Google Chrome lassen sich auf einem Cyberbeest installieren und laufen dann beide in einer Sandbox.",
+      "manual": "4.3",
+      "tip": true
+    },
+    {
+      "id": "apps-wallets",
+      "en": "Cyberbeest includes the Sparrow wallet for Bitcoin and the Feather wallet for Monero, both in a sandbox.",
+      "de": "Cyberbeest enthält die Sparrow-Wallet für Bitcoin und die Feather-Wallet für Monero, beide in einer Sandbox.",
+      "manual": "4.4"
+    },
+    {
+      "id": "apps-kleopatra",
+      "en": "Kleopatra on a Cyberbeest generates PGP keys and encrypts, decrypts and signs data.",
+      "de": "Kleopatra erzeugt auf einem Cyberbeest PGP-Schlüssel und ver- und entschlüsselt sowie signiert Daten.",
+      "manual": "4.5"
+    },
+    {
+      "id": "apps-yt-dlp",
+      "en": "Cyberbeest includes yt-dlp, a video downloader.",
+      "de": "Cyberbeest enthält yt-dlp, einen Video-Downloader.",
+      "manual": "4.5"
+    },
+    {
+      "id": "apps-vlc",
+      "en": "Cyberbeest includes the VLC media player, which plays all video and audio formats.",
+      "de": "Cyberbeest enthält den Medienplayer VLC, der alle Video- und Audioformate abspielt.",
+      "manual": "4.5"
+    },
+    {
+      "id": "apps-malware-scanner",
+      "en": "The Cyberbeest Malware Scanner scans the whole system for malware, rootkits and unauthorized changes to system files.",
+      "de": "Der Cyberbeest Malware Scanner durchsucht das gesamte System nach Malware, Rootkits und unbefugten Änderungen an Systemdateien.",
+      "manual": "4.6",
+      "tip": true
+    },
+    {
+      "id": "apps-security-news",
+      "en": "Linux Security News on a Cyberbeest scans the web for news about exploits and fixes in the Linux world.",
+      "de": "Linux Security News durchsucht auf einem Cyberbeest das Web nach Nachrichten über Exploits und Fixes in der Linux-Welt.",
+      "manual": "4.6"
+    }
+  ]
+}

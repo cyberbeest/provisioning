@@ -63,6 +63,12 @@
 # Bumped 2026-09-23: the i2pd panel icon moved from plugin-27 to plugin-227
 # (provisioning's ids now start at 200, see 12-xfce-panel-layout.sh's note
 # of the same date -- an existing plugin-27 is renumbered by that script).
+#
+# Bumped 2026-10-04: i2pd-menu.py gained tooltips on every item (why there's
+# an I2P Firefox / qBittorrent in the menu) and German labels/tooltips.
+#
+# Bumped 2026-10-04 (again): the I2P Firefox profile's user.js hides the
+# "Not Secure" label on http:// pages (eepsites are encrypted by I2P).
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG="$DIR/50-i2pd-default.log"

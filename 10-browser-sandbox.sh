@@ -44,6 +44,13 @@ echo "--- Suppressing the 'security features may offer less protection' nag ---"
 install -d -m 755 /usr/lib/firefox-esr/distribution
 install -m 644 "$DIR/lib/firefox-policies.json" /usr/lib/firefox-esr/distribution/policies.json
 
+# JPEG XL: Firefox ships the decoder disabled (image.jxl.enabled=false). The
+# Preferences policy only accepts an allowlist of pref names and rejects
+# image.*, so set it as a Debian drop-in default instead (every *.js in
+# /etc/firefox-esr is loaded; firejail's private-etc keeps that dir visible).
+echo 'pref("image.jxl.enabled", true);' > /etc/firefox-esr/cyberbeest.js
+chmod 644 /etc/firefox-esr/cyberbeest.js
+
 echo "--- Installing firefox-drm.profile (DRM/Widevine seccomp override) to $TARGET_HOME/.config/firejail/ ---"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.config/firejail"
 install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 \
@@ -94,11 +101,28 @@ update-alternatives --set x-www-browser "$TARGET_HOME/bin/browser-sandbox.sh"
 echo "--- Setting xdg-settings default-web-browser to the sandboxed wrapper ---"
 su - "$TARGET_USER" -c "DISPLAY='${DISPLAY:-:0}' xdg-settings set default-web-browser browser-sandbox.desktop" || true
 
+echo "--- Redirecting bare firefox / firefox-esr commands (terminal, scripts) to the sandboxed wrapper ---"
+# /usr/local/bin comes before /usr/bin in PATH, so these shadow the real
+# binaries for anything that calls them by name. The wrapper itself execs
+# /usr/bin/firefox-esr by absolute path, so there is no recursion.
+for name in firefox firefox-esr; do
+	cat > "/usr/local/bin/$name" <<'INNER'
+#!/bin/bash
+# Redirects the bare command to the firejail-sandboxed browser (see
+# 10-browser-sandbox.sh).
+exec "$HOME/bin/browser-sandbox.sh" "$@"
+INNER
+	chmod 755 "/usr/local/bin/$name"
+done
+
 echo "--- Hiding the stock 'Firefox ESR' Whisker menu entry (firejailed 'Firefox' above replaces it) ---"
 STOCK_DESKTOP="/usr/share/applications/firefox-esr.desktop"
 STOCK_OVERRIDE="$TARGET_HOME/.local/share/applications/firefox-esr.desktop"
 if [ -f "$STOCK_DESKTOP" ]; then
 	cp "$STOCK_DESKTOP" "$STOCK_OVERRIDE"
+	# Hidden is not unreachable (gtk-launch, other apps by desktop id): its commands, including the
+	# new-window and private-window actions, must start the sandboxed wrapper too, never the bare binary.
+	sed -i "s#^Exec=/usr/lib/firefox-esr/firefox-esr#Exec=$TARGET_HOME/bin/browser-sandbox.sh#" "$STOCK_OVERRIDE"
 	if grep -q '^NoDisplay=' "$STOCK_OVERRIDE"; then
 		sed -i 's/^NoDisplay=.*/NoDisplay=true/' "$STOCK_OVERRIDE"
 	else

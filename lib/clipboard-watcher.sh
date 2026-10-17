@@ -153,7 +153,7 @@ classify_and_write() {
 
     # Push the update to the panel immediately rather than waiting for
     # genmon's own poll -- same pattern shutdown-timer-menu.py and
-    # lock-power-saving-dialog.py already use. This is what lets the rc's
+    # cyberbeest-extended-power-options.py already use. This is what lets the rc's
     # UpdatePeriod be a rare fallback instead of a real 2s poll: without
     # it, genmon would only reflect a clipboard change up to one poll
     # interval late, and the state file has no other way to signal the
@@ -169,11 +169,17 @@ classify_and_write() {
     # This call runs on every clipboard change, including the very first
     # one right when the systemd --user service starts, which can easily
     # race the real panel's own startup right after boot/login -- unlike
-    # shutdown-timer-menu.py's/lock-power-saving-dialog.py's use of the
+    # shutdown-timer-menu.py's/cyberbeest-extended-power-options.py's use of the
     # same pattern, which only ever fires from a menu click, i.e. only
     # when a panel is already known to be up. Caught on a fresh
     # provisioning run + reboot, both hitting this exact race.
-    if pgrep -x xfce4-panel >/dev/null 2>&1; then
+    # With the Cyberbeest panel (gopanel) running there is no xfce4-panel to relay to -- and
+    # while panels are being switched, xfce4-panel may be on its way out right here -- so
+    # gopanel's own refresh wins whenever gopanel is up.
+    if pgrep -x gopanel >/dev/null 2>&1; then
+        { gopanel refresh || "$HOME/.local/bin/gopanel" refresh; } >/dev/null 2>&1 &
+        disown
+    elif pgrep -x xfce4-panel >/dev/null 2>&1; then
         xfce4-panel "--plugin-event=${GENMON_WIDGET_NAME}:refresh:bool:true" >/dev/null 2>&1 &
         disown
     fi

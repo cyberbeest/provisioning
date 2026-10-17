@@ -36,6 +36,7 @@ BIN = os.path.join(os.path.expanduser("~"), ".local", "bin")
 STATE_DIR = os.path.expanduser("~/.config/cyberbeest")
 ACTIVE_FILE = os.path.join(STATE_DIR, "vpn_active")
 PROFILES_FILE = os.path.join(STATE_DIR, "vpn_profiles")
+HIDDEN_FILE = os.path.join(STATE_DIR, "vpn_icon_hidden")
 
 # Numeric, not a spelled-out month name (datetime's %B has no locale
 # awareness here) -- matches the plain ISO dates used everywhere else in
@@ -118,6 +119,10 @@ def read_active():
         return None
 
 
+def icon_hidden():
+    return os.path.exists(HIDDEN_FILE)
+
+
 def profile_count():
     try:
         with open(PROFILES_FILE) as f:
@@ -167,6 +172,11 @@ class VPNManagerPage(Gtk.Box):
         self.disconnect_button.connect("clicked", self.on_disconnect)
         self.disconnect_button.set_no_show_all(True)
         self.status_box.pack_start(self.disconnect_button, False, False, 0)
+
+        self.show_icon_button = Gtk.Button(label=t("vpn.show_icon_button"))
+        self.show_icon_button.connect("clicked", self.on_show_icon)
+        self.show_icon_button.set_no_show_all(True)
+        self.status_box.pack_start(self.show_icon_button, False, False, 0)
 
         self._refresh_status()
         GLib.timeout_add_seconds(5, self._refresh_status_tick)
@@ -254,6 +264,16 @@ class VPNManagerPage(Gtk.Box):
         return frame
 
     def _refresh_status(self):
+        if icon_hidden() and profile_count() > 0:
+            self.status_label.set_text(
+                t("vpn.status_icon_hidden").format(count=profile_count())
+            )
+            self.disconnect_button.hide()
+            self.show_icon_button.set_sensitive(True)
+            self.show_icon_button.show()
+            return
+
+        self.show_icon_button.hide()
         active = read_active()
         if active and is_active(active):
             self.status_label.set_text(t("vpn.status_connected").format(name=active))
@@ -278,6 +298,10 @@ class VPNManagerPage(Gtk.Box):
     def _refresh_status_tick_once(self):
         self._refresh_status()
         return False
+
+    def on_show_icon(self, _button):
+        launch(f"{BIN}/vpn-show-icon.sh")
+        GLib.timeout_add_seconds(1, self._refresh_status_tick_once)
 
     def on_import(self, _button):
         launch(f"{BIN}/vpn-import.sh")

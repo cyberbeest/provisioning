@@ -1,0 +1,33 @@
+#!/bin/bash
+# systemd-sleep hook (installed to /usr/lib/systemd/system-sleep/ -- NOT
+# /etc/systemd/system-sleep/, which this systemd build doesn't scan at all,
+# see enable-hibernate-splash.sh. systemd runs every executable in the
+# right directory automatically -- no separate registration needed).
+# Called synchronously as: <this script> pre|post suspend|hibernate|...
+#
+# Only handles "post": kills cyberbeest-hibernate-splash.py once resumed.
+# Launching it is NOT done here on "pre" -- systemd-sleep freezes the
+# whole user session (X included) as its own first step, before any
+# system-sleep hook gets to run at all, so a process spawned from this
+# hook is frozen before it can connect to X or render anything (confirmed
+# live 2026-09-28: the hook's sudo call landed ~45ms after "Successfully
+# froze unit 'user.slice'" in the journal). The splash is launched instead
+# from cyberbeest-logout.py's and shutdown-timer-menu.py's hibernate
+# action handlers, well before hibernate is even triggered, under our own
+# timing control -- see those scripts' HIBERNATE_ACTION handling.
+#
+# TARGET_USER is hardcoded, not derived from SUDO_USER: systemd invokes
+# system-sleep hooks directly as root with no such env var, and this
+# product is single-user by design.
+TARGET_USER=cyberbeest
+TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
+PIDFILE="$TARGET_HOME/.cache/cyberbeest-hibernate-splash.pid"
+
+[ "$1" = "post" ] && [ "$2" = "hibernate" ] || exit 0
+
+if [ -f "$PIDFILE" ]; then
+	kill "$(cat "$PIDFILE")" 2>/dev/null
+	rm -f "$PIDFILE"
+fi
+
+exit 0

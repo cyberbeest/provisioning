@@ -23,6 +23,10 @@
 set -uo pipefail
 
 POLL_INTERVAL=5
+# While this file exists the panel was stopped on purpose (gopanel's right-click
+# "Stop XFCE panel"), so do not bring it back. Lives in the runtime dir, so a
+# reboot/login clears it and the watchdog is back on duty by itself.
+PANEL_STOPPED_MARKER="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/cyberbeest-xfce-panel-stopped"
 export DISPLAY=:0
 export XAUTHORITY="$HOME/.Xauthority"
 PANEL_RELOAD_LOCK_FILE="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/cyberbeest-panel-reload.lock"
@@ -139,7 +143,10 @@ restart_panel_impl() {
     # relaunch attempt with `setsid xfce4-panel` here silently produced no
     # running process and no journal output at all -- dropping `setsid`
     # fixed it immediately.
-    systemd-run --user --collect --quiet \
+    # KillMode=process: every app launched from the relaunched panel (Firefox, ...) lives in
+    # this unit's cgroup, and the default would SIGKILL all of them as soon as the panel
+    # exits again (another crash, or being stopped on purpose) -- confirmed 2026-10-13.
+    systemd-run --user --collect --quiet -p KillMode=process \
         --unit="xfce-panel-relaunch-$(date +%s%N)" \
         --description="xfce4-panel (relaunched by xfce-panel-watchdog)" \
         "${setenv_args[@]}" \
@@ -188,7 +195,24 @@ restart_panel() {
 }
 
 echo "xfce-panel-watchdog: watching xfce4-panel (poll every ${POLL_INTERVAL}s)" >&2
+# The marker means "gopanel is the panel now". If gopanel then disappears (crash, kill),
+# the desktop would stay without any panel, so after a grace period (it may just be
+# restarting itself) drop the marker and let the XFCE panel come back.
+GOPANEL_GRACE_POLLS=3
+gopanel_missing=0
 while true; do
-    panel_alive || restart_panel
+    if [ -e "$PANEL_STOPPED_MARKER" ] && ! pgrep -x gopanel >/dev/null 2>&1; then
+        gopanel_missing=$((gopanel_missing + 1))
+        if [ "$gopanel_missing" -ge "$GOPANEL_GRACE_POLLS" ]; then
+            echo "xfce-panel-watchdog: gopanel is gone while the XFCE panel is stopped -- bringing the XFCE panel back" >&2
+            rm -f "$PANEL_STOPPED_MARKER"
+            gopanel_missing=0
+        fi
+    else
+        gopanel_missing=0
+    fi
+    if ! panel_alive && [ ! -e "$PANEL_STOPPED_MARKER" ]; then
+        restart_panel
+    fi
     sleep "$POLL_INTERVAL"
 done

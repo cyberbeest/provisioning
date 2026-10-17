@@ -20,6 +20,13 @@
 #                                             install-deb-url check, since
 #                                             Viber has no repo to piggyback
 #                                             updates on)
+#   cyberbeest-pkg-helper.sh setup-zoom-updater     (daily timer that compares
+#                                             the latest Zoom version in the
+#                                             vendor's redirect with the
+#                                             installed one and only downloads
+#                                             the ~300 MB .deb when it differs)
+#   cyberbeest-pkg-helper.sh teardown-zoom-updater   (removes that timer, run
+#                                             when Zoom is removed)
 #   cyberbeest-pkg-helper.sh setup-i2pd-toggle       (scoped NOPASSWD sudoers
 #                                             rule + disables i2pd boot
 #                                             autostart, for the on-demand
@@ -248,6 +255,66 @@ EOF
     log "Viber update timer installed and enabled"
 }
 
+do_setup_zoom_updater() {
+    log "Installing Zoom daily update-check timer"
+    cat > /usr/local/sbin/zoom-update-check.sh <<'EOF'
+#!/bin/bash
+# Zoom has no apt repo, just a stable "always latest" URL that 302-redirects
+# to cdn.zoom.us/prod/<version>/zoom_amd64.deb. The .deb is ~300 MB, so
+# compare the version in that redirect with the installed one first and only
+# download when they differ. Same no-checksum tradeoff as do_install_deb_url
+# in cyberbeest-pkg-helper.sh: HTTPS from Zoom's own CDN is what we trust.
+set -uo pipefail
+URL="https://zoom.us/client/latest/zoom_amd64.deb"
+dpkg -s zoom >/dev/null 2>&1 || exit 0
+installed="$(dpkg-query -W -f '${Version}' zoom)"
+latest="$(curl -fsSI -m 30 "$URL" | tr -d '\r' | sed -n 's|^[Ll]ocation: .*/prod/\([^/]*\)/.*|\1|p' | head -n1)"
+[ -n "$latest" ] || exit 1
+[ "$latest" = "$installed" ] && exit 0
+DEB="$(mktemp /tmp/zoom-latest-XXXXXX.deb)"
+trap 'rm -f "$DEB"' EXIT
+curl -fsSL -o "$DEB" "$URL" || exit 1
+dpkg -i --skip-same-version "$DEB"
+EOF
+    chmod 755 /usr/local/sbin/zoom-update-check.sh
+
+    cat > /etc/systemd/system/zoom-update-check.service <<'EOF'
+[Unit]
+Description=Check for and install Zoom updates (no apt repo upstream)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/zoom-update-check.sh
+EOF
+
+    cat > /etc/systemd/system/zoom-update-check.timer <<'EOF'
+[Unit]
+Description=Run Zoom update check daily
+
+[Timer]
+# Wall clock, not OnBootSec/OnActiveSec -- see lib/setup-security-update-timer.sh
+# (a slow LUKS prompt can leave OnBootSec never firing for a whole boot).
+OnCalendar=daily
+AccuracySec=1h
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF
+    systemctl daemon-reload >>"$LOG" 2>&1
+    { systemctl enable zoom-update-check.timer && systemctl restart zoom-update-check.timer; } >>"$LOG" 2>&1 || { log "enabling zoom-update-check.timer failed"; return 1; }
+    log "Zoom update timer installed and enabled"
+}
+
+do_teardown_zoom_updater() {
+    log "Removing Zoom update timer"
+    systemctl disable --now zoom-update-check.timer >>"$LOG" 2>&1 || log "disabling zoom-update-check.timer failed (non-fatal)"
+    rm -f /etc/systemd/system/zoom-update-check.timer /etc/systemd/system/zoom-update-check.service /usr/local/sbin/zoom-update-check.sh
+    systemctl daemon-reload >>"$LOG" 2>&1 || true
+}
+
 run_step() {
     case "$1" in
     setup-repo)
@@ -274,6 +341,12 @@ run_step() {
         ;;
     setup-viber-updater)
         do_setup_viber_updater
+        ;;
+    setup-zoom-updater)
+        do_setup_zoom_updater
+        ;;
+    teardown-zoom-updater)
+        do_teardown_zoom_updater
         ;;
     *)
         log "Unknown action: $1"

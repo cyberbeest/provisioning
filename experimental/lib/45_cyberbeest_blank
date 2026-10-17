@@ -1,0 +1,42 @@
+#!/bin/sh
+# /etc/grub.d/45_cyberbeest_blank -- installed by experimental/enable-grub-theme.sh.
+#
+# Overrides 00_header's load_video, which every kernel entry calls right
+# before loading the kernel. A themed menu (gfxmenu) draws straight onto the
+# screen's pixels; once the menu closes, gfxterm treats those pixels as
+# ordinary content and scrolls/shifts them while the kernel loads, so a
+# shifted copy of the menu shows for seconds. Blanking has to cover the whole
+# screen: "clear" only wipes gfxterm's own window, and a plain
+# "terminal_output console" leaves the picture behind. What does work is a
+# video mode change, because UEFI clears the whole display to black on one.
+#
+# Details that matter (each found the hard way on real hardware):
+#  - gfxterm refuses to start without a font (GRUB error 23, plus a
+#    "press any key" prompt). "Lato Regular 16" is already in memory (00_header
+#    loads every *.pf2 in the theme dir); "loadfont unicode" would work but
+#    reads 2 MB from disk and stretches the glitch to several seconds.
+#  - The mode switch must be the first thing that happens, for the same reason.
+#  - 800x600/1024x768 are in the GOP mode list of every unit checked (the
+#    panel's native mode is 1366x768).
+cat <<'EOF'
+function load_video {
+  if [ x$feature_all_video_module = xy ]; then
+    insmod all_video
+  else
+    insmod efi_gop
+    insmod efi_uga
+    insmod ieee1275_fb
+    insmod vbe
+    insmod vga
+    insmod video_bochs
+    insmod video_cirrus
+  fi
+  terminal_output console
+  set gfxmode=800x600,1024x768
+  set gfxterm_font="Lato Regular 16"
+  terminal_output gfxterm
+  background_image
+  background_color 0,0,0
+  clear
+}
+EOF

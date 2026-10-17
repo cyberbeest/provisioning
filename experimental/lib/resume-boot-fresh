@@ -1,0 +1,68 @@
+#!/bin/sh
+# Installed to /etc/initramfs-tools/scripts/local-premount/resume,
+# overriding the stock /usr/share/initramfs-tools/scripts/local-premount/
+# resume via initramfs-tools' own supported mechanism (mkinitramfs's
+# get_script() in hook-functions checks ${CONFDIR}${scriptdir}/$1 first
+# and only falls back to /usr/share if it's absent -- confirmed by
+# reading that function directly, not assumed). Survives
+# initramfs-tools package upgrades cleanly since this always wins
+# regardless of what the stock package ships.
+#
+# Identical to the stock script except for the block marked CYBERBEEST
+# below. Diff this against /usr/share/initramfs-tools/scripts/local-
+# premount/resume after any future initramfs-tools upgrade to make sure
+# nothing upstream changed underneath this copy.
+
+PREREQ=""
+
+prereqs()
+{
+	echo "$PREREQ"
+}
+
+case $1 in
+# get pre-requisites
+prereqs)
+	prereqs
+	exit 0
+	;;
+esac
+
+# CYBERBEEST: honor a "Boot Fresh" choice made at the LUKS prompt
+# (Ctrl+F). cyberbeest-askpass-boot-fresh drops this marker in the
+# initramfs's own tmpfs -- LUKS unlock (and therefore this marker's
+# write) happens before local-premount scripts like this one ever run,
+# so a tmpfs marker is the only way to hand the decision forward.
+if [ -e /run/cyberbeest-noresume ]; then
+	exit 0
+fi
+
+if [ -z "${resume?}" ] || [ ! -e /sys/power/resume ]; then
+	exit 0
+fi
+
+. /scripts/functions
+. /scripts/local
+
+if ! local_device_setup "${resume}" "suspend/resume device" false; then
+	exit 0
+fi
+
+if [ "$(get_fstype "${DEV}")" = suspend ] &&
+   command -v plymouth >/dev/null &&
+   plymouth --ping; then
+	plymouth display-message --text="Resuming from hibernation"
+
+	# The above command does not wait for a framebuffer update to
+	# complete, so the kernel can freeze the framebuffer before
+	# the message is even visible.  Wait just a moment to make
+	# that less likely.
+	sleep 0.1
+fi
+
+# hardcode path, uswsusp ships an resume binary too
+if [ -n "${resume_offset?}" ]; then
+	/bin/resume "${DEV}" "${resume_offset}"
+else
+	/bin/resume "${DEV}"
+fi

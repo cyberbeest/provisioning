@@ -11,9 +11,14 @@
 # Idempotent: safe to re-run.
 #
 # Bumped 2026-09-11: shrank + lowercased the baked-in credit text on
-# lib/assets/desktop-base-fallback-wallpaper.png ("wallpaper by leonhard
+# lib/assets/desktop-base-fallback-wallpaper.jpg ("wallpaper by leonhard
 # niederwimmer", now a barely-legible 9px caption in the corner instead of
 # a full-size line of white text).
+#
+# Bumped 2026-09-26: fallback wallpaper is a photo, so it's shipped as a jpg
+# (desktop-base-fallback-wallpaper.png -> .jpg, ~3.6MB -> ~0.8MB) -- the
+# Cyberbeest logo images stay png since they're flat-color/text graphics
+# that would pick up visible jpeg artifacts.
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG="$DIR/18-desktop-background.log"
@@ -73,8 +78,8 @@ echo "--- Also dropping the fallback wallpaper into /usr/share/backgrounds/xfce/
 # update-alternatives' desktop-background symlink currently happens to
 # target below -- if that alternative is ever superseded, the symlink's
 # content changes/disappears, but this stable-named copy doesn't.
-install -m 644 "$DIR/lib/assets/desktop-base-fallback-wallpaper.png" \
-	/usr/share/backgrounds/xfce/cyberbeest-fallback.png
+install -m 644 "$DIR/lib/assets/desktop-base-fallback-wallpaper.jpg" \
+	/usr/share/backgrounds/xfce/cyberbeest-fallback.jpg
 
 echo "--- Setting the system-wide fallback wallpaper (desktop-base alternative) ---"
 # This part is NOT what actually makes xfdesktop render our fallback --
@@ -89,9 +94,18 @@ echo "--- Setting the system-wide fallback wallpaper (desktop-base alternative) 
 # in Desktop Settings. Priority 100 comfortably beats every desktop-base
 # theme's own entry (highest observed: 70).
 update-alternatives --install /usr/share/images/desktop-base/desktop-background \
-	desktop-background "$DIR/lib/assets/desktop-base-fallback-wallpaper.png" 100
+	desktop-background "$DIR/lib/assets/desktop-base-fallback-wallpaper.jpg" 100
 update-alternatives --set desktop-background \
-	"$DIR/lib/assets/desktop-base-fallback-wallpaper.png"
+	"$DIR/lib/assets/desktop-base-fallback-wallpaper.jpg"
+
+echo "--- Cleaning up the pre-jpg .png fallback asset/alternative, if present ---"
+# A machine provisioned before the 2026-09-26 png->jpg switch has this old
+# path registered as an alternative choice and a stale copy sitting in
+# /usr/share/backgrounds/xfce/ -- deregister/remove both so the alternatives
+# db and that folder don't accumulate a dead duplicate of the same image.
+update-alternatives --remove desktop-background \
+	"$DIR/lib/assets/desktop-base-fallback-wallpaper.png" 2>/dev/null || true
+rm -f /usr/share/backgrounds/xfce/cyberbeest-fallback.png
 
 echo "--- Removing the old xfconf-automation autostart entry/script, if present ---"
 rm -f "$TARGET_HOME/.config/autostart/cyberbeest-set-wallpaper.desktop"

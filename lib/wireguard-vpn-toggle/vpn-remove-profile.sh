@@ -28,6 +28,7 @@ fi
 
 if [ ! -s "$PROFILES_FILE" ]; then
     "$HOME/.local/bin/vpn-panel-icon.sh" remove
+    rm -f "$STATE_DIR/vpn_icon_hidden"
 fi
 
 remove_msg="$(t vpn.remove_notify)"

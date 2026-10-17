@@ -28,13 +28,21 @@
 set -euo pipefail
 
 CONF=/etc/cyberbeest/initial-passwords.conf
-DEVICE=/dev/sda3
+
+# Walk up from / to the crypto_LUKS layer instead of assuming /dev/sda3, which
+# breaks on NVMe and other layouts (same lookup as disk_password_gui.py).
+detect_luks_device() {
+	local root_src
+	root_src="$(findmnt -no SOURCE /)" || return 0
+	LC_ALL=C lsblk -lpnso NAME,FSTYPE "$root_src" 2>/dev/null | awk '$2 == "crypto_LUKS" { print $1; exit }'
+}
+DEVICE="$(detect_luks_device)"
 
 [ -r "$CONF" ] || exit 0
 # shellcheck source=/dev/null
 source "$CONF"
 
-if [ -n "${MASTER_VALUE:-}" ]; then
+if [ -n "${MASTER_VALUE:-}" ] && [ -n "$DEVICE" ]; then
 	if printf '%s\n' "$MASTER_VALUE" | cryptsetup luksOpen "$DEVICE" --test-passphrase --key-slot 0 2>/dev/null; then
 		echo "MASTER_STILL_DEFAULT=1"
 		echo "MASTER_TAG=${MASTER_TAG:-weak}"
