@@ -39,6 +39,9 @@
 #   - the ICMP/ICMPv6 types RFC 4890 calls out as required for basic IPv6
 #     operation (neighbor discovery, path MTU discovery, MLD) plus ping,
 #     which is otherwise silently and confusingly dropped.
+#   - udp 53/67 and tcp 53 from libvirt's virbr* bridges only: the DHCP and DNS
+#     that libvirt's dnsmasq gives VM guests (Sandbox VM, release-build VMs);
+#     blocking them left guests without a network.
 #   - tcp/22 (SSH) -- see 99-remove-openssh-server.sh: openssh-server is
 #     purged on every shipped machine, which makes this a no-op there, but
 #     that same script's own comment describes sshd sometimes getting
@@ -123,6 +126,12 @@ table inet cyberbeest_filter {
 		# breaks without these. Plus ICMPv4 ping/unreachable/ttl-exceeded.
 		icmpv6 type { destination-unreachable, packet-too-big, time-exceeded, parameter-problem, mld-listener-query, mld-listener-report, mld-listener-done, nd-router-solicit, nd-router-advert, nd-neighbor-solicit, nd-neighbor-advert, nd-redirect } accept
 		icmp type { echo-request, destination-unreachable, time-exceeded, parameter-problem } accept
+
+		# VM guests on libvirt's own NAT bridges (virbr0 etc.): DHCP and DNS are served
+		# by libvirt's dnsmasq on the host, so without these the Sandbox VM never gets an
+		# address (guest DHCP just times out). Only the host-local bridges, only these services.
+		iifname "virbr*" udp dport { 53, 67 } accept
+		iifname "virbr*" tcp dport 53 accept
 EOF
 
 for entry in "${ALLOWED_PORTS[@]}"; do
