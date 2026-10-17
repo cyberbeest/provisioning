@@ -315,7 +315,7 @@ mount --bind /sys "$CHROOT/sys"
 # under $CHROOT/sys/firmware/efi/efivars on EFI hardware -- a plain umount
 # of $CHROOT/sys then fails with "target is busy" (found 2026-09-08),
 # aborting the script here under set -e and leaving all three still mounted.
-trap 'umount -R "$CHROOT/dev" "$CHROOT/proc" "$CHROOT/sys" 2>/dev/null' EXIT
+trap 'umount -R "$CHROOT/dev" "$CHROOT/proc" "$CHROOT/sys" 2>/dev/null || true' EXIT
 cp /etc/resolv.conf "$CHROOT/etc/resolv.conf"
 chroot "$CHROOT" apt-get -o DPkg::Lock::Timeout=60 update
 chroot "$CHROOT" apt-get -o DPkg::Lock::Timeout=60 install -y \

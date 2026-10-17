@@ -42,6 +42,8 @@
 #   - udp 53/67 and tcp 53 from libvirt's virbr* bridges only: the DHCP and DNS
 #     that libvirt's dnsmasq gives VM guests (Sandbox VM, release-build VMs);
 #     blocking them left guests without a network.
+#   - anything in /etc/cyberbeest/firewall-extra*.nft, if such a file exists (machine-specific
+#     additions; none ship).
 #   - tcp/22 (SSH) -- see 99-remove-openssh-server.sh: openssh-server is
 #     purged on every shipped machine, which makes this a no-op there, but
 #     that same script's own comment describes sshd sometimes getting
@@ -132,6 +134,11 @@ table inet cyberbeest_filter {
 		# address (guest DHCP just times out). Only the host-local bridges, only these services.
 		iifname "virbr*" udp dport { 53, 67 } accept
 		iifname "virbr*" tcp dport 53 accept
+
+		# Optional extra rules for one machine (e.g. the build server letting its build VMs
+		# reach the apt cache); absent on shipped machines. The wildcard is deliberate: an
+		# include of a pattern that matches nothing is fine, a missing plain file is an error.
+		include "/etc/cyberbeest/firewall-extra*.nft"
 EOF
 
 for entry in "${ALLOWED_PORTS[@]}"; do
