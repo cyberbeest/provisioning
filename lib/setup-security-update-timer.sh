@@ -405,8 +405,8 @@ systemctl enable security-update-check.timer
 systemctl restart security-update-check.timer
 
 echo "--- Running an initial check now so the panel icon has data immediately ---"
-/usr/local/sbin/security-update-check.sh || echo "(non-zero exit is fine if this first run itself hit an error -- status file is still written)"
-cat /var/lib/security-update-status
+FORCE_CHECK=1 /usr/local/sbin/security-update-check.sh || echo "(non-zero exit is fine if this first run itself hit an error -- status file is still written)"
+cat /var/lib/security-update-status 2>/dev/null || true
 
 echo "--- Status ---"
 systemctl list-timers security-update-check.timer --no-pager
