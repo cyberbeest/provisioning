@@ -6,6 +6,9 @@
 # here), shown a few seconds after every login until the user clicks "Don't show
 # again" (marker ~/.config/cyberbeest/welcome-dismissed). Test: cyberbeest-welcome --force
 # Depends on: 21-default-password-nag.sh (icon, i18n helper in ~/.local/bin).
+# Inside a VM the login autostart is left out (the app and its menu entry stay, so
+# --force works); PROVISIONING_FORCE_VM_IMAGE_IN_VM=1 overrides that, as in
+# 56-cyberbeest-sandbox-vm-kvm.sh, for the release-build VM whose image is for real hardware.
 # Idempotent: safe to re-run.
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -32,11 +35,17 @@ install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 "$DIR/lib/i18n.py" "$TARGET_H
 install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 "$DIR"/lib/i18n/strings_*.py "$TARGET_HOME/.local/bin/i18n/"
 install -o "$TARGET_USER" -g "$TARGET_USER" -m 755 "$DIR/lib/cyberbeest-welcome.py" "$TARGET_HOME/.local/bin/cyberbeest-welcome"
 
-echo "--- Installing autostart entry ---"
-install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.config/autostart"
-sed "s|/home/cyberbeest/|$TARGET_HOME/|g" "$DIR/lib/cyberbeest-welcome.desktop" \
-	> "$TARGET_HOME/.config/autostart/cyberbeest-welcome.desktop"
-chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.config/autostart/cyberbeest-welcome.desktop"
+AUTOSTART="$TARGET_HOME/.config/autostart/cyberbeest-welcome.desktop"
+VIRT="$(systemd-detect-virt || true)"
+if [ "$VIRT" != "none" ] && [ "${PROVISIONING_FORCE_VM_IMAGE_IN_VM:-}" != "1" ]; then
+	echo "--- Inside a VM (systemd-detect-virt: $VIRT): no login autostart ---"
+	rm -f "$AUTOSTART"
+else
+	echo "--- Installing autostart entry ---"
+	install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.config/autostart"
+	sed "s|/home/cyberbeest/|$TARGET_HOME/|g" "$DIR/lib/cyberbeest-welcome.desktop" > "$AUTOSTART"
+	chown "$TARGET_USER:$TARGET_USER" "$AUTOSTART"
+fi
 
 echo "--- Installing app menu entry (Whisker menu, Cyberbeest category) ---"
 # --force: opened on purpose, so it shows even after "Don't show again".
