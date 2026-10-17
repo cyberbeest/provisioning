@@ -3,12 +3,15 @@
 
 Reads ~/.claude/projects/*/*.jsonl (read-only) and refreshes every 2 seconds.
 Double-click a row to jump to its terminal window, or resume it in a new terminal.
+A session whose terminal window was closed is stopped and resumed automatically.
 Right-click for more (copy session id).
 """
 import glob
 import json
 import os
+import signal
 import subprocess
+import threading
 import time
 
 import gi
@@ -242,6 +245,48 @@ def has_terminal(rec):
     except OSError:
         return False
     return tty.startswith("/dev/pts/") and parent_pid(rec["pid"], "xfce4-terminal") != 0
+
+
+# other places a live session may legitimately sit, which this tool can't manage
+OTHER_HOSTS = ("sshd", "tmux: server", "tmux", "screen", "SCREEN", "gnome-terminal-",
+               "konsole", "xterm", "alacritty", "kitty", "tilix")
+
+
+def terminal_gone(rec):
+    """True for an interactive session whose xfce4-terminal window was closed.
+
+    Background sessions and sessions hosted by ssh/tmux/another terminal app
+    are not orphans, so they are left alone.
+    """
+    if rec.get("kind", "interactive") != "interactive" or has_terminal(rec):
+        return False
+    return not any(parent_pid(rec["pid"], c) for c in OTHER_HOSTS)
+
+
+def stop_process(rec, grace=5.0):
+    """SIGTERM, then SIGKILL after grace seconds. True once the process is gone."""
+    pid = rec["pid"]
+    try:  # guard against pid reuse since the registry was read
+        with open(f"/proc/{pid}/cmdline", "rb") as f:
+            if b"claude" not in f.read():
+                return False
+        os.kill(pid, signal.SIGTERM)
+    except OSError:
+        return True
+    for sig, wait in ((None, grace), (signal.SIGKILL, 2.0)):
+        if sig:
+            try:
+                os.kill(pid, sig)
+            except OSError:
+                return True
+        end = time.time() + wait
+        while time.time() < end:
+            try:
+                os.kill(pid, 0)
+            except OSError:
+                return True
+            time.sleep(0.1)
+    return False
 
 
 def activate_terminal(rec):
@@ -482,13 +527,34 @@ class Win(Gtk.Window):
 
     def open_session(self, sid):
         rec = running_info().get(sid)
+        if rec and rec.get("kind") == "bg":
+            self.launch(rec.get("cwd") or os.path.expanduser("~"),
+                        f"claude attach {rec.get('jobId') or sid}")
+            self.status.set_text(f"  attaching to background session {sid[:8]} in a new terminal")
+            return
+        if rec and terminal_gone(rec):
+            self.status.set_text(f"  {sid[:8]} still runs but its terminal window is gone; "
+                                 "stopping it and resuming in a new terminal...")
+            threading.Thread(target=self.recover, args=(sid, rec), daemon=True).start()
+            return
         if rec:
             self.status.set_text("  " + activate_terminal(rec))
             return
+        self.resume(sid)
+
+    def resume(self, sid):
         info = next((r for r in scan() if r["id"] == sid), None)
         cwd = info["cwd"] if info and os.path.isdir(info["cwd"]) else os.path.expanduser("~")
         self.launch(cwd, f"claude --resume {sid}")
         self.status.set_text(f"  resuming {sid[:8]} in a new terminal ({cwd})")
+
+    def recover(self, sid, rec):
+        """Stop the orphaned process, then resume the session in a fresh terminal."""
+        if stop_process(rec):
+            GLib.idle_add(self.resume, sid)
+        else:
+            GLib.idle_add(self.status.set_text,
+                          f"  could not stop orphaned process {rec['pid']} of {sid[:8]}")
 
     def new_session(self):
         cwd = os.path.expanduser("~/claude")
