@@ -23,7 +23,7 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 gi.require_version("Gtk", "3.0")
 gi.require_version("Gdk", "3.0")
 gi.require_version("GdkPixbuf", "2.0")
-from gi.repository import Gdk, GdkPixbuf, GLib, Gtk
+from gi.repository import Gdk, GdkPixbuf, Gio, GLib, Gtk
 
 try:
     from OpenGL import GL
@@ -756,6 +756,7 @@ class ImageViewerWindow(Gtk.Window):
         menu = Gtk.Menu()
         menu.append(_menu_item_with_hotkey("Rename…", "F2", self.show_rename_dialog))
         menu.append(_menu_item_with_hotkey("Copy Image", "Ctrl+C", self.copy_image))
+        menu.append(_menu_item_with_hotkey("Delete…", "Del", self.show_delete_dialog))
         menu.show_all()
         menu_button = Gtk.MenuButton(popup=menu, relief=Gtk.ReliefStyle.NONE, can_focus=False)
         menu_button.get_style_context().add_provider(_NO_TRANSITION_CSS, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
@@ -801,6 +802,49 @@ class ImageViewerWindow(Gtk.Window):
         dialog.destroy()
         if new_path is not None:
             self._path_renamed(os.path.join(dialog.folder, dialog.old_name), new_path)
+
+    def show_delete_dialog(self):
+        path = self.current_path()
+        name = os.path.basename(path)
+        dialog = Gtk.MessageDialog(
+            transient_for=self, modal=True, message_type=Gtk.MessageType.QUESTION,
+            text=f"Move \"{name}\" to the Wastebasket?",
+        )
+        # A file on another device (a stick, a card) goes into that device's
+        # own Wastebasket, so it keeps its space and stays readable there.
+        try:
+            home_trash = os.path.expanduser("~/.local/share/Trash")
+            if os.stat(path).st_dev != os.stat(home_trash).st_dev:
+                dialog.format_secondary_text(
+                    "It stays on this device, in its own Wastebasket, "
+                    "until you empty it.")
+        except OSError:
+            pass
+        dialog.add_button("Cancel", Gtk.ResponseType.CANCEL)
+        dialog.add_button("Move to Wastebasket", Gtk.ResponseType.OK)
+        dialog.set_default_response(Gtk.ResponseType.OK)
+        response = dialog.run()
+        dialog.destroy()
+        if response != Gtk.ResponseType.OK:
+            return
+        try:
+            Gio.File.new_for_path(path).trash(None)
+        except GLib.Error as e:
+            error = Gtk.MessageDialog(
+                transient_for=self, modal=True, message_type=Gtk.MessageType.ERROR,
+                buttons=Gtk.ButtonsType.CLOSE, text=f"Couldn't delete \"{name}\"",
+                secondary_text=e.message,
+            )
+            error.run()
+            error.destroy()
+            return
+        del self.folder_images[self.index]
+        if not self.folder_images:
+            self.destroy()
+            return
+        # The next image slides into the deleted one's slot; wrap at the end.
+        self.index = min(self.index, len(self.folder_images) - 1)
+        self.load_image(self.folder_images[self.index])
 
     def copy_image(self):
         if not self.frames:
@@ -1071,6 +1115,7 @@ class ImageViewerWindow(Gtk.Window):
             menu.append(_menu_item_with_hotkey(label, hotkey, handler))
         menu.append(Gtk.SeparatorMenuItem())
         menu.append(_menu_item_with_hotkey("Copy Image", "Ctrl+C", self.copy_image))
+        menu.append(_menu_item_with_hotkey("Delete…", "Del", self.show_delete_dialog))
         menu.show_all()
         menu.popup_at_pointer(event)
 
@@ -1112,6 +1157,9 @@ class ImageViewerWindow(Gtk.Window):
             return True
         if event.keyval in (Gdk.KEY_c, Gdk.KEY_C) and event.state & Gdk.ModifierType.CONTROL_MASK:
             self.copy_image()
+            return True
+        if event.keyval in (Gdk.KEY_Delete, Gdk.KEY_KP_Delete):
+            self.show_delete_dialog()
             return True
         if event.keyval == Gdk.KEY_F2:
             self.show_rename_dialog()
