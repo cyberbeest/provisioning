@@ -1033,6 +1033,43 @@
           "i2pd-start"
         ]
       }
+    },
+    {
+      "id": "open_welcome",
+      "title": {
+        "en": "Show the welcome screen",
+        "de": "den Willkommensbildschirm zeigen"
+      },
+      "sentence": {
+        "en": "Show the welcome screen",
+        "de": "den Willkommensbildschirm zeigen"
+      },
+      "examples": {
+        "en": [
+          "welcome",
+          "show the welcome screen",
+          "open the welcome screen",
+          "show me the introduction",
+          "show the tour"
+        ],
+        "de": [
+          "Willkommen",
+          "zeige den Willkommensbildschirm",
+          "öffne den Willkommensbildschirm",
+          "zeig mir die Einführung",
+          "Rundgang zeigen"
+        ]
+      },
+      "reply": {
+        "en": "Opening the welcome screen.",
+        "de": "Öffne den Willkommensbildschirm."
+      },
+      "run": {
+        "argv": [
+          "gtk-launch",
+          "cyberbeest-welcome"
+        ]
+      }
     }
   ]
 }
