@@ -10,6 +10,7 @@ import json
 import os
 import random
 import socket
+import subprocess
 import sys
 import time
 
@@ -17,7 +18,8 @@ import gi
 
 gi.require_version("Gtk", "3.0")
 gi.require_version("Gdk", "3.0")
-from gi.repository import Gdk, GdkPixbuf, Gio, GLib, Gtk
+gi.require_version("PangoCairo", "1.0")
+from gi.repository import Gdk, GdkPixbuf, Gio, GLib, Gtk, Pango, PangoCairo
 import cairo
 
 from i18n import t, _LOCALE
@@ -25,7 +27,7 @@ from i18n import t, _LOCALE
 HINTS = os.path.expanduser("~/.local/share/cyberbeest/hints.json")
 DISMISS_FILE = os.path.expanduser("~/.config/cyberbeest/welcome-dismissed")
 ICON = os.path.expanduser("~/.local/share/cyberbeest/icons/Cyberbeest-black.png")
-FACTS_SHOWN = 3
+FACTS_SHOWN = 1
 SEEN_FILE = os.path.expanduser("~/.local/state/cyberbeest/welcome-facts-seen.json")
 START_DELAY_S = 5   # let the desktop finish drawing first
 TEAL = (0x59 / 255, 0xD6 / 255, 0xB8 / 255)
@@ -65,6 +67,7 @@ scrollbar slider:hover { background-color: #59d6b8; }
                  border: 1px solid #2c3746; border-radius: 8px; padding: 7px 16px; box-shadow: none; }
 .footer button:hover { border-color: #59d6b8; }
 .footer button.primary { background-color: #59d6b8; color: #06080b; border-color: #59d6b8; font-weight: 700; }
+.fact-big { font-size: 18px; font-weight: 400; color: #e7eaf0; padding: 14px 8px; }
 .frame-a { background-color: #59d6b8; }
 .frame-b { background-color: #1f7a67; }
 """
@@ -118,6 +121,11 @@ def dismiss(_button=None):
     os.makedirs(os.path.dirname(DISMISS_FILE), exist_ok=True)
     with open(DISMISS_FILE, "w"):
         pass
+    try:   # tell them how to get it back: by voice, which is the point of the first section
+        subprocess.run(["notify-send", "-i", ICON, t("welcome.hidden_title"), t("welcome.hidden_body")],
+                       timeout=3, check=False)
+    except (OSError, subprocess.SubprocessError):
+        pass
     Gtk.main_quit()
 
 
@@ -162,6 +170,94 @@ def panel_key(it):
     return None
 
 
+def shipped(it):
+    """Whether this panel item is on a provisioned machine (the dev machine has more)."""
+    kind = it.get("kind")
+    title = (it.get("title") or "").lower()
+    name = (it.get("name") or "").lower()
+    if kind == "launcher":
+        return "claude" not in title and "terminal" not in title
+    if kind == "xtray":
+        return False
+    if kind == "helper":
+        return name in ("kitt", "mem-liquid", "wattage-panel")
+    if kind == "genmon":
+        return any(w in title for w in ("autolock", "clipboard", "vpn", "connections"))
+    return True
+
+
+def compact(pix, snap):
+    """Cut the dev-only items out of the panel snapshot. Returns (pixbuf, snap with the
+    kept items only, x-map from original to compact coordinates)."""
+    cut = sorted((it["x"], it["x"] + it["w"]) for it in snap["items"] if not shipped(it))
+    kept = []
+    pos = 0
+    for lo, hi in cut:
+        if lo > pos:
+            kept.append((pos, lo))
+        pos = max(pos, hi)
+    if pos < pix.get_width():
+        kept.append((pos, pix.get_width()))
+    total = sum(b - a for a, b in kept)
+    out = GdkPixbuf.Pixbuf.new(GdkPixbuf.Colorspace.RGB, pix.get_has_alpha(), 8, total, pix.get_height())
+    shifts = []
+    dst = 0
+    for a, b in kept:
+        pix.copy_area(a, 0, b - a, pix.get_height(), out, dst, 0)
+        shifts.append((a, b, a - dst))
+        dst += b - a
+
+    def tomap(x):
+        for a, b, d in shifts:
+            if a <= x < b:
+                return x - d
+        return x - sum(h - l for l, h in cut if h <= x)
+
+    tb = next((it for it in snap["items"] if it.get("kind") == "taskbar"), None)
+    if tb:
+        out = draw_taskbar(out, tomap(tb["x"]), tb["w"])
+    return out, tomap
+
+
+def draw_taskbar(pix, x, w):
+    """Replace the taskbar area with a single button for this window, as a fresh machine
+    would show it."""
+    surf = cairo.ImageSurface(cairo.FORMAT_ARGB32, pix.get_width(), pix.get_height())
+    cr = cairo.Context(surf)
+    Gdk.cairo_set_source_pixbuf(cr, pix, 0, 0)
+    cr.paint()
+    h = pix.get_height()
+    px = pix.get_pixels()
+    stride, nch = pix.get_rowstride(), pix.get_n_channels()
+    off = 1 * stride + (x + 2) * nch   # the taskbar's own background, top-left corner
+    bg = (px[off] / 255, px[off + 1] / 255, px[off + 2] / 255)
+    light = 0.299 * bg[0] + 0.587 * bg[1] + 0.114 * bg[2] > 0.5
+    ink = 0.05 if light else 0.95   # text follows the panel colour, as the real panel's does
+    cr.set_source_rgb(*bg)
+    cr.rectangle(x, 0, w, h)
+    cr.fill()
+    bw = min(w, 300)
+    cr.set_source_rgba(ink, ink, ink, 0.14)
+    cr.rectangle(x + 2, 3, bw - 4, h - 6)
+    cr.fill()
+    try:
+        icon = GdkPixbuf.Pixbuf.new_from_file_at_size(ICON, h - 14, h - 14)
+        Gdk.cairo_set_source_pixbuf(cr, icon, x + 9, 7)
+        cr.paint()
+    except GLib.Error:
+        pass
+    lay = PangoCairo.create_layout(cr)
+    lay.set_font_description(Pango.FontDescription("Sans %d" % max(8, h // 3)))
+    lay.set_text(t("welcome.title"), -1)
+    lay.set_width((bw - h - 8) * Pango.SCALE)
+    lay.set_ellipsize(Pango.EllipsizeMode.END)
+    _, lh = lay.get_pixel_size()
+    cr.set_source_rgb(ink, ink, ink)
+    cr.move_to(x + h + 2, (h - lh) / 2)
+    PangoCairo.show_layout(cr, lay)
+    return Gdk.pixbuf_get_from_surface(surf, 0, 0, pix.get_width(), pix.get_height())
+
+
 def fetch_panel():
     """Layout snapshot from gopanel's control socket, or None (XFCE panel, jailed, ...)."""
     path = os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/tmp"), "gopanel.sock")
@@ -189,7 +285,7 @@ def panel_entries(snap):
     groups = {}
     for it in snap["items"]:
         key = panel_key(it)
-        if key:
+        if key and shipped(it):
             groups.setdefault(key, []).append((it["x"], it["w"]))
     out = []
     for key, rects in groups.items():
@@ -232,10 +328,10 @@ class Highlighter:
             self.strip.queue_draw()
         return True
 
-    def show(self, rects):
+    def show(self, rects, strip_rects=None):
         self.rects = rects
         if self.strip:
-            self.strip.rects = rects
+            self.strip.rects = rects if strip_rects is None else strip_rects
             self.strip.queue_draw()
         if not rects or not self.snap:
             self.hide_frames()
@@ -455,6 +551,7 @@ class PanelSection:
                 pix = Gdk.pixbuf_get_from_window(root, self.snap["x"], self.snap["y"],
                                                  self.snap["w"], self.snap["h"])
                 if pix:
+                    pix, self.tomap = compact(pix, self.snap)
                     self.strip = Strip(pix, self.snap)
                     frame = Gtk.Box()
                     frame.get_style_context().add_class("card")
@@ -466,6 +563,9 @@ class PanelSection:
         win.connect("destroy", lambda _w: [f.destroy() for f in self.hl.frames])
         win.connect("focus-out-event", lambda *_: self.hl.clear())
         self.entries = dict(panel_entries(self.snap))
+        if self.strip:   # the strip is drawn without the dev-only items, so it has its own x axis
+            self.strip_x = {k: [(self.tomap(x), w) for x, w in r] for k, r in self.entries.items()}
+            self.entries = {k: r for k, r in self.entries.items() if k in self.strip_x}
         if self.strip:
             self.build_detail()
         else:
@@ -488,7 +588,7 @@ class PanelSection:
     def hover(self, x):
         key = None
         if x is not None:
-            for k, rects in self.entries.items():
+            for k, rects in self.strip_x.items():
                 if any(rx <= x < rx + rw for rx, rw in rects):
                     key = k
                     break
@@ -498,7 +598,7 @@ class PanelSection:
         if key:
             self.name.set_text(t("welcome.p_%s_n" % key))
             self.text.set_text(t("welcome.p_%s" % key))
-            self.hl.show(self.entries[key])
+            self.hl.show(self.entries[key], self.strip_x[key])
         else:
             self.name.set_text("")
             self.text.set_text(t("welcome.s3_hint"))
@@ -533,12 +633,14 @@ def build_facts(deck):
         for fact in deck.draw(FACTS_SHOWN):
             row = Gtk.Box()
             row.get_style_context().add_class("row")
-            row.pack_start(label(fact, "card-text"), True, True, 0)
+            lab = label(fact, "fact-big", xalign=0.5)
+            lab.set_justify(Gtk.Justification.CENTER)
+            row.pack_start(lab, True, True, 0)
             rows.pack_start(row, False, False, 0)
         rows.show_all()
 
     reload()
-    buttons = Gtk.Box(spacing=8)
+    buttons = Gtk.Box(spacing=8, halign=Gtk.Align.CENTER)
     more = Gtk.Button(label=t("welcome.facts_more"))
     more.get_style_context().add_class("link-button")
     more.connect("clicked", reload)
@@ -623,7 +725,7 @@ def main():
             adj.set_value(float(arg["--scroll"]) * (adj.get_upper() - adj.get_page_size()))
         GLib.timeout_add(400, lambda: do_scroll() or False)
     if "--hover" in arg:
-        GLib.timeout_add(600, lambda: panel.hover(panel.entries[arg["--hover"]][0][0] + 1) or False)
+        GLib.timeout_add(600, lambda: panel.hover(panel.strip_x[arg["--hover"]][0][0] + 1) or False)
     Gtk.main()
 
 
