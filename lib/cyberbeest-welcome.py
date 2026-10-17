@@ -355,57 +355,122 @@ class Highlighter:
 
 
 class Strip(Gtk.DrawingArea):
-    """Snapshot of the real panel with the highlight on it. Folded into two rows so the
-    icons stay big enough to recognise."""
+    """Snapshot of the real panel with the highlight on it, always at 1:1. Large empty
+    stretches shrink to a small fixed gap, and when the panel is still wider than the card
+    it wraps into more rows, only ever between items (no icon is cut)."""
 
-    GAP = 8
+    ROW_GAP = 8
+    SMALL = 10      # gaps up to this stay as they are
+    FILLER = 14     # wider empty stretches become this wide
 
-    def __init__(self, pixbuf, snap):
+    def __init__(self, pixbuf, spans):
         super().__init__()
-        self.pix, self.snap = pixbuf, snap
+        self.pix = pixbuf
+        self.units = self._units(spans, pixbuf.get_width())
         self.rects, self.phase = [], False
-        self.half = (pixbuf.get_width() + 1) // 2
-        self.set_size_request(400, 2 * int(pixbuf.get_height() * 800 / self.half) + self.GAP)
+        self.placed, self.rows, self._laid_for = [], 1, None
         self.on_hover = None   # callback(source_x or None)
         self.add_events(Gdk.EventMask.POINTER_MOTION_MASK | Gdk.EventMask.LEAVE_NOTIFY_MASK)
         self.connect("draw", self.on_draw)
         self.connect("motion-notify-event", self.on_motion)
         self.connect("leave-notify-event", lambda *_: self.on_hover and self.on_hover(None))
 
+    def _units(self, spans, width):
+        """[(filler slice or None, (sx0, sx1))]: one unit per item, with the small gap before it."""
+        units, prev = [], None
+        for x0, x1 in sorted(spans):
+            if prev is None:
+                units.append((None, (0 if x0 <= self.SMALL else x0, x1)))
+            elif x0 - prev <= self.SMALL:
+                units.append((None, (prev, x1)))
+            else:
+                mid = (prev + x0) // 2
+                half = self.FILLER // 2
+                units.append(((mid - half, mid - half + self.FILLER), (x0, x1)))
+            prev = x1
+        return units
+
+    def layout(self, width):
+        """Places the units left to right, wrapping before one that does not fit."""
+        if self._laid_for == width:
+            return
+        self._laid_for = width
+        self.placed, row, x = [], 0, 0   # (row, dst_x, sx0, sx1)
+        for filler, (sx0, sx1) in self.units:
+            fw = self.FILLER if filler else 0
+            if x > 0 and x + fw + (sx1 - sx0) > width:
+                row, x, fw = row + 1, 0, 0
+            if filler and fw:
+                self.placed.append((row, x, filler[0], filler[1]))
+                x += fw
+            self.placed.append((row, x, sx0, sx1))
+            x += sx1 - sx0
+        self.rows = row + 1
+        ends = {}
+        for r, dx, sx0, sx1 in self.placed:
+            ends[r] = max(ends.get(r, 0), dx + sx1 - sx0)
+        # centre every row in the card
+        self.placed = [(r, dx + max(0, (width - ends[r]) // 2), sx0, sx1) for r, dx, sx0, sx1 in self.placed]
+
+    def full_width(self):
+        return sum((self.FILLER if f else 0) + b - a for f, (a, b) in self.units)
+
+    # height depends on width (wrapping): tell GTK
+    def do_get_request_mode(self):
+        return Gtk.SizeRequestMode.HEIGHT_FOR_WIDTH
+
+    def do_get_preferred_width(self):
+        return 300, max(self.full_width(), 300)
+
+    def do_get_preferred_height(self):
+        return self.do_get_preferred_height_for_width(self.full_width())
+
+    def do_get_preferred_height_for_width(self, width):
+        self.layout(max(width, 1))
+        h = self.rows * self.pix.get_height() + (self.rows - 1) * self.ROW_GAP
+        return h, h
+
     def on_motion(self, _w, ev):
-        scale = self.get_allocated_width() / self.half
-        rowh = self.pix.get_height() * scale
-        row = 1 if ev.y >= rowh + self.GAP / 2 else 0
+        self.layout(self.get_allocated_width())
+        h = self.pix.get_height()
+        row = int(ev.y // (h + self.ROW_GAP))
+        src = None
+        if 0 <= row < self.rows and ev.y - row * (h + self.ROW_GAP) <= h:
+            for r, dx, sx0, sx1 in self.placed:
+                if r == row and dx <= ev.x < dx + (sx1 - sx0):
+                    src = sx0 + (ev.x - dx)
+                    break
         if self.on_hover:
-            self.on_hover(row * self.half + ev.x / scale)
+            self.on_hover(src)
         return False
 
     def on_draw(self, _w, cr):
-        width = self.get_allocated_width()
-        scale = width / self.half
-        rowh = self.pix.get_height() * scale
+        self.layout(self.get_allocated_width())
+        h = self.pix.get_height()
         colour = TEAL if not self.phase else (0.12, 0.48, 0.40)
-        for r in (0, 1):
+        for r, dx, sx0, sx1 in self.placed:
             cr.save()
-            cr.translate(0, r * (rowh + self.GAP))
-            cr.rectangle(0, 0, width, rowh)
+            cr.translate(dx, r * (h + self.ROW_GAP))
+            cr.rectangle(0, 0, sx1 - sx0, h)
             cr.clip()
-            cr.save()
-            cr.scale(scale, scale)
-            Gdk.cairo_set_source_pixbuf(cr, self.pix, -r * self.half, 0)
-            cr.get_source().set_filter(cairo.FILTER_BEST)
+            Gdk.cairo_set_source_pixbuf(cr, self.pix, -sx0, 0)
             cr.paint()
             cr.restore()
-            lo, hi = r * self.half, (r + 1) * self.half
-            for x, w in self.rects:
-                x0, x1 = max(x, lo), min(x + w, hi)
+        for x, w in self.rects:
+            for r, dx, sx0, sx1 in self.placed:
+                x0, x1 = max(x, sx0), min(x + w, sx1)
                 if x1 > x0:
                     cr.set_source_rgb(*colour)
                     cr.set_line_width(2.5)
-                    cr.rectangle((x0 - lo) * scale + 1.5, 1.5, (x1 - x0) * scale - 3, rowh - 3)
+                    cr.rectangle(dx + x0 - sx0 + 1.5, r * (h + self.ROW_GAP) + 1.5, x1 - x0 - 3, h - 3)
                     cr.stroke()
-            cr.restore()
         return False
+
+
+def strip_spans(snap, tomap):
+    """Item extents in the compact snapshot's coordinates."""
+    return [(tomap(it["x"]), tomap(it["x"]) + it["w"]) for it in snap["items"]
+            if shipped(it) and it["w"] > 0]
 
 
 # ---------------------------------------------------------------- widgets
@@ -552,7 +617,7 @@ class PanelSection:
                                                  self.snap["w"], self.snap["h"])
                 if pix:
                     pix, self.tomap = compact(pix, self.snap)
-                    self.strip = Strip(pix, self.snap)
+                    self.strip = Strip(pix, strip_spans(self.snap, self.tomap))
                     frame = Gtk.Box()
                     frame.get_style_context().add_class("card")
                     frame.pack_start(self.strip, True, True, 0)
