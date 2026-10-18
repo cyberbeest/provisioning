@@ -406,10 +406,17 @@ def type_text(text, target=None):
         return True
     if target == WHISKER:
         # The menu holds the keyboard grab, so XTEST keys land in its search box. If it was
-        # closed meanwhile, the keys would hit whatever has focus: keep the text instead.
+        # closed meanwhile (a window opened), reopen it so the text always lands there.
         if not whisker_open():
-            log.warning("the menu was closed, text not typed")
-            return False
+            _gopanel_ask("menu")
+            for _ in range(20):
+                if whisker_open():
+                    break
+                time.sleep(0.05)
+            else:
+                log.warning("the menu would not reopen, text not typed")
+                return False
+            time.sleep(0.15)  # let the search box take focus
         target = None
     else:
         dismiss_panel_popups()
