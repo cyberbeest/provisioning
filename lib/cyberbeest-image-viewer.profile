@@ -15,7 +15,10 @@ netfilter
 
 caps.drop all
 nonewprivs
-noroot
+# No `noroot`: it runs the jail in a user namespace that drops supplementary
+# groups, so folders readable only through a group (e.g. a bind-mounted old
+# home owned by another user) would be unreadable. caps.drop and nonewprivs
+# already remove the privileges it would guard against.
 seccomp
 seccomp.block-secondary
 memory-deny-write-execute
