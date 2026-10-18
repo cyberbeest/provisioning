@@ -92,6 +92,7 @@ CATALOGS = {
         "Noted, but too ambiguous to apply on its own.": "Vermerkt, aber zu mehrdeutig, um allein angewendet zu werden.",
         "Close": "Schließen",
         "Show last transcript": "Letztes Transkript anzeigen",
+        "Paste again": "Erneut einfügen",
         "Replay last recording": "Letzte Aufnahme abspielen",
         "Last recording": "Letzte Aufnahme",
         "Play": "Abspielen",

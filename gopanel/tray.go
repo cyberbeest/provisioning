@@ -445,7 +445,7 @@ func (t *tray) onClick(x, y, btn int) {
 	switch btn {
 	case 1:
 		if ic.itemIsMenu && ic.menu != "" {
-			go t.showMenu(ic, t.it.x+x)
+			go t.showMenu(ic, t.it.x+x, activeRep)
 			return
 		}
 		method := itemIface + ".Activate"
@@ -457,7 +457,7 @@ func (t *tray) onClick(x, y, btn int) {
 		go obj.Call(itemIface+".SecondaryActivate", 0, sx, sy)
 	case 3:
 		if ic.menu != "" {
-			go t.showMenu(ic, t.it.x+x)
+			go t.showMenu(ic, t.it.x+x, activeRep)
 			return
 		}
 		go obj.Call(itemIface+".ContextMenu", 0, sx, sy)
@@ -472,8 +472,9 @@ func (t *tray) onClick(x, y, btn int) {
 
 const menuIface = "com.canonical.dbusmenu"
 
-// showMenu fetches the item's dbusmenu layout and asks the main goroutine to pop it up.
-func (t *tray) showMenu(ic *trayIcon, anchorX int) {
+// showMenu fetches the item's dbusmenu layout and asks the main goroutine to pop it up on the
+// panel replica rep (nil: the main panel). The caller passes it because activeRep is only set during the click.
+func (t *tray) showMenu(ic *trayIcon, anchorX int, rep *replica) {
 	obj := t.conn.Object(ic.owner, ic.menu)
 	obj.Call(menuIface+".AboutToShow", 0, int32(0)) // lets the app refresh its menu
 	call := obj.Call(menuIface+".GetLayout", 0, int32(0), int32(-1), []string{})
@@ -488,7 +489,7 @@ func (t *tray) showMenu(ic *trayIcon, anchorX int) {
 	if top == nil || len(top.children) == 0 {
 		return
 	}
-	menuReqs <- menuReq{rep: activeRep, items: top.children, anchorX: anchorX, onSelect: func(mi *menuItem) {
+	menuReqs <- menuReq{rep: rep, items: top.children, anchorX: anchorX, onSelect: func(mi *menuItem) {
 		go obj.Call(menuIface+".Event", 0, mi.id, "clicked", dbus.MakeVariant(int32(0)), uint32(time.Now().Unix()))
 	}}
 }
