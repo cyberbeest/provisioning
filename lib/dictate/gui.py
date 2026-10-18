@@ -811,6 +811,8 @@ class MainWindow(QMainWindow):
             self.a_hotkey.triggered.connect(self.set_hotkey_enabled)
             self.a_last = QAction(_("Show last transcript"), self)
             self.a_last.triggered.connect(self.show_last_transcript)
+            self.a_again = QAction(_("Paste again"), self)
+            self.a_again.triggered.connect(self.paste_again)
             self.a_replay = QAction(_("Replay last recording"), self)
             self.a_replay.triggered.connect(self.replay_last_recording)
             self.a_test = QAction(_("Test dictation"), self)
@@ -824,6 +826,7 @@ class MainWindow(QMainWindow):
             a_quit = QAction(_("Quit"), self)
             a_quit.triggered.connect(QApplication.quit)
             menu.addAction(self.a_hotkey)
+            menu.addAction(self.a_again)
             menu.addAction(self.a_last)
             menu.addAction(self.a_replay)
             menu.addAction(self.a_test)
@@ -904,6 +907,7 @@ class MainWindow(QMainWindow):
         self.a_hotkey.setText(_("Hotkey {key} enabled").format(key=key))
         self.a_hotkey.setChecked(self.cfg.get("hotkey_enabled", True))
         self.a_last.setEnabled(bool(self.last_text))
+        self.a_again.setEnabled(bool(self.last_text))
         self.a_replay.setEnabled(core.LAST_CLIP.exists())
         for mid, act in self._model_actions.items():
             act.setChecked(mid == self.cfg.get("model"))
@@ -1110,6 +1114,19 @@ class MainWindow(QMainWindow):
         self._last_dialog.show()
         self._last_dialog.raise_()
         self._last_dialog.activateWindow()
+
+    def paste_again(self):
+        """Type the last dictation once more into the window that has focus."""
+        text = self.last_text
+        if not text:
+            return
+        typed = text + " " if text.endswith((".", "!", "?")) else text
+
+        def run():
+            time.sleep(0.3)   # let the tray menu close and hand focus back
+            if not core.type_text(typed):
+                self.bridge.paste_failed.emit(typed)
+        threading.Thread(target=run, daemon=True).start()
 
     def replay_last_recording(self):
         """Play the last clip and show it: waveform, what the speech detector heard, and the take's timing."""
