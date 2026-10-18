@@ -81,7 +81,7 @@ DEFAULT_CONFIG = {
     "trim_silence":          True,   # cut pauses before decoding (local_stt silence trimming); no Settings field
     "recording_meter":       True,   # small level meter while recording (replaces the "Speak now" notification)
     "vad_highpass":          True,   # speech detection ignores hum below 150 Hz (mains buzz hides quiet speech from it)
-    "apply_corrections":     True,   # replace words by the learned corrections (see "Learned corrections")
+    "corrections":           "learn",  # off | apply (replace words by the learned corrections) | learn (apply, and learn from copied fixes)
     "local_stt_idle_minutes": 5,   # unload the model after this long idle when RAM is short (0 = keep loaded)
 }
 
@@ -125,9 +125,15 @@ def load_config():
     cfg = dict(DEFAULT_CONFIG)
     if CONFIG_PATH.exists():
         try:
-            cfg.update(json.loads(CONFIG_PATH.read_text()))
+            saved = json.loads(CONFIG_PATH.read_text())
+            if "corrections" not in saved and saved.get("apply_corrections") is False:
+                saved["corrections"] = "off"   # from before there were three levels
+            cfg.update(saved)
         except Exception:
             pass
+    cfg.pop("apply_corrections", None)
+    if cfg.get("corrections") not in ("off", "apply", "learn"):
+        cfg["corrections"] = "learn"
     # Settings from versions that also offered cloud providers are dropped.
     for k in ("provider", "api_key", "openai_api_key", "yorik_url", "yorik_token", "threshold", "start_hidden"):
         cfg.pop(k, None)
@@ -764,7 +770,7 @@ class Recorder:
 # while "cloud code" is a rule.
 CORRECTIONS_PATH = CONFIG_DIR / "corrections.json"
 CORRECTION_LOG_PATH = CONFIG_DIR / "correction-log.jsonl"
-MIN_SUPPORT = 2
+MIN_SUPPORT = 1   # one fix is enough; a rule that later misfires on untouched text drops out by precision
 MIN_PRECISION = 0.8
 MAX_CHANGE_WORDS = 3   # a changed span of up to this many words on each side
 MAX_RULE_WORDS = 4
@@ -872,6 +878,39 @@ def _candidates(a, b):
                 dst = ([b[j1 - 1][0]] if left else []) + [w for w, _ in b[j1:j2]] + ([b[j2][0]] if right else [])
                 if len(src) <= MAX_RULE_WORDS:
                     yield tuple(src), tuple(dst), not (left or right)
+
+
+_LINE_MARKER = re.compile(r"^[ \t]*[❯›>»$#•*·│|▌▎\-–—]+(?=\s|$)[ \t]*")
+
+
+def clean_copied(text):
+    """Copied text without what a terminal or mail client puts in front of lines (a prompt
+    sign, a quote mark, a bullet), with all white space collapsed to single spaces."""
+    return " ".join(" ".join(_LINE_MARKER.sub("", line) for line in text.splitlines()).split())
+
+
+def is_edited_version(text, candidate):
+    """Is candidate (e.g. a text just copied) the user's corrected version of text? Three
+    independent checks, any one of which accepts it:
+      characters: nearly the same letters, a rougher match for a short text ("kit scanner" -> "KittScanner" shares no word);
+      words:      nearly the same words, wherever the edit is;
+      phrases:    a long shared phrase or an untouched start or end with enough overlap, so a
+                  term at either edge may change while the middle stays."""
+    import difflib
+    a, b = [w for _, w in _words(text)], [w for _, w in _words(candidate)]
+    if not a or not b or a == b:
+        return False
+    sm = difflib.SequenceMatcher(None, a, b, autojunk=False)
+    words = sm.ratio()
+    letters = difflib.SequenceMatcher(None, "".join(a), "".join(b), autojunk=False).ratio()
+    run = max((m.size for m in sm.get_matching_blocks()), default=0)
+    anchored = a[0] == b[0] or a[-1] == b[-1]
+    # A short text is the changed term itself, so a rougher letter match will do ("kid scammer").
+    short = len(a) <= MAX_CHANGE_WORDS and len(b) <= MAX_CHANGE_WORDS
+    return (letters >= (0.6 if short else 0.8)
+            or words >= 0.85
+            or (anchored and words >= 0.5)
+            or (run >= 3 and run >= min(len(a), len(b)) / 2))
 
 
 def rebuild_corrections():
