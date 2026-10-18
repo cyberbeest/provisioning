@@ -96,6 +96,12 @@ func newGenmonItem(command string, periodMs int) *item {
 		}
 	}
 
+	it.hasClick = func() bool {
+		zmu.Lock()
+		defer zmu.Unlock()
+		return cur.imgCmd != "" || cur.txtCmd != ""
+	}
+
 	refresh := func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()

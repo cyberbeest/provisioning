@@ -29,7 +29,7 @@
     {
       "id": "intrusion-checks",
       "en": "Cyberbeest Intrusion Watch checks for failed logins, new USB devices, odd DNS activity, unexpected open ports and new autostart entries.",
-      "de": "Cyberbeest-Intrusion-Watch prüft auf fehlgeschlagene Anmeldungen, neue USB-Geräte, auffällige DNS-Anfragen, unerwartet offene Ports und neue Autostart-Einträge."
+      "de": "Cyberbeest Intrusion Watch prüft auf fehlgeschlagene Anmeldungen, neue USB-Geräte, auffällige DNS-Anfragen, unerwartet offene Ports und neue Autostart-Einträge."
     },
     {
       "id": "intrusion-result",
