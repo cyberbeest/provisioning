@@ -792,7 +792,10 @@ def build_facts(deck):
     box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
     box.pack_start(label(t("welcome.s4_title"), "s-title-small", xalign=0.5), False, False, 0)
     rows = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-    box.pack_start(rows, False, False, 4)
+    rows.set_size_request(-1, 76)   # room for three lines, so the buttons beside it stay put
+    line = Gtk.Box(spacing=12)
+    line.pack_start(rows, True, True, 0)
+    box.pack_start(line, False, False, 4)
 
     def reload(_b=None):
         for child in rows.get_children():
@@ -805,22 +808,22 @@ def build_facts(deck):
             lab.connect("activate-link", open_app_link)
             lab.set_justify(Gtk.Justification.CENTER)
             row.pack_start(lab, True, True, 0)
-            rows.pack_start(row, False, False, 0)
+            rows.pack_start(row, True, True, 0)   # the card keeps one height whatever the fact
         rows.show_all()
 
     reload()
-    buttons = Gtk.Box(spacing=8, halign=Gtk.Align.END)
+    buttons = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, valign=Gtk.Align.CENTER)
     more = Gtk.Button(label=t("welcome.facts_more"))
     more.get_style_context().add_class("link-button")
     more.connect("clicked", reload)
-    buttons.pack_start(more, False, False, 0)
     launch = factbook_launch()
     if launch:
         book = Gtk.Button(label=t("welcome.facts_open").format(n=fact_count()))
         book.get_style_context().add_class("link-button")
         book.connect("clicked", launch)
         buttons.pack_start(book, False, False, 0)
-    box.pack_start(buttons, False, False, 4)
+    buttons.pack_start(more, False, False, 0)
+    line.pack_start(buttons, False, False, 0)
     return box
 
 

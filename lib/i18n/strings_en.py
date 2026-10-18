@@ -728,7 +728,7 @@ STRINGS = {
     "welcome.p_clock_n": "Clock",
     "welcome.p_clock": "Click for the calendar.",
     "welcome.s3_hint": "Hover over an icon above.",
-    "welcome.facts_more": "Another fact",
+    "welcome.facts_more": "Next fact",
     "welcome.facts_open": "All {n} facts",
     "welcome.link_opens": "Opens: {name}",
     "welcome.hidden_title": "Welcome screen hidden",

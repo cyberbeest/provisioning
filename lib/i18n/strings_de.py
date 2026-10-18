@@ -758,7 +758,7 @@ STRINGS = {
     "welcome.p_clock_n": "Uhr",
     "welcome.p_clock": "Ein Klick öffnet den Kalender.",
     "welcome.s3_hint": "Fahren Sie oben über ein Symbol.",
-    "welcome.facts_more": "Anderer Fakt",
+    "welcome.facts_more": "Nächster Fakt",
     "welcome.facts_open": "Alle {n} Fakten",
     "welcome.link_opens": "Öffnet: {name}",
     "welcome.hidden_title": "Willkommensbildschirm ausgeblendet",
