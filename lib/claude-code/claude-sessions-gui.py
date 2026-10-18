@@ -24,11 +24,47 @@ SESSIONS = os.path.expanduser("~/.claude/sessions")
 REFRESH_MS = 2000
 GROUP_HEADINGS = ["", "Not today", "Not this week"]  # recent group gets no heading
 
+_scan_lock = threading.Lock()
 _cache = {}  # path -> (mtime, size, info)
 _titles = {}  # path -> title
 _counts = {}  # path -> [bytes consumed, message count]
 _starts = {}  # path -> start directory
 _started = {}  # path -> ISO timestamp of first message
+CACHE_FILE = os.path.expanduser("~/.cache/claude-sessions-gui/cache.json")
+
+
+def load_cache():
+    try:
+        with open(CACHE_FILE) as f:
+            d = json.load(f)
+        for path, v in d["files"].items():
+            _cache[path] = (tuple(v["key"]), v["info"])
+            _titles[path] = v["title"]
+            _counts[path] = tuple(v["count"])
+            _starts[path] = v["start"]
+            if v["started"]:
+                _started[path] = v["started"]
+    except (OSError, ValueError, KeyError, TypeError):
+        _cache.clear()
+        _titles.clear()
+        _counts.clear()
+        _starts.clear()
+        _started.clear()
+
+
+def save_cache():
+    files = {p: {"key": list(k), "info": info, "title": _titles.get(p, ""),
+                 "count": list(_counts.get(p, (0, 0))), "start": _starts.get(p, ""),
+                 "started": _started.get(p, "")}
+             for p, (k, info) in list(_cache.items())}
+    try:
+        os.makedirs(os.path.dirname(CACHE_FILE), exist_ok=True)
+        tmp = CACHE_FILE + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump({"files": files}, f)
+        os.replace(tmp, CACHE_FILE)
+    except OSError:
+        pass
 
 
 def _text_of(msg):
@@ -188,9 +224,21 @@ def parse(path, mtime, size):
     }
 
 
-def scan():
+def scan(progress=None):
+    with _scan_lock:
+        return _scan(progress)
+
+
+def _scan(progress):
     rows = []
-    for path in glob.glob(os.path.join(PROJECTS, "*", "*.jsonl")):
+    dirty = False
+    paths = glob.glob(os.path.join(PROJECTS, "*", "*.jsonl"))
+    for gone in set(_cache) - set(paths):
+        del _cache[gone]
+        dirty = True
+    for i, path in enumerate(paths):
+        if progress:
+            progress(i, len(paths))
         try:
             st = os.stat(path)
         except OSError:
@@ -205,7 +253,10 @@ def scan():
         except OSError:
             continue
         _cache[path] = (key, info)
+        dirty = True
         rows.append(info)
+    if dirty:
+        save_cache()
     rows.sort(key=lambda r: r["mtime"], reverse=True)
     return rows
 
@@ -362,6 +413,7 @@ class Win(Gtk.Window):
         # cols: age, project, title, who, last message, id, tooltip
         self.store = Gtk.ListStore(str, str, str, str, str, str, str, int, str)
         self.ids = []
+        self.opening = {}  # session id -> time until which repeat opens are ignored
         self.sort_col = 0  # column index in the store; 0 = Changed
         self.sort_desc = True
         self.view = Gtk.TreeView(model=self.store)
@@ -388,6 +440,9 @@ class Win(Gtk.Window):
         sw = Gtk.ScrolledWindow()
         sw.add(self.view)
         self.status = Gtk.Label(xalign=0)
+        self.bar = Gtk.ProgressBar(show_text=True, valign=Gtk.Align.CENTER)
+        self.bar.set_text("Reading sessions…")
+        self.loading = True
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         bar = Gtk.Box(spacing=8)
         btn = Gtk.Button()
@@ -401,16 +456,33 @@ class Win(Gtk.Window):
         self.search.set_width_chars(28)
         self.search.connect("search-changed", lambda _e: self.refresh())
         bar.pack_start(self.status, True, True, 0)
+        bar.pack_start(self.bar, True, True, 0)
         bar.pack_end(self.search, False, False, 6)
         box.pack_start(bar, False, False, 4)
         box.pack_start(sw, True, True, 0)
         self.add(box)
         self.view.get_columns()[0].set_sort_indicator(True)
         self.view.set_search_column(2)
-        self.refresh()
+        threading.Thread(target=self.first_scan, daemon=True).start()
         GLib.timeout_add(REFRESH_MS, self.refresh)
 
+    def first_scan(self):
+        """Fill the cache off the main thread so the window opens at once."""
+        def progress(i, n):
+            GLib.idle_add(self.bar.set_fraction, i / max(n, 1))
+            GLib.idle_add(self.bar.set_text, f"Reading sessions… {i} / {n}")
+        load_cache()
+        scan(progress)
+        GLib.idle_add(self.finish_loading)
+
+    def finish_loading(self):
+        self.loading = False
+        self.bar.hide()
+        self.refresh()
+
     def refresh(self):
+        if self.loading:
+            return True
         rows = scan()
         now = time.time()
         sel = None
@@ -526,6 +598,10 @@ class Win(Gtk.Window):
         self.status.set_text(f"  copied {sid}")
 
     def open_session(self, sid):
+        # a launch takes a while to show up as running; ignore repeats meanwhile
+        if time.time() < self.opening.get(sid, 0):
+            return
+        self.opening[sid] = time.time() + 15
         rec = running_info().get(sid)
         if rec and rec.get("kind") == "bg":
             self.launch(rec.get("cwd") or os.path.expanduser("~"),
