@@ -1140,6 +1140,7 @@ class MainWindow(QMainWindow):
             return
         self.key_held = True
         self.combo = False
+        core.stop_spoken_reply()
         if self._click_session and self.recording_active:
             self.stop_by_click()   # started with a click on the icon: the hotkey stops it too
             return
