@@ -81,6 +81,8 @@ DEFAULT_CONFIG = {
     "trim_silence":          True,   # cut pauses before decoding (local_stt silence trimming); no Settings field
     "recording_meter":       True,   # small level meter while recording (replaces the "Speak now" notification)
     "vad_highpass":          True,   # speech detection ignores hum below 150 Hz (mains buzz hides quiet speech from it)
+    "save_clips":            False,  # keep every take with its transcript in CLIP_ARCHIVE (voice recordings: off unless set by hand; no Settings field)
+    "hotword_lab":           False,  # experimental: after each dictation, compare decodes with the learned terms boosted by different amounts
     "corrections":           "learn",  # off | apply (replace words by the learned corrections) | learn (apply, and learn from copied fixes)
     "local_stt_idle_minutes": 5,   # unload the model after this long idle when RAM is short (0 = keep loaded)
 }
@@ -511,6 +513,48 @@ def save_last_clip(audio, timing=None, speech=None):
         os.replace(tmp, LAST_CLIP)
     except OSError:
         log.exception("could not keep the last clip")
+
+
+# Opt-in archive of every take (config key save_clips), to build test sets from real speech:
+# <id>.wav plus a line in index.jsonl (what the model heard) and, once the user copies a fixed
+# text, a line in labels.jsonl (the corrected text for that id).
+CLIP_ARCHIVE = Path.home() / ".local" / "share" / "dictate" / "clip-archive"
+
+
+def archive_clip(audio, heard, model=""):
+    """Keep this take for good. Returns its id, or None when it could not be written."""
+    import wave
+    now = time.time()
+    cid = time.strftime("%Y%m%d-%H%M%S", time.localtime(now)) + "-%03d" % int(now % 1 * 1000)
+    try:
+        CLIP_ARCHIVE.mkdir(parents=True, exist_ok=True, mode=0o700)
+        fd = os.open(CLIP_ARCHIVE / (cid + ".wav"), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "wb") as f, wave.open(f, "wb") as w:
+            w.setnchannels(CHANNELS)
+            w.setsampwidth(2)
+            w.setframerate(SAMPLE_RATE)
+            w.writeframes(np.ascontiguousarray(audio, dtype="<i2").tobytes())
+        _append_jsonl("index.jsonl", {"id": cid, "seconds": round(len(audio) / SAMPLE_RATE, 2),
+                                      "model": model, "heard": heard})
+        return cid
+    except OSError:
+        log.exception("could not archive the clip")
+        return None
+
+
+def label_clip(cid, corrected):
+    """The user's corrected text for an archived clip."""
+    if cid:
+        try:
+            _append_jsonl("labels.jsonl", {"id": cid, "time": time.strftime("%Y-%m-%dT%H:%M:%S"), "corrected": corrected})
+        except OSError:
+            log.exception("could not label the archived clip")
+
+
+def _append_jsonl(name, entry):
+    fd = os.open(CLIP_ARCHIVE / name, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+    with os.fdopen(fd, "a", encoding="utf-8") as f:
+        f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
 
 def replay_last_clip(wait=False):
@@ -946,6 +990,15 @@ def rebuild_corrections():
     _save_corrections(d)
     return ([(k, v) for k, v in rules.items() if old.get(k) != v],
             [(k, v) for k, v in old.items() if rules.get(k) != v])
+
+
+def hotword_terms(limit=40):
+    """The terms to boost in the hotword lab: the right-hand sides of the learned corrections."""
+    terms = []
+    for dst in _load_corrections()["rules"].values():
+        if len(dst) > 2 and dst not in terms:
+            terms.append(dst)
+    return terms[:limit]
 
 
 def list_corrections():
