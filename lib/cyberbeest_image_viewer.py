@@ -738,6 +738,7 @@ class ImageViewerWindow(Gtk.Window):
         self.zoom_mode = "fit"  # "fit" tracks the viewport; "manual" holds zoom_scale
         self.zoom_scale = 1.0
         self._last_fit_size = None
+        self._fit_pending = False
         self.drag_state = None
         self._last_nav_time = 0
         self.frames = None
@@ -1070,8 +1071,24 @@ class ImageViewerWindow(Gtk.Window):
         self.is_fullscreen = not self.is_fullscreen
 
     def on_viewport_allocate(self, _widget, allocation):
+        if self.zoom_mode != "fit":
+            return
+        # Not resized in here: changing the image's size request in the middle of the
+        # scroller's own size-allocate left a stale, half-repainted picture after a
+        # maximize. Done from an idle callback (coalesced), then fully redrawn.
+        if not self._fit_pending:
+            self._fit_pending = True
+            GLib.idle_add(self._fit_idle)
+
+    def _fit_idle(self):
+        self._fit_pending = False
         if self.zoom_mode == "fit":
-            self._apply_fit(allocation)
+            self._apply_fit(self.scroller.get_allocation())
+            if self.image_widget is not None:
+                self.image_widget.queue_resize()
+                self.image_widget.queue_draw()
+            self.scroller.queue_draw()
+        return False
 
     def _apply_fit(self, allocation):
         if self.native_size is None or self.set_zoom_size is None:
