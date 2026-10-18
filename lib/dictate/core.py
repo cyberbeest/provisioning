@@ -365,6 +365,18 @@ def paste_target():
     return wid
 
 
+def stop_spoken_reply():
+    """Silence Claude Code's spoken reply (speak-replies mod), if it is installed, the moment
+    the hotkey goes down rather than when the microphone opens."""
+    path = os.path.expanduser("~/.local/share/claude-tts/speak.py")
+    if os.path.exists(path):
+        try:
+            subprocess.Popen(["python3", path, "--stop"], stdin=subprocess.DEVNULL,
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except OSError:
+            pass
+
+
 def focus_window(wid):
     """Bring a remembered window back into focus. False if it is gone or
     refuses, in which case nothing may be typed."""
@@ -430,7 +442,10 @@ def type_text(text, target=None):
     # therefore wrong for non-US keyboards, but there is no better option
     # for global typing into native Wayland windows today.
     import os
-    on_x11 = os.environ.get("XDG_SESSION_TYPE") == "x11"
+    # A launcher without XDG_SESSION_TYPE (sudo env, autostart) still has DISPLAY on X11.
+    on_x11 = (os.environ.get("XDG_SESSION_TYPE") == "x11"
+              or (os.environ.get("XDG_SESSION_TYPE") in (None, "", "tty")
+                  and bool(os.environ.get("DISPLAY")) and not os.environ.get("WAYLAND_DISPLAY")))
     tools = ["xdotool", "ydotool"] if on_x11 else ["ydotool", "xdotool"]
     for tool in tools:
         try:
@@ -442,10 +457,13 @@ def type_text(text, target=None):
                     check=False,
                     stderr=subprocess.DEVNULL,
                 )
-            if r.returncode != 0:
-                log.error("%s exited with %s — text not typed", tool, r.returncode)
-                notify(_("Typing failed ({tool} exit {code})").format(tool=tool, code=r.returncode), urgency="normal", timeout_ms=5000)   # critical never expires
-            return r.returncode == 0
+            if r.returncode == 0:
+                return True
+            log.error("%s exited with %s — text not typed", tool, r.returncode)
+            if tool != tools[-1]:
+                continue   # try the other tool
+            notify(_("Typing failed ({tool} exit {code})").format(tool=tool, code=r.returncode), urgency="normal", timeout_ms=5000)   # critical never expires
+            return False
         except FileNotFoundError:
             continue
     return False
