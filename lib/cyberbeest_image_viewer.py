@@ -491,6 +491,17 @@ def _icon_button(icon_name, tooltip, handler):
     return button
 
 
+def _label_button(markup, tooltip, handler):
+    button = Gtk.Button()
+    button.add(Gtk.Label(use_markup=True, label=markup))
+    button.set_relief(Gtk.ReliefStyle.NONE)
+    button.get_style_context().add_provider(_NO_TRANSITION_CSS, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+    button.set_tooltip_text(tooltip)
+    button.set_can_focus(False)
+    button.connect("clicked", lambda _b: handler())
+    return button
+
+
 def _menu_item_with_hotkey(label, hotkey, handler):
     item = Gtk.MenuItem()
     row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=20)
@@ -703,6 +714,8 @@ class ImageViewerWindow(Gtk.Window):
         self.scroller.get_style_context().add_class("image-backdrop")
         self.scroller.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
         self.scroller.connect("size-allocate", self.on_viewport_allocate)
+        self.scroller.add_events(Gdk.EventMask.SCROLL_MASK | Gdk.EventMask.SMOOTH_SCROLL_MASK)
+        self.scroller.connect("scroll-event", self.on_scroll)
         overlay.add(self.scroller)
         self.scroller.show()
 
@@ -739,13 +752,13 @@ class ImageViewerWindow(Gtk.Window):
         # Zoom controls sit centered in the window; the menu and collapse
         # buttons stay at the right edge.
         zoom_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=2)
-        zoom_box.pack_start(_icon_button("zoom-original-symbolic", "Zoom 1:1 (0)", self.zoom_to_native), False, False, 0)
+        zoom_box.pack_start(_label_button("<b>1:1</b>", "Zoom 1:1 (0)", self.zoom_to_native), False, False, 0)
+        zoom_box.pack_start(_label_button("<span size='x-small'>●</span>", "Zoom Fit (f)", self.zoom_to_fit), False, False, 0)
         zoom_box.pack_start(_icon_button("zoom-out-symbolic", "Zoom Out (-)", lambda: self.zoom_by(1 / ZOOM_STEP)), False, False, 0)
         # Fixed width so the buttons don't shift as the percentage changes.
         self.zoom_label = Gtk.Label(width_chars=10)
         zoom_box.pack_start(self.zoom_label, False, False, 0)
         zoom_box.pack_start(_icon_button("zoom-in-symbolic", "Zoom In (+)", lambda: self.zoom_by(ZOOM_STEP)), False, False, 0)
-        zoom_box.pack_start(_icon_button("zoom-fit-best-symbolic", "Zoom Fit (f)", self.zoom_to_fit), False, False, 0)
         bar.set_center_widget(zoom_box)
 
         bar.pack_start(_icon_button("go-previous-symbolic", "Previous Image (Left)", lambda: self.show_offset(-1)), False, False, 0)
@@ -1135,6 +1148,18 @@ class ImageViewerWindow(Gtk.Window):
             self.show_context_menu(event)
             return True
         return False
+
+    def on_scroll(self, widget, event):
+        if event.direction == Gdk.ScrollDirection.UP:
+            self.zoom_by(ZOOM_STEP)
+        elif event.direction == Gdk.ScrollDirection.DOWN:
+            self.zoom_by(1 / ZOOM_STEP)
+        elif event.direction == Gdk.ScrollDirection.SMOOTH:
+            if event.delta_y < 0:
+                self.zoom_by(ZOOM_STEP)
+            elif event.delta_y > 0:
+                self.zoom_by(1 / ZOOM_STEP)
+        return True
 
     def on_image_motion(self, widget, event):
         self._restart_tooltip_timer()
