@@ -6,9 +6,11 @@ built by 72-welcome-screen.sh). "Close" shows it again next login, "Don't show a
 writes DISMISS_FILE and it stays away. Run with --force to show it regardless. Test flags: --scroll=0..1 (start scrolled),
 --hover=KEY (start with that panel row highlighted, e.g. --hover=memory)."""
 
+import glob
 import json
 import os
 import random
+import re
 import socket
 import subprocess
 import sys
@@ -67,7 +69,9 @@ scrollbar slider:hover { background-color: #59d6b8; }
                  border: 1px solid #2c3746; border-radius: 8px; padding: 7px 16px; box-shadow: none; }
 .footer button:hover { border-color: #59d6b8; }
 .footer button.primary { background-color: #59d6b8; color: #06080b; border-color: #59d6b8; font-weight: 700; }
-.fact-big { font-size: 18px; font-weight: 400; color: #e7eaf0; padding: 14px 8px; }
+.s-title-small { font-weight: 800; font-size: 17px; color: #e7eaf0; }
+.fact-big { font-size: 15px; font-weight: 400; color: #e7eaf0; padding: 8px 8px; }
+.fact-big link, .fact-big link:hover { color: #59d6b8; }
 .frame-a { background-color: #59d6b8; }
 .frame-b { background-color: #1f7a67; }
 """
@@ -115,6 +119,105 @@ class FactDeck:
         except OSError:
             pass
         return out
+
+
+PKG_MANAGER = "cyberbeest-package-manager.desktop"
+# Phrases in a fact that open an app when clicked, first occurrence only.
+APP_LINKS = [
+    (r"Cyberbeest[ -](?:Package Manager|Paketverwaltung)", PKG_MANAGER),
+    (r"Google Chrome", "google-chrome.desktop"),
+    (r"Viber", "viber.desktop"),
+    (r"Signal(?! 's)", "signal-desktop.desktop"),
+    (r"Element", "element-desktop.desktop"),
+    (r"Telegram", "org.telegram.desktop.desktop"),
+    (r"Tor[ -]Browser", "torbrowser.desktop"),
+    (r"Firefox", "firefox-esr.desktop"),
+    (r"VLC", "vlc.desktop"),
+    (r"Sparrow", "sparrowwallet-Sparrow.desktop"),
+    (r"Feather", "feather.desktop"),
+    (r"virtual machine|virtuelle Maschine|Cyberbeest[ -]VM", "cyberbeest-sandbox-vm.desktop"),
+    (r"GNOME Software", "org.gnome.Software.desktop"),
+    (r"Cyberbeest[ -]Passwords & Boot|Cyberbeest-Passwörter & Start", "cyberbeest-change-password.desktop"),
+    (r"Whitelisted Folders|Zugelassene Ordner", "cyberbeest-shared-folders.desktop"),
+    (r"Battery Report|Akkubericht", "cyberbeest-battery-report.desktop"),
+    (r"Malware Scanner", "cyberbeest-scanner.desktop"),
+    (r"Cyberbeest Wipe App Data", "cyberbeest-wipe-app-data.desktop"),
+    (r"Enable LAN Printer Discovery", "avahi-enable.desktop"),
+    (r"Print Settings|Druckereinstellungen", "system-config-printer.desktop"),
+    (r"Disable Encrypted DNS", "dot-disable.desktop"),
+    (r"Cyberbeest VPN", "vpn.desktop"),
+    (r"\bDictate\b", "dictate.desktop"),
+    (r"Factbook|Faktenbuch", "factbook.desktop"),
+    (r"Weather|Wetter", "cyberbeest-weather.desktop"),
+    (r"Intrusion Watch", "cyberbeest-intrusion-watch.desktop"),
+    (r"Linux Security News", "cyberbeest-security-watch.desktop"),
+    (r"Cyberbeest Image Viewer", "cyberbeest-image-viewer.desktop"),
+    (r"Cyberbeest[ -]Update", "cyberbeest-update.desktop"),
+    (r"Claude Code", "cyberbeest-claude-install.desktop"),
+    (r"Calculator|Taschenrechner", "org.gnome.Calculator.desktop"),
+    (r"(?<=called )Files|(?<=heißt )Dateien", "thunar.desktop"),
+]
+INSTALL_WORD = re.compile(r"\binstall(?:ed)?\b|\binstallier\w*")
+
+
+def link_title(desktop):
+    """Tooltip for a link: the menu entry it opens."""
+    try:
+        info = Gio.DesktopAppInfo.new(desktop)   # raises TypeError when missing
+    except TypeError:
+        info = None
+    return t("welcome.link_opens").format(name=info.get_name() if info else desktop)
+
+
+def fact_count():
+    """Number of facts in the installed Factbook (in the display language), or 0."""
+    lang = _LOCALE if _LOCALE in ("en", "de") else "en"
+    n = 0
+    try:
+        exe = Gio.DesktopAppInfo.new("factbook.desktop").get_executable()   # facts/ sits next to it
+    except TypeError:
+        return 0
+    for path in glob.glob(os.path.join(os.path.dirname(os.path.realpath(exe)), "facts", "*.json")):
+        try:
+            with open(path, encoding="utf-8") as f:
+                n += sum(1 for x in json.load(f)["facts"] if x.get(lang) and x.get("id"))
+        except (OSError, ValueError, KeyError):
+            pass
+    return n
+
+
+def fact_markup(fact):
+    """Pango markup for a fact, with app names (and "installed") as app:<desktop file> links."""
+    spans = []   # (start, end, desktop id)
+    for pattern, desktop in APP_LINKS:
+        m = re.search(pattern, fact)
+        if m and not any(m.start() < e and s < m.end() for s, e, _ in spans):
+            spans.append((m.start(), m.end(), desktop))
+    if not any(d in (PKG_MANAGER, "vpn.desktop") for _, _, d in spans):   # the VPN tool installs VPNs itself
+        m = INSTALL_WORD.search(fact)
+        if m and not any(m.start() < e and s < m.end() for s, e, _ in spans):
+            spans.append((m.start(), m.end(), PKG_MANAGER))
+    out, pos = [], 0
+    for start, end, desktop in sorted(spans):
+        out.append(GLib.markup_escape_text(fact[pos:start]))
+        out.append('<a href="app:%s" title="%s">%s</a>' % (
+            desktop, GLib.markup_escape_text(link_title(desktop), -1).replace('"', "&quot;"),
+            GLib.markup_escape_text(fact[start:end])))
+        pos = end
+    out.append(GLib.markup_escape_text(fact[pos:]))
+    return "".join(out)
+
+
+def open_app_link(_label, uri):
+    if not uri.startswith("app:"):
+        return False
+    try:
+        info = Gio.DesktopAppInfo.new(uri[4:])   # raises TypeError when missing
+        if info:
+            info.launch([], None)
+    except TypeError:
+        pass
+    return True
 
 
 def dismiss(_button=None):
@@ -534,7 +637,6 @@ def card(child_box):
 
 
 def section_header(box, eyebrow, title, lead=None):
-    box.pack_start(label(eyebrow, "eyebrow"), False, False, 0)
     box.pack_start(label(title, "s-title"), False, False, 0)
     if lead:
         box.pack_start(label(lead, "s-lead"), False, False, 4)
@@ -543,10 +645,10 @@ def section_header(box, eyebrow, title, lead=None):
 def logo_widget():
     box = Gtk.Box(spacing=16, halign=Gtk.Align.CENTER)
     try:
-        pix = GdkPixbuf.Pixbuf.new_from_file_at_size(ICON, 84, 84)
+        pix = GdkPixbuf.Pixbuf.new_from_file_at_size(ICON, 64, 64)
         surf = Gdk.cairo_surface_create_from_pixbuf(pix, 1, None)
         da = Gtk.DrawingArea()
-        da.set_size_request(84, 84)
+        da.set_size_request(64, 64)
 
         def draw(_w, cr):
             cr.set_source_rgb(*TEAL)
@@ -688,7 +790,7 @@ def factbook_launch():
 
 def build_facts(deck):
     box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-    section_header(box, t("welcome.s4_eyebrow"), t("welcome.s4_title"))
+    box.pack_start(label(t("welcome.s4_title"), "s-title-small", xalign=0.5), False, False, 0)
     rows = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
     box.pack_start(rows, False, False, 4)
 
@@ -699,20 +801,22 @@ def build_facts(deck):
             row = Gtk.Box()
             row.get_style_context().add_class("row")
             lab = label(fact, "fact-big", xalign=0.5)
+            lab.set_markup(fact_markup(fact))
+            lab.connect("activate-link", open_app_link)
             lab.set_justify(Gtk.Justification.CENTER)
             row.pack_start(lab, True, True, 0)
             rows.pack_start(row, False, False, 0)
         rows.show_all()
 
     reload()
-    buttons = Gtk.Box(spacing=8, halign=Gtk.Align.CENTER)
+    buttons = Gtk.Box(spacing=8, halign=Gtk.Align.END)
     more = Gtk.Button(label=t("welcome.facts_more"))
     more.get_style_context().add_class("link-button")
     more.connect("clicked", reload)
     buttons.pack_start(more, False, False, 0)
     launch = factbook_launch()
     if launch:
-        book = Gtk.Button(label=t("welcome.facts_open"))
+        book = Gtk.Button(label=t("welcome.facts_open").format(n=fact_count()))
         book.get_style_context().add_class("link-button")
         book.connect("clicked", launch)
         buttons.pack_start(book, False, False, 0)
@@ -748,11 +852,11 @@ def main():
     scroll.set_overlay_scrolling(False)
     outer.pack_start(scroll, True, True, 0)
 
-    page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=44)
+    page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=22)
     page.get_style_context().add_class("page")
     for side in ("start", "end"):
         getattr(page, "set_margin_" + side)(40)
-    page.set_margin_top(30)
+    page.set_margin_top(10)
     page.set_margin_bottom(30)
     scroll.add(page)
 
@@ -760,12 +864,12 @@ def main():
     hero.pack_start(logo_widget(), False, False, 0)
     page.pack_start(hero, False, False, 0)
 
+    if facts:
+        page.pack_start(build_facts(FactDeck(facts)), False, False, 0)
     page.pack_start(build_voice(), False, False, 0)
     page.pack_start(build_security(), False, False, 0)
     panel = PanelSection(win)
     page.pack_start(panel.box, False, False, 0)
-    if facts:
-        page.pack_start(build_facts(FactDeck(facts)), False, False, 0)
 
     footer = Gtk.Box(spacing=8, halign=Gtk.Align.FILL)
     footer.get_style_context().add_class("footer")

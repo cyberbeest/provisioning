@@ -84,7 +84,7 @@
     {
       "id": "apps-wipe-data",
       "en": "Cyberbeest Wipe App Data erases the local data of one chosen app, such as chat history, wallet files or browsing data.",
-      "de": "Cyberbeest-App-Daten-Löschen entfernt die lokalen Daten einer gewählten App, etwa Chatverlauf, Wallet-Dateien oder Browserdaten.",
+      "de": "Cyberbeest Wipe App Data entfernt die lokalen Daten einer gewählten App, etwa Chatverlauf, Wallet-Dateien oder Browserdaten.",
       "tip": true,
       "ask": {
         "en": [
@@ -102,7 +102,7 @@
     {
       "id": "apps-wipe-which",
       "en": "Cyberbeest Wipe App Data covers Signal, Element, Telegram, Viber, Sparrow, Feather, Tor Browser, Firefox, VLC, I2P and SimpleX, but only those that are installed or hold data.",
-      "de": "Cyberbeest-App-Daten-Löschen deckt Signal, Element, Telegram, Viber, Sparrow, Feather, Tor-Browser, Firefox, VLC, I2P und SimpleX ab, aber nur solche, die installiert sind oder Daten enthalten."
+      "de": "Cyberbeest Wipe App Data deckt Signal, Element, Telegram, Viber, Sparrow, Feather, Tor-Browser, Firefox, VLC, I2P und SimpleX ab, aber nur solche, die installiert sind oder Daten enthalten."
     },
     {
       "id": "apps-wipe-no-shred",
