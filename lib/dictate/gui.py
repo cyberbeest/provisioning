@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Dictate GUI — PyQt6 tray app for voice dictation via Groq Whisper."""
 import fcntl
+import html
 import logging
 import math
 import os
@@ -186,13 +187,20 @@ class SettingsDialog(QDialog):
         self.autostart_box = QCheckBox(_("Start Dictate when I log in"))
         self.autostart_box.setChecked(core.autostart_enabled())
         self.form.addRow("", self.autostart_box)
-        self.corr_box = QCheckBox(_("Correct words I fixed before"))
-        self.corr_box.setChecked(bool(self.cfg.get("apply_corrections", True)))
-        self.corr_box.setToolTip(_("Dictate learns from the corrections you make in the last-transcript window\nand applies them to later dictations. Turn this off to paste exactly what was heard."))
-        self.form.addRow("", self.corr_box)
+        self.corr_box = QComboBox()
+        self.corr_box.addItem(_("Off"), "off")
+        self.corr_box.addItem(_("Apply what I taught"), "apply")
+        self.corr_box.addItem(_("Apply and keep learning"), "learn")
+        self.corr_box.setCurrentIndex(max(self.corr_box.findData(self.cfg.get("corrections", "learn")), 0))
+        self.corr_box.setToolTip(_("Fix a dictated text wherever you pasted it and copy it: Dictate learns from\nthe copy within 5 minutes and applies it to later dictations.\nOff pastes exactly what was heard."))
+        self.form.addRow(_("Word corrections:"), self.corr_box)
         pairs_btn = QPushButton(_("Learned corrections..."))
         pairs_btn.clicked.connect(lambda: LearnedPairsDialog(self).exec())
         self.form.addRow("", pairs_btn)
+        self.lab_box = QCheckBox(_("Experimental: compare hotword boosts after each dictation"))
+        self.lab_box.setChecked(bool(self.cfg.get("hotword_lab", False)))
+        self.lab_box.setToolTip(_("Shows a window after each dictation: the learned terms boosted by\ndifferent amounts, and how each result differs from the normal one.\nUses extra processor time in the background."))
+        self.form.addRow("", self.lab_box)
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel
@@ -270,7 +278,8 @@ class SettingsDialog(QDialog):
             "dictation_notifications": self.notify_box.isChecked(),
             "recording_meter":       self.meter_box.isChecked(),
             "vad_highpass":          self.hum_box.isChecked(),
-            "apply_corrections":     self.corr_box.isChecked(),
+            "corrections":           self.corr_box.currentData(),
+            "hotword_lab":           self.lab_box.isChecked(),
             "autostart":             self.autostart_box.isChecked(),
         }
 
@@ -628,10 +637,75 @@ class TestDictationDialog(QDialog):
         layout.addLayout(row)
 
 
+class HotwordLabDialog(QWidget):
+    """Experimental: the last dictation decoded again with the learned terms boosted by
+    different amounts, next to the normal result. Shown first, filled by a background thread."""
+
+    result = pyqtSignal(int, str, float)   # row, text or error, seconds
+    started = pyqtSignal(int)
+
+    def __init__(self, heard, terms, scores, parent=None):
+        super().__init__(parent)
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        # Dictation is typed into the focused window: this one must never take the focus.
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
+        self.setWindowFlag(Qt.WindowType.WindowDoesNotAcceptFocus)
+        self.setWindowTitle(_("Dictate — Hotword lab (experimental)"))
+        self.setMinimumWidth(560)
+        self.cancel = threading.Event()
+        self.heard = heard
+        layout = QVBoxLayout(self)
+        base = QLabel(_("Normal result: {text}").format(text=html.escape(heard)))
+        base.setWordWrap(True)
+        base.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        layout.addWidget(base)
+        terms_label = QLabel(_("Boosted terms: {terms}").format(terms=html.escape(", ".join(terms)) or _("none learned yet")))
+        terms_label.setWordWrap(True)
+        terms_label.setStyleSheet("color: #777;")
+        layout.addWidget(terms_label)
+        self.rows = []
+        grid = QFormLayout()
+        names = [_("Beam search, no hotwords")] + [_("Boost {score}").format(score=s) for s in scores]
+        for name in names:
+            label = QLabel(_("waiting ..."))
+            label.setWordWrap(True)
+            label.setTextFormat(Qt.TextFormat.RichText)
+            label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+            grid.addRow(name + ":", label)
+            self.rows.append(label)
+        layout.addLayout(grid)
+        close_btn = QPushButton(_("Close"))
+        close_btn.clicked.connect(self.close)
+        row = QHBoxLayout()
+        row.addStretch()
+        row.addWidget(close_btn)
+        layout.addLayout(row)
+        self.result.connect(self._on_result)
+        self.started.connect(lambda i: self.rows[i].setText(_("decoding ...")))
+
+    def closeEvent(self, event):
+        self.cancel.set()   # the background thread stops after the decode it is in
+        super().closeEvent(event)
+
+    def _on_result(self, i, text, took):
+        import difflib
+        if took < 0:   # an error message
+            self.rows[i].setText('<span style="color:#b00020">%s</span>' % html.escape(text))
+            return
+        a, b = self.heard.split(), text.split()
+        out = []
+        for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(None, a, b, autojunk=False).get_opcodes():
+            words = " ".join(html.escape(w) for w in b[j1:j2])
+            if words:
+                out.append(words if tag == "equal" else '<b style="color:#1565c0">%s</b>' % words)
+        self.rows[i].setText(" ".join(out) + ' <span style="color:#777">(%.1f s)</span>' % took
+                             if text else '<i>%s</i>' % _("nothing recognised"))
+
+
 class LastTranscriptDialog(QDialog):
     """The most recent dictation, for copying when it landed in the wrong place."""
 
-    def __init__(self, text, on_clear, on_learn=None, heard="", parent=None):
+    def __init__(self, text, on_clear, heard="", parent=None):
         super().__init__(parent)
         self.setWindowTitle(_("Dictate — Last transcript"))
         self.setMinimumSize(460, 220)
@@ -646,13 +720,8 @@ class LastTranscriptDialog(QDialog):
             heard_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
             heard_label.setStyleSheet("color: #777;")
             layout.addWidget(heard_label)
-        self.learn_label = QLabel("")
-        self.learn_label.setWordWrap(True)
-        layout.addWidget(self.learn_label)
         row = QHBoxLayout()
         row.addStretch()
-        learn_btn = QPushButton(_("Learn corrections"))
-        learn_btn.setToolTip(_("Remembers the words you changed above. After you have fixed the same\nmistake twice, Dictate corrects it by itself from then on."))
         pairs_btn = QPushButton(_("Learned pairs"))
         pairs_btn.clicked.connect(lambda: LearnedPairsDialog(self).exec())
         copy_btn = QPushButton(_("Copy"))
@@ -660,20 +729,10 @@ class LastTranscriptDialog(QDialog):
         close_btn = QPushButton(_("Close"))
         # xdotool types into the focused window; if that is this one, a space
         # or Enter in the dictated text would "press" a focused button.
-        for b in ((learn_btn, pairs_btn) if on_learn else ()) + (copy_btn, clear_btn, close_btn):
+        for b in (pairs_btn, copy_btn, clear_btn, close_btn):
             b.setFocusPolicy(Qt.FocusPolicy.NoFocus)
             row.addWidget(b)
-        if on_learn:
-            # Only active while the text differs from what was last learned from.
-            self._baseline = text
-            learn_btn.setEnabled(False)
-            self.edit.textChanged.connect(lambda: learn_btn.setEnabled(self.edit.toPlainText() != self._baseline))
-
-            def learn():
-                self._baseline = self.edit.toPlainText()
-                learn_btn.setEnabled(False)
-                self.learn_label.setText(on_learn(self._baseline))
-            learn_btn.clicked.connect(learn)
+        # Copying the fixed text is also what teaches Dictate: the main window watches the clipboard.
         copy_btn.clicked.connect(lambda: QApplication.clipboard().setText(self.edit.toPlainText()))
         clear_btn.clicked.connect(on_clear)
         close_btn.clicked.connect(self.close)
@@ -720,6 +779,11 @@ class MainWindow(QMainWindow):
         self.last_text = ""          # most recent dictation, kept in memory only
         self.last_raw = ""           # the same as the model heard it, before learned corrections
         self._raw_text = ""
+        self._lab_input = None       # (audio, speech) of the take in progress, for the hotword lab
+        self._lab_dialog = None
+        self._lab_last = None
+        self._archive_id = None      # clip archive id of the take in progress
+        self.last_archive_id = None  # ... and of the last transcript, so a fixed copy can label it
         self.last_heard = ""         # the model's own words for the last dictation, for display
         self._last_dialog = None
         # For privacy the last transcript is forgotten after a while.
@@ -727,6 +791,8 @@ class MainWindow(QMainWindow):
         self._clear_timer.setSingleShot(True)
         self._clear_timer.setInterval(LAST_TRANSCRIPT_MINUTES * 60 * 1000)
         self._clear_timer.timeout.connect(self.clear_last_transcript)
+
+        QApplication.clipboard().dataChanged.connect(self.on_clipboard_changed)
 
         self.tray = None
         self._status = ("ready", _("Ready"))
@@ -960,20 +1026,78 @@ class MainWindow(QMainWindow):
         self._test_dialog.activateWindow()
         self._test_dialog.edit.setFocus()
 
-    def learn_corrections(self, edited):
-        """Learn button of the last-transcript window: message for the user."""
+    def show_hotword_lab(self, heard, audio, speech):
+        """Open the lab window at once; a background thread fills in the decodes."""
+        import local_stt
+        if self._lab_dialog is not None:
+            try:
+                self._lab_dialog.close()
+            except RuntimeError:
+                pass   # already deleted
+        terms = core.hotword_terms()
+        dlg = HotwordLabDialog(heard, terms, local_stt.LAB_SCORES)
+        self._lab_dialog = dlg
+        self._lab_last = (heard, audio, speech)   # to run again after learning
+        dlg.destroyed.connect(lambda: setattr(self, "_lab_dialog", None) if self._lab_dialog is dlg else None)
+        dlg.show()
+        threading.Thread(target=self._run_hotword_lab, args=(dlg, audio, speech, terms), daemon=True).start()
+
+    def _run_hotword_lab(self, dlg, audio, speech, terms):
+        import local_stt
+
+        def emit(sig, *args):
+            try:
+                sig.emit(*args)
+            except RuntimeError:
+                pass   # the window was closed meanwhile
+        hot = "/".join(terms)
+        variants = [None] + list(local_stt.LAB_SCORES)
+        for i, score in enumerate(variants):
+            if dlg.cancel.is_set():
+                for j in range(i, len(variants)):
+                    emit(dlg.result, j, _("stopped"), -1.0)
+                return
+            if score is not None and not terms:
+                emit(dlg.result, i, _("nothing to boost yet: fix a few words first"), -1.0)
+                continue
+            emit(dlg.started, i)
+            t0 = time.monotonic()
+            try:
+                text = local_stt.lab_decode(audio, speech, score, hot)
+            except Exception as e:
+                core.log.exception("hotword lab decode failed")
+                emit(dlg.result, i, str(e)[:120], -1.0)
+                continue
+            emit(dlg.result, i, text, time.monotonic() - t0)
+
+    def on_clipboard_changed(self):
+        """Learn from a fixed copy of the last dictation: the user corrects it wherever it was
+        pasted and copies it, which is the one way to read text out of any toolkit."""
+        if not self.last_text or self.cfg.get("corrections", "learn") != "learn":
+            return
+        edited = core.clean_copied(QApplication.clipboard().text())
+        if not edited or not core.is_edited_version(self.last_text, edited):
+            return
         try:
             core.log_correction(self.last_raw, edited, self.cfg.get("model", ""))
+            learned, forgotten = core.rebuild_corrections()
         except Exception:
-            core.log.exception("could not write the correction log")
-        learned, forgotten = core.rebuild_corrections()
-        self.last_raw = edited   # the next click only counts what is changed after this one
+            core.log.exception("could not learn from the copied text")
+            return
+        core.label_clip(self.last_archive_id, edited)
+        if (learned or forgotten) and self._lab_dialog is not None and self._lab_last:
+            self.show_hotword_lab(*self._lab_last)   # the learned terms changed: compare again
+        # The next copy only counts what is changed after this one.
+        self.last_raw = self.last_text = edited
+        if self._last_dialog is not None:
+            self._last_dialog.edit.setPlainText(edited)
         msgs = []
         if learned:
             msgs.append(_("Learned: {pairs}").format(pairs=", ".join(f"{a} → {b}" for a, b in learned)))
         if forgotten:
             msgs.append(_("Forgotten: {pairs}").format(pairs=", ".join(f"{a} → {b}" for a, b in forgotten)))
-        return "\n".join(msgs) or _("Noted. A mistake is learned once you have fixed it a couple of times.")
+        msg = "\n".join(msgs) or _("Noted, but too ambiguous to apply on its own.")
+        threading.Thread(target=core.notify, args=(msg, "normal", 3000), daemon=True).start()
 
     def show_last_transcript(self):
         if not self.last_text:
@@ -982,7 +1106,7 @@ class MainWindow(QMainWindow):
             self._last_dialog.raise_()
             self._last_dialog.activateWindow()
             return
-        self._last_dialog = LastTranscriptDialog(self.last_text, self.clear_last_transcript, self.learn_corrections, self.last_heard)
+        self._last_dialog = LastTranscriptDialog(self.last_text, self.clear_last_transcript, self.last_heard)
         self._last_dialog.show()
         self._last_dialog.raise_()
         self._last_dialog.activateWindow()
@@ -1109,6 +1233,8 @@ class MainWindow(QMainWindow):
 
     def start_recording(self, click=False) -> bool:
         requested = time.monotonic()
+        if self._lab_dialog is not None:
+            self._lab_dialog.cancel.set()   # the lab must not slow down a dictation
         self._ensure_model()   # a missing model downloads while the user speaks
         # Reload the model if it was unloaded while idle; the load runs while
         # the user speaks. Also restarts the idle countdown.
@@ -1236,6 +1362,7 @@ class MainWindow(QMainWindow):
             self.bridge.error.emit(_("No audio captured — check the microphone"))
             return
         core.save_last_clip(audio, take[1].timing, speech)
+        self._lab_input = (audio, speech) if self.cfg.get("hotword_lab") else None
         secs = len(audio) / core.SAMPLE_RATE
         peak = int(np.abs(audio).max())
         t0 = time.monotonic()
@@ -1281,6 +1408,8 @@ class MainWindow(QMainWindow):
             core.record_transcribe_speed(secs, time.monotonic() - t0)
         core.log.info("transcribed %.1fs audio, peak %d, %d chars in %.1fs",
                       secs, peak, len(text or ""), time.monotonic() - t0)
+        self._archive_id = (core.archive_clip(audio, text or "", self.cfg.get("model", ""))
+                            if self.cfg.get("save_clips") else None)
         if not text:
             # Peak is out of 32768; a live mic with speech is in the thousands.
             why = "microphone was silent" if peak < 300 else "no speech recognised"
@@ -1291,7 +1420,7 @@ class MainWindow(QMainWindow):
             target = CANCELLED
         self._raw_text = text
         try:
-            if self.cfg.get("apply_corrections", True):
+            if self.cfg.get("corrections", "learn") != "off":
                 text = core.apply_corrections(text)
         except Exception:
             core.log.exception("applying learned corrections failed")
@@ -1300,6 +1429,9 @@ class MainWindow(QMainWindow):
     def on_transcribed(self, text, target):
         if text:
             self.last_raw = self.last_heard = self._raw_text
+            if self._lab_input is not None and len(self._lab_input[0]) <= 30 * core.SAMPLE_RATE:
+                self.show_hotword_lab(self._raw_text, *self._lab_input)
+            self.last_archive_id = self._archive_id
         if text and target is CANCELLED:
             self.last_text = text   # kept under "Show last transcript", not pasted
             self._clear_timer.start()

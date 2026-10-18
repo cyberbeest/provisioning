@@ -38,6 +38,18 @@
       "tip": true
     },
     {
+      "id": "power-off-uncrackable",
+      "en": "When a Cyberbeest is off (all blue LEDs dark), it is mathematically uncrackable with any practical effort. Your data cannot be extracted.",
+      "de": "Ist ein Cyberbeest aus (alle blauen LEDs dunkel), lässt es sich mit keinem praktikablen Aufwand knacken – das ist mathematisch begründet. Deine Daten lassen sich nicht auslesen.",
+      "tip": true
+    },
+    {
+      "id": "power-locked-shutdown-password-only",
+      "en": "When a Cyberbeest is locked, it will automatically shut down after the time you set, and this timer can only be interrupted by entering the correct password.",
+      "de": "Ein gesperrtes Cyberbeest fährt nach der von dir eingestellten Zeit automatisch herunter, und dieser Timer lässt sich nur durch Eingabe des richtigen Passworts unterbrechen.",
+      "tip": true
+    },
+    {
       "id": "power-locked-signs",
       "en": "A Cyberbeest with a black screen, a lock screen or a closed lid is LOCKED, as long as some of its LEDs are lit.",
       "de": "Ein Cyberbeest mit schwarzem Bildschirm, Sperrbildschirm oder geschlossenem Deckel ist GESPERRT, solange einige seiner LEDs leuchten.",

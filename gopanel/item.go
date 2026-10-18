@@ -2,7 +2,9 @@ package main
 
 import (
 	"image"
+	"math"
 	"sync/atomic"
+	"time"
 )
 
 // Panel colours (the default Xfce GTK theme).
@@ -40,11 +42,33 @@ type item struct {
 	reserved bool                                  // w is a cached guess from the last run, not yet confirmed
 	imgAt    func(w int, rep *replica) *image.RGBA // expanding items whose image depends on the width (taskbar): render for another panel
 	ctxW     func(w int)                           // tell the item its width without rendering (replica event handling)
+	hasClick func() bool                           // genmon: the plugin defines a click action (its own menu or window)
+	pid      string                                // id of the xfce4-panel plugin this item came from
+	sig      string                                // genmon: command and period, to tell a changed plugin from an unchanged one
+	glowFrom time.Time                             // set when the icon appeared after startup: it glows for glowDur
 	hold     int                                   // tray: slot width kept (icons left-aligned in it) while autostarted apps are still docking
 }
 
 func newItem(kind string) *item {
 	return &item{kind: kind, dead: make(chan struct{})}
+}
+
+// glowDur is how long a newly added icon glows so the user finds it.
+const glowDur = 4 * time.Second
+
+// glow is the strength (0..1) of the halo drawn behind the item now: pulses once a second,
+// fading out over the last second.
+func (it *item) glow() float64 {
+	if it.glowFrom.IsZero() {
+		return 0
+	}
+	t := time.Since(it.glowFrom)
+	if t >= glowDur {
+		return 0
+	}
+	pulse := 0.5 - 0.5*math.Cos(2*math.Pi*t.Seconds())
+	fade := math.Min(1, (glowDur - t).Seconds())
+	return (0.35 + 0.65*pulse) * fade
 }
 
 func (it *item) isDead() bool {

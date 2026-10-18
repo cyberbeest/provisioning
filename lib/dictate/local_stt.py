@@ -588,8 +588,9 @@ class LiveMeter:
 class LocalRecognizer:
     """Wraps sherpa_onnx.OfflineRecognizer with async load + decode lock."""
 
-    def __init__(self, num_threads: int):
+    def __init__(self, num_threads: int, hotword_score: Optional[float] = None):
         self.num_threads = num_threads
+        self.hotword_score = hotword_score   # set: beam search that can boost hotwords by this much (hotword lab)
         self.model_id = _model_id
         self._dir = model_dir()
         self._recognizer = None
@@ -603,6 +604,10 @@ class LocalRecognizer:
         try:
             import sherpa_onnx
             rss_before = _self_rss_kib()
+            beam = {}
+            if self.hotword_score is not None:
+                beam = dict(hotwords_score=self.hotword_score, modeling_unit="bpe",
+                            bpe_vocab=str(_hotword_vocab(self._dir)))
             rec = sherpa_onnx.OfflineRecognizer.from_transducer(
                 encoder=str(self._dir / "encoder.int8.onnx"),
                 decoder=str(self._dir / "decoder.int8.onnx"),
@@ -610,7 +615,8 @@ class LocalRecognizer:
                 tokens=str(self._dir / "tokens.txt"),
                 model_type="nemo_transducer",
                 num_threads=self.num_threads,
-                decoding_method="greedy_search",
+                decoding_method="greedy_search" if self.hotword_score is None else "modified_beam_search",
+                **beam,
             )
             self._recognizer = rec
             _announce_unloadable(rss_before)
@@ -626,11 +632,12 @@ class LocalRecognizer:
     def wait_ready(self, timeout: Optional[float] = None) -> bool:
         return self._ready.wait(timeout)
 
-    def transcribe(self, audio: np.ndarray, speech=None, cancel=None) -> str:
+    def transcribe(self, audio: np.ndarray, speech=None, cancel=None, hotwords: Optional[str] = None) -> str:
         """Take int16 mono 16 kHz audio (shape (N,) or (N, 1)), return text.
         speech: the clip's speech mask if it was already found while recording.
         cancel: optional threading.Event; once set, raises Cancelled between pieces
-        (a piece already being decoded cannot be interrupted)."""
+        (a piece already being decoded cannot be interrupted).
+        hotwords: words to boost, separated by "/" (only on a recognizer made with hotword_score)."""
         self._ready.wait()
         if self._recognizer is None:
             raise RuntimeError(f"local recognizer failed to load: {self._load_error}")
@@ -647,7 +654,7 @@ class LocalRecognizer:
             for chunk in _split(audio):
                 if cancel is not None and cancel.is_set():
                     raise Cancelled()
-                text = self._decode(chunk)
+                text = self._decode(chunk, hotwords)
                 # The model now and then returns nothing for a long piece that
                 # clearly holds speech; shorter pieces of the same audio decode.
                 if not text and len(chunk) > RETRY_CHUNK_S * TARGET_SR:
@@ -655,22 +662,65 @@ class LocalRecognizer:
                     for piece in _split(chunk, RETRY_CHUNK_S):
                         if cancel is not None and cancel.is_set():
                             raise Cancelled()
-                        parts_r.append(self._decode(piece))
+                        parts_r.append(self._decode(piece, hotwords))
                     text = " ".join(t for t in parts_r if t)
                 parts.append(text)
         self.last_used = time.monotonic()
         return " ".join(p for p in parts if p)
 
-    def _decode(self, chunk: np.ndarray) -> str:
+    def _decode(self, chunk: np.ndarray, hotwords: Optional[str] = None) -> str:
         # Quiet input (speech around -45 dBFS, peak ~0.03) comes back empty
         # as a whole; the same audio raised to a peak of 0.5 decodes in full.
         peak = float(np.abs(chunk).max()) if len(chunk) else 0.0
         if 0.0 < peak < TARGET_PEAK:
             chunk = chunk * min(TARGET_PEAK / peak, MAX_GAIN)
-        s = self._recognizer.create_stream()
+        s = self._recognizer.create_stream(hotwords) if hotwords else self._recognizer.create_stream()
         s.accept_waveform(TARGET_SR, chunk)
         self._recognizer.decode_stream(s)
         return s.result.text.strip()
+
+
+def _hotword_vocab(model_dir_: Path) -> Path:
+    """The "piece<TAB>score" vocabulary sherpa-onnx wants to split hotwords into pieces. The
+    model ships no SentencePiece file, so it is made from tokens.txt with equal scores (fewest
+    pieces win). Written once, next to the model."""
+    out = model_dir_ / "hotwords-bpe.vocab"
+    if not out.exists():
+        lines = []
+        for line in (model_dir_ / "tokens.txt").read_text(encoding="utf-8").splitlines():
+            piece = line.rsplit(" ", 1)[0]
+            if not (piece.startswith("<") and piece.endswith(">")):
+                lines.append(piece + "\t-1.0")
+        tmp = out.with_suffix(".tmp")
+        tmp.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        tmp.replace(out)
+    return out
+
+
+# Hotword lab (experimental): one extra beam-search recognizer per boost level. They share the
+# model's memory-mapped weights (about 40 MB and 6 s to load each), so all stay loaded.
+LAB_SCORES = (2.5, 3.0, 3.5, 4.0)
+_lab: dict = {}
+_lab_lock = threading.Lock()
+
+
+def lab_decode(audio: np.ndarray, speech, score: Optional[float], hotwords: str, cancel=None) -> str:
+    """Decode with the given hotwords boosted by `score` (None: the same beam search without
+    hotwords). One thread per recognizer: the lab must not take the cores from a dictation."""
+    key = LAB_SCORES[0] if score is None else score
+    with _lab_lock:
+        for k in [k for k, r in _lab.items() if r.model_id != _model_id]:
+            del _lab[k]
+        if key not in _lab:
+            _lab[key] = LocalRecognizer(1, key)
+        rec = _lab[key]
+    return rec.transcribe(audio, speech, cancel, None if score is None else hotwords)
+
+
+def lab_free() -> None:
+    with _lab_lock:
+        _lab.clear()
+    _release()
 
 
 # The encoder fails outright on more than 400 s of audio ("Attempting to

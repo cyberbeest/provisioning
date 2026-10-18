@@ -6,9 +6,11 @@ built by 72-welcome-screen.sh). "Close" shows it again next login, "Don't show a
 writes DISMISS_FILE and it stays away. Run with --force to show it regardless. Test flags: --scroll=0..1 (start scrolled),
 --hover=KEY (start with that panel row highlighted, e.g. --hover=memory)."""
 
+import glob
 import json
 import os
 import random
+import re
 import socket
 import subprocess
 import sys
@@ -67,7 +69,9 @@ scrollbar slider:hover { background-color: #59d6b8; }
                  border: 1px solid #2c3746; border-radius: 8px; padding: 7px 16px; box-shadow: none; }
 .footer button:hover { border-color: #59d6b8; }
 .footer button.primary { background-color: #59d6b8; color: #06080b; border-color: #59d6b8; font-weight: 700; }
-.fact-big { font-size: 18px; font-weight: 400; color: #e7eaf0; padding: 14px 8px; }
+.s-title-small { font-weight: 800; font-size: 17px; color: #e7eaf0; }
+.fact-big { font-size: 15px; font-weight: 400; color: #e7eaf0; padding: 8px 8px; }
+.fact-big link, .fact-big link:hover { color: #59d6b8; }
 .frame-a { background-color: #59d6b8; }
 .frame-b { background-color: #1f7a67; }
 """
@@ -115,6 +119,105 @@ class FactDeck:
         except OSError:
             pass
         return out
+
+
+PKG_MANAGER = "cyberbeest-package-manager.desktop"
+# Phrases in a fact that open an app when clicked, first occurrence only.
+APP_LINKS = [
+    (r"Cyberbeest[ -](?:Package Manager|Paketverwaltung)", PKG_MANAGER),
+    (r"Google Chrome", "google-chrome.desktop"),
+    (r"Viber", "viber.desktop"),
+    (r"Signal(?! 's)", "signal-desktop.desktop"),
+    (r"Element", "element-desktop.desktop"),
+    (r"Telegram", "org.telegram.desktop.desktop"),
+    (r"Tor[ -]Browser", "torbrowser.desktop"),
+    (r"Firefox", "firefox-esr.desktop"),
+    (r"VLC", "vlc.desktop"),
+    (r"Sparrow", "sparrowwallet-Sparrow.desktop"),
+    (r"Feather", "feather.desktop"),
+    (r"virtual machine|virtuelle Maschine|Cyberbeest[ -]VM", "cyberbeest-sandbox-vm.desktop"),
+    (r"GNOME Software", "org.gnome.Software.desktop"),
+    (r"Cyberbeest[ -]Passwords & Boot|Cyberbeest-Passwörter & Start", "cyberbeest-change-password.desktop"),
+    (r"Whitelisted Folders|Zugelassene Ordner", "cyberbeest-shared-folders.desktop"),
+    (r"Battery Report|Akkubericht", "cyberbeest-battery-report.desktop"),
+    (r"Malware Scanner", "cyberbeest-scanner.desktop"),
+    (r"Cyberbeest Wipe App Data", "cyberbeest-wipe-app-data.desktop"),
+    (r"Enable LAN Printer Discovery", "avahi-enable.desktop"),
+    (r"Print Settings|Druckereinstellungen", "system-config-printer.desktop"),
+    (r"Disable Encrypted DNS", "dot-disable.desktop"),
+    (r"Cyberbeest VPN", "vpn.desktop"),
+    (r"\bDictate\b", "dictate.desktop"),
+    (r"Factbook|Faktenbuch", "factbook.desktop"),
+    (r"Weather|Wetter", "cyberbeest-weather.desktop"),
+    (r"Intrusion Watch", "cyberbeest-intrusion-watch.desktop"),
+    (r"Linux Security News", "cyberbeest-security-watch.desktop"),
+    (r"Cyberbeest Image Viewer", "cyberbeest-image-viewer.desktop"),
+    (r"Cyberbeest[ -]Update", "cyberbeest-update.desktop"),
+    (r"Claude Code", "cyberbeest-claude-install.desktop"),
+    (r"Calculator|Taschenrechner", "org.gnome.Calculator.desktop"),
+    (r"(?<=called )Files|(?<=heißt )Dateien", "thunar.desktop"),
+]
+INSTALL_WORD = re.compile(r"\binstall(?:ed)?\b|\binstallier\w*")
+
+
+def link_title(desktop):
+    """Tooltip for a link: the menu entry it opens."""
+    try:
+        info = Gio.DesktopAppInfo.new(desktop)   # raises TypeError when missing
+    except TypeError:
+        info = None
+    return t("welcome.link_opens").format(name=info.get_name() if info else desktop)
+
+
+def fact_count():
+    """Number of facts in the installed Factbook (in the display language), or 0."""
+    lang = _LOCALE if _LOCALE in ("en", "de") else "en"
+    n = 0
+    try:
+        exe = Gio.DesktopAppInfo.new("factbook.desktop").get_executable()   # facts/ sits next to it
+    except TypeError:
+        return 0
+    for path in glob.glob(os.path.join(os.path.dirname(os.path.realpath(exe)), "facts", "*.json")):
+        try:
+            with open(path, encoding="utf-8") as f:
+                n += sum(1 for x in json.load(f)["facts"] if x.get(lang) and x.get("id"))
+        except (OSError, ValueError, KeyError):
+            pass
+    return n
+
+
+def fact_markup(fact):
+    """Pango markup for a fact, with app names (and "installed") as app:<desktop file> links."""
+    spans = []   # (start, end, desktop id)
+    for pattern, desktop in APP_LINKS:
+        m = re.search(pattern, fact)
+        if m and not any(m.start() < e and s < m.end() for s, e, _ in spans):
+            spans.append((m.start(), m.end(), desktop))
+    if not any(d in (PKG_MANAGER, "vpn.desktop") for _, _, d in spans):   # the VPN tool installs VPNs itself
+        m = INSTALL_WORD.search(fact)
+        if m and not any(m.start() < e and s < m.end() for s, e, _ in spans):
+            spans.append((m.start(), m.end(), PKG_MANAGER))
+    out, pos = [], 0
+    for start, end, desktop in sorted(spans):
+        out.append(GLib.markup_escape_text(fact[pos:start]))
+        out.append('<a href="app:%s" title="%s">%s</a>' % (
+            desktop, GLib.markup_escape_text(link_title(desktop), -1).replace('"', "&quot;"),
+            GLib.markup_escape_text(fact[start:end])))
+        pos = end
+    out.append(GLib.markup_escape_text(fact[pos:]))
+    return "".join(out)
+
+
+def open_app_link(_label, uri):
+    if not uri.startswith("app:"):
+        return False
+    try:
+        info = Gio.DesktopAppInfo.new(uri[4:])   # raises TypeError when missing
+        if info:
+            info.launch([], None)
+    except TypeError:
+        pass
+    return True
 
 
 def dismiss(_button=None):
@@ -355,57 +458,122 @@ class Highlighter:
 
 
 class Strip(Gtk.DrawingArea):
-    """Snapshot of the real panel with the highlight on it. Folded into two rows so the
-    icons stay big enough to recognise."""
+    """Snapshot of the real panel with the highlight on it, always at 1:1. Large empty
+    stretches shrink to a small fixed gap, and when the panel is still wider than the card
+    it wraps into more rows, only ever between items (no icon is cut)."""
 
-    GAP = 8
+    ROW_GAP = 8
+    SMALL = 10      # gaps up to this stay as they are
+    FILLER = 14     # wider empty stretches become this wide
 
-    def __init__(self, pixbuf, snap):
+    def __init__(self, pixbuf, spans):
         super().__init__()
-        self.pix, self.snap = pixbuf, snap
+        self.pix = pixbuf
+        self.units = self._units(spans, pixbuf.get_width())
         self.rects, self.phase = [], False
-        self.half = (pixbuf.get_width() + 1) // 2
-        self.set_size_request(400, 2 * int(pixbuf.get_height() * 800 / self.half) + self.GAP)
+        self.placed, self.rows, self._laid_for = [], 1, None
         self.on_hover = None   # callback(source_x or None)
         self.add_events(Gdk.EventMask.POINTER_MOTION_MASK | Gdk.EventMask.LEAVE_NOTIFY_MASK)
         self.connect("draw", self.on_draw)
         self.connect("motion-notify-event", self.on_motion)
         self.connect("leave-notify-event", lambda *_: self.on_hover and self.on_hover(None))
 
+    def _units(self, spans, width):
+        """[(filler slice or None, (sx0, sx1))]: one unit per item, with the small gap before it."""
+        units, prev = [], None
+        for x0, x1 in sorted(spans):
+            if prev is None:
+                units.append((None, (0 if x0 <= self.SMALL else x0, x1)))
+            elif x0 - prev <= self.SMALL:
+                units.append((None, (prev, x1)))
+            else:
+                mid = (prev + x0) // 2
+                half = self.FILLER // 2
+                units.append(((mid - half, mid - half + self.FILLER), (x0, x1)))
+            prev = x1
+        return units
+
+    def layout(self, width):
+        """Places the units left to right, wrapping before one that does not fit."""
+        if self._laid_for == width:
+            return
+        self._laid_for = width
+        self.placed, row, x = [], 0, 0   # (row, dst_x, sx0, sx1)
+        for filler, (sx0, sx1) in self.units:
+            fw = self.FILLER if filler else 0
+            if x > 0 and x + fw + (sx1 - sx0) > width:
+                row, x, fw = row + 1, 0, 0
+            if filler and fw:
+                self.placed.append((row, x, filler[0], filler[1]))
+                x += fw
+            self.placed.append((row, x, sx0, sx1))
+            x += sx1 - sx0
+        self.rows = row + 1
+        ends = {}
+        for r, dx, sx0, sx1 in self.placed:
+            ends[r] = max(ends.get(r, 0), dx + sx1 - sx0)
+        # centre every row in the card
+        self.placed = [(r, dx + max(0, (width - ends[r]) // 2), sx0, sx1) for r, dx, sx0, sx1 in self.placed]
+
+    def full_width(self):
+        return sum((self.FILLER if f else 0) + b - a for f, (a, b) in self.units)
+
+    # height depends on width (wrapping): tell GTK
+    def do_get_request_mode(self):
+        return Gtk.SizeRequestMode.HEIGHT_FOR_WIDTH
+
+    def do_get_preferred_width(self):
+        return 300, max(self.full_width(), 300)
+
+    def do_get_preferred_height(self):
+        return self.do_get_preferred_height_for_width(self.full_width())
+
+    def do_get_preferred_height_for_width(self, width):
+        self.layout(max(width, 1))
+        h = self.rows * self.pix.get_height() + (self.rows - 1) * self.ROW_GAP
+        return h, h
+
     def on_motion(self, _w, ev):
-        scale = self.get_allocated_width() / self.half
-        rowh = self.pix.get_height() * scale
-        row = 1 if ev.y >= rowh + self.GAP / 2 else 0
+        self.layout(self.get_allocated_width())
+        h = self.pix.get_height()
+        row = int(ev.y // (h + self.ROW_GAP))
+        src = None
+        if 0 <= row < self.rows and ev.y - row * (h + self.ROW_GAP) <= h:
+            for r, dx, sx0, sx1 in self.placed:
+                if r == row and dx <= ev.x < dx + (sx1 - sx0):
+                    src = sx0 + (ev.x - dx)
+                    break
         if self.on_hover:
-            self.on_hover(row * self.half + ev.x / scale)
+            self.on_hover(src)
         return False
 
     def on_draw(self, _w, cr):
-        width = self.get_allocated_width()
-        scale = width / self.half
-        rowh = self.pix.get_height() * scale
+        self.layout(self.get_allocated_width())
+        h = self.pix.get_height()
         colour = TEAL if not self.phase else (0.12, 0.48, 0.40)
-        for r in (0, 1):
+        for r, dx, sx0, sx1 in self.placed:
             cr.save()
-            cr.translate(0, r * (rowh + self.GAP))
-            cr.rectangle(0, 0, width, rowh)
+            cr.translate(dx, r * (h + self.ROW_GAP))
+            cr.rectangle(0, 0, sx1 - sx0, h)
             cr.clip()
-            cr.save()
-            cr.scale(scale, scale)
-            Gdk.cairo_set_source_pixbuf(cr, self.pix, -r * self.half, 0)
-            cr.get_source().set_filter(cairo.FILTER_BEST)
+            Gdk.cairo_set_source_pixbuf(cr, self.pix, -sx0, 0)
             cr.paint()
             cr.restore()
-            lo, hi = r * self.half, (r + 1) * self.half
-            for x, w in self.rects:
-                x0, x1 = max(x, lo), min(x + w, hi)
+        for x, w in self.rects:
+            for r, dx, sx0, sx1 in self.placed:
+                x0, x1 = max(x, sx0), min(x + w, sx1)
                 if x1 > x0:
                     cr.set_source_rgb(*colour)
                     cr.set_line_width(2.5)
-                    cr.rectangle((x0 - lo) * scale + 1.5, 1.5, (x1 - x0) * scale - 3, rowh - 3)
+                    cr.rectangle(dx + x0 - sx0 + 1.5, r * (h + self.ROW_GAP) + 1.5, x1 - x0 - 3, h - 3)
                     cr.stroke()
-            cr.restore()
         return False
+
+
+def strip_spans(snap, tomap):
+    """Item extents in the compact snapshot's coordinates."""
+    return [(tomap(it["x"]), tomap(it["x"]) + it["w"]) for it in snap["items"]
+            if shipped(it) and it["w"] > 0]
 
 
 # ---------------------------------------------------------------- widgets
@@ -469,7 +637,6 @@ def card(child_box):
 
 
 def section_header(box, eyebrow, title, lead=None):
-    box.pack_start(label(eyebrow, "eyebrow"), False, False, 0)
     box.pack_start(label(title, "s-title"), False, False, 0)
     if lead:
         box.pack_start(label(lead, "s-lead"), False, False, 4)
@@ -478,10 +645,10 @@ def section_header(box, eyebrow, title, lead=None):
 def logo_widget():
     box = Gtk.Box(spacing=16, halign=Gtk.Align.CENTER)
     try:
-        pix = GdkPixbuf.Pixbuf.new_from_file_at_size(ICON, 84, 84)
+        pix = GdkPixbuf.Pixbuf.new_from_file_at_size(ICON, 64, 64)
         surf = Gdk.cairo_surface_create_from_pixbuf(pix, 1, None)
         da = Gtk.DrawingArea()
-        da.set_size_request(84, 84)
+        da.set_size_request(64, 64)
 
         def draw(_w, cr):
             cr.set_source_rgb(*TEAL)
@@ -552,7 +719,7 @@ class PanelSection:
                                                  self.snap["w"], self.snap["h"])
                 if pix:
                     pix, self.tomap = compact(pix, self.snap)
-                    self.strip = Strip(pix, self.snap)
+                    self.strip = Strip(pix, strip_spans(self.snap, self.tomap))
                     frame = Gtk.Box()
                     frame.get_style_context().add_class("card")
                     frame.pack_start(self.strip, True, True, 0)
@@ -623,9 +790,12 @@ def factbook_launch():
 
 def build_facts(deck):
     box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-    section_header(box, t("welcome.s4_eyebrow"), t("welcome.s4_title"))
+    box.pack_start(label(t("welcome.s4_title"), "s-title-small", xalign=0.5), False, False, 0)
     rows = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-    box.pack_start(rows, False, False, 4)
+    rows.set_size_request(-1, 76)   # room for three lines, so the buttons beside it stay put
+    line = Gtk.Box(spacing=12)
+    line.pack_start(rows, True, True, 0)
+    box.pack_start(line, False, False, 4)
 
     def reload(_b=None):
         for child in rows.get_children():
@@ -634,24 +804,26 @@ def build_facts(deck):
             row = Gtk.Box()
             row.get_style_context().add_class("row")
             lab = label(fact, "fact-big", xalign=0.5)
+            lab.set_markup(fact_markup(fact))
+            lab.connect("activate-link", open_app_link)
             lab.set_justify(Gtk.Justification.CENTER)
             row.pack_start(lab, True, True, 0)
-            rows.pack_start(row, False, False, 0)
+            rows.pack_start(row, True, True, 0)   # the card keeps one height whatever the fact
         rows.show_all()
 
     reload()
-    buttons = Gtk.Box(spacing=8, halign=Gtk.Align.CENTER)
+    buttons = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, valign=Gtk.Align.CENTER)
     more = Gtk.Button(label=t("welcome.facts_more"))
     more.get_style_context().add_class("link-button")
     more.connect("clicked", reload)
-    buttons.pack_start(more, False, False, 0)
     launch = factbook_launch()
     if launch:
-        book = Gtk.Button(label=t("welcome.facts_open"))
+        book = Gtk.Button(label=t("welcome.facts_open").format(n=fact_count()))
         book.get_style_context().add_class("link-button")
         book.connect("clicked", launch)
         buttons.pack_start(book, False, False, 0)
-    box.pack_start(buttons, False, False, 4)
+    buttons.pack_start(more, False, False, 0)
+    line.pack_start(buttons, False, False, 0)
     return box
 
 
@@ -683,11 +855,11 @@ def main():
     scroll.set_overlay_scrolling(False)
     outer.pack_start(scroll, True, True, 0)
 
-    page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=44)
+    page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=22)
     page.get_style_context().add_class("page")
     for side in ("start", "end"):
         getattr(page, "set_margin_" + side)(40)
-    page.set_margin_top(30)
+    page.set_margin_top(10)
     page.set_margin_bottom(30)
     scroll.add(page)
 
@@ -695,12 +867,12 @@ def main():
     hero.pack_start(logo_widget(), False, False, 0)
     page.pack_start(hero, False, False, 0)
 
+    if facts:
+        page.pack_start(build_facts(FactDeck(facts)), False, False, 0)
     page.pack_start(build_voice(), False, False, 0)
     page.pack_start(build_security(), False, False, 0)
     panel = PanelSection(win)
     page.pack_start(panel.box, False, False, 0)
-    if facts:
-        page.pack_start(build_facts(FactDeck(facts)), False, False, 0)
 
     footer = Gtk.Box(spacing=8, halign=Gtk.Align.FILL)
     footer.get_style_context().add_class("footer")

@@ -82,8 +82,8 @@
     },
     {
       "id": "vpn-any-provider",
-      "en": "Cyberbeest ships with its own VPN tool, which can install a VPN from any provider.",
-      "de": "Cyberbeest wird mit einem eigenen VPN-Werkzeug ausgeliefert, mit dem du ein VPN eines beliebigen Anbieters einrichten kannst.",
+      "en": "Cyberbeest ships with its own tool, Cyberbeest VPN, which can install a VPN from any provider.",
+      "de": "Cyberbeest wird mit einem eigenen Werkzeug, Cyberbeest VPN, ausgeliefert, mit dem du ein VPN eines beliebigen Anbieters einrichten kannst.",
       "manual": "1.8",
       "tip": true
     },
@@ -168,8 +168,8 @@
     },
     {
       "id": "dns-router-page",
-      "en": "If your router's config page won't open in Firefox, turn off encrypted DNS temporarily: fritz.box works fine with it, but other router brands may not.",
-      "de": "Wenn sich die Konfigurationsseite deines Routers in Firefox nicht öffnen lässt, schalte das verschlüsselte DNS vorübergehend aus: fritz.box funktioniert problemlos damit, andere Router-Marken eventuell nicht.",
+      "en": "If your router's config page won't open in Firefox, run Disable Encrypted DNS from the menu temporarily: fritz.box works fine with it, but other router brands may not.",
+      "de": "Wenn sich die Konfigurationsseite deines Routers in Firefox nicht öffnen lässt, starte vorübergehend im Menü „Disable Encrypted DNS“: fritz.box funktioniert problemlos damit, andere Router-Marken eventuell nicht.",
       "manual": "2.1",
       "tip": true,
       "ask": {
@@ -205,8 +205,8 @@
     },
     {
       "id": "dns-captive-portal",
-      "en": "If the login page of a hotel or airport Wi-Fi never appears, turn off encrypted DNS temporarily: such pages need plain DNS, and it is back on after a restart.",
-      "de": "Erscheint die Anmeldeseite eines Hotel- oder Flughafen-WLANs nicht, schalte das verschlüsselte DNS vorübergehend aus: solche Seiten brauchen normales DNS, und nach einem Neustart ist es wieder an.",
+      "en": "If the login page of a hotel or airport Wi-Fi never appears, run Disable Encrypted DNS from the menu temporarily: such pages need plain DNS, and it is back on after a restart.",
+      "de": "Erscheint die Anmeldeseite eines Hotel- oder Flughafen-WLANs nicht, starte vorübergehend im Menü „Disable Encrypted DNS“: solche Seiten brauchen normales DNS, und nach einem Neustart ist es wieder an.",
       "manual": "2.1",
       "ask": {
         "en": [

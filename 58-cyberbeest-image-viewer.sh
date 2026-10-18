@@ -28,7 +28,7 @@ echo "--- Installing dependencies (GTK bindings, Pillow, numpy, PyOpenGL, JPEG X
 apt-get -o DPkg::Lock::Timeout=60 update -qq
 apt-get -o DPkg::Lock::Timeout=60 install -y \
     python3-gi python3-gi-cairo gir1.2-gtk-3.0 python3-pil python3-numpy python3-opengl \
-    libjxl-gdk-pixbuf
+    libjxl-gdk-pixbuf firejail
 
 echo "--- Installing script to $TARGET_HOME/.local/bin ---"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.local/bin"
@@ -36,11 +36,19 @@ install -o "$TARGET_USER" -g "$TARGET_USER" -m 755 \
     "$DIR/lib/cyberbeest_image_viewer.py" \
     "$TARGET_HOME/.local/bin/cyberbeest_image_viewer.py"
 
+# The sandbox can only write the Wastebasket if it already exists.
+install -d -o "$TARGET_USER" -g "$TARGET_USER" -m 700 "$TARGET_HOME/.local/share/Trash"
+
+echo "--- Installing Firejail profile (no network, read-only dotfiles) ---"
+install -o root -g root -m 644 "$DIR/lib/cyberbeest-image-viewer.profile" \
+    /etc/firejail/cyberbeest-image-viewer.profile
+
 echo "--- Installing 'civ' command-line launcher ---"
 cat > "$TARGET_HOME/.local/bin/civ" <<EOF
 #!/bin/bash
 # Short launcher for Cyberbeest Image Viewer, e.g. \`civ photo.png\`.
-exec python3 "\$HOME/.local/bin/cyberbeest_image_viewer.py" "\$@"
+exec firejail --quiet --profile=/etc/firejail/cyberbeest-image-viewer.profile \\
+    python3 "\$HOME/.local/bin/cyberbeest_image_viewer.py" "\$@"
 EOF
 chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.local/bin/civ"
 chmod 755 "$TARGET_HOME/.local/bin/civ"
@@ -52,7 +60,7 @@ cat > "$TARGET_HOME/.local/share/applications/cyberbeest-image-viewer.desktop" <
 Type=Application
 Name=Cyberbeest Image Viewer
 Comment=View an image
-Exec=python3 $TARGET_HOME/.local/bin/cyberbeest_image_viewer.py %f
+Exec=firejail --quiet --profile=/etc/firejail/cyberbeest-image-viewer.profile python3 $TARGET_HOME/.local/bin/cyberbeest_image_viewer.py %f
 Terminal=false
 NoDisplay=true
 Categories=AudioVideo;Viewer;

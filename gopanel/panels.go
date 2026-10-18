@@ -2,6 +2,7 @@ package main
 
 import (
 	"image"
+	"math"
 	"strconv"
 	"strings"
 
@@ -150,11 +151,40 @@ func layoutReplicas() {
 
 // composite fills buf (w x panelH, BGRX) with the panel or hover colour and the item image over it.
 func composite(buf []byte, w int, img *image.RGBA, holdLeft bool, bg uint32) {
+	compositeGlow(buf, w, img, holdLeft, bg, 0)
+}
+
+// glowPass blends a soft teal halo (strongest in the middle of the item box) over the background.
+func glowPass(buf []byte, w int, glow float64) {
+	const tr, tg, tb = 0x59, 0xD6, 0xB8
+	cx, cy := float64(w)/2, float64(panelH)/2
+	rx, ry := math.Max(cx, 14), cy
+	for y := 0; y < panelH; y++ {
+		dy := (float64(y) + 0.5 - cy) / ry
+		for x := 0; x < w; x++ {
+			dx := (float64(x) + 0.5 - cx) / rx
+			d := dx*dx + dy*dy
+			if d >= 1 {
+				continue
+			}
+			a := glow * 0.9 * (1 - d)
+			o := (y*w + x) * 4
+			buf[o] = byte(float64(buf[o])*(1-a) + tb*a)
+			buf[o+1] = byte(float64(buf[o+1])*(1-a) + tg*a)
+			buf[o+2] = byte(float64(buf[o+2])*(1-a) + tr*a)
+		}
+	}
+}
+
+func compositeGlow(buf []byte, w int, img *image.RGBA, holdLeft bool, bg uint32, glow float64) {
 	br, bgn, bb := uint32(byte(bg>>16)), uint32(byte(bg>>8)), uint32(byte(bg))
 	need := w * panelH * 4
 	buf[0], buf[1], buf[2], buf[3] = byte(bb), byte(bgn), byte(br), 0
 	for n := 4; n < need; n *= 2 { // fill with the background colour by doubling copies
 		copy(buf[n:], buf[:n])
+	}
+	if glow > 0 {
+		glowPass(buf, w, glow)
 	}
 	if img == nil {
 		return
@@ -248,7 +278,7 @@ func (r *replica) drawItem(it *item, copyOut bool) {
 		r.buf = make([]byte, need)
 	}
 	buf := r.buf[:need]
-	composite(buf, w, img, it.hold > 0, bg)
+	compositeGlow(buf, w, img, it.hold > 0, bg, it.glow())
 	g := panelGCs
 	putBGRX(g.c, xproto.Drawable(r.back), g.gc, g.scr.RootDepth, x, 0, w, panelH, buf)
 	if copyOut {

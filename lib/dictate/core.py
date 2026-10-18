@@ -81,7 +81,9 @@ DEFAULT_CONFIG = {
     "trim_silence":          True,   # cut pauses before decoding (local_stt silence trimming); no Settings field
     "recording_meter":       True,   # small level meter while recording (replaces the "Speak now" notification)
     "vad_highpass":          True,   # speech detection ignores hum below 150 Hz (mains buzz hides quiet speech from it)
-    "apply_corrections":     True,   # replace words by the learned corrections (see "Learned corrections")
+    "save_clips":            False,  # keep every take with its transcript in CLIP_ARCHIVE (voice recordings: off unless set by hand; no Settings field)
+    "hotword_lab":           False,  # experimental: after each dictation, compare decodes with the learned terms boosted by different amounts
+    "corrections":           "learn",  # off | apply (replace words by the learned corrections) | learn (apply, and learn from copied fixes)
     "local_stt_idle_minutes": 5,   # unload the model after this long idle when RAM is short (0 = keep loaded)
 }
 
@@ -125,9 +127,15 @@ def load_config():
     cfg = dict(DEFAULT_CONFIG)
     if CONFIG_PATH.exists():
         try:
-            cfg.update(json.loads(CONFIG_PATH.read_text()))
+            saved = json.loads(CONFIG_PATH.read_text())
+            if "corrections" not in saved and saved.get("apply_corrections") is False:
+                saved["corrections"] = "off"   # from before there were three levels
+            cfg.update(saved)
         except Exception:
             pass
+    cfg.pop("apply_corrections", None)
+    if cfg.get("corrections") not in ("off", "apply", "learn"):
+        cfg["corrections"] = "learn"
     # Settings from versions that also offered cloud providers are dropped.
     for k in ("provider", "api_key", "openai_api_key", "yorik_url", "yorik_token", "threshold", "start_hidden"):
         cfg.pop(k, None)
@@ -507,6 +515,48 @@ def save_last_clip(audio, timing=None, speech=None):
         log.exception("could not keep the last clip")
 
 
+# Opt-in archive of every take (config key save_clips), to build test sets from real speech:
+# <id>.wav plus a line in index.jsonl (what the model heard) and, once the user copies a fixed
+# text, a line in labels.jsonl (the corrected text for that id).
+CLIP_ARCHIVE = Path.home() / ".local" / "share" / "dictate" / "clip-archive"
+
+
+def archive_clip(audio, heard, model=""):
+    """Keep this take for good. Returns its id, or None when it could not be written."""
+    import wave
+    now = time.time()
+    cid = time.strftime("%Y%m%d-%H%M%S", time.localtime(now)) + "-%03d" % int(now % 1 * 1000)
+    try:
+        CLIP_ARCHIVE.mkdir(parents=True, exist_ok=True, mode=0o700)
+        fd = os.open(CLIP_ARCHIVE / (cid + ".wav"), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "wb") as f, wave.open(f, "wb") as w:
+            w.setnchannels(CHANNELS)
+            w.setsampwidth(2)
+            w.setframerate(SAMPLE_RATE)
+            w.writeframes(np.ascontiguousarray(audio, dtype="<i2").tobytes())
+        _append_jsonl("index.jsonl", {"id": cid, "seconds": round(len(audio) / SAMPLE_RATE, 2),
+                                      "model": model, "heard": heard})
+        return cid
+    except OSError:
+        log.exception("could not archive the clip")
+        return None
+
+
+def label_clip(cid, corrected):
+    """The user's corrected text for an archived clip."""
+    if cid:
+        try:
+            _append_jsonl("labels.jsonl", {"id": cid, "time": time.strftime("%Y-%m-%dT%H:%M:%S"), "corrected": corrected})
+        except OSError:
+            log.exception("could not label the archived clip")
+
+
+def _append_jsonl(name, entry):
+    fd = os.open(CLIP_ARCHIVE / name, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+    with os.fdopen(fd, "a", encoding="utf-8") as f:
+        f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+
 def replay_last_clip(wait=False):
     """Play the last clip through PulseAudio, replacing a replay still running.
     Returns False when there is no clip (or no paplay)."""
@@ -764,7 +814,7 @@ class Recorder:
 # while "cloud code" is a rule.
 CORRECTIONS_PATH = CONFIG_DIR / "corrections.json"
 CORRECTION_LOG_PATH = CONFIG_DIR / "correction-log.jsonl"
-MIN_SUPPORT = 2
+MIN_SUPPORT = 1   # one fix is enough; a rule that later misfires on untouched text drops out by precision
 MIN_PRECISION = 0.8
 MAX_CHANGE_WORDS = 3   # a changed span of up to this many words on each side
 MAX_RULE_WORDS = 4
@@ -874,6 +924,39 @@ def _candidates(a, b):
                     yield tuple(src), tuple(dst), not (left or right)
 
 
+_LINE_MARKER = re.compile(r"^[ \t]*[❯›>»$#•*·│|▌▎\-–—]+(?=\s|$)[ \t]*")
+
+
+def clean_copied(text):
+    """Copied text without what a terminal or mail client puts in front of lines (a prompt
+    sign, a quote mark, a bullet), with all white space collapsed to single spaces."""
+    return " ".join(" ".join(_LINE_MARKER.sub("", line) for line in text.splitlines()).split())
+
+
+def is_edited_version(text, candidate):
+    """Is candidate (e.g. a text just copied) the user's corrected version of text? Three
+    independent checks, any one of which accepts it:
+      characters: nearly the same letters, a rougher match for a short text ("kit scanner" -> "KittScanner" shares no word);
+      words:      nearly the same words, wherever the edit is;
+      phrases:    a long shared phrase or an untouched start or end with enough overlap, so a
+                  term at either edge may change while the middle stays."""
+    import difflib
+    a, b = [w for _, w in _words(text)], [w for _, w in _words(candidate)]
+    if not a or not b or a == b:
+        return False
+    sm = difflib.SequenceMatcher(None, a, b, autojunk=False)
+    words = sm.ratio()
+    letters = difflib.SequenceMatcher(None, "".join(a), "".join(b), autojunk=False).ratio()
+    run = max((m.size for m in sm.get_matching_blocks()), default=0)
+    anchored = a[0] == b[0] or a[-1] == b[-1]
+    # A short text is the changed term itself, so a rougher letter match will do ("kid scammer").
+    short = len(a) <= MAX_CHANGE_WORDS and len(b) <= MAX_CHANGE_WORDS
+    return (letters >= (0.6 if short else 0.8)
+            or words >= 0.85
+            or (anchored and words >= 0.5)
+            or (run >= 3 and run >= min(len(a), len(b)) / 2))
+
+
 def rebuild_corrections():
     """Rebuild the rules from the correction log. Returns (added, removed) rule pairs."""
     from collections import Counter
@@ -907,6 +990,15 @@ def rebuild_corrections():
     _save_corrections(d)
     return ([(k, v) for k, v in rules.items() if old.get(k) != v],
             [(k, v) for k, v in old.items() if rules.get(k) != v])
+
+
+def hotword_terms(limit=40):
+    """The terms to boost in the hotword lab: the right-hand sides of the learned corrections."""
+    terms = []
+    for dst in _load_corrections()["rules"].values():
+        if len(dst) > 2 and dst not in terms:
+            terms.append(dst)
+    return terms[:limit]
 
 
 def list_corrections():

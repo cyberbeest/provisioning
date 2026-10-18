@@ -23,7 +23,7 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 gi.require_version("Gtk", "3.0")
 gi.require_version("Gdk", "3.0")
 gi.require_version("GdkPixbuf", "2.0")
-from gi.repository import Gdk, GdkPixbuf, GLib, Gtk
+from gi.repository import Gdk, GdkPixbuf, Gio, GLib, Gtk
 
 try:
     from OpenGL import GL
@@ -491,6 +491,17 @@ def _icon_button(icon_name, tooltip, handler):
     return button
 
 
+def _label_button(markup, tooltip, handler):
+    button = Gtk.Button()
+    button.add(Gtk.Label(use_markup=True, label=markup))
+    button.set_relief(Gtk.ReliefStyle.NONE)
+    button.get_style_context().add_provider(_NO_TRANSITION_CSS, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+    button.set_tooltip_text(tooltip)
+    button.set_can_focus(False)
+    button.connect("clicked", lambda _b: handler())
+    return button
+
+
 def _menu_item_with_hotkey(label, hotkey, handler):
     item = Gtk.MenuItem()
     row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=20)
@@ -703,6 +714,8 @@ class ImageViewerWindow(Gtk.Window):
         self.scroller.get_style_context().add_class("image-backdrop")
         self.scroller.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
         self.scroller.connect("size-allocate", self.on_viewport_allocate)
+        self.scroller.add_events(Gdk.EventMask.SCROLL_MASK | Gdk.EventMask.SMOOTH_SCROLL_MASK)
+        self.scroller.connect("scroll-event", self.on_scroll)
         overlay.add(self.scroller)
         self.scroller.show()
 
@@ -725,6 +738,7 @@ class ImageViewerWindow(Gtk.Window):
         self.zoom_mode = "fit"  # "fit" tracks the viewport; "manual" holds zoom_scale
         self.zoom_scale = 1.0
         self._last_fit_size = None
+        self._fit_pending = False
         self.drag_state = None
         self._last_nav_time = 0
         self.frames = None
@@ -739,13 +753,13 @@ class ImageViewerWindow(Gtk.Window):
         # Zoom controls sit centered in the window; the menu and collapse
         # buttons stay at the right edge.
         zoom_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=2)
-        zoom_box.pack_start(_icon_button("zoom-original-symbolic", "Zoom 1:1 (0)", self.zoom_to_native), False, False, 0)
+        zoom_box.pack_start(_label_button("<b>1:1</b>", "Zoom 1:1 (0)", self.zoom_to_native), False, False, 0)
+        zoom_box.pack_start(_label_button("<span size='x-small'>●</span>", "Zoom Fit (f)", self.zoom_to_fit), False, False, 0)
         zoom_box.pack_start(_icon_button("zoom-out-symbolic", "Zoom Out (-)", lambda: self.zoom_by(1 / ZOOM_STEP)), False, False, 0)
         # Fixed width so the buttons don't shift as the percentage changes.
         self.zoom_label = Gtk.Label(width_chars=10)
         zoom_box.pack_start(self.zoom_label, False, False, 0)
         zoom_box.pack_start(_icon_button("zoom-in-symbolic", "Zoom In (+)", lambda: self.zoom_by(ZOOM_STEP)), False, False, 0)
-        zoom_box.pack_start(_icon_button("zoom-fit-best-symbolic", "Zoom Fit (f)", self.zoom_to_fit), False, False, 0)
         bar.set_center_widget(zoom_box)
 
         bar.pack_start(_icon_button("go-previous-symbolic", "Previous Image (Left)", lambda: self.show_offset(-1)), False, False, 0)
@@ -756,6 +770,7 @@ class ImageViewerWindow(Gtk.Window):
         menu = Gtk.Menu()
         menu.append(_menu_item_with_hotkey("Rename…", "F2", self.show_rename_dialog))
         menu.append(_menu_item_with_hotkey("Copy Image", "Ctrl+C", self.copy_image))
+        menu.append(_menu_item_with_hotkey("Delete…", "Del", self.show_delete_dialog))
         menu.show_all()
         menu_button = Gtk.MenuButton(popup=menu, relief=Gtk.ReliefStyle.NONE, can_focus=False)
         menu_button.get_style_context().add_provider(_NO_TRANSITION_CSS, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
@@ -801,6 +816,49 @@ class ImageViewerWindow(Gtk.Window):
         dialog.destroy()
         if new_path is not None:
             self._path_renamed(os.path.join(dialog.folder, dialog.old_name), new_path)
+
+    def show_delete_dialog(self):
+        path = self.current_path()
+        name = os.path.basename(path)
+        dialog = Gtk.MessageDialog(
+            transient_for=self, modal=True, message_type=Gtk.MessageType.QUESTION,
+            text=f"Move \"{name}\" to the Wastebasket?",
+        )
+        # A file on another device (a stick, a card) goes into that device's
+        # own Wastebasket, so it keeps its space and stays readable there.
+        try:
+            home_trash = os.path.expanduser("~/.local/share/Trash")
+            if os.stat(path).st_dev != os.stat(home_trash).st_dev:
+                dialog.format_secondary_text(
+                    "It stays on this device, in its own Wastebasket, "
+                    "until you empty it.")
+        except OSError:
+            pass
+        dialog.add_button("Cancel", Gtk.ResponseType.CANCEL)
+        dialog.add_button("Move to Wastebasket", Gtk.ResponseType.OK)
+        dialog.set_default_response(Gtk.ResponseType.OK)
+        response = dialog.run()
+        dialog.destroy()
+        if response != Gtk.ResponseType.OK:
+            return
+        try:
+            Gio.File.new_for_path(path).trash(None)
+        except GLib.Error as e:
+            error = Gtk.MessageDialog(
+                transient_for=self, modal=True, message_type=Gtk.MessageType.ERROR,
+                buttons=Gtk.ButtonsType.CLOSE, text=f"Couldn't delete \"{name}\"",
+                secondary_text=e.message,
+            )
+            error.run()
+            error.destroy()
+            return
+        del self.folder_images[self.index]
+        if not self.folder_images:
+            self.destroy()
+            return
+        # The next image slides into the deleted one's slot; wrap at the end.
+        self.index = min(self.index, len(self.folder_images) - 1)
+        self.load_image(self.folder_images[self.index])
 
     def copy_image(self):
         if not self.frames:
@@ -1013,8 +1071,24 @@ class ImageViewerWindow(Gtk.Window):
         self.is_fullscreen = not self.is_fullscreen
 
     def on_viewport_allocate(self, _widget, allocation):
+        if self.zoom_mode != "fit":
+            return
+        # Not resized in here: changing the image's size request in the middle of the
+        # scroller's own size-allocate left a stale, half-repainted picture after a
+        # maximize. Done from an idle callback (coalesced), then fully redrawn.
+        if not self._fit_pending:
+            self._fit_pending = True
+            GLib.idle_add(self._fit_idle)
+
+    def _fit_idle(self):
+        self._fit_pending = False
         if self.zoom_mode == "fit":
-            self._apply_fit(allocation)
+            self._apply_fit(self.scroller.get_allocation())
+            if self.image_widget is not None:
+                self.image_widget.queue_resize()
+                self.image_widget.queue_draw()
+            self.scroller.queue_draw()
+        return False
 
     def _apply_fit(self, allocation):
         if self.native_size is None or self.set_zoom_size is None:
@@ -1071,6 +1145,7 @@ class ImageViewerWindow(Gtk.Window):
             menu.append(_menu_item_with_hotkey(label, hotkey, handler))
         menu.append(Gtk.SeparatorMenuItem())
         menu.append(_menu_item_with_hotkey("Copy Image", "Ctrl+C", self.copy_image))
+        menu.append(_menu_item_with_hotkey("Delete…", "Del", self.show_delete_dialog))
         menu.show_all()
         menu.popup_at_pointer(event)
 
@@ -1090,6 +1165,18 @@ class ImageViewerWindow(Gtk.Window):
             self.show_context_menu(event)
             return True
         return False
+
+    def on_scroll(self, widget, event):
+        if event.direction == Gdk.ScrollDirection.UP:
+            self.zoom_by(ZOOM_STEP)
+        elif event.direction == Gdk.ScrollDirection.DOWN:
+            self.zoom_by(1 / ZOOM_STEP)
+        elif event.direction == Gdk.ScrollDirection.SMOOTH:
+            if event.delta_y < 0:
+                self.zoom_by(ZOOM_STEP)
+            elif event.delta_y > 0:
+                self.zoom_by(1 / ZOOM_STEP)
+        return True
 
     def on_image_motion(self, widget, event):
         self._restart_tooltip_timer()
@@ -1112,6 +1199,9 @@ class ImageViewerWindow(Gtk.Window):
             return True
         if event.keyval in (Gdk.KEY_c, Gdk.KEY_C) and event.state & Gdk.ModifierType.CONTROL_MASK:
             self.copy_image()
+            return True
+        if event.keyval in (Gdk.KEY_Delete, Gdk.KEY_KP_Delete):
+            self.show_delete_dialog()
             return True
         if event.keyval == Gdk.KEY_F2:
             self.show_rename_dialog()

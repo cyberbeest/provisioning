@@ -20,8 +20,7 @@
       "id": "sound-chip-reset",
       "en": "If a Cyberbeest's speakers, microphone and start-up sound all stop working at once, shut it down, unplug the charger, hold the power button for 30 seconds while it is off, then plug in and start as usual.",
       "de": "Fallen bei einem Cyberbeest Lautsprecher, Mikrofon und Startton gleichzeitig aus, fahre es herunter, ziehe das Netzteil ab, halte bei ausgeschaltetem Gerät den Einschaltknopf 30 Sekunden gedrückt, stecke dann das Netzteil wieder an und starte wie gewohnt.",
-      "manual": "3.2",
-      "tip": true
+      "manual": "3.2"
     },
     {
       "id": "sound-reset-harmless",

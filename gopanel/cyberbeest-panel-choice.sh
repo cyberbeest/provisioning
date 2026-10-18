@@ -8,6 +8,7 @@
 # exists (see lib/xfce-panel-watchdog.sh). So: gopanel = marker + xfce4-panel
 # stopped; xfce = marker removed (the watchdog brings the panel back) + gopanel quit.
 # The panel that takes over is always up before the other one is stopped.
+# With no saved choice gopanel runs; if it is missing or fails to start, the XFCE panel stays.
 
 CONF="$HOME/.config/cyberbeest/panel.conf"
 MARKER="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/cyberbeest-xfce-panel-stopped"
@@ -70,7 +71,8 @@ use_xfce() {
 	pgrep -x gopanel >/dev/null && "$(gopanel_bin)" quit
 }
 
-saved() { grep -qx 'PANEL=gopanel' "$CONF" 2>/dev/null && echo gopanel || echo xfce; }
+# gopanel is the default; only an explicit PANEL=xfce (picked in Settings > Panel) keeps the XFCE panel.
+saved() { [ "$(sed -n 's/^PANEL=//p' "$CONF" 2>/dev/null | tail -1)" = xfce ] && echo xfce || echo gopanel; }
 
 save() { # keeps the other settings in the file (MONITOR=...)
 	mkdir -p "$(dirname "$CONF")"

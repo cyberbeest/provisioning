@@ -46,10 +46,32 @@ func iniFile(path string) map[string]string {
 }
 
 // buildItems mirrors the xfce4-panel plugin list (panel-1, in order) as gopanel items.
+// newGenmonFromRC builds the item for genmon plugin id from its rc file, nil while the file
+// has no command (yet).
+func genmonRC(id string) string {
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".config/xfce4/panel/genmon-"+id+".rc")
+}
+
+func newGenmonFromRC(id string) *item {
+	path := genmonRC(id)
+	rc := iniFile(path)
+	if rc["Command"] == "" {
+		return nil
+	}
+	period, _ := strconv.Atoi(rc["UpdatePeriod"])
+	g := newGenmonItem(rc["Command"], period)
+	g.rc, g.ptype, g.title = path, "genmon", genmonTitle(rc["Command"])
+	g.sig = rc["Command"] + "|" + rc["UpdatePeriod"]
+	g.pid = id
+	return g
+}
+
 func buildItems(cfg map[string][]string) []*item {
 	home, _ := os.UserHomeDir()
 	var items []*item
 	for _, id := range cfg["/panels/panel-1/plugin-ids"] {
+		first := len(items)
 		t := ""
 		if v := cfg["/plugins/plugin-"+id]; len(v) > 0 {
 			t = v[0]
@@ -88,11 +110,7 @@ func buildItems(cfg map[string][]string) []*item {
 		case t == "clock":
 			items = append(items, newClockItem())
 		case t == "genmon":
-			rc := iniFile(filepath.Join(home, ".config/xfce4/panel/genmon-"+id+".rc"))
-			if rc["Command"] != "" {
-				period, _ := strconv.Atoi(rc["UpdatePeriod"])
-				g := newGenmonItem(rc["Command"], period)
-				g.rc, g.ptype, g.title = filepath.Join(home, ".config/xfce4/panel/genmon-"+id+".rc"), "genmon", genmonTitle(rc["Command"])
+			if g := newGenmonFromRC(id); g != nil {
 				items = append(items, g)
 			}
 		case helperNames[t] != "":
@@ -109,6 +127,9 @@ func buildItems(cfg map[string][]string) []*item {
 				why = "not implemented yet"
 			}
 			log.Printf("plugin-%s (%s): skipped, %s", id, t, why)
+		}
+		for _, it := range items[first:] {
+			it.pid = id
 		}
 	}
 	items = launchersLeft(items)

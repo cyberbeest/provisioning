@@ -19,6 +19,7 @@ import (
 	"path/filepath"
 	"runtime/debug"
 	"runtime/pprof"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -31,7 +32,11 @@ import (
 	"gopanel/proto"
 )
 
-const version = "0.23.2"
+const version = "0.23.4"
+
+// startupQuiet is how long after launch new icons appear without a glow: the panel is still
+// filling up then.
+const startupQuiet = 25 * time.Second
 
 var ctlCmds chan<- string // control commands into the main loop
 
@@ -182,7 +187,10 @@ func main() {
 		sups    = map[string]*supervisor{}
 		hover   *item
 		paused  bool
+		curCfg  map[string][]string // the xfce4-panel config the item list was built from
+		glowing bool                // a glow-tick is scheduled
 	)
+	startedAt := time.Now()
 	curHover = func() *item { return hover }
 
 	// relayout assigns x positions; expanding items share whatever width is left.
@@ -228,7 +236,7 @@ func main() {
 			it.drawBuf = make([]byte, need)
 		}
 		buf := it.drawBuf[:need]
-		composite(buf, it.w, it.img, it.hold > 0, bg)
+		compositeGlow(buf, it.w, it.img, it.hold > 0, bg, it.glow())
 		putBGRX(c, xproto.Drawable(back), gc, scr.RootDepth, it.x, 0, it.w, panelH, buf)
 		if copyOut {
 			xproto.CopyArea(c, xproto.Drawable(back), xproto.Drawable(wid), gc, int16(it.x), 0, int16(it.x), 0, uint16(it.w), uint16(panelH))
@@ -385,6 +393,142 @@ func main() {
 		}
 	}
 
+	// startGlow keeps redrawing the glowing items until their glow has run out.
+	startGlow := func() {
+		if glowing {
+			return
+		}
+		for _, it := range items {
+			if it.glow() > 0 {
+				glowing = true
+				time.AfterFunc(50*time.Millisecond, func() { ctlCmds <- "glow-tick" })
+				return
+			}
+		}
+	}
+
+	// reloadIncremental handles the common reload, a genmon icon appearing or disappearing,
+	// without rebuilding anything else: the other items keep their state and are not redrawn
+	// from scratch. It reports false when the change is anything else (the caller then does a
+	// full install).
+	reloadIncremental := func(cfg map[string][]string) bool {
+		if curCfg == nil || cfg == nil || len(items) == 0 {
+			return false
+		}
+		isGenmon := func(c map[string][]string, id string) bool {
+			v := c["/plugins/plugin-"+id]
+			return len(v) > 0 && v[0] == "genmon"
+		}
+		ids := cfg["/panels/panel-1/plugin-ids"]
+		present := map[string]*item{}
+		for _, it := range items {
+			if it.kind == "genmon" {
+				present[it.pid] = it
+			}
+		}
+		wanted := map[string]bool{}
+		var added, removed []string
+		for _, id := range ids {
+			if isGenmon(cfg, id) && iniFile(genmonRC(id))["Command"] != "" {
+				wanted[id] = true
+				if present[id] == nil {
+					added = append(added, id)
+				}
+			}
+		}
+		for id := range present {
+			if !wanted[id] {
+				removed = append(removed, id)
+			}
+		}
+		// everything but the genmon plugins must be unchanged
+		skip := func(c map[string][]string, k string) bool {
+			if k == "/panels/panel-1/plugin-ids" {
+				return true
+			}
+			rest, ok := strings.CutPrefix(k, "/plugins/plugin-")
+			if !ok {
+				return false
+			}
+			id, _, _ := strings.Cut(rest, "/")
+			return isGenmon(c, id) || isGenmon(curCfg, id)
+		}
+		same := func(a, b map[string][]string) bool {
+			for k, v := range a {
+				if !skip(a, k) && !slices.Equal(v, b[k]) {
+					return false
+				}
+			}
+			return true
+		}
+		if !same(cfg, curCfg) || !same(curCfg, cfg) {
+			return false
+		}
+		nonGenmon := func(c map[string][]string) []string {
+			var out []string
+			for _, id := range c["/panels/panel-1/plugin-ids"] {
+				if !isGenmon(c, id) {
+					out = append(out, id)
+				}
+			}
+			return out
+		}
+		if !slices.Equal(nonGenmon(cfg), nonGenmon(curCfg)) {
+			return false
+		}
+		for id, it := range present { // a genmon whose command or period changed needs a restart
+			if wanted[id] && it.sig != "" {
+				rc := iniFile(genmonRC(id))
+				if it.sig != rc["Command"]+"|"+rc["UpdatePeriod"] {
+					return false
+				}
+			}
+		}
+		if len(added)+len(removed) == 0 {
+			curCfg = cfg
+			return true // e.g. a genmon rc written before its plugin id: nothing visible changes
+		}
+		log.Printf("reload: genmon icons +%v -%v", added, removed)
+		kept := items[:0:0]
+		for _, it := range items {
+			if it.kind == "genmon" && !wanted[it.pid] {
+				if hover == it {
+					hover, hoverPanel = nil, nil
+					cancelTip()
+				}
+				it.discard()
+				continue
+			}
+			kept = append(kept, it)
+		}
+		items = kept
+		for _, id := range added {
+			g := newGenmonFromRC(id)
+			if g == nil {
+				continue
+			}
+			if time.Since(startedAt) > startupQuiet {
+				g.glowFrom = time.Now()
+			}
+			at := 0 // after the last item of the nearest earlier plugin that has items
+			for i := slices.Index(ids, id) - 1; i >= 0 && at == 0; i-- {
+				for j := len(items) - 1; j >= 0; j-- {
+					if items[j].pid == ids[i] {
+						at = j + 1
+						break
+					}
+				}
+			}
+			items = slices.Insert(items, at, g)
+		}
+		panelItems = items
+		curCfg = cfg
+		relayout()
+		redrawAll()
+		startGlow()
+		return true
+	}
+
 	// install replaces the item list (initial build and reload): old items are
 	// discarded, still-connected helpers are re-bound by name, and helper
 	// supervisors are started/stopped to match.
@@ -395,7 +539,9 @@ func main() {
 		setBgCycle(bgPeriodOf(readPanelConf()["BG_CYCLE"]))
 		hover, hoverPanel = nil, nil
 		cancelTip()
+		had := map[string]bool{}
 		for _, it := range items {
+			had[it.pid] = true
 			it.discard()
 		}
 		for _, tb := range taskbars {
@@ -404,6 +550,14 @@ func main() {
 		taskbars = nil
 		items = buildItems(cfg)
 		panelItems = items
+		if len(had) > 0 && time.Since(startedAt) > startupQuiet {
+			for _, it := range items { // icons that were not there before: let them glow
+				if !had[it.pid] && (it.kind == "genmon" || it.kind == "helper" || it.kind == "launcher") {
+					it.glowFrom = time.Now()
+				}
+			}
+		}
+		curCfg = cfg
 		want := map[string]bool{}
 		for _, it := range items {
 			if it.kind == "helper" {
@@ -437,6 +591,7 @@ func main() {
 		reserveWidths(items)
 		relayout()
 		redrawAll()
+		startGlow()
 		time.AfterFunc(10*time.Second, func() { ctlCmds <- "unreserve" }) // helpers are only spawned after the supervisor's 4 s grace
 		time.AfterFunc(20*time.Second, func() { ctlCmds <- "unreserve-late" })
 	}
@@ -560,7 +715,9 @@ func main() {
 		case xproto.ButtonPressEvent:
 			cancelTip()
 			it := hit(e.EventX)
-			if e.Detail == 3 && (it == nil || it.kind == "separator" || it.kind == "launcher" || it.kind == "whisker" || it.kind == "clock" || it.kind == "helper" || it.kind == "genmon") {
+			if e.Detail == 3 && it != nil && it.hasClick != nil && it.hasClick() {
+				it.click(int(e.EventX)-it.x, int(e.EventY), 1) // one menu per icon: right click = left click
+			} else if e.Detail == 3 && (it == nil || it.kind == "separator" || it.kind == "launcher" || it.kind == "whisker" || it.kind == "clock" || it.kind == "helper" || it.kind == "genmon") {
 				panelMenu(int(e.EventX), cmds, it)
 			} else if it != nil && it.click != nil {
 				it.click(int(e.EventX)-it.x, int(e.EventY), int(e.Detail))
@@ -791,7 +948,21 @@ func main() {
 			switch cmd {
 			case "reload": // re-read the xfce4-panel config, rebuild all items
 				log.Println("reload")
-				install(xfconfAll())
+				cfg := xfconfAll()
+				if !reloadIncremental(cfg) {
+					install(cfg)
+				}
+			case "glow-tick":
+				glowing = false
+				for _, it := range items {
+					if !it.glowFrom.IsZero() {
+						draw(it)
+						if it.glow() == 0 {
+							it.glowFrom = time.Time{}
+						}
+					}
+				}
+				startGlow()
 			case "restart": // replace this process with the (possibly rebuilt) binary
 				// Check before tearing anything down: a failed exec after that leaves no panel.
 				exe := restartExe()
@@ -933,7 +1104,7 @@ func panelMenu(x int, cmds chan<- string, over *item) {
 	if over != nil && over.kind == "launcher" && over.lid != "" {
 		items = append([]*menuItem{{id: 20, label: tr("Remove from panel")}, {sep: true}}, items...)
 	}
-	if over != nil && over.rc != "" { // the plugin's own entry, like the XFCE panel's plugin menu
+	if over != nil && over.rc != "" && over.kind != "genmon" { // the plugin's own entry, like the XFCE panel's plugin menu
 		items = append([]*menuItem{{id: 10, label: propsLabel(over.title)}, {sep: true}}, items...)
 	}
 	menuReqs <- menuReq{rep: activeRep,

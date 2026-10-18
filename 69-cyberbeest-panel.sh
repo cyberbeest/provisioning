@@ -3,10 +3,10 @@
 # replaces the XFCE panel -- same layout and plugins (it reads the xfce4-panel config), but no
 # flicker at startup, a faster menu and far lower memory use.
 #
-# Installing does not switch anything: the XFCE panel stays the panel until the user picks the
-# Cyberbeest panel in Cyberbeest Settings > Panel (Apply/OK). That choice is kept in
-# ~/.config/cyberbeest/panel.conf, which this script never writes or overrides; at every login
-# cyberbeest-panel-choice.sh (autostart) starts the chosen panel (XFCE when there is no choice).
+# gopanel is the default panel: at every login cyberbeest-panel-choice.sh (autostart) starts it,
+# unless the user picked the XFCE panel in Cyberbeest Settings > Panel (Apply/OK). That choice is
+# kept in ~/.config/cyberbeest/panel.conf, which this script never writes or overrides. If gopanel
+# is missing or fails to start, the XFCE panel simply stays.
 # The XFCE panel stays installed and is what xfce-panel-watchdog brings back if gopanel dies.
 #
 # No binary is shipped: the panel is built here, on the machine, from the source in

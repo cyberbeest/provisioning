@@ -68,8 +68,8 @@
     },
     {
       "id": "hw-touchpad-tap",
-      "en": "The touchpad of a Cyberbeest laptop is tuned for tapping: a light tap clicks, and this also works on the login screen.",
-      "de": "Das Touchpad eines Cyberbeest-Laptops ist aufs Tippen abgestimmt: Ein leichtes Antippen klickt, auch auf dem Anmeldebildschirm.",
+      "en": "The touchpad of a Cyberbeest laptop is tuned for tapping: a light tap clicks.",
+      "de": "Das Touchpad eines Cyberbeest-Laptops ist aufs Tippen abgestimmt: Ein leichtes Antippen klickt.",
       "tip": true
     },
     {

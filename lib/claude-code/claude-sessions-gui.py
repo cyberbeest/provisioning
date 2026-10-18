@@ -3,12 +3,15 @@
 
 Reads ~/.claude/projects/*/*.jsonl (read-only) and refreshes every 2 seconds.
 Double-click a row to jump to its terminal window, or resume it in a new terminal.
+A session whose terminal window was closed is stopped and resumed automatically.
 Right-click for more (copy session id).
 """
 import glob
 import json
 import os
+import signal
 import subprocess
+import threading
 import time
 
 import gi
@@ -21,11 +24,47 @@ SESSIONS = os.path.expanduser("~/.claude/sessions")
 REFRESH_MS = 2000
 GROUP_HEADINGS = ["", "Not today", "Not this week"]  # recent group gets no heading
 
+_scan_lock = threading.Lock()
 _cache = {}  # path -> (mtime, size, info)
 _titles = {}  # path -> title
 _counts = {}  # path -> [bytes consumed, message count]
 _starts = {}  # path -> start directory
 _started = {}  # path -> ISO timestamp of first message
+CACHE_FILE = os.path.expanduser("~/.cache/claude-sessions-gui/cache.json")
+
+
+def load_cache():
+    try:
+        with open(CACHE_FILE) as f:
+            d = json.load(f)
+        for path, v in d["files"].items():
+            _cache[path] = (tuple(v["key"]), v["info"])
+            _titles[path] = v["title"]
+            _counts[path] = tuple(v["count"])
+            _starts[path] = v["start"]
+            if v["started"]:
+                _started[path] = v["started"]
+    except (OSError, ValueError, KeyError, TypeError):
+        _cache.clear()
+        _titles.clear()
+        _counts.clear()
+        _starts.clear()
+        _started.clear()
+
+
+def save_cache():
+    files = {p: {"key": list(k), "info": info, "title": _titles.get(p, ""),
+                 "count": list(_counts.get(p, (0, 0))), "start": _starts.get(p, ""),
+                 "started": _started.get(p, "")}
+             for p, (k, info) in list(_cache.items())}
+    try:
+        os.makedirs(os.path.dirname(CACHE_FILE), exist_ok=True)
+        tmp = CACHE_FILE + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump({"files": files}, f)
+        os.replace(tmp, CACHE_FILE)
+    except OSError:
+        pass
 
 
 def _text_of(msg):
@@ -185,9 +224,21 @@ def parse(path, mtime, size):
     }
 
 
-def scan():
+def scan(progress=None):
+    with _scan_lock:
+        return _scan(progress)
+
+
+def _scan(progress):
     rows = []
-    for path in glob.glob(os.path.join(PROJECTS, "*", "*.jsonl")):
+    dirty = False
+    paths = glob.glob(os.path.join(PROJECTS, "*", "*.jsonl"))
+    for gone in set(_cache) - set(paths):
+        del _cache[gone]
+        dirty = True
+    for i, path in enumerate(paths):
+        if progress:
+            progress(i, len(paths))
         try:
             st = os.stat(path)
         except OSError:
@@ -202,7 +253,10 @@ def scan():
         except OSError:
             continue
         _cache[path] = (key, info)
+        dirty = True
         rows.append(info)
+    if dirty:
+        save_cache()
     rows.sort(key=lambda r: r["mtime"], reverse=True)
     return rows
 
@@ -242,6 +296,48 @@ def has_terminal(rec):
     except OSError:
         return False
     return tty.startswith("/dev/pts/") and parent_pid(rec["pid"], "xfce4-terminal") != 0
+
+
+# other places a live session may legitimately sit, which this tool can't manage
+OTHER_HOSTS = ("sshd", "tmux: server", "tmux", "screen", "SCREEN", "gnome-terminal-",
+               "konsole", "xterm", "alacritty", "kitty", "tilix")
+
+
+def terminal_gone(rec):
+    """True for an interactive session whose xfce4-terminal window was closed.
+
+    Background sessions and sessions hosted by ssh/tmux/another terminal app
+    are not orphans, so they are left alone.
+    """
+    if rec.get("kind", "interactive") != "interactive" or has_terminal(rec):
+        return False
+    return not any(parent_pid(rec["pid"], c) for c in OTHER_HOSTS)
+
+
+def stop_process(rec, grace=5.0):
+    """SIGTERM, then SIGKILL after grace seconds. True once the process is gone."""
+    pid = rec["pid"]
+    try:  # guard against pid reuse since the registry was read
+        with open(f"/proc/{pid}/cmdline", "rb") as f:
+            if b"claude" not in f.read():
+                return False
+        os.kill(pid, signal.SIGTERM)
+    except OSError:
+        return True
+    for sig, wait in ((None, grace), (signal.SIGKILL, 2.0)):
+        if sig:
+            try:
+                os.kill(pid, sig)
+            except OSError:
+                return True
+        end = time.time() + wait
+        while time.time() < end:
+            try:
+                os.kill(pid, 0)
+            except OSError:
+                return True
+            time.sleep(0.1)
+    return False
 
 
 def activate_terminal(rec):
@@ -317,6 +413,7 @@ class Win(Gtk.Window):
         # cols: age, project, title, who, last message, id, tooltip
         self.store = Gtk.ListStore(str, str, str, str, str, str, str, int, str)
         self.ids = []
+        self.opening = {}  # session id -> time until which repeat opens are ignored
         self.sort_col = 0  # column index in the store; 0 = Changed
         self.sort_desc = True
         self.view = Gtk.TreeView(model=self.store)
@@ -343,6 +440,9 @@ class Win(Gtk.Window):
         sw = Gtk.ScrolledWindow()
         sw.add(self.view)
         self.status = Gtk.Label(xalign=0)
+        self.bar = Gtk.ProgressBar(show_text=True, valign=Gtk.Align.CENTER)
+        self.bar.set_text("Reading sessions…")
+        self.loading = True
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         bar = Gtk.Box(spacing=8)
         btn = Gtk.Button()
@@ -356,16 +456,33 @@ class Win(Gtk.Window):
         self.search.set_width_chars(28)
         self.search.connect("search-changed", lambda _e: self.refresh())
         bar.pack_start(self.status, True, True, 0)
+        bar.pack_start(self.bar, True, True, 0)
         bar.pack_end(self.search, False, False, 6)
         box.pack_start(bar, False, False, 4)
         box.pack_start(sw, True, True, 0)
         self.add(box)
         self.view.get_columns()[0].set_sort_indicator(True)
         self.view.set_search_column(2)
-        self.refresh()
+        threading.Thread(target=self.first_scan, daemon=True).start()
         GLib.timeout_add(REFRESH_MS, self.refresh)
 
+    def first_scan(self):
+        """Fill the cache off the main thread so the window opens at once."""
+        def progress(i, n):
+            GLib.idle_add(self.bar.set_fraction, i / max(n, 1))
+            GLib.idle_add(self.bar.set_text, f"Reading sessions… {i} / {n}")
+        load_cache()
+        scan(progress)
+        GLib.idle_add(self.finish_loading)
+
+    def finish_loading(self):
+        self.loading = False
+        self.bar.hide()
+        self.refresh()
+
     def refresh(self):
+        if self.loading:
+            return True
         rows = scan()
         now = time.time()
         sel = None
@@ -481,14 +598,39 @@ class Win(Gtk.Window):
         self.status.set_text(f"  copied {sid}")
 
     def open_session(self, sid):
+        # a launch takes a while to show up as running; ignore repeats meanwhile
+        if time.time() < self.opening.get(sid, 0):
+            return
+        self.opening[sid] = time.time() + 15
         rec = running_info().get(sid)
+        if rec and rec.get("kind") == "bg":
+            self.launch(rec.get("cwd") or os.path.expanduser("~"),
+                        f"claude attach {rec.get('jobId') or sid}")
+            self.status.set_text(f"  attaching to background session {sid[:8]} in a new terminal")
+            return
+        if rec and terminal_gone(rec):
+            self.status.set_text(f"  {sid[:8]} still runs but its terminal window is gone; "
+                                 "stopping it and resuming in a new terminal...")
+            threading.Thread(target=self.recover, args=(sid, rec), daemon=True).start()
+            return
         if rec:
             self.status.set_text("  " + activate_terminal(rec))
             return
+        self.resume(sid)
+
+    def resume(self, sid):
         info = next((r for r in scan() if r["id"] == sid), None)
         cwd = info["cwd"] if info and os.path.isdir(info["cwd"]) else os.path.expanduser("~")
         self.launch(cwd, f"claude --resume {sid}")
         self.status.set_text(f"  resuming {sid[:8]} in a new terminal ({cwd})")
+
+    def recover(self, sid, rec):
+        """Stop the orphaned process, then resume the session in a fresh terminal."""
+        if stop_process(rec):
+            GLib.idle_add(self.resume, sid)
+        else:
+            GLib.idle_add(self.status.set_text,
+                          f"  could not stop orphaned process {rec['pid']} of {sid[:8]}")
 
     def new_session(self):
         cwd = os.path.expanduser("~/claude")

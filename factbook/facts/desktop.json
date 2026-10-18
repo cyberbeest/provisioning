@@ -112,7 +112,7 @@
     {
       "id": "default-images",
       "en": "Images on a Cyberbeest laptop open in the Cyberbeest Image Viewer, which shows them at full size and downscales big ones without darkening detail.",
-      "de": "Bilder öffnen sich auf einem Cyberbeest-Laptop im Cyberbeest-Bildbetrachter, der sie in voller Größe zeigt und große ohne Detailverlust in dunklen Bereichen verkleinert."
+      "de": "Bilder öffnen sich auf einem Cyberbeest-Laptop im Cyberbeest Image Viewer, der sie in voller Größe zeigt und große ohne Detailverlust in dunklen Bereichen verkleinert."
     },
     {
       "id": "default-avif",
