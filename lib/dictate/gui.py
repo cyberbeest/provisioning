@@ -643,6 +643,7 @@ class HotwordLabDialog(QWidget):
 
     result = pyqtSignal(int, str, float)   # row, text or error, seconds
     started = pyqtSignal(int)
+    disable_requested = pyqtSignal()
 
     def __init__(self, heard, terms, scores, parent=None):
         super().__init__(parent)
@@ -676,7 +677,10 @@ class HotwordLabDialog(QWidget):
         layout.addLayout(grid)
         close_btn = QPushButton(_("Close"))
         close_btn.clicked.connect(self.close)
+        disable_btn = QPushButton(_("Disable lab mode"))
+        disable_btn.clicked.connect(self.disable_requested.emit)
         row = QHBoxLayout()
+        row.addWidget(disable_btn)
         row.addStretch()
         row.addWidget(close_btn)
         layout.addLayout(row)
@@ -1030,6 +1034,15 @@ class MainWindow(QMainWindow):
         self._test_dialog.activateWindow()
         self._test_dialog.edit.setFocus()
 
+    def disable_hotword_lab(self):
+        """The lab window's button: turns the experimental setting off and closes the window."""
+        self.cfg["hotword_lab"] = False
+        core.save_config(self.cfg)
+        self._lab_input = None
+        self._lab_last = None
+        if self._lab_dialog is not None:
+            self._lab_dialog.close()
+
     def show_hotword_lab(self, heard, audio, speech):
         """Open the lab window at once; a background thread fills in the decodes."""
         import local_stt
@@ -1042,6 +1055,7 @@ class MainWindow(QMainWindow):
         dlg = HotwordLabDialog(heard, terms, local_stt.LAB_SCORES)
         self._lab_dialog = dlg
         self._lab_last = (heard, audio, speech)   # to run again after learning
+        dlg.disable_requested.connect(self.disable_hotword_lab)
         dlg.destroyed.connect(lambda: setattr(self, "_lab_dialog", None) if self._lab_dialog is dlg else None)
         dlg.show()
         threading.Thread(target=self._run_hotword_lab, args=(dlg, audio, speech, terms), daemon=True).start()

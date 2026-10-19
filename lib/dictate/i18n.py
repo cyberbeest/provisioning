@@ -66,6 +66,7 @@ CATALOGS = {
         "Learned pairs": "Gelernte Paare",
         "As heard: {text}": "So verstanden: {text}",
         "Dictate — Hotword lab (experimental)": "Dictate — Hotword-Labor (experimentell)",
+        "Disable lab mode": "Labormodus ausschalten",
         "Normal result: {text}": "Normales Ergebnis: {text}",
         "Boosted terms: {terms}": "Verstärkte Begriffe: {terms}",
         "none learned yet": "noch keine gelernt",
