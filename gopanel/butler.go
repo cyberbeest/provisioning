@@ -124,8 +124,9 @@ func (b *butlerClient) State() string {
 	return "starting"
 }
 
-// Warm starts the server ahead of the first search (menu opened), so the model is loading
-// while the user is still reaching for the keyboard.
+// Warm is called when the menu opens. With plenty of free RAM it starts the server ahead of the first
+// search, so the model is loading while the user is still reaching for the keyboard. When memory is
+// short it only drops a stale server; the first Ask (first typed character) then starts it.
 func (b *butlerClient) Warm() {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -133,7 +134,7 @@ func (b *butlerClient) Warm() {
 	if b.cmd != nil && (!st.Enabled || butlerConfigNewer(b.startedAt)) { // switched off, or the settings/disabled commands changed
 		b.stopLocked()
 	}
-	if b.cmd == nil && !b.missing && st.Enabled {
+	if b.cmd == nil && !b.missing && st.Enabled && ramComfortable() {
 		b.startLocked()
 	}
 	b.lastUse = time.Now()
