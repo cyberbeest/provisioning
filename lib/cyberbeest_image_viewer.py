@@ -13,8 +13,15 @@ mimetypes in Thunar. A collapsible control bar on top shows the zoom
 level and holds the zoom buttons plus a menu (Rename, Copy Image).
 """
 
+import contextlib
+import math
+import random
+import hashlib
 import os
+import sqlite3
+import subprocess
 import sys
+import time
 
 import gi
 import numpy as np
@@ -291,6 +298,15 @@ def _build_program():
     return program
 
 
+def _paint_x_background_black(gdk_window):
+    # While the window is dragged bigger, the X server fills the newly
+    # exposed strip itself, long before GTK/GL has drawn the next frame.
+    # Giving the windows a black background makes that interim fill black
+    # instead of leftover image lines.
+    if gdk_window is not None:
+        gdk_window.set_background_rgba(Gdk.RGBA(0, 0, 0, 1))
+
+
 class GLImageArea(Gtk.GLArea):
     """Renders the image at native resolution; the GPU's sRGB texture
     unit does the gamma-correct downscale (decode -> mipmap/bilinear
@@ -305,18 +321,46 @@ class GLImageArea(Gtk.GLArea):
         self.frames = frames
         self.frame_idx = 0
         self.generation = 0
+        self.paused = False
         self.texture = None
+        self.fit_native = None
         self.set_required_version(3, 2)
         self.set_halign(Gtk.Align.CENTER)
         self.set_valign(Gtk.Align.CENTER)
         self.connect("realize", self.on_realize)
         self.connect("render", self.on_render)
+        self.connect("resize", self.on_resize)
+
+    def on_resize(self, area, w, h):
+        # Emitted with the new, empty buffer before the (slow, esp. for GIFs)
+        # render: paint it black right away so the newly exposed area never
+        # shows leftovers of the previous frame.
+        area.make_current()
+        GL.glClearColor(0.0, 0.0, 0.0, 1.0)
+        GL.glClear(GL.GL_COLOR_BUFFER_BIT)
 
     def set_zoom_size(self, w, h):
         # The widget's own size *is* the zoom level -- inside a
         # GtkScrolledWindow this can exceed the visible viewport, which is
         # exactly what makes scrollbars appear for zoomed-in content.
+        if self.fit_native is not None:
+            self.fit_native = None
+            self.set_halign(Gtk.Align.CENTER)
+            self.set_valign(Gtk.Align.CENTER)
         self.set_size_request(w, h)
+
+    def set_fit(self, native_size):
+        # Fit mode: the widget fills the whole viewport and on_render
+        # letterboxes the image inside it. Resizing the window then only
+        # re-renders in the same allocation pass, instead of resizing the
+        # widget from an idle callback and showing stale, edge-stretched
+        # pixels until that catches up.
+        if self.fit_native is None:
+            self.set_halign(Gtk.Align.FILL)
+            self.set_valign(Gtk.Align.FILL)
+            self.set_size_request(1, 1)
+        self.fit_native = native_size
+        self.queue_render()
 
     def set_frames(self, frames):
         # Reuse this widget/GL context for a new image instead of tearing
@@ -329,12 +373,14 @@ class GLImageArea(Gtk.GLArea):
         self.frames = frames
         self.frame_idx = 0
         self.generation += 1
+        self.paused = False
         if self.get_realized():
             self._upload_full(frames[0][0])
         if len(frames) > 1:
             GLib.timeout_add(frames[0][1], self._advance_frame, self.generation)
 
     def on_realize(self, area):
+        _paint_x_background_black(area.get_window())
         area.make_current()
         self.program = _build_program()
         self.vao = GL.glGenVertexArrays(1)
@@ -367,6 +413,8 @@ class GLImageArea(Gtk.GLArea):
         # animating over whatever image is now showing.
         if generation != self.generation:
             return False
+        if self.paused:
+            return False
         self.frame_idx = (self.frame_idx + 1) % len(self.frames)
         frame, duration = self.frames[self.frame_idx]
         self.make_current()
@@ -380,6 +428,18 @@ class GLImageArea(Gtk.GLArea):
         GLib.timeout_add(duration, self._advance_frame, generation)
         return False
 
+    def current_frame_index(self):
+        return self.frame_idx
+
+    def toggle_pause(self):
+        if len(self.frames) < 2:
+            return
+        self.paused = not self.paused
+        if not self.paused:
+            # The paused timer chain ended itself; start a fresh one.
+            self.generation += 1
+            GLib.timeout_add(self.frames[self.frame_idx][1], self._advance_frame, self.generation)
+
     def on_render(self, area, ctx):
         scale = area.get_scale_factor()
         area_w = area.get_allocated_width() * scale
@@ -388,9 +448,13 @@ class GLImageArea(Gtk.GLArea):
         GL.glClearColor(0.0, 0.0, 0.0, 1.0)
         GL.glClear(GL.GL_COLOR_BUFFER_BIT)
 
-        # No aspect-ratio math needed here: set_zoom_size() always sets
-        # this widget's own size to the exact w/h the caller wants drawn
-        # (already aspect-correct), so the viewport just fills it.
+        # Zoomed: set_zoom_size() sized this widget to the exact aspect-correct
+        # w/h, so the viewport fills it. Fit: letterbox inside the full area.
+        if self.fit_native is not None:
+            nw, nh = self.fit_native
+            k = min(area_w / nw, area_h / nh)
+            w, h = max(1, round(nw * k)), max(1, round(nh * k))
+            GL.glViewport((area_w - w) // 2, (area_h - h) // 2, w, h)
         GL.glUseProgram(self.program)
         GL.glBindVertexArray(self.vao)
         GL.glActiveTexture(GL.GL_TEXTURE0)
@@ -410,7 +474,7 @@ def make_cpu_image_widget(frames):
     image_widget = Gtk.Image()
     image_widget.set_halign(Gtk.Align.CENTER)
     image_widget.set_valign(Gtk.Align.CENTER)
-    state = {"idx": 0, "size": None, "pixbufs": [], "frames": frames, "generation": 0}
+    state = {"idx": 0, "size": None, "pixbufs": [], "frames": frames, "generation": 0, "paused": False}
 
     def render_at(w, h):
         pixbufs = []
@@ -424,7 +488,7 @@ def make_cpu_image_widget(frames):
         image_widget.set_from_pixbuf(pixbufs[state["idx"] % len(pixbufs)][0])
 
     def advance(generation):
-        if generation != state["generation"]:
+        if generation != state["generation"] or state["paused"]:
             return False
         pixbufs = state["pixbufs"]
         if not pixbufs:
@@ -444,8 +508,20 @@ def make_cpu_image_widget(frames):
         state["idx"] = 0
         state["size"] = None
         state["generation"] += 1
+        state["paused"] = False
         if len(new_frames) > 1:
             GLib.timeout_add(new_frames[0][1], advance, state["generation"])
+
+    def toggle_pause():
+        if len(state["frames"]) < 2:
+            return
+        state["paused"] = not state["paused"]
+        if not state["paused"] and state["pixbufs"]:
+            state["generation"] += 1
+            GLib.timeout_add(state["pixbufs"][state["idx"]][1], advance, state["generation"])
+
+    image_widget.toggle_pause = toggle_pause
+    image_widget.current_frame_index = lambda: state["idx"] % len(state["frames"])
 
     native_w, native_h = frames[0][0].size
     render_at(native_w, native_h)
@@ -462,7 +538,7 @@ _BLACK_BG_CSS = Gtk.CssProvider()
 _BLACK_BG_CSS.load_from_data(b".image-backdrop, .image-backdrop viewport { background-color: black; }")
 
 _BAR_CSS = Gtk.CssProvider()
-_BAR_CSS.load_from_data(b"box { background-color: @theme_bg_color; padding: 2px 4px; }")
+_BAR_CSS.load_from_data(b"box { background-color: @theme_bg_color; padding: 2px 4px; border-bottom: 1px solid #555555; }")
 
 # GTK animates a button's transparent normal state to its hover color
 # through transparent black, which flashes dark over the black window.
@@ -474,9 +550,206 @@ _NO_TRANSITION_CSS.load_from_data(b"button { transition: none; }")
 
 CONFIG_DIR = os.path.expanduser("~/.config/cyberbeest")
 BAR_COLLAPSED_FILE = os.path.join(CONFIG_DIR, "image-viewer-bar-collapsed")
+_STAR_CSS = Gtk.CssProvider()
+_STAR_CSS.load_from_data(b"button.favorite { color: #ffd60a; }")
+
+_CAPTION_CSS = Gtk.CssProvider()
+_CAPTION_CSS.load_from_data(b"box { background-color: @theme_bg_color; padding: 4px 8px; border-top: 1px solid #555555; }")
+
+FAVORITES_DB = os.path.join(CONFIG_DIR, "image-favorites.sqlite")
 
 
-TOOLTIP_TIMEOUT_MS = 4000
+@contextlib.contextmanager
+def _favorites_db():
+    """Open connection in one transaction (committed on success), always closed.
+
+    images: every image the user has a record for (a caption, a favorite
+    star, or both), with the content hash and the file's mtime/size as last
+    seen. favorite_added is NULL for images that are not favorites.
+    graveyard: records whose file is gone, changed or deleted, keyed by
+    content hash, so the same image turning up again (any path) is
+    recognized and its caption and star restored (added = 0: no star)."""
+    os.makedirs(CONFIG_DIR, exist_ok=True)
+    db = sqlite3.connect(FAVORITES_DB)
+    try:
+        db.execute(
+            "CREATE TABLE IF NOT EXISTS images (path TEXT PRIMARY KEY, hash TEXT, mtime INTEGER, size INTEGER, "
+            "caption TEXT NOT NULL DEFAULT '', favorite_added INTEGER)")
+        old = db.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'favorites'").fetchone()
+        if old:
+            # Earlier versions kept favorites only.
+            have = {row[1] for row in db.execute("PRAGMA table_info(favorites)")}
+            cols = ", ".join(c if c in have else "NULL" for c in ("path", "hash", "mtime", "size"))
+            db.execute(f"INSERT OR IGNORE INTO images (path, hash, mtime, size, favorite_added) SELECT {cols}, added FROM favorites")
+            db.execute("DROP TABLE favorites")
+        db.execute(
+            "CREATE TABLE IF NOT EXISTS graveyard (hash TEXT PRIMARY KEY, path TEXT NOT NULL, "
+            "added INTEGER NOT NULL, buried INTEGER NOT NULL, reason TEXT NOT NULL)")
+        if "caption" not in {row[1] for row in db.execute("PRAGMA table_info(graveyard)")}:
+            db.execute("ALTER TABLE graveyard ADD COLUMN caption TEXT NOT NULL DEFAULT ''")
+        db.execute("CREATE INDEX IF NOT EXISTS images_hash ON images (hash)")
+        with db:
+            yield db
+    finally:
+        db.close()
+
+
+def _file_signature(path):
+    st = os.stat(path)
+    return st.st_mtime_ns, st.st_size
+
+
+def _file_hash(path):
+    digest = hashlib.sha256()
+    try:
+        with open(path, "rb") as f:
+            for chunk in iter(lambda: f.read(1 << 20), b""):
+                digest.update(chunk)
+    except OSError:
+        return None
+    return digest.hexdigest()
+
+
+def _bury(db, path, reason):
+    row = db.execute("SELECT favorite_added, caption, hash FROM images WHERE path = ?", (path,)).fetchone()
+    db.execute("DELETE FROM images WHERE path = ?", (path,))
+    if row and row[2]:
+        db.execute(
+            "INSERT OR REPLACE INTO graveyard (hash, path, added, buried, reason, caption) VALUES (?, ?, ?, ?, ?, ?)",
+            (row[2], path, row[0] or 0, int(time.time()), reason, row[1]))
+
+
+def _verify(db, path):
+    """Check a record against its file; True if it is still valid. A missing
+    file or different content buries the record."""
+    row = db.execute("SELECT hash, mtime, size FROM images WHERE path = ?", (path,)).fetchone()
+    if row is None:
+        return False
+    try:
+        sig = _file_signature(path)
+    except OSError:
+        _bury(db, path, "gone")
+        return False
+    if row[1:] == sig:
+        return True
+    new_hash = _file_hash(path)
+    if new_hash is not None and row[0] is None:
+        # Record from before hashes were stored: adopt what is on disk now.
+        db.execute("UPDATE images SET hash = ?, mtime = ?, size = ? WHERE path = ?", (new_hash, *sig, path))
+        return True
+    if new_hash is not None and new_hash == row[0]:
+        db.execute("UPDATE images SET mtime = ?, size = ? WHERE path = ?", (*sig, path))
+        return True
+    _bury(db, path, "changed")
+    return False
+
+
+def _recognize(db, path):
+    """No record by path: is it a known image by content? Restores a
+    graveyard record, or follows a record whose old file is gone."""
+    new_hash = _file_hash(path)
+    if new_hash is None:
+        return False
+    sig = _file_signature(path)
+    for old_path, in db.execute("SELECT path FROM images WHERE hash = ?", (new_hash,)).fetchall():
+        if not os.path.exists(old_path):
+            db.execute("UPDATE images SET path = ?, mtime = ?, size = ? WHERE path = ?", (path, *sig, old_path))
+            return True
+    grave = db.execute("SELECT added, caption FROM graveyard WHERE hash = ?", (new_hash,)).fetchone()
+    if grave:
+        db.execute("DELETE FROM graveyard WHERE hash = ?", (new_hash,))
+        db.execute("INSERT OR REPLACE INTO images (path, hash, mtime, size, caption, favorite_added) VALUES (?, ?, ?, ?, ?, ?)",
+                   (path, new_hash, *sig, grave[1], grave[0] or None))
+        return True
+    return False
+
+
+def _ensure_record(db, path):
+    if db.execute("SELECT 1 FROM images WHERE path = ?", (path,)).fetchone():
+        return
+    file_hash = _file_hash(path)
+    try:
+        mtime, size = _file_signature(path)
+    except OSError:
+        mtime = size = None
+    db.execute("INSERT INTO images (path, hash, mtime, size) VALUES (?, ?, ?, ?)", (path, file_hash, mtime, size))
+    if file_hash:
+        db.execute("DELETE FROM graveyard WHERE hash = ?", (file_hash,))
+
+
+def image_record(path):
+    """(is_favorite, caption) for an image; recognizes it by content if the
+    path is new."""
+    try:
+        with _favorites_db() as db:
+            if not (db.execute("SELECT 1 FROM images WHERE path = ?", (path,)).fetchone() and _verify(db, path)):
+                _recognize(db, path)
+            row = db.execute("SELECT favorite_added, caption FROM images WHERE path = ?", (path,)).fetchone()
+            return (row[0] is not None, row[1]) if row else (False, "")
+    except (sqlite3.Error, OSError):
+        return (False, "")
+
+
+def _drop_if_empty(db, path):
+    db.execute("DELETE FROM images WHERE path = ? AND caption = '' AND favorite_added IS NULL", (path,))
+
+
+def favorite_toggle(path):
+    """Flip the favorite flag; returns the new state."""
+    with _favorites_db() as db:
+        _ensure_record(db, path)
+        row = db.execute("SELECT favorite_added FROM images WHERE path = ?", (path,)).fetchone()
+        if row[0] is not None:
+            db.execute("UPDATE images SET favorite_added = NULL WHERE path = ?", (path,))
+            _drop_if_empty(db, path)
+            return False
+        db.execute("UPDATE images SET favorite_added = ? WHERE path = ?", (int(time.time()), path))
+        return True
+
+
+def set_caption(path, text):
+    text = text.strip()
+    with _favorites_db() as db:
+        if text:
+            _ensure_record(db, path)
+        db.execute("UPDATE images SET caption = ? WHERE path = ?", (text, path))
+        _drop_if_empty(db, path)
+
+
+def favorite_move(old_path, new_path):
+    try:
+        with _favorites_db() as db:
+            db.execute("UPDATE OR REPLACE images SET path = ? WHERE path = ?", (new_path, old_path))
+    except sqlite3.Error:
+        pass
+
+
+def favorite_bury(path, reason):
+    """File deleted from the viewer: keep the record in the graveyard, so it
+    comes back if the image is restored."""
+    try:
+        with _favorites_db() as db:
+            _bury(db, path, reason)
+    except sqlite3.Error:
+        pass
+
+
+def favorites_list():
+    """(path, added, caption) of still-valid favorites, newest first. Records
+    whose file is gone or changed move to the graveyard on the way."""
+    try:
+        with _favorites_db() as db:
+            for path, in db.execute("SELECT path FROM images").fetchall():
+                _verify(db, path)
+            return db.execute(
+                "SELECT path, favorite_added, caption FROM images WHERE favorite_added IS NOT NULL "
+                "ORDER BY favorite_added DESC").fetchall()
+    except sqlite3.Error:
+        return []
+
+
+TOOLTIP_TIMEOUT_MS = 1500
+TOOLTIP_REST_MS = 400
 
 
 def _icon_button(icon_name, tooltip, handler):
@@ -626,18 +899,22 @@ class ClipboardOwner:
         self.pixbuf = None
         self.uri = None
 
-    def offer(self, pixbuf, path):
+    def offer(self, pixbuf, path=None):
+        """path=None offers the pixels only (a single GIF frame), with no
+        file reference that would paste as the whole file."""
         self.pixbuf = pixbuf
-        self.uri = GLib.filename_to_uri(os.path.abspath(path))
+        self.uri = GLib.filename_to_uri(os.path.abspath(path)) if path else None
         # Built by hand: Gtk.target_table_new_from_list() segfaults under
         # PyGObject. PNG first, as the lossless default.
         targets = [
             Gtk.TargetEntry.new(mime, 0, self.INFO_IMAGE)
             for mime in ("image/png", "image/bmp", "image/tiff", "image/jpeg")
-        ] + [
-            Gtk.TargetEntry.new("text/uri-list", 0, self.INFO_URIS),
-            Gtk.TargetEntry.new("x-special/gnome-copied-files", 0, self.INFO_GNOME_FILES),
         ]
+        if self.uri:
+            targets += [
+                Gtk.TargetEntry.new("text/uri-list", 0, self.INFO_URIS),
+                Gtk.TargetEntry.new("x-special/gnome-copied-files", 0, self.INFO_GNOME_FILES),
+            ]
         Gtk.selection_clear_targets(self.widget, Gdk.SELECTION_CLIPBOARD)
         Gtk.selection_add_targets(self.widget, Gdk.SELECTION_CLIPBOARD, targets)
         Gtk.selection_owner_set(self.widget, Gdk.SELECTION_CLIPBOARD, Gdk.CURRENT_TIME)
@@ -667,6 +944,94 @@ class ClipboardOwner:
 _clipboard_owner = None
 
 
+class SparkleLayer(Gtk.DrawingArea):
+    """Transparent, click-through layer for a short sparkle burst around a point."""
+
+    DURATION = 0.9
+
+    def __init__(self):
+        super().__init__()
+        # Windowless: a GdkWindow of its own would swallow clicks meant for
+        # the buttons underneath, pass-through or not.
+        self.set_has_window(False)
+        self.set_can_focus(False)
+        self.particles = []
+        self.center = (0, 0)
+        self.arc = (0.0, math.tau)
+        self.start = 0.0
+        self.tick_id = 0
+        self.connect("draw", self.on_draw)
+
+    def burst(self, cx, cy):
+        self.center = (cx, cy)
+        self.start = time.monotonic()
+        # Near the top edge (the star sits in the control bar) everything
+        # would be cropped by the title bar, so spray sideways and down only.
+        if cy < 60:
+            self.arc = (-0.15 * math.pi, 1.15 * math.pi)
+        else:
+            self.arc = (0.0, math.tau)
+        lo, hi = self.arc
+        # (angle, distance, size, delay, gold/white flag)
+        self.particles = [
+            (lo + (i + random.uniform(0.1, 0.9)) * (hi - lo) / 14, random.uniform(22, 44),
+             random.uniform(3.5, 7), random.uniform(0, 0.25), i % 3 == 0)
+            for i in range(14)
+        ]
+        if not self.tick_id:
+            self.tick_id = self.add_tick_callback(self._tick)
+
+    def _tick(self, _w, _clock):
+        if time.monotonic() - self.start > self.DURATION:
+            self.particles = []
+            self.tick_id = 0
+            self.queue_draw()
+            return False
+        self.queue_draw()
+        return True
+
+    @staticmethod
+    def _sparkle_path(cr, x, y, r):
+        # Four-point star with concave sides.
+        cr.move_to(x, y - r)
+        k = r * 0.28
+        cr.curve_to(x + k, y - k, x + k, y - k, x + r, y)
+        cr.curve_to(x + k, y + k, x + k, y + k, x, y + r)
+        cr.curve_to(x - k, y + k, x - k, y + k, x - r, y)
+        cr.curve_to(x - k, y - k, x - k, y - k, x, y - r)
+        cr.close_path()
+
+    def on_draw(self, _w, cr):
+        if not self.particles:
+            return False
+        t = (time.monotonic() - self.start) / self.DURATION
+        cx, cy = self.center
+        ease = 1 - (1 - min(t, 1.0)) ** 3
+        fade = max(0.0, 1 - t ** 2)
+        # Expanding ring.
+        cr.set_source_rgba(1.0, 0.84, 0.04, 0.55 * fade)
+        cr.set_line_width(2.5 * (1 - t) + 0.5)
+        cr.arc(cx, cy, 8 + 26 * ease, *self.arc)
+        cr.stroke()
+        for angle, dist, size, delay, white in self.particles:
+            pt = max(0.0, (t - delay) / (1 - delay))
+            if pt <= 0:
+                continue
+            e = 1 - (1 - pt) ** 3
+            x = cx + math.cos(angle) * dist * e
+            y = cy + math.sin(angle) * dist * e
+            # Twinkle: size swells then shrinks.
+            r = size * math.sin(min(pt, 1.0) * math.pi) + 0.5
+            alpha = max(0.0, 1 - pt ** 2)
+            if white:
+                cr.set_source_rgba(1, 1, 1, alpha)
+            else:
+                cr.set_source_rgba(1.0, 0.84, 0.04, alpha)
+            self._sparkle_path(cr, x, y, r * 1.6)
+            cr.fill()
+        return False
+
+
 class ImageViewerWindow(Gtk.Window):
     def __init__(self, path):
         super().__init__()
@@ -680,11 +1045,22 @@ class ImageViewerWindow(Gtk.Window):
             self.index = 0
 
         self.connect("key-press-event", self.on_key_press)
+        self.connect("window-state-event", self.on_window_state)
+        # Another viewer window may have starred or unstarred this image.
+        self.connect("focus-in-event", lambda _w, _e: self._update_record() and False)
+        self.connect("map", self._on_map_black_bg)
         self.connect("destroy", self.on_destroy)
 
         vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        self.add(vbox)
-        vbox.show()
+        # Whole-window overlay so the favorite sparkles can spill over the
+        # control bar and the image.
+        top = Gtk.Overlay()
+        top.add(vbox)
+        self.sparkles = SparkleLayer()
+        top.add_overlay(self.sparkles)
+        top.set_overlay_pass_through(self.sparkles, True)
+        self.add(top)
+        top.show_all()
 
         # Only shown when the file's extension doesn't match its content;
         # nothing is renamed until the user clicks the button.
@@ -710,6 +1086,37 @@ class ImageViewerWindow(Gtk.Window):
         vbox.pack_start(overlay, True, True, 0)
         overlay.show()
 
+        # Caption under the image: a label, swapped for an entry while editing.
+        self.caption = ""
+        self.caption_bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+        self.caption_bar.get_style_context().add_provider(_CAPTION_CSS, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+        # Selectable by mouse (drag, right-click menu: Copy, Select All), but never
+        # focusable: a focused selectable label shows a blinking text cursor.
+        self.caption_label = Gtk.Label(justify=Gtk.Justification.CENTER, wrap=True, selectable=True)
+        self.caption_label.set_can_focus(False)
+        self.caption_event = Gtk.EventBox()
+        self.caption_event.set_visible_window(False)
+        self.caption_event.add(self.caption_label)
+        self.caption_event.add_events(Gdk.EventMask.BUTTON_PRESS_MASK)
+        # On the label itself, ahead of its own handler (which would select a word).
+        self.caption_label.connect("button-press-event", self.on_caption_click)
+        self.caption_event.connect("button-press-event", self.on_caption_click)
+        self.caption_entry = Gtk.Entry(placeholder_text="Caption (Enter to save, Esc to cancel)", xalign=0.5)
+        self.caption_entry.connect("activate", lambda _e: self.finish_caption_edit(save=True))
+        self.caption_entry.connect("key-press-event", self.on_caption_key)
+        self.caption_entry.connect("focus-out-event", self.on_caption_focus_out)
+        self.caption_entry.connect("populate-popup", self.on_caption_popup)
+        self._caption_menu_open = False
+        self._caption_confirming = False
+        self._caption_closing = False
+        self.caption_bar.pack_start(self.caption_event, True, True, 0)
+        self.caption_bar.pack_start(self.caption_entry, True, True, 0)
+        self.caption_bar.set_no_show_all(True)
+        self.caption_event.set_no_show_all(True)
+        self.caption_label.show()
+        self.caption_entry.set_no_show_all(True)
+        vbox.pack_start(self.caption_bar, False, False, 0)
+
         self.scroller = Gtk.ScrolledWindow()
         self.scroller.get_style_context().add_class("image-backdrop")
         self.scroller.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
@@ -729,6 +1136,17 @@ class ImageViewerWindow(Gtk.Window):
         self.expand_button.set_margin_end(18)
         self.expand_button.set_no_show_all(True)
         overlay.add_overlay(self.expand_button)
+
+        # With the bar collapsed there is no fullscreen button, so a fullscreen
+        # window gets its own way out, next to the expand button.
+        self.exit_fullscreen_button = _icon_button("view-restore-symbolic", "Exit Fullscreen (F11, Esc)", self.toggle_fullscreen)
+        self.exit_fullscreen_button.get_style_context().add_class("osd")
+        self.exit_fullscreen_button.set_halign(Gtk.Align.END)
+        self.exit_fullscreen_button.set_valign(Gtk.Align.START)
+        self.exit_fullscreen_button.set_margin_top(6)
+        self.exit_fullscreen_button.set_margin_end(60)
+        self.exit_fullscreen_button.set_no_show_all(True)
+        overlay.add_overlay(self.exit_fullscreen_button)
 
         self.image_widget = None
         self.set_zoom_size = None
@@ -754,10 +1172,10 @@ class ImageViewerWindow(Gtk.Window):
         # buttons stay at the right edge.
         zoom_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=2)
         zoom_box.pack_start(_label_button("<b>1:1</b>", "Zoom 1:1 (0)", self.zoom_to_native), False, False, 0)
-        zoom_box.pack_start(_label_button("<span size='x-small'>●</span>", "Zoom Fit (f)", self.zoom_to_fit), False, False, 0)
+        zoom_box.pack_start(_label_button("<span size='x-small'>●</span>", "Zoom Fit (z)", self.zoom_to_fit), False, False, 0)
         zoom_box.pack_start(_icon_button("zoom-out-symbolic", "Zoom Out (-)", lambda: self.zoom_by(1 / ZOOM_STEP)), False, False, 0)
         # Fixed width so the buttons don't shift as the percentage changes.
-        self.zoom_label = Gtk.Label(width_chars=10)
+        self.zoom_label = Gtk.Label(width_chars=12)
         zoom_box.pack_start(self.zoom_label, False, False, 0)
         zoom_box.pack_start(_icon_button("zoom-in-symbolic", "Zoom In (+)", lambda: self.zoom_by(ZOOM_STEP)), False, False, 0)
         bar.set_center_widget(zoom_box)
@@ -765,18 +1183,32 @@ class ImageViewerWindow(Gtk.Window):
         bar.pack_start(_icon_button("go-previous-symbolic", "Previous Image (Left)", lambda: self.show_offset(-1)), False, False, 0)
         bar.pack_start(_icon_button("go-next-symbolic", "Next Image (Right)", lambda: self.show_offset(1)), False, False, 0)
 
+        self.star_button = _icon_button("non-starred-symbolic", "Add to Favorites (F)", self.toggle_favorite)
+        self.star_button.get_style_context().add_provider(_STAR_CSS, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+        bar.pack_start(self.star_button, False, False, 0)
+        bar.pack_start(_icon_button("document-edit-symbolic", "Edit Caption (C)", self.edit_caption), False, False, 0)
+
         bar.pack_end(_icon_button("pan-up-symbolic", "Hide control bar", lambda: self.set_bar_collapsed(True)), False, False, 0)
 
         menu = Gtk.Menu()
         menu.append(_menu_item_with_hotkey("Rename…", "F2", self.show_rename_dialog))
         menu.append(_menu_item_with_hotkey("Copy Image", "Ctrl+C", self.copy_image))
+        self.copy_frame_item = _menu_item_with_hotkey("Copy Frame", "Ctrl+Shift+C", self.copy_frame)
+        menu.append(self.copy_frame_item)
         menu.append(_menu_item_with_hotkey("Delete…", "Del", self.show_delete_dialog))
+        menu.append(Gtk.SeparatorMenuItem())
+        menu.append(_menu_item_with_hotkey("Edit Caption", "C", self.edit_caption))
+        menu.append(_menu_item_with_hotkey("Show Folder", "O", self.show_folder))
+        menu.append(_menu_item_with_hotkey("Favorites", "Shift+F", self.show_favorites))
         menu.show_all()
         menu_button = Gtk.MenuButton(popup=menu, relief=Gtk.ReliefStyle.NONE, can_focus=False)
         menu_button.get_style_context().add_provider(_NO_TRANSITION_CSS, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
         menu_button.set_image(Gtk.Image.new_from_icon_name("open-menu-symbolic", Gtk.IconSize.BUTTON))
         menu_button.set_tooltip_text("Menu")
         bar.pack_end(menu_button, False, False, 0)
+
+        self.fullscreen_button = _icon_button("view-fullscreen-symbolic", "Enter Fullscreen (F11)", self.toggle_fullscreen)
+        bar.pack_end(self.fullscreen_button, False, False, 0)
 
         for child in bar.get_children():
             child.show_all()
@@ -785,6 +1217,7 @@ class ImageViewerWindow(Gtk.Window):
     def set_bar_collapsed(self, collapsed, remember=True):
         self.control_bar.set_visible(not collapsed)
         self.expand_button.set_visible(collapsed)
+        self._update_fullscreen_ui()
         if not remember:
             return
         try:
@@ -798,12 +1231,144 @@ class ImageViewerWindow(Gtk.Window):
 
     def _update_zoom_label(self):
         percent = round(self._current_scale() * 100)
-        self.zoom_label.set_text(f"Fit {percent}%" if self.zoom_mode == "fit" else f"{percent}%")
+        text = f"Fit {percent}%" if self.zoom_mode == "fit" else f"{percent}%"
+        # ▲ above 100%, ▼ below: the image is shown enlarged or reduced.
+        arrow = "▲" if percent > 100 else "▼" if percent < 100 else ""
+        self.zoom_label.set_markup(f"{text} <span size='xx-small' rise='2600'>{arrow}</span>" if arrow else text)
+
+    def _on_map_black_bg(self, _window):
+        # The toplevel's exposed strip is always image backdrop (the control
+        # bar sits at the top), so black is right for it too.
+        _paint_x_background_black(self.get_window())
+        _paint_x_background_black(self.scroller.get_window())
+        viewport = self.scroller.get_child()
+        if viewport is not None:
+            _paint_x_background_black(viewport.get_window())
+            if hasattr(viewport, "get_bin_window"):
+                _paint_x_background_black(viewport.get_bin_window())
 
     def current_path(self):
         return self.folder_images[self.index]
 
+    def _update_record(self):
+        if self.caption_entry.get_visible():
+            is_fav, _caption = image_record(self.current_path())
+        else:
+            is_fav, self.caption = image_record(self.current_path())
+            self.caption_label.set_text(self.caption)
+            self.caption_event.set_visible(bool(self.caption))
+            self.caption_bar.set_visible(bool(self.caption))
+        self.star_button.set_image(Gtk.Image.new_from_icon_name(
+            "starred-symbolic" if is_fav else "non-starred-symbolic", Gtk.IconSize.BUTTON))
+        ctx = self.star_button.get_style_context()
+        (ctx.add_class if is_fav else ctx.remove_class)("favorite")
+        self.star_button.set_tooltip_text("Remove from Favorites (F)" if is_fav else "Add to Favorites (F)")
+
+    def edit_caption(self):
+        self.caption_event.hide()
+        self.caption_entry.set_text(self.caption)
+        self.caption_bar.show()
+        self.caption_entry.show()
+        self.caption_entry.grab_focus()
+        self.caption_entry.set_position(-1)
+
+    def finish_caption_edit(self, save):
+        if not self.caption_entry.get_visible():
+            return
+        text = self.caption_entry.get_text()
+        # Hiding the focused entry fires its focus-out synchronously, while it
+        # still counts as visible; without this that would save a discard.
+        self._caption_closing = True
+        self.caption_entry.hide()
+        self.set_focus(None)
+        self._caption_closing = False
+        if save:
+            try:
+                set_caption(self.current_path(), text)
+            except sqlite3.Error:
+                pass
+        self._update_record()
+
+    def on_caption_focus_out(self, _entry, _event):
+        # The right-click menu takes focus while it is open; that is not leaving.
+        if not (self._caption_menu_open or self._caption_confirming or self._caption_closing):
+            self.finish_caption_edit(save=True)
+        return False
+
+    def on_caption_popup(self, _entry, menu):
+        self._caption_menu_open = True
+
+        def closed(_menu):
+            def restore():
+                self._caption_menu_open = False
+                if self.caption_entry.get_visible():
+                    self.caption_entry.grab_focus_without_selecting()
+                return False
+            GLib.idle_add(restore)
+        menu.connect("hide", closed)
+
+    def on_caption_click(self, _widget, event):
+        if event.type == Gdk.EventType.DOUBLE_BUTTON_PRESS and event.button == 1:
+            self.edit_caption()
+            return True
+        return False
+
+    def on_caption_key(self, _entry, event):
+        if event.keyval == Gdk.KEY_Escape:
+            self.discard_caption_edit()
+            return True
+        return False
+
+    def discard_caption_edit(self):
+        # Nothing typed: just leave. Otherwise ask before throwing it away.
+        if self.caption_entry.get_text().strip() == self.caption:
+            self.finish_caption_edit(save=False)
+        elif self._confirm_discard_caption():
+            self.finish_caption_edit(save=False)
+        else:
+            self.caption_entry.grab_focus_without_selecting()
+
+    def _confirm_discard_caption(self):
+        # The dialog takes focus; _caption_confirming keeps that from
+        # counting as leaving the field (which would save).
+        self._caption_confirming = True
+        dialog = Gtk.MessageDialog(
+            transient_for=self, modal=True, message_type=Gtk.MessageType.QUESTION,
+            text="Discard your changes to the caption?")
+        dialog.add_button("Keep Editing", Gtk.ResponseType.CANCEL)
+        dialog.add_button("Discard Changes", Gtk.ResponseType.OK)
+        dialog.set_default_response(Gtk.ResponseType.CANCEL)
+        response = dialog.run()
+        dialog.destroy()
+        self._caption_confirming = False
+        return response == Gtk.ResponseType.OK
+
+    def show_folder(self):
+        # Opens the image's folder in Files. Own session, so it outlives this
+        # window; inside the viewer's sandbox it inherits that sandbox.
+        subprocess.Popen(["thunar", os.path.dirname(os.path.abspath(self.current_path()))],
+                         start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    def show_favorites(self):
+        # Its own process, so it outlives this window; inherits this
+        # process's sandbox.
+        script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cyberbeest_image_favorites.py")
+        subprocess.Popen([sys.executable, script], start_new_session=True)
+
+    def toggle_favorite(self):
+        try:
+            now_favorite = favorite_toggle(self.current_path())
+        except sqlite3.Error:
+            return
+        self._update_record()
+        if now_favorite and self.star_button.get_mapped():
+            x, y = self.star_button.translate_coordinates(
+                self.sparkles, self.star_button.get_allocated_width() / 2,
+                self.star_button.get_allocated_height() / 2)
+            self.sparkles.burst(x, y)
+
     def _path_renamed(self, old_path, new_path):
+        favorite_move(old_path, new_path)
         if self.folder_images[self.index] == old_path:
             self.folder_images[self.index] = new_path
         self._set_title_and_tooltip(new_path)
@@ -852,6 +1417,7 @@ class ImageViewerWindow(Gtk.Window):
             error.run()
             error.destroy()
             return
+        favorite_bury(path, "deleted")
         del self.folder_images[self.index]
         if not self.folder_images:
             self.destroy()
@@ -859,6 +1425,16 @@ class ImageViewerWindow(Gtk.Window):
         # The next image slides into the deleted one's slot; wrap at the end.
         self.index = min(self.index, len(self.folder_images) - 1)
         self.load_image(self.folder_images[self.index])
+
+    def copy_frame(self):
+        # The frame on screen right now (pause with P to pick one), as pixels only.
+        if not self.frames:
+            return
+        global _clipboard_owner
+        if _clipboard_owner is None:
+            _clipboard_owner = ClipboardOwner()
+        index = self.image_widget.current_frame_index() % len(self.frames)
+        _clipboard_owner.offer(pil_to_pixbuf(self.frames[index][0]))
 
     def copy_image(self):
         if not self.frames:
@@ -891,7 +1467,6 @@ class ImageViewerWindow(Gtk.Window):
         self._tooltip_text = (
             f"{path}\n{native_w} × {native_h}\n{human_file_size(os.path.getsize(path))}"
         )
-        self._show_tooltip()
 
     def _show_tooltip(self):
         if not getattr(self.image_widget, "_tooltip_hooked", False):
@@ -939,19 +1514,32 @@ class ImageViewerWindow(Gtk.Window):
             gdk_window.input_shape_combine_region(cairo.Region(), 0, 0)
 
     def _hide_tooltip(self):
-        self._tooltip_timer = None
+        self._tooltip_hide_timer = None
         self.image_widget.set_has_tooltip(False)
         self.image_widget.trigger_tooltip_query()
         return False
 
+    def _show_tooltip_now(self):
+        # Pointer has rested: show the tooltip, then hide it again
+        # TOOLTIP_TIMEOUT_MS after it appeared.
+        self._tooltip_rest_timer = None
+        self._show_tooltip()
+        self.image_widget.trigger_tooltip_query()
+        self._tooltip_hide_timer = GLib.timeout_add(TOOLTIP_TIMEOUT_MS, self._hide_tooltip)
+        return False
+
     def _restart_tooltip_timer(self):
-        # Tooltip vanishes after a few seconds without pointer movement;
-        # any motion over the image brings it back and restarts the clock.
-        if getattr(self, "_tooltip_timer", None) is None:
-            self._show_tooltip()
-        else:
-            GLib.source_remove(self._tooltip_timer)
-        self._tooltip_timer = GLib.timeout_add(TOOLTIP_TIMEOUT_MS, self._hide_tooltip)
+        # Moving the pointer dismisses the tooltip; it comes back once the
+        # pointer has rested for TOOLTIP_REST_MS, and goes again
+        # TOOLTIP_TIMEOUT_MS later, so it never flickers while you move.
+        for name in ("_tooltip_rest_timer", "_tooltip_hide_timer"):
+            if getattr(self, name, None) is not None:
+                GLib.source_remove(getattr(self, name))
+                setattr(self, name, None)
+        if self.image_widget.get_has_tooltip():
+            self.image_widget.set_has_tooltip(False)
+            self.image_widget.trigger_tooltip_query()
+        self._tooltip_rest_timer = GLib.timeout_add(TOOLTIP_REST_MS, self._show_tooltip_now)
 
     def _update_rename_bar(self, path):
         fix = mismatched_extension_fix(path)
@@ -1037,6 +1625,8 @@ class ImageViewerWindow(Gtk.Window):
 
         self._set_title_and_tooltip(path)
         self._update_rename_bar(path)
+        self._update_record()
+        self.copy_frame_item.set_sensitive(len(frames) > 1)
         # Only the initial open sizes the window to fit the image/screen;
         # after that the window keeps whatever size the user picked.
         if set_initial_size:
@@ -1064,11 +1654,24 @@ class ImageViewerWindow(Gtk.Window):
         return True
 
     def toggle_fullscreen(self):
+        # Follows the window manager's real state (see on_window_state), not
+        # a flag of our own, which went out of sync and left the window stuck.
         if self.is_fullscreen:
             self.unfullscreen()
         else:
             self.fullscreen()
-        self.is_fullscreen = not self.is_fullscreen
+
+    def on_window_state(self, _widget, event):
+        self.is_fullscreen = bool(event.new_window_state & Gdk.WindowState.FULLSCREEN)
+        self._update_fullscreen_ui()
+        return False
+
+    def _update_fullscreen_ui(self):
+        self.fullscreen_button.set_image(Gtk.Image.new_from_icon_name(
+            "view-restore-symbolic" if self.is_fullscreen else "view-fullscreen-symbolic", Gtk.IconSize.BUTTON))
+        self.fullscreen_button.set_tooltip_text(
+            "Exit Fullscreen (F11, Esc)" if self.is_fullscreen else "Enter Fullscreen (F11)")
+        self.exit_fullscreen_button.set_visible(self.is_fullscreen and not self.control_bar.get_visible())
 
     def on_viewport_allocate(self, _widget, allocation):
         if self.zoom_mode != "fit":
@@ -1084,7 +1687,7 @@ class ImageViewerWindow(Gtk.Window):
         self._fit_pending = False
         if self.zoom_mode == "fit":
             self._apply_fit(self.scroller.get_allocation())
-            if self.image_widget is not None:
+            if self.image_widget is not None and not isinstance(self.image_widget, GLImageArea):
                 self.image_widget.queue_resize()
                 self.image_widget.queue_draw()
             self.scroller.queue_draw()
@@ -1092,6 +1695,10 @@ class ImageViewerWindow(Gtk.Window):
 
     def _apply_fit(self, allocation):
         if self.native_size is None or self.set_zoom_size is None:
+            return
+        if isinstance(self.image_widget, GLImageArea):
+            self.image_widget.set_fit(self.native_size)
+            self._update_zoom_label()
             return
         aw, ah = max(allocation.width, 1), max(allocation.height, 1)
         nw, nh = self.native_size
@@ -1140,12 +1747,17 @@ class ImageViewerWindow(Gtk.Window):
             ("Zoom In", "+", lambda: self.zoom_by(ZOOM_STEP)),
             ("Zoom Out", "-", lambda: self.zoom_by(1 / ZOOM_STEP)),
             ("Zoom 1:1", "0", self.zoom_to_native),
-            ("Zoom Fit", "f", self.zoom_to_fit),
+            ("Zoom Fit", "z", self.zoom_to_fit),
         ):
             menu.append(_menu_item_with_hotkey(label, hotkey, handler))
         menu.append(Gtk.SeparatorMenuItem())
         menu.append(_menu_item_with_hotkey("Copy Image", "Ctrl+C", self.copy_image))
+        if len(self.frames) > 1:
+            menu.append(_menu_item_with_hotkey("Copy Frame", "Ctrl+Shift+C", self.copy_frame))
         menu.append(_menu_item_with_hotkey("Delete…", "Del", self.show_delete_dialog))
+        menu.append(_menu_item_with_hotkey("Edit Caption", "C", self.edit_caption))
+        menu.append(_menu_item_with_hotkey("Show Folder", "O", self.show_folder))
+        menu.append(_menu_item_with_hotkey("Favorites", "Shift+F", self.show_favorites))
         menu.show_all()
         menu.popup_at_pointer(event)
 
@@ -1194,10 +1806,27 @@ class ImageViewerWindow(Gtk.Window):
         return False
 
     def on_key_press(self, widget, event):
+        if self.caption_entry.get_visible():
+            return False
+        if event.keyval == Gdk.KEY_F11:
+            self.toggle_fullscreen()
+            return True
+        if event.keyval == Gdk.KEY_Escape and self.is_fullscreen:
+            self.unfullscreen()
+            return True
         if event.keyval in (Gdk.KEY_Escape, Gdk.KEY_q):
             self.destroy()
             return True
+        if event.keyval in (Gdk.KEY_c, Gdk.KEY_C) and event.state & Gdk.ModifierType.CONTROL_MASK \
+                and event.state & Gdk.ModifierType.SHIFT_MASK:
+            self.copy_frame()
+            return True
         if event.keyval in (Gdk.KEY_c, Gdk.KEY_C) and event.state & Gdk.ModifierType.CONTROL_MASK:
+            # Text selected in the caption wins over copying the image.
+            selected, start, end = self.caption_label.get_selection_bounds()
+            if selected:
+                Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD).set_text(self.caption_label.get_text()[start:end], -1)
+                return True
             self.copy_image()
             return True
         if event.keyval in (Gdk.KEY_Delete, Gdk.KEY_KP_Delete):
@@ -1223,8 +1852,24 @@ class ImageViewerWindow(Gtk.Window):
         if event.keyval in (Gdk.KEY_0, Gdk.KEY_KP_0):
             self.zoom_to_native()
             return True
-        if event.keyval in (Gdk.KEY_f, Gdk.KEY_F):
+        if event.keyval in (Gdk.KEY_z, Gdk.KEY_Z):
             self.zoom_to_fit()
+            return True
+        if event.keyval in (Gdk.KEY_c, Gdk.KEY_C) and not event.state & Gdk.ModifierType.CONTROL_MASK:
+            self.edit_caption()
+            return True
+        if event.keyval in (Gdk.KEY_o, Gdk.KEY_O):
+            self.show_folder()
+            return True
+        if event.keyval == Gdk.KEY_F:
+            self.show_favorites()
+            return True
+        if event.keyval == Gdk.KEY_f:
+            self.toggle_favorite()
+            return True
+        if event.keyval in (Gdk.KEY_p, Gdk.KEY_P):
+            if self.image_widget is not None:
+                self.image_widget.toggle_pause()
             return True
         return False
 
@@ -1235,11 +1880,13 @@ def _check_self_modified(self_path, initial_mtime):
     have to notice and manually restart to pick up a fix."""
     # Re-exec'ing would reopen a window the user already closed while
     # this process only lingers to serve the clipboard.
-    if not any(isinstance(w, ImageViewerWindow) for w in Gtk.Window.list_toplevels()):
+    windows = [w for w in Gtk.Window.list_toplevels() if isinstance(w, ImageViewerWindow)]
+    if not windows:
         return True
     try:
         if os.path.getmtime(self_path) != initial_mtime:
-            os.execv(sys.executable, [sys.executable, self_path] + sys.argv[1:])
+            # Reopen on the image currently shown, not the one from the command line.
+            os.execv(sys.executable, [sys.executable, self_path, windows[0].current_path()])
     except OSError:
         pass
     return True
