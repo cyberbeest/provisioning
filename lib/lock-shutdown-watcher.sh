@@ -294,7 +294,12 @@ while true; do
         else
             SHUTDOWN_AFTER=$(( shutdown_min * 60 ))
 
-            if [ "$elapsed" -ge "$SHUTDOWN_AFTER" ]; then
+            # A running Cyberbeest Backup/Restore (marker holds the helper's PID)
+            # must not be cut off by the locked-screen shutdown.
+            busy_pid=$(cat /run/cyberbeest-backup-running 2>/dev/null)
+            if [ "$elapsed" -ge "$SHUTDOWN_AFTER" ] && [ -n "$busy_pid" ] && [ -d "/proc/$busy_pid" ]; then
+                :  # keep waiting below
+            elif [ "$elapsed" -ge "$SHUTDOWN_AFTER" ]; then
                 logger -t lock-shutdown-watcher "Locked for >= ${SHUTDOWN_AFTER}s, shutting down"
                 systemctl poweroff
                 exit 0
