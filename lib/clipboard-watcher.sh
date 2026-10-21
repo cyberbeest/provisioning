@@ -188,9 +188,25 @@ classify_and_write() {
 }
 
 mkdir -p "$(dirname "$STATE_FILE")"
+
+# At login the X server can still be refusing us (~/.Xauthority is written
+# a moment after the session starts): every xclip/clipnotify call then
+# fails, the state file gets TYPE=empty, and clipnotify returns instantly,
+# which used to spin this loop at full CPU on a dead clipboard. Wait until
+# the display actually answers (up to 2 min), then run as normal.
+for _ in $(seq 60); do
+    xclip -selection clipboard -t TARGETS -o >/dev/null 2>&1 && break
+    # an empty clipboard also exits non-zero; distinguish via a display-only check
+    xdotool getdisplaygeometry >/dev/null 2>&1 && break
+    sleep 2
+done
 classify_and_write
 
 while true; do
+    start=$SECONDS
     timeout "$FALLBACK_POLL_SECS" "$CLIPNOTIFY"
+    # clipnotify dying instantly means the display went away or refused us:
+    # back off instead of spinning.
+    [ $((SECONDS - start)) -lt 1 ] && sleep 2
     classify_and_write
 done
