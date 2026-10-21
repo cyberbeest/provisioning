@@ -10,12 +10,13 @@ fix is to decode to linear light, resize, then re-encode to sRGB.
 
 Single-file tool meant to be the double-click handler for image
 mimetypes in Thunar. A collapsible control bar on top shows the zoom
-level and holds the zoom buttons plus a menu (Rename, Copy Image).
+level and holds the zoom buttons plus a menu (Rename, Save As, Copy Image).
 """
 
 import contextlib
 import math
 import random
+import shutil
 import hashlib
 import os
 import sqlite3
@@ -1192,6 +1193,7 @@ class ImageViewerWindow(Gtk.Window):
 
         menu = Gtk.Menu()
         menu.append(_menu_item_with_hotkey("Rename…", "F2", self.show_rename_dialog))
+        menu.append(_menu_item_with_hotkey("Save As…", "Ctrl+S", self.save_as))
         menu.append(_menu_item_with_hotkey("Copy Image", "Ctrl+C", self.copy_image))
         self.copy_frame_item = _menu_item_with_hotkey("Copy Frame", "Ctrl+Shift+C", self.copy_frame)
         menu.append(self.copy_frame_item)
@@ -1381,6 +1383,25 @@ class ImageViewerWindow(Gtk.Window):
         dialog.destroy()
         if new_path is not None:
             self._path_renamed(os.path.join(dialog.folder, dialog.old_name), new_path)
+
+    def save_as(self):
+        src = self.current_path()
+        dialog = Gtk.FileChooserDialog(title="Save As", transient_for=self, action=Gtk.FileChooserAction.SAVE)
+        dialog.add_buttons("Cancel", Gtk.ResponseType.CANCEL, "Save", Gtk.ResponseType.OK)
+        dialog.set_do_overwrite_confirmation(True)
+        dialog.set_current_folder(os.path.dirname(src))
+        dialog.set_current_name(os.path.basename(src))
+        target = dialog.get_filename() if dialog.run() == Gtk.ResponseType.OK else None
+        dialog.destroy()
+        if target is None or os.path.abspath(target) == os.path.abspath(src):
+            return
+        try:
+            shutil.copyfile(src, target)
+        except OSError as e:
+            error = Gtk.MessageDialog(transient_for=self, modal=True, message_type=Gtk.MessageType.ERROR,
+                                      buttons=Gtk.ButtonsType.OK, text=f"Couldn't save: {e.strerror}")
+            error.run()
+            error.destroy()
 
     def show_delete_dialog(self):
         path = self.current_path()
@@ -1751,6 +1772,7 @@ class ImageViewerWindow(Gtk.Window):
         ):
             menu.append(_menu_item_with_hotkey(label, hotkey, handler))
         menu.append(Gtk.SeparatorMenuItem())
+        menu.append(_menu_item_with_hotkey("Save As…", "Ctrl+S", self.save_as))
         menu.append(_menu_item_with_hotkey("Copy Image", "Ctrl+C", self.copy_image))
         if len(self.frames) > 1:
             menu.append(_menu_item_with_hotkey("Copy Frame", "Ctrl+Shift+C", self.copy_frame))
@@ -1816,6 +1838,9 @@ class ImageViewerWindow(Gtk.Window):
             return True
         if event.keyval in (Gdk.KEY_Escape, Gdk.KEY_q):
             self.destroy()
+            return True
+        if event.keyval in (Gdk.KEY_s, Gdk.KEY_S) and event.state & Gdk.ModifierType.CONTROL_MASK:
+            self.save_as()
             return True
         if event.keyval in (Gdk.KEY_c, Gdk.KEY_C) and event.state & Gdk.ModifierType.CONTROL_MASK \
                 and event.state & Gdk.ModifierType.SHIFT_MASK:
