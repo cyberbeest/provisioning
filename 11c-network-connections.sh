@@ -42,6 +42,8 @@ install -o "$TARGET_USER" -g "$TARGET_USER" -m 755 \
 	"$DIR/lib/connections-genmon.sh" "$TARGET_HOME/.local/bin/connections-genmon.sh"
 install -o "$TARGET_USER" -g "$TARGET_USER" -m 755 \
 	"$DIR/lib/connections-window.py" "$TARGET_HOME/.local/bin/connections-window.py"
+install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 \
+	"$DIR/lib/connections_lookup.py" "$TARGET_HOME/.local/bin/connections_lookup.py"
 
 # i18n.sh/i18n.py only resolve their catalogs relative to their own
 # location, so they need a copy next to the scripts -- same per-installed-

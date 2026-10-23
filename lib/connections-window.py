@@ -8,9 +8,7 @@ hint: CDN addresses often resolve to unrelated provider names or to nothing.
 """
 import fcntl
 import os
-import re
 import socket
-import subprocess
 import sys
 import threading
 
@@ -19,6 +17,7 @@ import gi
 gi.require_version("Gtk", "3.0")
 from gi.repository import GLib, Gtk  # noqa: E402
 
+from connections_lookup import read_connections  # noqa: E402
 from i18n import t  # noqa: E402
 
 REFRESH_MS = 5000
@@ -45,105 +44,6 @@ def rdns(ip):
         rdns_cache[ip] = None
     threading.Thread(target=_rdns_worker, args=(ip,), daemon=True).start()
     return "…"
-
-
-def split_endpoint(ep):
-    host, _, port = ep.rpartition(":")
-    return host.strip("[]"), port
-
-
-def is_loopback(ip):
-    return ip.startswith("127.") or ip == "::1"
-
-
-def uid_name(uid):
-    try:
-        import pwd
-        return pwd.getpwuid(int(uid)).pw_name
-    except (KeyError, ValueError):
-        return f"uid {uid}"
-
-
-def listening_ports(env):
-    out = subprocess.run(
-        ["ss", "-tlnH"], capture_output=True, text=True, env=env,
-    ).stdout
-    return {split_endpoint(l.split()[3])[1] for l in out.splitlines() if len(l.split()) >= 4}
-
-
-SANDBOX_SH = r"""
-for d in /proc/[0-9]*/fdinfo/*; do
-    p=${d%%/fdinfo/*}
-    [ -S "$p/fd/${d##*/}" ] || continue
-    while read k v; do
-        [ "$k" = "ino:" ] && { read c < "$p/comm"; echo "$v $c"; }
-    done < "$d"
-done
-"""
-
-
-def sandbox_sockets(env):
-    """{socket inode: app name} for firejail sandboxes. Firejail hides its
-    processes from ss, but inside the sandbox they are visible."""
-    out = subprocess.run(
-        ["firejail", "--list"], capture_output=True, text=True, env=env,
-    ).stdout
-    owners = {}
-    for line in out.splitlines():
-        pid = line.split(":")[0]
-        if not pid.isdigit():
-            continue
-        try:
-            res = subprocess.run(
-                ["firejail", f"--join={pid}", "sh", "-c", SANDBOX_SH],
-                capture_output=True, text=True, env=env, timeout=5,
-            ).stdout
-        except subprocess.TimeoutExpired:
-            continue
-        for l in res.splitlines():
-            ino, _, name = l.partition(" ")
-            if name:
-                owners[ino] = name
-    return owners
-
-
-def read_connections():
-    """Returns {app: [(ip, port, incoming), ...]}.
-
-    A connection is incoming when its local port is one a local socket is
-    listening on.
-    """
-    env = dict(os.environ, LC_ALL="C")
-    listening = listening_ports(env)
-    out = subprocess.run(
-        ["ss", "-tnpeH", "state", "established"],
-        capture_output=True, text=True, env=env,
-    ).stdout
-    apps = {}
-    sandboxed = None
-    for line in out.splitlines():
-        cols = line.split()
-        if len(cols) < 4:
-            continue
-        lip, lport = split_endpoint(cols[2])
-        rip, rport = split_endpoint(cols[3])
-        if is_loopback(lip) or is_loopback(rip):
-            continue
-        m = re.search(r'\(\("([^"]+)"', line)
-        if m:
-            app = m.group(1)
-        else:
-            u = re.search(r"uid:(\d+)", line)
-            if not u or int(u.group(1)) >= 1000:
-                ino = re.search(r"ino:(\d+)", line)
-                if sandboxed is None:
-                    sandboxed = sandbox_sockets(env)
-                name = sandboxed.get(ino.group(1)) if ino else None
-                app = f"{name} ({t('connections.sandboxed')})" if name else t("connections.unknown")
-            else:
-                app = f"{uid_name(u.group(1))} ({t('connections.system_service')})"
-        apps.setdefault(app, []).append((rip, rport, lport in listening))
-    return apps
 
 
 class Window(Gtk.Window):
