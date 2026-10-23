@@ -835,6 +835,16 @@ func (w *whisker) paintSearch() *image.RGBA {
 	return img
 }
 
+// gradH fills r with a left-to-right gradient from c0 to c1.
+func gradH(img *image.RGBA, r image.Rectangle, c0, c1 color.RGBA) {
+	n := max(r.Dx()-1, 1)
+	for x := r.Min.X; x < r.Max.X; x++ {
+		t := x - r.Min.X
+		l := func(a, b uint8) uint8 { return uint8(int(a) + (int(b)-int(a))*t/n) }
+		rect(img, image.Rect(x, r.Min.Y, x+1, r.Max.Y), color.RGBA{l(c0.R, c1.R), l(c0.G, c1.G), l(c0.B, c1.B), 255})
+	}
+}
+
 func (w *whisker) listHeight() int { return whListBottom - whListTop }
 
 func (w *whisker) paintList() *image.RGBA {
@@ -843,7 +853,7 @@ func (w *whisker) paintList() *image.RGBA {
 	for pi := range w.panes {
 		p := &w.panes[pi]
 		if p.title != "" {
-			rect(img, image.Rect(0, p.y, whListW, p.cy()), whBg)
+			gradH(img, image.Rect(0, p.y, whListW, p.cy()), whBg, color.RGBA{0xe2, 0xdf, 0xdb, 255})
 			if pi > 0 {
 				rect(img, image.Rect(0, p.y, whListW, p.y+1), whBorder)
 			}
