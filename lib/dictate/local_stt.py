@@ -100,7 +100,7 @@ MAX_GAIN = 30.0     # but never amplified more than this, so room noise stays no
 # Idle unloading only happens when memory is short: with at least this much
 # available (MemAvailable already excludes what the model itself holds) the
 # model stays resident, so the next dictation starts instantly.
-KEEP_LOADED_MIN_AVAILABLE_MB = 1500
+KEEP_LOADED_MIN_AVAILABLE_MB = 2000
 RAM_RECHECK_S = 60
 
 

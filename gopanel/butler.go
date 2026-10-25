@@ -25,7 +25,7 @@ import (
 const (
 	butlerDebounce = 90 * time.Millisecond
 	butlerIdle     = 30 * time.Second // unload after this long idle when memory is short
-	butlerKeepRAM  = 1500             // MB available (MemAvailable): at least this much and the matcher stays loaded
+	butlerKeepRAM  = 2000             // MB available (MemAvailable): at least this much and the matcher stays loaded
 )
 
 type butlerHit struct {
