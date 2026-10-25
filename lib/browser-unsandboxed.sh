@@ -67,8 +67,8 @@ de*)
 	T_ASK_TEXT="Der Browser läuft dann ohne seine Schutzumgebung (Sandbox). Webseiten haben mehr Möglichkeiten, auf Ihren Computer zuzugreifen.\n\nNur für vertrauenswürdige Seiten verwenden, etwa für eine Anmeldung. Sobald Sie den Browser schließen, ist der Schutz wieder aktiv."
 	T_START="Ohne Schutz starten"
 	T_CANCEL="Abbrechen"
-	T_BANNER_TITLE="Browser ohne Schutz"
-	T_BANNER_TEXT="Der Browser läuft gerade ohne Schutzumgebung.\nSchließen Sie ihn, um den Schutz wieder zu aktivieren."
+	T_BANNER_TITLE="Firefox ohne Schutz"
+	T_BANNER_TEXT="Die rote Werkzeugleiste zeigt: Der Browser läuft ohne Schutzumgebung. Schließen Sie ihn, um den Schutz wieder zu aktivieren."
 	;;
 *)
 	T_CLOSE_TITLE="Browser is already running"
@@ -77,8 +77,8 @@ de*)
 	T_ASK_TEXT="The browser will run without its protective sandbox. Websites have more ways to reach your computer.\n\nUse this only for sites you trust, such as a sign-in. As soon as you close the browser, protection is back on."
 	T_START="Start without protection"
 	T_CANCEL="Cancel"
-	T_BANNER_TITLE="Browser without protection"
-	T_BANNER_TEXT="The browser is running without its protective sandbox.\nClose it to switch protection back on."
+	T_BANNER_TITLE="Firefox without protection"
+	T_BANNER_TEXT="The red toolbar shows that the browser is running without its protective sandbox. Close it to switch protection back on."
 	;;
 esac
 
@@ -91,12 +91,11 @@ zenity --question --width=420 --icon-name=dialog-warning \
 	--title="$T_ASK_TITLE" --text="$T_ASK_TEXT" \
 	--ok-label="$T_START" --cancel-label="$T_CANCEL" || exit 0
 
-# Reminder window for as long as the session lasts
-zenity --warning --no-wrap --title="$T_BANNER_TITLE" --text="$T_BANNER_TEXT" &
-BANNER=$!
 echo $$ > "$MARK"
 set_marker true
-trap 'kill "$BANNER" 2>/dev/null; rm -f "$MARK"; set_marker false' EXIT
+trap 'rm -f "$MARK"; set_marker false' EXIT
+# The red toolbar is the lasting reminder; this just explains it once.
+notify-send --icon=dialog-warning --expire-time=15000 "$T_BANNER_TITLE" "$T_BANNER_TEXT" 2>/dev/null
 
 # Not exec: the cleanup above must run when Firefox exits.
 /usr/bin/firefox-esr "$@"
