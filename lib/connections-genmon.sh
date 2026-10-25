@@ -110,6 +110,20 @@ else
     fi
 fi
 
+# First time an app talks this session: connections_lookup.py --notify pops up
+# "<App> is communicating with the Internet" (option in Settings, on by
+# default) and leaves a stamp that makes the icon sparkle for a moment.
+sparkle=""
+settings_file="$HOME/.config/cyberbeest/connections/settings.json"
+if ! grep -qs '"notify": *false' "$settings_file"; then
+    if [ "$total" -gt 0 ]; then
+        python3 "$(dirname "${BASH_SOURCE[0]}")/connections_lookup.py" --notify >/dev/null 2>&1 &
+    fi
+    sparkle_stamp="$state_dir/cyberbeest-connections-sparkle"
+    sparkle_at=$(stat -c %Y "$sparkle_stamp" 2>/dev/null || echo 0)
+    [ $(( $(date +%s) - sparkle_at )) -lt 25 ] && sparkle="<span size='large'>✨</span>"
+fi
+
 marker=""
 [ "$in_total" -gt 0 ] && marker="<span foreground='red' weight='bold'>⬇</span>"
 # Number of apps with connections as a small number beside the globe, like a
@@ -125,6 +139,6 @@ else
 fi
 badge=""
 [ "${apps:-0}" -gt 0 ] && badge="<span size='small' weight='bold'>${apps}</span>"
-echo "<txt><span size='small'>&#8202;</span>${marker}<span size='x-large'>🌐</span>${badge}<span size='small'>&#8202;</span></txt>"
+echo "<txt><span size='small'>&#8202;</span>${marker}<span size='x-large'>🌐</span>${sparkle}${badge}<span size='small'>&#8202;</span></txt>"
 echo "<tool>${tooltip}</tool>"
 echo "<txtclick>$HOME/.local/bin/connections-window.py</txtclick>"

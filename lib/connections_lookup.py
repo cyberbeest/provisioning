@@ -10,13 +10,18 @@ caller allows it (the window always does; the panel tooltip when hovered or once
 by setting CONNECTIONS_SCAN). An unidentified sandboxed socket is printed as
 "uid <n>" in that mode.
 """
+import ipaddress
 import json
 import os
 import re
 import subprocess
 import sys
 
-CACHE_PATH = f"/run/user/{os.getuid()}/cyberbeest-connections-names.json"
+RUN_DIR = f"/run/user/{os.getuid()}"
+CACHE_PATH = f"{RUN_DIR}/cyberbeest-connections-names.json"
+NOTIFIED_PATH = f"{RUN_DIR}/cyberbeest-connections-notified.json"
+SPARKLE_PATH = f"{RUN_DIR}/cyberbeest-connections-sparkle"
+SETTINGS_PATH = os.path.expanduser("~/.config/cyberbeest/connections/settings.json")
 
 from i18n import t  # noqa: E402
 
@@ -157,5 +162,96 @@ def print_summary():
             print(f"{'in' if is_in else 'out'} {app}")
 
 
+def is_lan(ip):
+    """True for private, link-local and similar non-routable addresses."""
+    try:
+        addr = ipaddress.ip_address(ip.split("%")[0])
+    except ValueError:
+        return False
+    addr = getattr(addr, "ipv4_mapped", None) or addr
+    return addr.is_private or addr.is_link_local
+
+
+def friendly_name(comm):
+    """Name from the app's .desktop entry, matched on the executable (comm is
+    cut to 15 characters); falls back to the process name."""
+    try:
+        import gi
+        gi.require_version("Gio", "2.0")
+        from gi.repository import Gio
+        matches = []
+        for info in Gio.AppInfo.get_all():
+            exe = os.path.basename((info.get_executable() or "").strip())
+            if exe and (exe == comm or (len(comm) >= 15 and exe.startswith(comm))):
+                matches.append(info)
+        # Only the entry named after the program counts (not a web-app
+        # launcher that merely runs it).
+        prefix = comm.split("-")[0].lower()
+        for info in matches:
+            if (info.get_id() or "").lower().startswith(prefix):
+                return info.get_name()
+    except (ImportError, ValueError):
+        pass
+    return comm[:1].upper() + comm[1:]
+
+
+def notifications_enabled():
+    return read_settings().get("notify", True)
+
+
+def read_settings():
+    try:
+        with open(SETTINGS_PATH, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def notify_new_apps():
+    """Pops up one notification for apps that talk on the network for the first
+    time this session, saying whether it reaches the Internet, the local
+    network or both (announced again when an app first reaches the other one). Sockets of unnamed sandboxed apps and
+    of system services are skipped."""
+    if not notifications_enabled():
+        return
+    unknown = t("connections.unknown")
+    service = f"({t('connections.system_service')})"
+    try:
+        with open(NOTIFIED_PATH, encoding="utf-8") as f:
+            notified = json.load(f)
+    except (OSError, ValueError):
+        notified = {}
+    fresh = []
+    for app, conns in read_connections(mark_sandboxed=False, scan=False).items():
+        if app == unknown or app.startswith("uid ") or app.endswith(service):
+            continue
+        seen = {"lan" if is_lan(rip) else "wan" for rip, _p, _i in conns}
+        known = set(notified.get(app, []))
+        if seen <= known:
+            continue
+        known |= seen
+        notified[app] = sorted(known)
+        scope = "both" if len(known) == 2 else known.pop()
+        fresh.append((app, scope))
+    if not fresh:
+        return
+    with open(NOTIFIED_PATH, "w", encoding="utf-8") as f:
+        json.dump(notified, f)
+    with open(SPARKLE_PATH, "w"):
+        pass
+    lines = [t(f"connections.notify_{scope}").format(app=friendly_name(app))
+             for app, scope in sorted(fresh, key=lambda x: x[1] == "lan")]
+    if len(lines) > 5:
+        lines = lines[:5] + [t("connections.notify_more").format(n=len(lines) - 5)]
+    subprocess.run(
+        ["notify-send", "-a", "Cyberbeest", "-i", "network-transmit-receive",
+         "-t", "7000", t("connections.notify_title"), "\n".join(lines)],
+        check=False,
+    )
+
+
 if __name__ == "__main__":
-    print_summary()
+    if "--notify" in sys.argv:
+        notify_new_apps()
+    else:
+        print_summary()
