@@ -93,6 +93,16 @@ install -d -m 755 /etc/cyberbeest
 printf '1' > /etc/cyberbeest/plymouth-bright-mode
 chmod 644 /etc/cyberbeest/plymouth-bright-mode
 
+echo "--- Installing the early low-battery warning (initramfs) ---"
+# Shown on the boot screen before the LUKS prompt; text baked now, like the
+# other Plymouth strings. See cyberbeest-lowbat.init-top.
+install -d -m 755 /etc/cyberbeest
+printf '%s' "$(t plymouth.lowbat)" > /etc/cyberbeest/lowbat-text
+chmod 644 /etc/cyberbeest/lowbat-text
+install -m 755 "$SELF_DIR/cyberbeest-lowbat.hook" /etc/initramfs-tools/hooks/cyberbeest-lowbat
+install -m 755 "$SELF_DIR/cyberbeest-lowbat.init-top" /etc/initramfs-tools/scripts/init-top/cyberbeest-lowbat
+install -m 755 "$SELF_DIR/cyberbeest-lowbat.init-bottom" /etc/initramfs-tools/scripts/init-bottom/cyberbeest-lowbat
+
 echo "--- Activating the theme (rebuilds initramfs) ---"
 plymouth-set-default-theme -R cyberbeest
 
