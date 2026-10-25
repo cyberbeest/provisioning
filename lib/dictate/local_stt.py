@@ -100,7 +100,17 @@ MAX_GAIN = 30.0     # but never amplified more than this, so room noise stays no
 # Idle unloading only happens when memory is short: with at least this much
 # available (MemAvailable already excludes what the model itself holds) the
 # model stays resident, so the next dictation starts instantly.
-KEEP_LOADED_MIN_AVAILABLE_MB = 2000
+LOW_RAM_FILE = Path.home() / ".config" / "cyberbeest" / "low-ram-mb"  # shared by all Cyberbeest programs
+KEEP_LOADED_MIN_AVAILABLE_MB = 2000  # used when that file is missing or unreadable
+
+
+def _low_ram_mb() -> int:
+    try:
+        return max(0, int(LOW_RAM_FILE.read_text().strip()))
+    except (OSError, ValueError):
+        return KEEP_LOADED_MIN_AVAILABLE_MB
+
+
 RAM_RECHECK_S = 60
 
 
@@ -109,7 +119,7 @@ def _ram_comfortable() -> bool:
         with open("/proc/meminfo") as f:
             for line in f:
                 if line.startswith("MemAvailable:"):
-                    return int(line.split()[1]) // 1024 >= KEEP_LOADED_MIN_AVAILABLE_MB
+                    return int(line.split()[1]) // 1024 >= _low_ram_mb()
     except (OSError, ValueError, IndexError):
         pass
     return False  # cannot tell: fall back to the plain idle timeout

@@ -693,6 +693,30 @@ class ButlerPage(Gtk.Box):
         write_json(self.settings_path, self.settings)
 
 
+class ConnectionsPage(Gtk.Box):
+    """Network icon options (connections-genmon.sh reads settings.json on each refresh)."""
+
+    def __init__(self):
+        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        self.set_border_width(16)
+        self.settings_path = os.path.join(CONFIG_DIR, "connections", "settings.json")
+        self.settings = {"notify": True, **read_json(self.settings_path, {})}
+
+        info = Gtk.Label(wrap=True, max_width_chars=60, xalign=0, label=t("connections.setting_info"))
+        self.pack_start(info, False, False, 0)
+        notify = Gtk.CheckButton(label=t("connections.setting_notify"))
+        notify.set_active(bool(self.settings["notify"]))
+        notify.connect("toggled", self.on_notify)
+        self.pack_start(notify, False, False, 0)
+        note = Gtk.Label(wrap=True, xalign=0, label=t("connections.setting_note"))
+        note.get_style_context().add_class("dim-label")
+        self.pack_start(note, False, False, 0)
+
+    def on_notify(self, check):
+        self.settings["notify"] = check.get_active()
+        write_json(self.settings_path, self.settings)
+
+
 WEATHER_PATH = os.path.join(CONFIG_DIR, "weather", "settings.json")
 LANG = "de" if i18n._LOCALE == "de" else "en"
 
@@ -883,6 +907,7 @@ PAGES = [
     ("panel", "settings.tab_panel", lambda: PanelPage(panel_choice_script()) if panel_choice_script() else None),
     ("wallpaper", "settings.tab_wallpaper", lambda: WallpaperPage() if os.access(WALLPAPER_HELPER, os.X_OK) and os.path.isdir(WALLPAPER_PACK) else None),
     ("weather", "settings.tab_weather", lambda: WeatherPage()),
+    ("connections", "connections.setting_tab", lambda: ConnectionsPage() if os.path.exists(os.path.expanduser("~/.local/bin/connections-genmon.sh")) else None),
     ("butler", "settings.tab_butler", lambda: ButlerPage() if butler_catalog_dir() else None),
 ]
 

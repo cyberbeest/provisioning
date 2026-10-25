@@ -25,7 +25,7 @@ import (
 const (
 	butlerDebounce = 90 * time.Millisecond
 	butlerIdle     = 30 * time.Second // unload after this long idle when memory is short
-	butlerKeepRAM  = 2000             // MB available (MemAvailable): at least this much and the matcher stays loaded
+	butlerKeepRAM  = 2000             // MB available (MemAvailable): at least this much and the matcher stays loaded; default for ~/.config/cyberbeest/low-ram-mb
 )
 
 type butlerHit struct {
@@ -327,6 +327,24 @@ func (b *butlerClient) read(cmd *exec.Cmd, r io.Reader) {
 	b.mu.Unlock()
 }
 
+// lowRAMMB is the shared low-RAM threshold (MB of MemAvailable), kept in ~/.config/cyberbeest/low-ram-mb
+// for all Cyberbeest programs; butlerKeepRAM when the file is missing or unreadable.
+func lowRAMMB() int {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return butlerKeepRAM
+	}
+	data, err := os.ReadFile(filepath.Join(home, ".config", "cyberbeest", "low-ram-mb"))
+	if err != nil {
+		return butlerKeepRAM
+	}
+	mb, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	if err != nil || mb < 0 {
+		return butlerKeepRAM
+	}
+	return mb
+}
+
 // ramComfortable reports whether plenty of memory is free (the same rule Dictate uses for its model:
 // MemAvailable already leaves out what the loaded model holds). When it cannot be read: not comfortable.
 func ramComfortable() bool {
@@ -337,7 +355,7 @@ func ramComfortable() bool {
 	for _, line := range strings.Split(string(data), "\n") {
 		if f := strings.Fields(line); len(f) >= 2 && f[0] == "MemAvailable:" {
 			kb, _ := strconv.Atoi(f[1])
-			return kb/1024 >= butlerKeepRAM
+			return kb/1024 >= lowRAMMB()
 		}
 	}
 	return false

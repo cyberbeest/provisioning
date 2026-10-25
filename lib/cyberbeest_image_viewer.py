@@ -22,6 +22,7 @@ import os
 import sqlite3
 import subprocess
 import sys
+import threading
 import time
 
 import gi
@@ -260,6 +261,223 @@ def load_frames(path):
     if img.mode != "RGBA":
         img = img.convert("RGBA")
     return [(img, 0)], img.size
+
+
+# --- prefetch -------------------------------------------------------------
+# With plenty of free RAM the neighbours of the shown image are decoded in the
+# background, so Left/Right swaps to them without waiting for the decoder.
+# "Plenty" is the shared low-RAM threshold (MB of MemAvailable) in
+# ~/.config/cyberbeest/low-ram-mb, also used by Dictate and the panel's
+# Butler; 2000 when the file is missing or unreadable.
+
+LOW_RAM_FILE = os.path.join(os.path.expanduser("~/.config/cyberbeest"), "low-ram-mb")
+LOW_RAM_DEFAULT_MB = 2000
+PREFETCH_DELAY_MS = 250      # let the user settle on an image before decoding neighbours
+PREFETCH_MAX_MB = 256        # never preload a single image bigger than this
+PREFETCH_RECHECK_S = 5       # drop the cache once RAM turns short
+UNLOADABLE_DIR = os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/tmp"), "cyberbeest", "unloadable")
+
+
+def low_ram_threshold_mb():
+    try:
+        with open(LOW_RAM_FILE) as f:
+            return max(0, int(f.read().strip()))
+    except (OSError, ValueError):
+        return LOW_RAM_DEFAULT_MB
+
+
+def mem_available_mb():
+    try:
+        with open("/proc/meminfo") as f:
+            for line in f:
+                if line.startswith("MemAvailable:"):
+                    return int(line.split()[1]) // 1024
+    except (OSError, ValueError, IndexError):
+        pass
+    return None
+
+
+def estimated_decoded_mb(path):
+    """RGBA size of one decoded frame, from the header alone (None if unreadable)."""
+    try:
+        with Image.open(path) as img:
+            return img.size[0] * img.size[1] * 4 / (1024 * 1024)
+    except Exception:
+        return None
+
+
+def load_prefetch(path):
+    """Like load_frames, but an animated GIF yields only its first frame.
+
+    Returns (frames, native_size, partial); partial means the full animation
+    still has to be loaded once the image is shown.
+    """
+    try:
+        img = Image.open(path)
+    except UnidentifiedImageError:
+        return (*load_frames(path), False)
+    if img.format == "GIF" and getattr(img, "n_frames", 1) > 1:
+        return [(img.convert("RGBA"), 100)], img.size, True
+    return (*load_frames(path), False)
+
+
+def _file_key(path):
+    st = os.stat(path)
+    return (st.st_mtime_ns, st.st_size)
+
+
+def _self_rss_kib():
+    try:
+        with open("/proc/self/status") as f:
+            for line in f:
+                if line.startswith("VmRSS:"):
+                    return int(line.split()[1])
+    except (OSError, ValueError, IndexError):
+        pass
+    return 0
+
+
+def _trim_heap():
+    try:
+        import ctypes
+        ctypes.CDLL("libc.so.6").malloc_trim(0)
+    except (OSError, AttributeError):
+        pass
+
+
+class Prefetcher:
+    """Decoded neighbours of the shown image, loaded on a worker thread.
+
+    Entries are (file key, frames, native size, bytes, partial). take() hands one over
+    for display; keep() pushes the image just left back in so stepping back
+    is instant too. While anything is held a file in the unloadable directory
+    tells the panel's memory tank, and a timer drops everything once free RAM
+    falls below the shared threshold.
+    """
+
+    def __init__(self):
+        self.cache = {}
+        self.wanted = ()
+        self.busy = False
+        self.timer = None
+        self.recheck = None
+        self.announce_path = os.path.join(UNLOADABLE_DIR, f"image-viewer-{os.getpid()}")
+
+    def _comfortable(self, extra_mb=0):
+        avail = mem_available_mb()
+        return avail is not None and avail - extra_mb >= low_ram_threshold_mb()
+
+    def take(self, path):
+        entry = self.cache.pop(path, None)
+        if entry is None:
+            return None
+        try:
+            if entry[0] != _file_key(path):
+                return None
+        except OSError:
+            return None
+        finally:
+            self._announce()
+        return entry
+
+    def keep(self, path, frames, native_size):
+        if not frames or not self._comfortable():
+            return
+        try:
+            nbytes = sum(f.size[0] * f.size[1] * 4 for f, _ in frames)
+            self.cache[path] = (_file_key(path), frames, native_size, nbytes, False)
+        except OSError:
+            return
+        self._announce()
+
+    def schedule(self, neighbours):
+        """Preload these paths shortly from now; anything else held is dropped."""
+        self.wanted = tuple(neighbours)
+        for path in [p for p in self.cache if p not in self.wanted]:
+            del self.cache[path]
+        self._announce()
+        if self.timer is not None:
+            GLib.source_remove(self.timer)
+        self.timer = GLib.timeout_add(PREFETCH_DELAY_MS, self._start)
+
+    def cancel(self):
+        self.wanted = ()
+        if self.timer is not None:
+            GLib.source_remove(self.timer)
+            self.timer = None
+
+    def _start(self):
+        self.timer = None
+        if self.busy:
+            return False
+        todo = [p for p in self.wanted if p not in self.cache]
+        if todo and self._comfortable():
+            self.busy = True
+            threading.Thread(target=self._work, args=(todo,), daemon=True).start()
+        return False
+
+    def _work(self, todo):
+        for path in todo:
+            if path not in self.wanted:
+                continue
+            mb = estimated_decoded_mb(path)
+            if mb is None or mb > PREFETCH_MAX_MB or not self._comfortable(mb):
+                continue
+            try:
+                key = _file_key(path)
+                frames, native_size, partial = load_prefetch(path)
+            except Exception:
+                continue
+            GLib.idle_add(self._store, path, key, frames, native_size, partial)
+        GLib.idle_add(self._done)
+
+    def _store(self, path, key, frames, native_size, partial):
+        if path in self.wanted and self._comfortable():
+            nbytes = sum(f.size[0] * f.size[1] * 4 for f, _ in frames)
+            self.cache[path] = (key, frames, native_size, nbytes, partial)
+            self._announce()
+        return False
+
+    def _done(self):
+        self.busy = False
+        return False
+
+    def drop_all(self):
+        self.cancel()
+        self.cache.clear()
+        self._announce()
+        _trim_heap()
+
+    def _announce(self):
+        """Tell the memory tank what is held (file "<pid>\t<label>\t<baseline KiB>")."""
+        held_kib = sum(e[3] for e in self.cache.values()) // 1024
+        if not held_kib:
+            with contextlib.suppress(OSError):
+                os.unlink(self.announce_path)
+            if self.recheck is not None:
+                GLib.source_remove(self.recheck)
+                self.recheck = None
+            return
+        try:
+            os.makedirs(UNLOADABLE_DIR, exist_ok=True)
+            tmp = self.announce_path + ".tmp"
+            with open(tmp, "w") as f:
+                f.write(f"{os.getpid()}\tPreloaded images (Image Viewer)\t{max(0, _self_rss_kib() - held_kib)}\n")
+            os.replace(tmp, self.announce_path)
+        except OSError:
+            pass
+        if self.recheck is None:
+            self.recheck = GLib.timeout_add_seconds(PREFETCH_RECHECK_S, self._recheck)
+
+    def _recheck(self):
+        if not self.cache:
+            self.recheck = None
+            return False
+        if not self._comfortable():
+            self.recheck = None
+            self.drop_all()
+            return False
+        return True
 
 
 def target_display_size(native_size):
@@ -1038,6 +1256,7 @@ class ImageViewerWindow(Gtk.Window):
         super().__init__()
         Gtk.StyleContext.add_provider_for_screen(Gdk.Screen.get_default(), _BLACK_BG_CSS, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
         self.folder_images = folder_images_by_date(path)
+        self.prefetcher = Prefetcher()
         path = os.path.abspath(path)
         try:
             self.index = self.folder_images.index(path)
@@ -1153,6 +1372,7 @@ class ImageViewerWindow(Gtk.Window):
         self.set_zoom_size = None
         self.set_frames = None
         self.native_size = None
+        self.shown_path = None
         self.is_fullscreen = False
         self.zoom_mode = "fit"  # "fit" tracks the viewport; "manual" holds zoom_scale
         self.zoom_scale = 1.0
@@ -1474,6 +1694,7 @@ class ImageViewerWindow(Gtk.Window):
             # Stop a GIF's frame timer from touching the dead GL context.
             self.image_widget.generation += 1
         self.frames = None
+        self.prefetcher.drop_all()
         # No clipboard manager runs on Cyberbeest, so a copy only lives as
         # long as this process does: keep running windowless until
         # something else takes over the clipboard.
@@ -1595,7 +1816,16 @@ class ImageViewerWindow(Gtk.Window):
         self._path_renamed(old_path, new_path)
 
     def load_image(self, path, set_initial_size=False):
-        frames, native_size = load_frames(path)
+        entry = self.prefetcher.take(path)
+        partial = False
+        if entry is not None:
+            _key, frames, native_size, _nbytes, partial = entry
+        else:
+            frames, native_size = load_frames(path)
+        # A GIF shown from its preloaded first frame gets its animation right after.
+        if self.frames and self.shown_path and self.shown_path != path and os.path.exists(self.shown_path) and len(self.frames) == 1:
+            self.prefetcher.keep(self.shown_path, self.frames, self.native_size)
+        self.shown_path = path
         target_w, target_h = target_display_size(native_size)
         self.frames = frames
         self.native_size = native_size
@@ -1657,6 +1887,23 @@ class ImageViewerWindow(Gtk.Window):
         # whatever zoom level was left over from the previous one.
         self.zoom_mode = "fit"
         self._apply_fit(self.scroller.get_allocation())
+        if partial:
+            GLib.idle_add(self._load_full_animation, path)
+        self._schedule_prefetch()
+
+    def _load_full_animation(self, path):
+        if self.shown_path == path and self.frames is not None:
+            frames, _size = load_frames(path)
+            self.frames = frames
+            self.set_frames(frames)
+            self.copy_frame_item.set_sensitive(len(frames) > 1)
+        return False
+
+    def _schedule_prefetch(self):
+        n = len(self.folder_images)
+        neighbours = {self.folder_images[(self.index + d) % n] for d in (-1, 1)} if n > 1 else set()
+        neighbours.discard(self.shown_path)
+        self.prefetcher.schedule(neighbours)
 
     def show_offset(self, offset):
         if not self.folder_images:
