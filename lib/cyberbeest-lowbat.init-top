@@ -1,0 +1,60 @@
+#!/bin/sh
+# Installed as /etc/initramfs-tools/scripts/init-top/cyberbeest-lowbat.
+# Warns on the Plymouth boot screen (before the LUKS prompt) when the
+# battery is low and the charger is not connected. The laptop has no
+# battery display and the panel icon only exists after login, so this is
+# the earliest place we can tell the user. The warning stays up and
+# refreshes until the charger is plugged in or the initramfs finishes.
+PREREQ="plymouth"
+prereqs() { echo "$PREREQ"; }
+case "${1:-}" in
+prereqs) prereqs; exit 0 ;;
+esac
+
+THRESHOLD=15
+TEXT_FILE=/etc/cyberbeest/lowbat-text
+PIDFILE=/run/cyberbeest-lowbat.pid
+[ -r "$TEXT_FILE" ] || exit 0
+TEXT="$(cat "$TEXT_FILE")"
+
+# status of the first battery; prints "<percent> <discharging 0/1>" or nothing
+read_battery() {
+	for b in /sys/class/power_supply/BAT*; do
+		[ -r "$b/capacity" ] || continue
+		cap="$(cat "$b/capacity")"
+		st="$(cat "$b/status" 2>/dev/null)"
+		case "$st" in Charging|Full) dis=0 ;; *) dis=1 ;; esac
+		# charger plugged in (even if the battery reports Discharging/Not charging)
+		for a in /sys/class/power_supply/A*; do
+			[ -r "$a/online" ] && [ "$(cat "$a/online")" = 1 ] && dis=0
+		done
+		echo "$cap $dis"
+		return
+	done
+}
+
+show() { plymouth message --text="@lowbat@$1" 2>/dev/null; }
+
+# Evaluate once up front; no battery or healthy battery -> nothing to do.
+set -- $(read_battery)
+[ -n "${1:-}" ] || exit 0
+[ "$1" -le "$THRESHOLD" ] && [ "$2" = 1 ] || exit 0
+
+(
+	i=0
+	last=""
+	while [ "$i" -lt 3600 ] && plymouth --ping 2>/dev/null; do
+		set -- $(read_battery)
+		if [ -n "${1:-}" ] && [ "$1" -le "$THRESHOLD" ] && [ "$2" = 1 ]; then
+			msg="$(printf "$TEXT" "$1")"
+			[ "$msg" = "$last" ] || { show "$msg"; last="$msg"; }
+		else
+			show ""
+			break
+		fi
+		sleep 2
+		i=$((i + 1))
+	done
+) &
+echo $! > "$PIDFILE"
+exit 0

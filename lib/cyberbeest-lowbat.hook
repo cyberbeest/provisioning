@@ -1,0 +1,13 @@
+#!/bin/sh
+# Installed as /etc/initramfs-tools/hooks/cyberbeest-lowbat. Copies the
+# baked low-battery warning text (written by setup-grub-plymouth-theme.sh,
+# since the initramfs can't look up the locale) into the initramfs.
+PREREQ=""
+prereqs() { echo "$PREREQ"; }
+case "${1:-}" in
+prereqs) prereqs; exit 0 ;;
+esac
+. /usr/share/initramfs-tools/hook-functions
+mkdir -p "$DESTDIR/etc/cyberbeest"
+[ -r /etc/cyberbeest/lowbat-text ] && cp /etc/cyberbeest/lowbat-text "$DESTDIR/etc/cyberbeest/lowbat-text"
+exit 0
