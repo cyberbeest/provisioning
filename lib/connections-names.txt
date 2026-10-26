@@ -1,0 +1,38 @@
+# Display names for processes in the network icon, tooltip, pop-up and window:
+# "<process name> <name to show>". Process names are matched exactly (the kernel
+# cuts them to 15 characters). Anything not listed shows as the process name.
+ssh SSH
+sshd SSH server
+sshfs SSHFS
+scp SCP
+sftp SFTP
+git Git
+git-remote-http Git
+apt APT
+apt-get APT
+python3 Python
+python Python
+firefox-esr Firefox
+firefox Firefox
+thunderbird Thunderbird
+vlc VLC
+qbittorrent qBittorrent
+qbittorrent-nox qBittorrent
+i2pd I2P
+tor Tor
+openvpn OpenVPN
+mullvad-daemon Mullvad VPN
+signal-desktop Signal
+telegram-deskto Telegram
+element-desktop Element
+claude Claude
+claude-desktop Claude Desktop
+gopanel gopanel
+dnscrypt-proxy dnscrypt-proxy
+soffice.bin LibreOffice
+NetworkManager NetworkManager
+systemd-timesyn systemd-timesyncd
+avahi-daemon Avahi
+curl curl
+wget wget
+rsync rsync
