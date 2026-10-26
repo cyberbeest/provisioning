@@ -54,6 +54,29 @@ if printf '%s\n' "${rows[@]}" | grep -qE ' (in|out) uid [0-9]{4,}$'; then
     fi
 fi
 
+# With flags on (Settings), the rows come from connections_lookup.py instead
+# and carry a tab-separated country flag string; the tooltip then shows flags
+# in place of connection counts.
+if grep -qs '"flags": *true' "$HOME/.config/cyberbeest/connections/settings.json" &&
+    [ -s "$HOME/.local/share/cyberbeest/geo-country.bin" ]; then
+    if mapfile -t flagged < <(timeout 5 python3 "$(dirname "${BASH_SOURCE[0]}")/connections_lookup.py" --rows 2>/dev/null) &&
+        [ "${#flagged[@]}" -gt 0 ]; then
+        rows=("${flagged[@]}")
+    fi
+fi
+
+# Tooltip row: "3 Firefox", or "🇩🇪🇺🇸 Firefox" when flags are on.
+row_label() {
+    if [ -n "$3" ]; then printf '%s %s' "$3" "$2"; else printf '%s %s' "$1" "$2"; fi
+}
+
+# Display names for processes (SSH instead of ssh, ...), same table as
+# connections_lookup.py uses.
+declare -A shown_name=()
+while read -r key val; do
+    [[ -z $key || $key == \#* ]] || shown_name[$key]=$val
+done < "$(dirname "${BASH_SOURCE[0]}")/connections-names.txt" 2>/dev/null
+
 in_total=0
 out_total=0
 declare -A app_seen=()
@@ -62,6 +85,11 @@ in_list=""
 out_list=""
 for line in "${rows[@]}"; do
     line=${line#"${line%%[![:space:]]*}"}
+    flags=""
+    if [[ $line == *$'\t'* ]]; then
+        flags=${line#*$'\t'}
+        line=${line%%$'\t'*}
+    fi
     count=${line%% *}
     rest=${line#* }
     dir=${rest%% *}
@@ -76,13 +104,14 @@ for line in "${rows[@]}"; do
             name="$(getent passwd "$uid" | cut -d: -f1) ($(t connections_genmon.system_service))"
         fi
     fi
+    name=${shown_name[$name]:-$name}
     app_seen[$name]=1
     if [ "$dir" = in ]; then
         in_total=$(( in_total + count ))
-        in_list+="${count} ${name}"$'\n'
+        in_list+="$(row_label "$count" "$name" "$flags")"$'\n'
     else
         out_total=$(( out_total + count ))
-        out_list+="${count} ${name}"$'\n'
+        out_list+="$(row_label "$count" "$name" "$flags")"$'\n'
     fi
 done
 

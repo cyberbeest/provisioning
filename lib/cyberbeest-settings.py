@@ -32,6 +32,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import threading
 import urllib.parse
 import urllib.request
@@ -700,7 +701,7 @@ class ConnectionsPage(Gtk.Box):
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=12)
         self.set_border_width(16)
         self.settings_path = os.path.join(CONFIG_DIR, "connections", "settings.json")
-        self.settings = {"notify": True, **read_json(self.settings_path, {})}
+        self.settings = {"notify": True, "flags": False, "dnsnames": False, **read_json(self.settings_path, {})}
 
         info = Gtk.Label(wrap=True, max_width_chars=60, xalign=0, label=t("connections.setting_info"))
         self.pack_start(info, False, False, 0)
@@ -712,9 +713,61 @@ class ConnectionsPage(Gtk.Box):
         note.get_style_context().add_class("dim-label")
         self.pack_start(note, False, False, 0)
 
+        flags = Gtk.CheckButton(label=t("connections.setting_flags"))
+        flags.set_active(bool(self.settings["flags"]))
+        flags.connect("toggled", self.on_flags)
+        self.pack_start(flags, False, False, 0)
+        fnote = Gtk.Label(wrap=True, max_width_chars=60, xalign=0, label=t("connections.setting_flags_note"))
+        fnote.get_style_context().add_class("dim-label")
+        self.pack_start(fnote, False, False, 0)
+        self.flags_status = Gtk.Label(wrap=True, xalign=0)
+        self.pack_start(self.flags_status, False, False, 0)
+
+        names = Gtk.CheckButton(label=t("connections.setting_names"))
+        names.set_active(bool(self.settings["dnsnames"]))
+        names.set_sensitive(os.path.exists("/etc/systemd/system/cyberbeest-dns-watch.service"))
+        names.connect("toggled", self.on_names)
+        self.pack_start(names, False, False, 0)
+        nnote = Gtk.Label(wrap=True, max_width_chars=60, xalign=0, label=t("connections.setting_names_note"))
+        nnote.get_style_context().add_class("dim-label")
+        self.pack_start(nnote, False, False, 0)
+
     def on_notify(self, check):
         self.settings["notify"] = check.get_active()
         write_json(self.settings_path, self.settings)
+
+    def on_names(self, check):
+        on = check.get_active()
+        self.settings["dnsnames"] = on
+        write_json(self.settings_path, self.settings)
+        subprocess.Popen(["sudo", "-n", "systemctl", "enable" if on else "disable", "--now",
+                          "cyberbeest-dns-watch.service"],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    def on_flags(self, check):
+        on = check.get_active()
+        self.settings["flags"] = on
+        write_json(self.settings_path, self.settings)
+        bindir = os.path.expanduser("~/.local/bin")
+        if not on:
+            subprocess.run([sys.executable, os.path.join(bindir, "geo.py"), "--remove"], check=False)
+            self.flags_status.set_text("")
+            return
+        self.flags_status.set_text(t("connections.flags_downloading"))
+
+        def work():
+            font_ok = subprocess.run(["fc-list", "Noto Color Emoji"], capture_output=True,
+                                     text=True).stdout.strip() != ""
+            if not font_ok:
+                subprocess.run(["sudo", "-n", "apt-get", "install", "-y", "fonts-noto-color-emoji"],
+                               capture_output=True, check=False)
+            r = subprocess.run([sys.executable, os.path.join(bindir, "geo.py"), "--update"],
+                               capture_output=True, text=True, check=False)
+            ok = r.returncode == 0
+            GLib.idle_add(self.flags_status.set_text,
+                          t("connections.flags_ready") if ok else t("connections.flags_failed"))
+
+        threading.Thread(target=work, daemon=True).start()
 
 
 WEATHER_PATH = os.path.join(CONFIG_DIR, "weather", "settings.json")

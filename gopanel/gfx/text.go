@@ -280,6 +280,7 @@ type run struct {
 	path string
 	px   float64
 	col  color.RGBA
+	flag image.Image // set: this run is one country flag, drawn as a bitmap (text is empty)
 }
 
 // runs splits spans into font runs at the base pixel size.
@@ -287,12 +288,22 @@ func runs(spans []Span, basePx float64) []run {
 	var out []run
 	for _, sp := range spans {
 		px := basePx * sp.Scale
-		for _, r := range sp.Text {
+		rs := []rune(sp.Text)
+		for i := 0; i < len(rs); i++ {
+			r := rs[i]
+			if isRegional(r) && i+1 < len(rs) && isRegional(rs[i+1]) {
+				cc := string([]rune{'a' + (r - 0x1F1E6), 'a' + (rs[i+1] - 0x1F1E6)})
+				if img := flagImage(cc); img != nil {
+					out = append(out, run{px: px, col: sp.Color, flag: img})
+					i++
+					continue
+				}
+			}
 			p := pick(r, sp.Bold)
 			if n := len(out); n > 0 && out[n-1].path == p && out[n-1].px == px && out[n-1].col == sp.Color {
 				out[n-1].text += string(r)
 			} else {
-				out = append(out, run{string(r), p, px, sp.Color})
+				out = append(out, run{string(r), p, px, sp.Color, nil})
 			}
 		}
 	}
@@ -313,6 +324,14 @@ func measureNoKern(fc font.Face, text string) (w fixed.Int26_6) {
 
 func measureRuns(rs []run) (w fixed.Int26_6, asc, desc int) {
 	for _, r := range rs {
+		if r.flag != nil {
+			fw, fh := flagSize(r.flag, r.px)
+			w += fixed.I(fw + 2)
+			if fh > asc {
+				asc = fh
+			}
+			continue
+		}
 		fc := face(r.path, r.px)
 		if fc == nil {
 			continue
@@ -345,6 +364,12 @@ func Draw(dst *image.RGBA, x, y int, spans []Span, basePx float64) int {
 	_, asc, _ := measureRuns(rs)
 	dot := fixed.P(x, y+asc)
 	for _, r := range rs {
+		if r.flag != nil {
+			fw, fh := flagSize(r.flag, r.px)
+			drawFlag(dst, r.flag, dot.X.Round()+1, dot.Y.Round()-fh, fw, fh)
+			dot.X += fixed.I(fw + 2)
+			continue
+		}
 		fc := face(r.path, r.px)
 		if fc == nil {
 			continue
