@@ -559,6 +559,12 @@ def script_lib_dependencies(script):
             deps.update(glob.glob(full))
         elif os.path.exists(full):
             deps.add(full)
+    # Scripts that build a whole source tree on the machine (69- gopanel, 69a- butler):
+    # their sources count as dependencies too, but not the built binaries.
+    for tree in set(re.findall(r'\$DIR/(gopanel|butler)\b', text)):
+        for root, _dirs, files in os.walk(os.path.join(DIR, tree)):
+            deps.update(os.path.join(root, f) for f in files
+                        if f.endswith((".go", ".mod", ".sum", ".png", ".svg", ".sh", ".desktop", ".json")))
     return deps
 
 
