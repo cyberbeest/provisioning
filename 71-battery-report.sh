@@ -7,7 +7,7 @@
 #
 # The report is a self-contained HTML page, shown in the sandboxed Firefox through a dedicated
 # profile whose userChrome.css hides tabs and address bar (the script creates that profile on first
-# use). It is written to ~/Downloads/.battery-report.html because that is a folder the browser jail
+# use). It is written to ~/Downloads/.battery-report-<N>d.html (one page per look-back choice) because that is a folder the browser jail
 # can read. Dependencies: python3 and firefox, both already part of the base install.
 # Idempotent: safe to re-run.
 set -euo pipefail

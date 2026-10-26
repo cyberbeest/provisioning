@@ -3,7 +3,7 @@
 HTML page (inline SVG, no external resources): runtime estimates, wattage ranges for locked and
 unlocked use, and a multi-day timeline of on/off, power state, battery charge and power draw.
 
-    battery-report.py [--days N]  (default 14) [--out FILE] [--no-open] [--browser auto|firefox|chrome]
+    battery-report.py [--days N]  (default 14; the page has a selector for 1-30) [--out FILE] [--no-open] [--browser auto|firefox|chrome]
 
 Why energy deltas and not the logged watts column: with the screen off the board's power_now
 reading pins to a 3.8 W floor, so the only trustworthy figure is the drop in energy_now over
@@ -16,12 +16,16 @@ import argparse
 import csv
 import datetime as dt
 import html
+import json
 import os
 import shutil
 import subprocess
 import sys
 
 HIST = os.path.expanduser("~/.local/state/wattage-panel/history.csv")
+SNAPS = os.path.expanduser("~/.local/state/process-snapshots/snapshots.jsonl")
+DAY_CHOICES = (1, 2, 3, 7, 14, 30)
+SNAP_SELF = {"cyberbeest-process-snapshot"}
 FULL_WH_DEFAULT = 28.88
 GAP_S = 12 * 60          # rows further apart than this: the machine was off or asleep
 MIN_RUN_MIN = 30         # shortest battery stretch used for a power figure
@@ -79,6 +83,24 @@ def load(path, full):
             rows.append(dict(t=t, status=status, pct=pct, locked=locked, wh=wh))
     rows.sort(key=lambda x: x["t"])
     return rows
+
+
+def load_snapshots(t0, t1):
+    """Hourly process snapshots (written by the dev machine's snapshot timer; absent elsewhere)."""
+    out = []
+    try:
+        with open(SNAPS) as f:
+            for line in f:
+                try:
+                    d = json.loads(line)
+                    if t0 <= d["t"] <= t1 + 3600:
+                        d["procs"] = [p for p in d["procs"] if p[0] not in SNAP_SELF]
+                        out.append(d)
+                except (ValueError, KeyError):
+                    pass
+    except OSError:
+        pass
+    return sorted(out, key=lambda d: d["t"])
 
 
 def state_of(r):
@@ -240,7 +262,7 @@ def range_chart(groups, width=1180):
     return "".join(o)
 
 
-def timeline(rows, runs, t0, t1, shutdown, width=1240):
+def timeline(rows, runs, t0, t1, shutdown, snaps=(), width=1240):
     left, right = 54, 18
     pw = width - left - right
     span = max(1, t1 - t0)
@@ -251,8 +273,9 @@ def timeline(rows, runs, t0, t1, shutdown, width=1240):
     y_days, band_y, band_h = 18, 50, 34
     pct_y, pct_h = band_y + band_h + 44, 150
     w_y, w_h = pct_y + pct_h + 40, 110
-    height = w_y + w_h + 34
-    o = [f'<svg viewBox="0 0 {width} {height}" class="chart timeline" id="tl" role="img" '
+    s_y = w_y + w_h + 40
+    height = s_y + (46 if snaps else 0) + 34
+    o = [f'<svg viewBox="0 0 {width} {height}" class="chart timeline" id="tl" data-t0="{t0}" data-t1="{t1}" data-left="{left}" data-pw="{pw}" role="img" '
          f'aria-label="Multi-day battery timeline">',
          '<defs><pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">'
          '<rect width="6" height="6" fill="#2b3142"/><line x1="0" y1="0" x2="0" y2="6" stroke="#3a4156" stroke-width="2"/>'
@@ -363,6 +386,16 @@ def timeline(rows, runs, t0, t1, shutdown, width=1240):
             yy = w_y + w_h * (1 - w / wmax)
             o.append(f'<rect x="{x0:.1f}" y="{yy:.1f}" width="{max(1.2, x1-x0):.1f}" height="{w_y+w_h-yy:.1f}" '
                      f'fill="{col}" fill-opacity=".8" data-tip="{w:.2f} W (30 min average)&#10;{dt.datetime.fromtimestamp(t):%a %H:%M}"/>')
+    # lane 4: process snapshots (hover for the busiest processes)
+    if snaps:
+        o.append(f'<text x="{left}" y="{s_y-9}" class="lane">process snapshots (hourly)</text>')
+        o.append(f'<line x1="{left}" y1="{s_y+16}" x2="{left+pw}" y2="{s_y+16}" class="grid"/>')
+        for sn in snaps:
+            col = STATES["batt_on"][1] if sn["ac"] == "battery" else "#64748b"
+            top = "&#10;".join(f"{esc(n)}  {c:.0f}% CPU  {mb:.0f} MB" for n, k, c, mb in sn["procs"][:6])
+            pct = f'{sn["pct"]}%' if sn.get("pct") is not None else ""
+            o.append(f'<path d="M{X(sn["t"]):.1f},{s_y+6} l7,10 l-7,10 l-7,-10 Z" fill="{col}" '
+                     f'data-tip="{dt.datetime.fromtimestamp(sn["t"]):%a %H:%M} · {sn["ac"]} {pct}&#10;{top}"/>')
     o.append('<line id="cursor" x1="0" y1="0" x2="0" y2="0" class="cursor"/>')
     o.append("</svg>")
     return "".join(o)
@@ -403,6 +436,11 @@ h2{font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--mut)
 .trans{stroke:#ffffffcc;stroke-width:1.2;stroke-dasharray:2 2}
 .pwon{fill:#34d399}.pwoff{fill:#f87171}
 .cursor{stroke:#fff;stroke-opacity:.35;stroke-width:1;pointer-events:none}
+.sel{float:right;color:var(--mut);font-size:14px;margin-top:10px}
+.sel select{background:#0d1224;color:var(--fg);border:1px solid #ffffff30;border-radius:8px;padding:5px 8px;font:inherit}
+table.procs{width:100%;border-collapse:collapse;font-size:14px}
+.procs th{color:var(--mut);font-weight:500;text-align:left;font-size:12px;padding:4px 8px}
+.procs td{padding:6px 8px;border-top:1px solid var(--line)}
 .legend{display:flex;flex-wrap:wrap;gap:8px 18px;margin:12px 4px 2px;color:var(--mut);font-size:13px}
 .legend i{display:inline-block;width:12px;height:12px;border-radius:4px;margin-right:6px;vertical-align:-1px}
 #tip{position:fixed;pointer-events:none;background:#0d1224ee;border:1px solid #ffffff30;border-radius:10px;
@@ -411,18 +449,64 @@ h2{font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--mut)
 
 JS = """
 const tip=document.getElementById('tip'),tl=document.getElementById('tl');
+const DAYS=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'],MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const p2=n=>String(n).padStart(2,'0');
+function stamp(t){const d=new Date(t*1000);
+  return DAYS[d.getDay()]+' '+d.getDate()+' '+MON[d.getMonth()]+' '+p2(d.getHours())+':'+p2(d.getMinutes());}
 document.addEventListener('mousemove',e=>{
+  let txt=null,when=null;
+  if(tl){const r=tl.getBoundingClientRect(),c=document.getElementById('cursor'),vb=tl.viewBox.baseVal;
+    const x=(e.clientX-r.left)*vb.width/r.width;
+    if(e.clientX>=r.left&&e.clientX<=r.right&&e.clientY>=r.top&&e.clientY<=r.bottom){
+      c.setAttribute('x1',x);c.setAttribute('x2',x);c.setAttribute('y1',20);c.setAttribute('y2',vb.height-26);
+      const t0=+tl.dataset.t0,t1=+tl.dataset.t1,l=+tl.dataset.left,w=+tl.dataset.pw;
+      if(x>=l&&x<=l+w)when=stamp(t0+(t1-t0)*(x-l)/w);}
+    else{c.setAttribute('x1',0);c.setAttribute('x2',0);}}
   const t=e.target.closest&&e.target.closest('[data-tip]');
-  if(t){tip.textContent=t.getAttribute('data-tip');tip.style.display='block';
+  if(t)txt=t.getAttribute('data-tip');
+  if(when)txt=txt?when+'\\n'+txt:when;
+  if(txt){tip.textContent=txt;tip.style.display='block';
     tip.style.left=Math.min(e.clientX+14,innerWidth-220)+'px';tip.style.top=(e.clientY+14)+'px';}
   else tip.style.display='none';
-  if(tl){const r=tl.getBoundingClientRect(),c=document.getElementById('cursor'),vb=tl.viewBox.baseVal;
-    const x=(e.clientX-r.left)*vb.width/r.width,y=(e.clientY-r.top)*vb.height/r.height;
-    if(e.clientX>=r.left&&e.clientX<=r.right&&e.clientY>=r.top&&e.clientY<=r.bottom){
-      c.setAttribute('x1',x);c.setAttribute('x2',x);c.setAttribute('y1',20);c.setAttribute('y2',vb.height-26);}
-    else{c.setAttribute('x1',0);c.setAttribute('x2',0);}}
 });
 """
+
+
+def busiest(snaps):
+    """Per process name over on-battery snapshots: average CPU (absent = 0), peak, memory."""
+    bat = [sn for sn in snaps if sn["ac"] == "battery"]
+    if not bat:
+        return bat, []
+    agg = {}
+    for sn in bat:
+        for n, k, c, mb in sn["procs"]:
+            e = agg.setdefault(n, dict(cpu=0.0, peak=0.0, seen=0, mb=0.0))
+            e["cpu"] += c
+            e["peak"] = max(e["peak"], c)
+            e["seen"] += 1
+            e["mb"] += mb
+    rows = [(n, e["cpu"] / len(bat), e["peak"], e["seen"], e["mb"] / e["seen"]) for n, e in agg.items()]
+    rows.sort(key=lambda r: -r[1])
+    return bat, rows[:12]
+
+
+def snapshot_section(snaps):
+    if not snaps:
+        return ""
+    bat, rows = busiest(snaps)
+    if not rows:
+        return (f'<h2>What was running</h2><div class="panel"><div class="nodata">{len(snaps)} process '
+                f'snapshots in this period, none taken on battery.</div></div>')
+    body = "".join(f'<tr><td>{esc(n)}</td><td>{a:.1f}%</td><td>{pk:.0f}%</td><td>{seen} of {len(bat)}</td>'
+                   f'<td>{mb:.0f} MB</td></tr>' for n, a, pk, seen, mb in rows)
+    return (f'<h2>What was running on battery</h2><div class="panel"><table class="procs">'
+            f'<tr><th>Process</th><th>Avg CPU (one core)</th><th>Peak</th><th>Present in</th><th>Memory</th></tr>'
+            f'{body}</table><div class="cfoot">{len(bat)} hourly snapshots taken on battery in this period '
+            f'(5-second CPU samples). Hover the diamonds in the timeline for each snapshot.</div></div>')
+
+
+def page_name(days):
+    return f".battery-report-{days}d.html"
 
 
 def build(days, full):
@@ -452,6 +536,7 @@ def build(days, full):
     charges = sum(1 for run in runs for a, b in zip(run, run[1:])
                   if a["status"] != "charging" and b["status"] == "charging")
     now = rows[-1]
+    snaps = load_snapshots(t0, t1)
 
     kpis = [
         (f'{now["pct"]:.0f}%', f'battery now ({STATES[state_of(now)][0].lower()})'),
@@ -487,17 +572,23 @@ def build(days, full):
     span_txt = (f'{d0:%d %b} – {d1:%d %b} · {n_days} day{"s" if n_days != 1 else ""}, '
                 f'used on {used_days} of them')
 
+    choices = sorted(set(DAY_CHOICES) | {days})
+    opts = "".join(f'<option value="{esc(page_name(d))}"{" selected" if d == days else ""}>'
+                   f'{d} day{"s" if d != 1 else ""}</option>' for d in choices)
+
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>Battery Report</title>
 <style>{CSS}</style></head><body><div class="wrap">
 <h1>Battery Report</h1>
+<div class="sel">Look back <select onchange="location.href=this.value">{opts}</select></div>
 <div class="sub">{esc(span_txt)} · last reading {esc(stamp)} · full charge {full:.2f} Wh</div>
 <div class="hero">{kpi_html}</div>
 <h2>Expected runtime per full charge</h2><div class="cards">{cards}</div>
 <h2>Power draw ranges</h2><div class="panel">{rng}</div>
-<h2>Timeline</h2><div class="panel">{timeline(rows, runs, t0, t1, shutdown_pct())}
+<h2>Timeline</h2><div class="panel">{timeline(rows, runs, t0, t1, shutdown_pct(), snaps)}
 <div class="legend">{legend}<span><i style="background:#34d399;border-radius:50%"></i>back on</span>
 <span><i style="background:#f87171;border-radius:50%"></i>went quiet</span></div></div>
+{snapshot_section(snaps)}
 </div><div id="tip"></div><script>{JS}</script></body></html>"""
 
 
@@ -555,15 +646,21 @@ def main():
     ap.add_argument("--no-open", action="store_true")
     ap.add_argument("--browser", choices=("auto", "firefox", "chrome"), default="auto")
     a = ap.parse_args()
-    page = build(a.days, full_wh())
+    full = full_wh()
+    page = build(a.days, full)
+    if page is not None:
+        # the page's selector links to one sibling file per choice
+        outdir = os.path.dirname(a.out)
+        os.makedirs(outdir, exist_ok=True)
+        for d in sorted(set(DAY_CHOICES) | {a.days}):
+            with open(os.path.join(outdir, page_name(d)), "w") as f:
+                f.write(page if d == a.days else build(d, full))
+        a.out = os.path.join(outdir, page_name(a.days))
     if page is None:
         msg = "Not enough battery history yet. Use the laptop on battery for a while and try again."
         if shutil.which("notify-send"):
             subprocess.run(["notify-send", "-i", "battery", "Battery Report", msg])
         sys.exit(msg)
-    os.makedirs(os.path.dirname(a.out), exist_ok=True)
-    with open(a.out, "w") as f:
-        f.write(page)
     print(a.out)
     if not a.no_open:
         view(a.out, a.browser)
