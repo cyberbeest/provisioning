@@ -650,6 +650,7 @@ STRINGS = {
     "connections.col_direction": "Direction",
     "connections.col_host": "Host name",
     "connections.col_country": "Countries*",
+    "connections.col_latency": "Latency",
     "connections.settings_button": "Settings…",
     "connections.country_note": "* Countries are where an address block is registered. They may not always be accurate: large services such as Cloudflare or Google often show the USA even when they answer from nearby.",
     "connections.country_lan": "Local network",

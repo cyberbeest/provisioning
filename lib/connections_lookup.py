@@ -108,7 +108,7 @@ def sandbox_sockets(env):
 
 
 def read_connections(mark_sandboxed=True, scan=True):
-    """Returns {app: [(ip, port, incoming, local port), ...]}.
+    """Returns {app: [(ip, port, incoming, local port, rtt ms or None), ...]}.
 
     A connection is incoming when its local port is one a local socket is
     listening on.
@@ -116,14 +116,22 @@ def read_connections(mark_sandboxed=True, scan=True):
     env = dict(os.environ, LC_ALL="C")
     listening = listening_ports(env)
     out = subprocess.run(
-        ["ss", "-tnpeH", "state", "established"],
+        ["ss", "-tnpeiH", "state", "established"],
         capture_output=True, text=True, env=env,
     ).stdout
     apps = {}
     cache = load_cache()
     seen = set(re.findall(r"ino:(\d+)", out))
     scanned = False
+    last = None  # (app, index) of the connection the next "-i" detail line belongs to
     for line in out.splitlines():
+        if line[:1] in (" ", "\t"):
+            r = re.search(r"\brtt:([\d.]+)/", line)
+            if r and last:
+                lst = apps[last[0]]
+                lst[last[1]] = lst[last[1]][:4] + (float(r.group(1)),)
+            continue
+        last = None
         cols = line.split()
         if len(cols) < 4:
             continue
@@ -152,7 +160,8 @@ def read_connections(mark_sandboxed=True, scan=True):
                     app = f"uid {u.group(1)}"  # the panel script words this itself
             else:
                 app = f"{uid_name(u.group(1))} ({t('connections.system_service')})"
-        apps.setdefault(app, []).append((rip, rport, lport in listening, lport))
+        apps.setdefault(app, []).append((rip, rport, lport in listening, lport, None))
+        last = (app, len(apps[app]) - 1)
     if scan or scanned:
         save_cache({k: v for k, v in cache.items() if k in seen})
     return apps
@@ -180,7 +189,7 @@ def print_summary():
     """One "in|out <app>" line per connection, for the panel tooltip."""
     scan = bool(os.environ.get("CONNECTIONS_SCAN"))
     for app, conns in read_connections(mark_sandboxed=False, scan=scan).items():
-        for _rip, _rport, is_in, _lport in conns:
+        for _rip, _rport, is_in, *_ in conns:
             print(f"{'in' if is_in else 'out'} {app}")
 
 
@@ -224,7 +233,7 @@ def flags_for(conns, geo):
     country's flag, 🏠 for the local network, 🌐 for an unknown country."""
     from geo import flag_emoji
     counts = {}
-    for rip, _port, _in, _lport in conns:
+    for rip, *_ in conns:
         if is_lan(rip):
             key = "🏠"
         else:
@@ -257,7 +266,7 @@ def country_name(cc):
 def country_names(conns, geo):
     """Names of the countries behind the connections, most connections first."""
     counts = {}
-    for rip, _port, _in, _lport in conns:
+    for rip, *_ in conns:
         cc = geo.country(rip)
         if cc:
             counts[cc] = counts.get(cc, 0) + 1
@@ -346,7 +355,7 @@ def notify_new_apps():
     for app, conns in read_connections(mark_sandboxed=False, scan=False).items():
         if app == unknown or app.startswith("uid ") or app.endswith(service):
             continue
-        seen = {"lan" if is_lan(rip) else "wan" for rip, _p, _i, _l in conns}
+        seen = {"lan" if is_lan(rip) else "wan" for rip, *_ in conns}
         known = set(notified.get(app, []))
         if seen <= known:
             continue

@@ -680,6 +680,7 @@ STRINGS = {
     "connections.col_direction": "Richtung",
     "connections.col_host": "Hostname",
     "connections.col_country": "Länder*",
+    "connections.col_latency": "Latenz",
     "connections.settings_button": "Einstellungen …",
     "connections.country_note": "* Das Land ist das, in dem ein Adressblock registriert ist, und stimmt nicht immer: Große Dienste wie Cloudflare oder Google erscheinen oft als USA, auch wenn sie aus der Nähe antworten.",
     "connections.country_lan": "Lokales Netzwerk",

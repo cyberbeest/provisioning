@@ -19,6 +19,7 @@ gi.require_version("Gtk", "3.0")
 from gi.repository import GLib, Gtk  # noqa: E402
 
 from connections_lookup import dns_names, flags_for, read_connections  # noqa: E402
+import statistics  # noqa: E402
 from i18n import t  # noqa: E402
 
 REFRESH_MS = 5000
@@ -38,6 +39,13 @@ def country_cell(geo, ip):
         return "🏠 " + t("connections.country_lan")
     cc = geo.country(ip)
     return f"{flag_emoji(cc)} {country_name(cc)}" if cc else "🌐 " + t("connections.unknown")
+
+
+def latency_text(ms):
+    """Round-trip time the kernel measured for a connection ("" if it has none yet)."""
+    if ms is None:
+        return ""
+    return "<1 ms" if ms < 1 else (f"{ms:.1f} ms" if ms < 10 else f"{ms:.0f} ms")
 
 
 def app_countries(geo, conns):
@@ -84,13 +92,13 @@ class Window(Gtk.Window):
         self.set_default_size(820, 460)
         self.set_icon_name("network-wired")
 
-        # app/remote, port/count, direction, country, host, row colour
-        self.store = Gtk.TreeStore(str, str, str, str, str, str)
+        # app/remote, count, direction, country, latency, host, row colour
+        self.store = Gtk.TreeStore(str, str, str, str, str, str, str)
         view = Gtk.TreeView(model=self.store)
         titles = (t("connections.col_app"), t("connections.col_count"), t("connections.col_direction"),
-                  t("connections.col_country"), t("connections.col_host"))
+                  t("connections.col_country"), t("connections.col_latency"), t("connections.col_host"))
         for i, title in enumerate(titles):
-            col = Gtk.TreeViewColumn(title, Gtk.CellRendererText(), text=i, foreground=5)
+            col = Gtk.TreeViewColumn(title, Gtk.CellRendererText(), text=i, foreground=6)
             col.set_resizable(True)
             # Only shown while country flags are on (Settings); refresh() toggles it.
             if i == 3:
@@ -162,14 +170,14 @@ class Window(Gtk.Window):
                 direction = t("connections.dir_outgoing")
             parent = self.store.append(
                 None, [app, str(len(conns)), direction,
-                       app_countries(geo, conns), "", colour]
+                       app_countries(geo, conns), latency_text(statistics.median(r) if (r := [c[4] for c in conns if c[4] is not None]) else None), "", colour]
             )
-            for rip, rport, is_in, lport in sorted(conns, key=lambda c: (not c[2], c[0], c[1])):
+            for rip, rport, is_in, lport, rtt in sorted(conns, key=lambda c: (not c[2], c[0], c[1])):
                 self.store.append(
                     parent,
                     [f"[{rip}]:{rport}" if ":" in rip else f"{rip}:{rport}", "",
                      t("connections.dir_incoming_port").format(port=lport) if is_in else t("connections.dir_outgoing"),
-                     country_cell(geo, rip), asked.get(rip) or rdns(rip),
+                     country_cell(geo, rip), latency_text(rtt), asked.get(rip) or rdns(rip),
                      "#c00000" if is_in else None],
                 )
             if app not in self.known:
