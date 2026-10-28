@@ -1914,7 +1914,7 @@ func (w *whisker) openCtx(px, py int, e *appmenu.Entry) {
 		if w.isFavorite(e.ID) {
 			fav = tr("Remove from Favorites")
 		}
-		c.labels = []string{fav, tr("Add to Desktop")}
+		c.labels = []string{fav, tr("Add to Desktop"), tr("Add to Panel")}
 	}
 	for _, l := range c.labels {
 		c.w = max(c.w, textWidth(l, 13)+28)
@@ -1995,6 +1995,8 @@ func (w *whisker) ctxAction(e *appmenu.Entry, i int) {
 			os.MkdirAll(filepath.Dir(dst), 0o755)
 			os.WriteFile(dst, data, 0o755)
 		}
+	case 2:
+		go addLauncher(e.File)
 	}
 	w.paintAll()
 }

@@ -521,10 +521,15 @@ fun message_callback(text) {
             lowbat.sprite.SetOpacity(0);
             return;
         }
-        lowbat.image = Image.Text(body, 1, 0.75, 0.2, 1);
+        # Dark red on the bright background, amber on the dark one; below the
+        # entry and the transient messages (0.9) so it never overlaps them.
+        if (bright_active)
+            lowbat.image = Image.Text(body, 0.75, 0.1, 0, 1, "Sans Bold 16");
+        else
+            lowbat.image = Image.Text(body, 1, 0.75, 0.2, 1, "Sans Bold 16");
         lowbat.sprite.SetImage(lowbat.image);
         lowbat.sprite.SetX(screen.w / 2 - lowbat.image.GetWidth() / 2);
-        lowbat.sprite.SetY(screen.h * 0.82);
+        lowbat.sprite.SetY(screen.h * 0.95 - lowbat.image.GetHeight());
         lowbat.sprite.SetOpacity(1);
         return;
     }

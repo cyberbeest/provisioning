@@ -681,6 +681,8 @@ STRINGS = {
     "connections.col_host": "Hostname",
     "connections.col_country": "Länder*",
     "connections.col_latency": "Latenz",
+    "connections.col_distance": "Max Entfernung",
+    "connections.distance_note": "Max Entfernung: Die Gegenstelle kann nicht weiter entfernt sein, als ein Signal bei Lichtgeschwindigkeit in der kürzesten gemessenen Umlaufzeit käme. Echte Wege sind langsamer und länger, die tatsächliche Entfernung ist meist viel kleiner.",
     "connections.settings_button": "Einstellungen …",
     "connections.country_note": "* Das Land ist das, in dem ein Adressblock registriert ist, und stimmt nicht immer: Große Dienste wie Cloudflare oder Google erscheinen oft als USA, auch wenn sie aus der Nähe antworten.",
     "connections.country_lan": "Lokales Netzwerk",

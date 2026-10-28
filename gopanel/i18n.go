@@ -32,6 +32,9 @@ var deStrings = map[string]string{
 	"Restart this panel":                "Diese Leiste neu starten",
 	"Panel settings…":                   "Leisten-Einstellungen …",
 	"Memory details…":                   "Speicherdetails …",
+	"Hide icon":                         "Symbol ausblenden",
+	"Hidden icons":                      "Ausgeblendete Symbole",
+	"Show %s":                           "%s anzeigen",
 	"Remove from panel":                 "Aus der Leiste entfernen",
 	"Remove \"%s\" from the panel?":     "„%s“ aus der Leiste entfernen?",
 	"Remove":                            "Entfernen",
@@ -79,6 +82,7 @@ var deStrings = map[string]string{
 	"Add to Favorites":                            "Zu Favoriten hinzufügen",
 	"Remove from Favorites":                       "Aus Favoriten entfernen",
 	"Add to Desktop":                              "Auf die Arbeitsfläche legen",
+	"Add to Panel":                                "Zur Leiste hinzufügen",
 	"Weather Settings…":                           "Wettereinstellungen …",
 }
 

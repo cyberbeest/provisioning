@@ -651,6 +651,8 @@ STRINGS = {
     "connections.col_host": "Host name",
     "connections.col_country": "Countries*",
     "connections.col_latency": "Latency",
+    "connections.col_distance": "Max distance",
+    "connections.distance_note": "Max distance: the other end cannot be farther away than a signal could travel at the speed of light in the shortest round-trip time seen. Real paths are slower and longer, so the actual distance is usually much smaller.",
     "connections.settings_button": "Settings…",
     "connections.country_note": "* Countries are where an address block is registered. They may not always be accurate: large services such as Cloudflare or Google often show the USA even when they answer from nearby.",
     "connections.country_lan": "Local network",

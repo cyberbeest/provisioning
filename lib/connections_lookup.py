@@ -108,7 +108,7 @@ def sandbox_sockets(env):
 
 
 def read_connections(mark_sandboxed=True, scan=True):
-    """Returns {app: [(ip, port, incoming, local port, rtt ms or None), ...]}.
+    """Returns {app: [(ip, port, incoming, local port, rtt ms, lowest rtt ms; the last two None until measured), ...]}.
 
     A connection is incoming when its local port is one a local socket is
     listening on.
@@ -127,9 +127,10 @@ def read_connections(mark_sandboxed=True, scan=True):
     for line in out.splitlines():
         if line[:1] in (" ", "\t"):
             r = re.search(r"\brtt:([\d.]+)/", line)
+            m = re.search(r"\bminrtt:([\d.]+)", line)
             if r and last:
                 lst = apps[last[0]]
-                lst[last[1]] = lst[last[1]][:4] + (float(r.group(1)),)
+                lst[last[1]] = lst[last[1]][:4] + (float(r.group(1)), float(m.group(1)) if m else float(r.group(1)))
             continue
         last = None
         cols = line.split()
@@ -160,7 +161,7 @@ def read_connections(mark_sandboxed=True, scan=True):
                     app = f"uid {u.group(1)}"  # the panel script words this itself
             else:
                 app = f"{uid_name(u.group(1))} ({t('connections.system_service')})"
-        apps.setdefault(app, []).append((rip, rport, lport in listening, lport, None))
+        apps.setdefault(app, []).append((rip, rport, lport in listening, lport, None, None))
         last = (app, len(apps[app]) - 1)
     if scan or scanned:
         save_cache({k: v for k, v in cache.items() if k in seen})

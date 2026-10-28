@@ -8,6 +8,8 @@ case "${1:-}" in
 prereqs) prereqs; exit 0 ;;
 esac
 . /usr/share/initramfs-tools/hook-functions
+# the battery/AC drivers are modules; make sure the initramfs has them
+manual_add_modules battery ac
 mkdir -p "$DESTDIR/etc/cyberbeest"
 [ -r /etc/cyberbeest/lowbat-text ] && cp /etc/cyberbeest/lowbat-text "$DESTDIR/etc/cyberbeest/lowbat-text"
 exit 0

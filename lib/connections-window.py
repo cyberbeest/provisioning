@@ -48,6 +48,21 @@ def latency_text(ms):
     return "<1 ms" if ms < 1 else (f"{ms:.1f} ms" if ms < 10 else f"{ms:.0f} ms")
 
 
+C_KM_PER_MS = 299.792458  # light in vacuum, one way; a hard limit for any signal
+
+
+def distance_text(rtt_ms):
+    """Upper bound on the distance to the other end: a signal covers at most c
+    * rtt / 2 there and back. Real paths are slower and longer, so the true
+    distance is usually well below it. Uses the lowest round-trip time seen."""
+    if rtt_ms is None:
+        return ""
+    km = max(1, int(rtt_ms * C_KM_PER_MS / 2 + 0.999))
+    if km >= 100:
+        km = (km + 9) // 10 * 10
+    return f"≤ {km} km"
+
+
 def app_countries(geo, conns):
     """Flags and names for an app row: "🇩🇪🇺🇸 Germany, United States"."""
     if geo is None:
@@ -92,13 +107,13 @@ class Window(Gtk.Window):
         self.set_default_size(820, 460)
         self.set_icon_name("network-wired")
 
-        # app/remote, count, direction, country, latency, host, row colour
-        self.store = Gtk.TreeStore(str, str, str, str, str, str, str)
+        # app/remote, count, direction, country, latency, distance, host, row colour
+        self.store = Gtk.TreeStore(str, str, str, str, str, str, str, str)
         view = Gtk.TreeView(model=self.store)
         titles = (t("connections.col_app"), t("connections.col_count"), t("connections.col_direction"),
-                  t("connections.col_country"), t("connections.col_latency"), t("connections.col_host"))
+                  t("connections.col_country"), t("connections.col_latency"), t("connections.col_distance"), t("connections.col_host"))
         for i, title in enumerate(titles):
-            col = Gtk.TreeViewColumn(title, Gtk.CellRendererText(), text=i, foreground=6)
+            col = Gtk.TreeViewColumn(title, Gtk.CellRendererText(), text=i, foreground=7)
             col.set_resizable(True)
             # Only shown while country flags are on (Settings); refresh() toggles it.
             if i == 3:
@@ -123,6 +138,12 @@ class Window(Gtk.Window):
         self.country_note.get_style_context().add_class("dim-label")
         self.country_note.set_no_show_all(True)
 
+        self.distance_note = Gtk.Label(xalign=0, wrap=True, label=t("connections.distance_note"))
+        self.distance_note.set_margin_start(6)
+        self.distance_note.set_margin_end(6)
+        self.distance_note.set_margin_bottom(4)
+        self.distance_note.get_style_context().add_class("dim-label")
+
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         box.pack_start(scroll, True, True, 0)
         bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
@@ -133,6 +154,7 @@ class Window(Gtk.Window):
             [os.path.expanduser("~/.local/bin/cyberbeest-settings.py"), "--tab=connections"]))
         bar.pack_start(settings, False, False, 0)
         box.pack_start(bar, False, False, 0)
+        box.pack_start(self.distance_note, False, False, 0)
         box.pack_start(self.country_note, False, False, 0)
         self.add(box)
 
@@ -170,14 +192,16 @@ class Window(Gtk.Window):
                 direction = t("connections.dir_outgoing")
             parent = self.store.append(
                 None, [app, str(len(conns)), direction,
-                       app_countries(geo, conns), latency_text(statistics.median(r) if (r := [c[4] for c in conns if c[4] is not None]) else None), "", colour]
+                       app_countries(geo, conns), latency_text(statistics.median(r) if (r := [c[4] for c in conns if c[4] is not None]) else None),
+                       distance_text(statistics.median(m) if (m := [c[5] for c in conns if c[5] is not None]) else None),
+                       "", colour]
             )
-            for rip, rport, is_in, lport, rtt in sorted(conns, key=lambda c: (not c[2], c[0], c[1])):
+            for rip, rport, is_in, lport, rtt, minrtt in sorted(conns, key=lambda c: (not c[2], c[0], c[1])):
                 self.store.append(
                     parent,
                     [f"[{rip}]:{rport}" if ":" in rip else f"{rip}:{rport}", "",
                      t("connections.dir_incoming_port").format(port=lport) if is_in else t("connections.dir_outgoing"),
-                     country_cell(geo, rip), latency_text(rtt), asked.get(rip) or rdns(rip),
+                     country_cell(geo, rip), latency_text(rtt), distance_text(minrtt), asked.get(rip) or rdns(rip),
                      "#c00000" if is_in else None],
                 )
             if app not in self.known:
