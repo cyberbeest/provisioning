@@ -1,0 +1,18 @@
+# Installed by 23-vlc-media-player.sh. VLC opens files from anywhere and has
+# to parse whatever a movie file contains, so a crafted file must not be able
+# to write anything to disk: everything in the home folder is read-only
+# except VLC's own settings/caches and the Pictures folder (snapshots).
+# Firejail also checks this file under ~/.config/firejail, so it can be
+# tried without root.
+read-only ${HOME}
+read-write ${HOME}/.config/vlc
+read-write ${HOME}/.cache/vlc
+read-write ${HOME}/.local/share/vlc
+read-write ${HOME}/.config/aacs
+read-write ${HOME}/.dvdcss
+read-write ${PICTURES}
+
+# External disks and network mounts: playable, not writable.
+read-only /media
+read-only /mnt
+read-only /run/media
