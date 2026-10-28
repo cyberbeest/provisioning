@@ -51,17 +51,20 @@ type trayIcon struct {
 	itemIsMenu     bool
 	tip            string
 	img            *image.RGBA
+	more           bool // the trailing "hidden icons" marker, not a real item
 }
 
 // sniTray is the running StatusNotifier host, for the XEmbed tray to compare against.
 var sniTray *tray
 
 type tray struct {
-	it    *item
-	conn  *dbus.Conn
-	mu    sync.Mutex
-	icons []*trayIcon // registration order
-	own   bool        // we are the StatusNotifierWatcher
+	it     *item
+	conn   *dbus.Conn
+	mu     sync.Mutex
+	icons  []*trayIcon     // registration order
+	own    bool            // we are the StatusNotifierWatcher
+	hidden map[string]bool // hideKeys the user hid (hidden-tray.conf)
+	more   *trayIcon       // marker shown at the end while a hidden icon is running
 }
 
 // ---- own watcher, used only when nobody else provides one --------------------------
@@ -71,7 +74,10 @@ type watcher struct {
 }
 
 func (w *watcher) RegisterStatusNotifierItem(sender dbus.Sender, service string) *dbus.Error {
-	w.t.register(string(sender), service)
+	// Reply at once: register reads the item's properties, and an item that registers from
+	// its main thread (blueman) cannot answer until this call returns. Blocking here made
+	// it time out after 25 s and fall back to a static XEmbed icon.
+	go w.t.register(string(sender), service)
 	return nil
 }
 
@@ -101,7 +107,7 @@ func (t *tray) serveWatcher() bool {
 func newTrayItem() *item {
 	it := newItem("tray")
 	it.hl = false
-	t := &tray{it: it}
+	t := &tray{it: it, hidden: loadHiddenTray(), more: &trayIcon{more: true, tip: tr("Hidden icons")}}
 	sniTray = t
 	conn, err := dbus.ConnectSessionBus()
 	if err != nil {
@@ -388,13 +394,67 @@ func (t *tray) refresh(ic *trayIcon) {
 
 func (t *tray) visible() []*trayIcon {
 	var out []*trayIcon
+	hiddenRunning := false
 	for _, ic := range t.icons {
 		if ic.status != "Passive" && ic.img != nil {
+			if t.hidden[hideKey(ic)] {
+				hiddenRunning = true
+				continue
+			}
+			out = append(out, ic)
+		}
+	}
+	sortTray(out, trayOrder)
+	if hiddenRunning { // always a way back, even when every icon is hidden
+		if t.more.img == nil || t.more.img.Bounds().Dx() != iconSize {
+			t.more.img = moreDots(iconSize)
+		}
+		out = append(out, t.more)
+	}
+	return out
+}
+
+// hiddenRunning lists the icons the user hid that are currently live, in tray order.
+func (t *tray) hiddenRunning() []*trayIcon {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	var out []*trayIcon
+	for _, ic := range t.icons {
+		if ic.status != "Passive" && ic.img != nil && t.hidden[hideKey(ic)] {
 			out = append(out, ic)
 		}
 	}
 	sortTray(out, trayOrder)
 	return out
+}
+
+func (t *tray) setHidden(key string, hide bool) {
+	t.mu.Lock()
+	if hide {
+		t.hidden[key] = true
+	} else {
+		delete(t.hidden, key)
+	}
+	saveHiddenTray(t.hidden)
+	t.mu.Unlock()
+	t.render()
+}
+
+// showRestoreMenu pops up the list of hidden icons; picking one brings it back.
+func (t *tray) showRestoreMenu(anchorX int, rep *replica) {
+	var items []*menuItem
+	icons := t.hiddenRunning()
+	for i, ic := range icons {
+		items = append(items, &menuItem{id: int32(i), label: fmt.Sprintf(tr("Show %s"), trayName(ic))})
+	}
+	if len(items) == 0 {
+		return
+	}
+	menuReqs <- menuReq{rep: rep, items: items, anchorX: anchorX, onSelect: func(mi *menuItem) {
+		if int(mi.id) < len(icons) {
+			t.setHidden(hideKey(icons[mi.id]), false)
+		}
+	}}
 }
 
 // render composes all visible icons into the item's single image.
@@ -438,6 +498,12 @@ func (t *tray) tipAt(x int) string {
 func (t *tray) onClick(x, y, btn int) {
 	ic := t.iconAt(x)
 	if ic == nil || t.conn == nil {
+		return
+	}
+	if ic.more {
+		if btn == 1 || btn == 3 {
+			t.showRestoreMenu(t.it.x+x, activeRep)
+		}
 		return
 	}
 	sx, sy := int32(monX+t.it.x+x), int32(panelTopY()+y)
@@ -489,7 +555,13 @@ func (t *tray) showMenu(ic *trayIcon, anchorX int, rep *replica) {
 	if top == nil || len(top.children) == 0 {
 		return
 	}
-	menuReqs <- menuReq{rep: rep, items: top.children, anchorX: anchorX, onSelect: func(mi *menuItem) {
+	hide := &menuItem{id: -1, label: tr("Hide icon")}
+	items := append(append([]*menuItem{}, top.children...), &menuItem{sep: true}, hide)
+	menuReqs <- menuReq{rep: rep, items: items, anchorX: anchorX, onSelect: func(mi *menuItem) {
+		if mi == hide {
+			t.setHidden(hideKey(ic), true)
+			return
+		}
 		go obj.Call(menuIface+".Event", 0, mi.id, "clicked", dbus.MakeVariant(int32(0)), uint32(time.Now().Unix()))
 	}}
 }
