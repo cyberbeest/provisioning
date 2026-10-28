@@ -806,6 +806,8 @@ func main() {
 				if tip.shown && tip.forIt == it {
 					if it.tip == "" {
 						tip.hide()
+					} else if hoverPanel != nil { // the tooltip sits on a replica: stay on that monitor
+						withReplica(hoverPanel, func() { tip.show(it, it.tip, it.x+it.w/2) })
 					} else {
 						tip.show(it, it.tip, it.x+it.w/2)
 					}
