@@ -887,7 +887,11 @@ func main() {
 				if it := itemFor(items, he.hc); it != nil {
 					it.tip = he.text
 					if tip.shown && tip.forIt == it {
-						tip.show(it, it.tip, it.x+it.w/2)
+						if hoverPanel != nil { // the tooltip sits on a replica: stay on that monitor
+							withReplica(hoverPanel, func() { tip.show(it, it.tip, it.x+it.w/2) })
+						} else {
+							tip.show(it, it.tip, it.x+it.w/2)
+						}
 					}
 				}
 			case "bye":
