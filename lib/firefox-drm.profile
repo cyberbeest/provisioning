@@ -15,6 +15,7 @@
 # Everything else in the stock profile chain -- network isolation, home
 # directory whitelisting, caps.drop all, noroot, etc. -- is untouched; this
 # only widens two syscalls needed for DRM playback to work at all.
+noblacklist ${HOME}/.config/vlc
 include firefox-esr.profile
 seccomp !chroot,!mount
 
@@ -26,3 +27,10 @@ seccomp !chroot,!mount
 # mkdir so the whitelist doesn't error on machines without Zoom.
 mkdir ${HOME}/.config/zoom
 whitelist ${HOME}/.config/zoom
+
+# Downloaded audio/video is opened with VLC *inside* this sandbox. Started
+# from a file, VLC first tries to hand it to a running instance over D-Bus
+# (dbus-user none here), gets ServiceUnknown and exits without a window.
+# vlcrc sets one-instance-when-started-from-file=0; make it visible.
+mkdir ${HOME}/.config/vlc
+whitelist ${HOME}/.config/vlc
