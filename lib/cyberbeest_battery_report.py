@@ -25,6 +25,7 @@ import sys
 HIST = os.path.expanduser("~/.local/state/wattage-panel/history.csv")
 SNAPS = os.path.expanduser("~/.local/state/process-snapshots/snapshots.jsonl")
 DAY_CHOICES = (1, 2, 3, 7, 14, 30)
+SNAP_GAP_S = 20 * 60
 SNAP_SELF = {"cyberbeest-process-snapshot"}
 FULL_WH_DEFAULT = 28.88
 GAP_S = 12 * 60          # rows further apart than this: the machine was off or asleep
@@ -86,7 +87,7 @@ def load(path, full):
 
 
 def load_snapshots(t0, t1):
-    """Hourly process snapshots (written by the dev machine's snapshot timer; absent elsewhere)."""
+    """Periodic process snapshots (written by the dev machine's snapshot timer; absent elsewhere)."""
     out = []
     try:
         with open(SNAPS) as f:
@@ -100,7 +101,27 @@ def load_snapshots(t0, t1):
                     pass
     except OSError:
         pass
-    return sorted(out, key=lambda d: d["t"])
+    out.sort(key=lambda d: d["t"])
+    # Cumulative CPU counters: the difference to the previous snapshot of the same boot gives the
+    # average over the whole interval (catches bursts between snapshots). Without a predecessor
+    # (first snapshot, reboot, older format) fall back to the 10-second sample.
+    prev = None
+    for sn in out:
+        sn["avg"] = {n: c for n, k, c, mb, *_ in sn["procs"]}
+        sn["busy"] = None
+        if (prev and prev.get("boot") and prev.get("boot") == sn.get("boot")
+                and 0 < sn["t"] - prev["t"] <= SNAP_GAP_S):
+            span = sn["t"] - prev["t"]
+            before = {n: cs for n, k, c, mb, *cs in prev["procs"] if cs}
+            sn["avg"] = {n: max(0.0, cs[0] - before.get(n, [0])[0] if n in before else cs[0]) / span * 100
+                         for n, k, c, mb, *cs in sn["procs"] if cs}
+            if prev.get("cpu") and sn.get("cpu"):
+                dt_tot = sn["cpu"]["total"] - prev["cpu"]["total"]
+                if dt_tot > 0:
+                    sn["busy"] = (sn["cpu"]["busy"] - prev["cpu"]["busy"]) / dt_tot * 100
+            sn["interval"] = True
+        prev = sn
+    return out
 
 
 def state_of(r):
@@ -388,12 +409,25 @@ def timeline(rows, runs, t0, t1, shutdown, snaps=(), width=1240):
                      f'fill="{col}" fill-opacity=".8" data-tip="{w:.2f} W (30 min average)&#10;{dt.datetime.fromtimestamp(t):%a %H:%M}"/>')
     # lane 4: process snapshots (hover for the busiest processes)
     if snaps:
-        o.append(f'<text x="{left}" y="{s_y-9}" class="lane">process snapshots (hourly)</text>')
+        o.append(f'<text x="{left}" y="{s_y-9}" class="lane">process snapshots</text>')
         o.append(f'<line x1="{left}" y1="{s_y+16}" x2="{left+pw}" y2="{s_y+16}" class="grid"/>')
         for sn in snaps:
             col = STATES["batt_on"][1] if sn["ac"] == "battery" else "#64748b"
-            top = "&#10;".join(f"{esc(n)}  {c:.0f}% CPU  {mb:.0f} MB" for n, k, c, mb in sn["procs"][:6])
+            mem = {n: mb for n, k, c, mb, *_ in sn["procs"]}
+            ranked = sorted(sn["avg"].items(), key=lambda kv: -kv[1])[:6]
+            top = "&#10;".join(f"{esc(n)}  {c:.1f}% CPU  {mem.get(n, 0):.0f} MB" for n, c in ranked)
+            if sn.get("busy") is not None:
+                top = f'CPU busy {sn["busy"]:.0f}% on average since the last snapshot&#10;' + top
             pct = f'{sn["pct"]}%' if sn.get("pct") is not None else ""
+            hw = sn.get("hw")
+            if hw:
+                pct += (" · screen off" if sn.get("locked") else " · screen on")
+                if sn.get("lid"):
+                    pct += f' · lid {sn["lid"]}'
+                    if sn["lid"] == "closed" and not sn.get("locked"):
+                        pct += " (SCREEN LIT WITH LID CLOSED)"
+                top = (f'backlight {hw["backlight"]}% · deep idle {deep_idle(hw):.0f}% · {hw["irq_s"]} irq/s'
+                       f'&#10;' + top)
             o.append(f'<path d="M{X(sn["t"]):.1f},{s_y+6} l7,10 l-7,10 l-7,-10 Z" fill="{col}" '
                      f'data-tip="{dt.datetime.fromtimestamp(sn["t"]):%a %H:%M} · {sn["ac"]} {pct}&#10;{top}"/>')
     o.append('<line id="cursor" x1="0" y1="0" x2="0" y2="0" class="cursor"/>')
@@ -472,6 +506,41 @@ document.addEventListener('mousemove',e=>{
 """
 
 
+def deep_idle(hw):
+    """% of CPU time spent in the deepest idle states (C6 and below)."""
+    return sum(v for k, v in hw.get("idle", {}).items() if k in ("C6", "C7", "C7s", "C8", "C9", "C10"))
+
+
+def hw_section(snaps):
+    """Idle-state / interrupt picture for on-battery snapshots, split by screen state."""
+    groups = []
+    for label, flag in (("Screen off (locked)", True), ("Screen on", False)):
+        g = [sn["hw"] for sn in snaps if sn["ac"] == "battery" and sn.get("hw") and bool(sn.get("locked")) == flag]
+        if g:
+            groups.append((label, g))
+    if not groups:
+        return ""
+    def avg(g, f):
+        v = [f(h) for h in g if f(h) is not None]
+        return sum(v) / len(v) if v else 0
+    body = ""
+    for label, g in groups:
+        irqs = {}
+        for h in g:
+            for n, c in h.get("top_irq", []):
+                irqs[n] = irqs.get(n, 0) + c / len(g)
+        top = ", ".join(f"{esc(n)} {c:.0f}/s" for n, c in sorted(irqs.items(), key=lambda kv: -kv[1])[:3])
+        body += (f'<tr><td>{label}</td><td>{len(g)}</td><td>{avg(g, deep_idle):.0f}%</td>'
+                 f'<td>{avg(g, lambda h: h["irq_s"]):.0f}</td><td>{avg(g, lambda h: h["ctx_s"]):.0f}</td>'
+                 f'<td>{avg(g, lambda h: h.get("watts")):.1f} W</td><td>{top}</td></tr>')
+    return (f'<h2>Idle behaviour on battery</h2><div class="panel"><table class="procs">'
+            f'<tr><th>State</th><th>Snapshots</th><th>Deep idle (C6+)</th><th>Interrupts/s</th>'
+            f'<th>Context switches/s</th><th>Reported draw</th><th>Busiest interrupts</th></tr>{body}</table>'
+            f'<div class="cfoot">A machine that is truly idle spends most of its time in deep idle. Low deep idle or high '
+            f'interrupts while locked means something keeps the hardware awake even though no process uses CPU. '
+            f'The reported draw floors at ~3.8 W with the screen off, see the note at the top.</div></div>')
+
+
 def busiest(snaps):
     """Per process name over on-battery snapshots: average CPU (absent = 0), peak, memory."""
     bat = [sn for sn in snaps if sn["ac"] == "battery"]
@@ -479,7 +548,9 @@ def busiest(snaps):
         return bat, []
     agg = {}
     for sn in bat:
-        for n, k, c, mb in sn["procs"]:
+        mem = {n: mb for n, k, c, mb, *_ in sn["procs"]}
+        for n, c in sn["avg"].items():
+            mb = mem.get(n, 0)
             e = agg.setdefault(n, dict(cpu=0.0, peak=0.0, seen=0, mb=0.0))
             e["cpu"] += c
             e["peak"] = max(e["peak"], c)
@@ -500,9 +571,9 @@ def snapshot_section(snaps):
     body = "".join(f'<tr><td>{esc(n)}</td><td>{a:.1f}%</td><td>{pk:.0f}%</td><td>{seen} of {len(bat)}</td>'
                    f'<td>{mb:.0f} MB</td></tr>' for n, a, pk, seen, mb in rows)
     return (f'<h2>What was running on battery</h2><div class="panel"><table class="procs">'
-            f'<tr><th>Process</th><th>Avg CPU (one core)</th><th>Peak</th><th>Present in</th><th>Memory</th></tr>'
-            f'{body}</table><div class="cfoot">{len(bat)} hourly snapshots taken on battery in this period '
-            f'(5-second CPU samples). Hover the diamonds in the timeline for each snapshot.</div></div>')
+            f'<tr><th>Process</th><th>Avg CPU (one core)</th><th>Busiest snapshot</th><th>Present in</th><th>Memory</th></tr>'
+            f'{body}</table><div class="cfoot">{len(bat)} snapshots taken on battery in this period '
+            f'(CPU averaged over the whole time since the previous snapshot, so bursts between snapshots count). Hover the diamonds in the timeline for each snapshot.</div></div>')
 
 
 def page_name(days):
@@ -588,7 +659,7 @@ def build(days, full):
 <h2>Timeline</h2><div class="panel">{timeline(rows, runs, t0, t1, shutdown_pct(), snaps)}
 <div class="legend">{legend}<span><i style="background:#34d399;border-radius:50%"></i>back on</span>
 <span><i style="background:#f87171;border-radius:50%"></i>went quiet</span></div></div>
-{snapshot_section(snaps)}
+{snapshot_section(snaps)}{hw_section(snaps)}
 </div><div id="tip"></div><script>{JS}</script></body></html>"""
 
 
