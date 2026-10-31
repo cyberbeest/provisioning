@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Cyberbeest boot-stick malware scan
+Exec=/usr/local/lib/cyberbeest/cyberbeest-stick-scan-launch.sh
+X-GNOME-Autostart-enabled=true
+NoDisplay=true

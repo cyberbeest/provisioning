@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC
+ "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<policyconfig>
+
+  <action id="com.cyberbeest.scan-stick.boot">
+    <description>Restart into the Cyberbeest malware scan stick</description>
+    <message>Authentication is required to restart into the malware scan stick.</message>
+    <defaults>
+      <!-- The popup the user just accepted is the consent; the helper
+           verifies the stick (signed manifest) before arming anything. -->
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/local/lib/cyberbeest/cyberbeest-scan-stick-helper.sh</annotate>
+  </action>
+
+</policyconfig>

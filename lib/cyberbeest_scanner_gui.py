@@ -7,8 +7,15 @@ live progress and the raw tool output (same as watching it in a terminal),
 then runs interpret_results.py's rule-based classifier over the finished
 report -- no AI reads the log; see that module's docstring for why.
 
-Runs against the live system this GUI is installed on -- not from separate
-boot media. See the offline-scanner-stick-plan notes if that ever changes.
+Two modes:
+  (default)  scans the live system this GUI is installed on, via pkexec.
+  --stick    runs from the Cyberbeest boot stick (live image booted with
+             "cyberbeest-scan"): asks for the master password, unlocks the
+             machine's internal disk read-only and scans it from outside
+             via cyberbeest-stick-scan.sh. rkhunter/chkrootkit don't apply
+             to a disk that isn't running, so they're not offered.
+In both modes ClamAV scans sensitive locations first and any hit is shown
+at once (see scan_priority.py); Cancel stops the scan cleanly.
 """
 import datetime
 import os
@@ -24,10 +31,18 @@ gi.require_version("Gtk", "3.0")
 from gi.repository import GLib, Gtk, Pango
 
 sys.path.insert(0, os.path.expanduser("~/.local/lib/cyberbeest-scanner"))
+sys.path.insert(0, "/usr/local/lib/cyberbeest")
 import interpret_results  # noqa: E402
 
+STICK = "--stick" in sys.argv
 HELPER = "/usr/local/lib/cyberbeest/cyberbeest-scanner-helper.sh"
-REPORTS_DIR = os.path.expanduser("~/.local/share/cyberbeest/scanner/reports")
+STICK_HELPER = "/usr/local/lib/cyberbeest/cyberbeest-stick-scan.sh"
+if STICK:
+    SCAN_STATE_DIR = "/run/cyberbeest-scan"
+else:
+    SCAN_STATE_DIR = os.path.expanduser("~/.local/share/cyberbeest/scanner")
+REPORTS_DIR = os.path.join(SCAN_STATE_DIR, "reports")
+CANCEL_FILE = os.path.join(SCAN_STATE_DIR, "cancel")
 REPORT_NAME_RE = re.compile(r"scan-(\d{8})-(\d{6})\.log$")
 # Keyed by the short stage name the helper script sends as @@STAGE@@'s 4th
 # field (not by index -- with phase checkboxes, index n now means "the nth
@@ -38,6 +53,14 @@ PHASES = [
     ("rkhunter", "Check for rootkits (rkhunter)"),
     ("chkrootkit", "Check for rootkits (chkrootkit)"),
 ]
+PHASES_STICK = [
+    ("unlock", "Unlock the internal disk (read-only)"),
+    ("mount", "Mount it read-only"),
+    ("debsums", "Check base-system files (debsums)"),
+    ("clamscan", "Scan for known malware (ClamAV)"),
+]
+if STICK:
+    PHASES = PHASES_STICK
 STAGE_NAMES = dict(PHASES)
 
 LEVEL_COLORS = {"GREEN": "#2e7d32", "YELLOW": "#e6a700", "RED": "#c62828"}
@@ -113,7 +136,7 @@ class PhaseRow(Gtk.ListBoxRow):
 
 class ScannerWindow(Gtk.Window):
     def __init__(self):
-        super().__init__(title="Cyberbeest Malware Scanner")
+        super().__init__(title="Cyberbeest Malware Scan (from boot stick)" if STICK else "Cyberbeest Malware Scanner")
         self.set_default_size(760, 560)
         self.set_border_width(12)
 
@@ -126,6 +149,11 @@ class ScannerWindow(Gtk.Window):
         self.scan_button = Gtk.Button(label="Scan Now")
         self.scan_button.connect("clicked", self.on_scan_clicked)
         top.pack_start(self.scan_button, False, False, 0)
+
+        self.cancel_button = Gtk.Button(label="Cancel")
+        self.cancel_button.set_sensitive(False)
+        self.cancel_button.connect("clicked", self.on_cancel_clicked)
+        top.pack_start(self.cancel_button, False, False, 0)
 
         self.progress = Gtk.ProgressBar()
         self.progress.set_show_text(True)
@@ -148,6 +176,14 @@ class ScannerWindow(Gtk.Window):
             self.phase_rows[key] = row
             self.phase_listbox.add(row)
         root.pack_start(self.phase_listbox, False, False, 0)
+
+        # Shown the moment ClamAV reports a hit, while the scan carries on.
+        self.alert_label = Gtk.Label(label="")
+        self.alert_label.set_xalign(0)
+        self.alert_label.set_line_wrap(True)
+        self.alert_label.set_no_show_all(True)
+        root.pack_start(self.alert_label, False, False, 0)
+        self.alerts = []
 
         self.verdict_label = Gtk.Label(label="")
         self.verdict_label.set_xalign(0)
@@ -179,6 +215,22 @@ class ScannerWindow(Gtk.Window):
         log_scroller.add(self.log_view)
         root.pack_start(log_scroller, True, True, 0)
 
+        if STICK:
+            bottom = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+            root.pack_start(bottom, False, False, 0)
+            self.save_button = Gtk.Button(label="Save report…")
+            self.save_button.set_sensitive(False)
+            self.save_button.connect("clicked", self.on_save_report)
+            bottom.pack_start(self.save_button, False, False, 0)
+            restart = Gtk.Button(label="Restart computer")
+            restart.connect("clicked", lambda _b: subprocess.Popen(["systemctl", "reboot"]))
+            bottom.pack_end(restart, False, False, 0)
+            poweroff = Gtk.Button(label="Shut down")
+            poweroff.connect("clicked", lambda _b: subprocess.Popen(["systemctl", "poweroff"]))
+            bottom.pack_end(poweroff, False, False, 0)
+            self.report_path = None
+            self.fullscreen()
+
         self.connect("destroy", self.on_destroy)
 
         self.stage_index = 0
@@ -191,7 +243,16 @@ class ScannerWindow(Gtk.Window):
         self.timer_source = None
 
         self._update_scan_button_sensitivity()
-        self._show_last_scan_summary()
+        if STICK:
+            self.scan_button.set_label("Start scan")
+            self.verdict_label.set_markup(
+                "<b>Scanning from the boot stick.</b> Your computer's disk is opened "
+                "read-only; nothing on it runs and nothing is changed.")
+            for row in self.phase_rows.values():
+                row.check.set_sensitive(False)
+            GLib.idle_add(self.on_scan_clicked, None)
+        else:
+            self._show_last_scan_summary()
 
     def on_phase_toggled(self, _check):
         self._update_scan_button_sensitivity()
@@ -252,7 +313,85 @@ class ScannerWindow(Gtk.Window):
             self.timer_source = None
         Gtk.main_quit()
 
+    def on_cancel_clicked(self, _button):
+        # The helper runs as root, so we can't signal it; it polls for this file.
+        self.cancel_button.set_sensitive(False)
+        self.progress.set_text("Cancelling…")
+        try:
+            os.makedirs(SCAN_STATE_DIR, exist_ok=True)
+            with open(CANCEL_FILE, "w"):
+                pass
+        except OSError:
+            pass
+
+    def on_save_report(self, _button):
+        if not self.report_path:
+            return
+        dialog = Gtk.FileChooserDialog(title="Save report", parent=self,
+                                       action=Gtk.FileChooserAction.SAVE)
+        dialog.add_buttons("Cancel", Gtk.ResponseType.CANCEL, "Save", Gtk.ResponseType.OK)
+        dialog.set_current_name(os.path.basename(self.report_path))
+        dialog.set_do_overwrite_confirmation(True)
+        if dialog.run() == Gtk.ResponseType.OK:
+            try:
+                with open(self.report_path) as src, open(dialog.get_filename(), "w") as dst:
+                    dst.write(src.read())
+            except OSError as e:
+                self.verdict_label.set_markup(f"<b>Could not save: {GLib.markup_escape_text(str(e))}</b>")
+        dialog.destroy()
+
+    def _ask_stick_target(self):
+        """Returns (device, passphrase) or None if cancelled / nothing found."""
+        out = subprocess.run(["sudo", "-n", STICK_HELPER, "--list"],
+                             capture_output=True, text=True).stdout
+        targets = [l.split("\t") for l in out.splitlines() if l.strip()]
+        if not targets:
+            self.verdict_label.set_markup(
+                "<b><span foreground='#c62828'>No encrypted disk found in this computer.</span></b>")
+            return None
+        dialog = Gtk.Dialog(title="Unlock your computer's disk", parent=self, modal=True)
+        dialog.add_buttons("Cancel", Gtk.ResponseType.CANCEL, "Scan", Gtk.ResponseType.OK)
+        dialog.set_default_response(Gtk.ResponseType.OK)
+        box = dialog.get_content_area()
+        box.set_border_width(12)
+        box.set_spacing(8)
+        label = Gtk.Label(label="Enter your master password to open the disk read-only.")
+        label.set_xalign(0)
+        box.pack_start(label, False, False, 0)
+        combo = None
+        if len(targets) > 1:
+            combo = Gtk.ComboBoxText()
+            for dev, size, model in targets:
+                combo.append_text(f"{dev}  ({size}, {model})")
+            combo.set_active(0)
+            box.pack_start(combo, False, False, 0)
+        entry = Gtk.Entry()
+        entry.set_visibility(False)
+        entry.set_activates_default(True)
+        box.pack_start(entry, False, False, 0)
+        dialog.show_all()
+        response = dialog.run()
+        passphrase = entry.get_text()
+        index = combo.get_active() if combo else 0
+        dialog.destroy()
+        if response != Gtk.ResponseType.OK:
+            return None
+        return targets[index][0], passphrase
+
     def on_scan_clicked(self, _button):
+        self.stick_target = None
+        if STICK:
+            self.stick_target = self._ask_stick_target()
+            if not self.stick_target:
+                self.scan_button.set_sensitive(True)
+                return False
+        self.alerts = []
+        self.alert_label.hide()
+        self.cancel_button.set_sensitive(True)
+        try:
+            os.remove(CANCEL_FILE)
+        except OSError:
+            pass
         self.selected_phases = [key for key, _ in PHASES if self.phase_rows[key].selected]
         for key, row in self.phase_rows.items():
             row.set_status("pending" if key in self.selected_phases else "skipped")
@@ -269,6 +408,7 @@ class ScannerWindow(Gtk.Window):
         self.timer_label.set_text("0:00")
         self.timer_source = GLib.timeout_add(1000, self._tick_timer)
         threading.Thread(target=self._run_scan, daemon=True).start()
+        return False
 
     def _tick_timer(self):
         self.timer_label.set_text(format_duration(time.monotonic() - self.scan_start_time))
@@ -322,16 +462,28 @@ class ScannerWindow(Gtk.Window):
 
     def _run_scan(self):
         try:
-            proc = subprocess.Popen(
-                ["pkexec", HELPER, ",".join(self.selected_phases)],
-                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+            if STICK:
+                device, passphrase = self.stick_target
+                proc = subprocess.Popen(
+                    ["sudo", "-n", STICK_HELPER, "--scan", device],
+                    stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT, text=True, bufsize=1)
+                proc.stdin.write(passphrase + "\n")
+                proc.stdin.close()
+                self.stick_target = None
+                passphrase = None
+            else:
+                proc = subprocess.Popen(
+                    ["pkexec", HELPER, ",".join(self.selected_phases)],
+                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
         except Exception as e:
-            GLib.idle_add(self._on_scan_failed, f"Could not start pkexec: {e}")
+            GLib.idle_add(self._on_scan_failed, f"Could not start the scan: {e}")
             return
         self.scan_proc = proc
 
         report_path = None
         interrupted = False
+        error = None
         for line in proc.stdout:
             line = line.rstrip("\n")
             if line.startswith("@@STAGE@@ "):
@@ -343,14 +495,21 @@ class ScannerWindow(Gtk.Window):
                 GLib.idle_add(self._set_clam_progress, int(line.split(" ", 1)[1]))
             elif line.startswith("@@DONE@@ "):
                 report_path = line[len("@@DONE@@ "):].strip()
+            elif line.startswith("@@ALERT@@ "):
+                GLib.idle_add(self._on_alert, line[len("@@ALERT@@ "):])
+            elif line.startswith("@@ERROR@@ "):
+                error = line[len("@@ERROR@@ "):]
             elif line.startswith("@@INTERRUPTED@@"):
                 interrupted = True
             else:
                 GLib.idle_add(self._append_log, line)
         proc.wait()
 
+        if error:
+            GLib.idle_add(self._on_scan_failed, error)
+            return
         if interrupted:
-            GLib.idle_add(self._on_scan_failed, "Scan interrupted (nothing left running in the background)")
+            GLib.idle_add(self._on_scan_failed, "Scan cancelled (nothing left running in the background)")
             return
         if proc.returncode != 0 or not report_path:
             GLib.idle_add(self._on_scan_failed, f"Scan did not complete (exit code {proc.returncode})")
@@ -358,7 +517,19 @@ class ScannerWindow(Gtk.Window):
 
         GLib.idle_add(self._on_scan_done, report_path)
 
+    def _on_alert(self, line):
+        self.alerts.append(line)
+        names = "\n".join(GLib.markup_escape_text(a) for a in self.alerts[-5:])
+        more = f"\n… and {len(self.alerts) - 5} more" if len(self.alerts) > 5 else ""
+        self.alert_label.set_markup(
+            f"<span foreground='#c62828'><b>⚠ Possible malware found ({len(self.alerts)}) — "
+            f"the scan is still running:</b></span>\n{names}{more}")
+        self.alert_label.show()
+        self.present()
+        return False
+
     def _on_scan_failed(self, message):
+        self.cancel_button.set_sensitive(False)
         self._stop_timer()
         if self.current_stage_key in self.phase_rows:
             self.phase_rows[self.current_stage_key].set_status("failed")
@@ -371,6 +542,10 @@ class ScannerWindow(Gtk.Window):
         return False
 
     def _on_scan_done(self, report_path):
+        self.cancel_button.set_sensitive(False)
+        if STICK:
+            self.report_path = report_path
+            self.save_button.set_sensitive(True)
         self._stop_timer()
         if self.current_stage_key in self.phase_rows:
             self.phase_rows[self.current_stage_key].set_status("done")
@@ -379,7 +554,7 @@ class ScannerWindow(Gtk.Window):
         self.progress.set_text("Done")
         with open(report_path) as f:
             text = f.read()
-        verdict = interpret_results.build_verdict(text)
+        verdict = interpret_results.build_verdict(text, do_debsums_diff=not STICK)
         color = LEVEL_COLORS.get(verdict["level"], "#000000")
         self.verdict_label.set_markup(
             f"<b><span foreground='{color}'>{GLib.markup_escape_text(verdict['headline'])}</span></b>"

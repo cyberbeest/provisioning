@@ -206,4 +206,13 @@ Claude Code, your settings, all saved conversations and the whole ~/claude folde
 	[claude.remove_done_title]="Claude Code removed"
 	[claude.remove_done_message]="Claude Code and everything that came with it is gone."
 	[claude.remove_none_message]="Claude Code is not installed in this account."
+	[scan_stick.title]="Cyberbeest malware scan"
+	[scan_stick.question]="A Cyberbeest scan stick was plugged in.
+
+Restart now and check this computer for malware from the stick? The computer's disk is opened read-only; nothing on it is changed. Save your work first."
+	[scan_stick.unprotected]="Note: the stick's write-protect switch is off. The scan works, but flip the switch to \"locked\" so the stick can never be changed."
+	[scan_stick.ok]="Restart and scan"
+	[scan_stick.cancel]="Not now"
+	[scan_stick.checking]="Checking the stick..."
+	[scan_stick.failed]="The stick cannot be used:"
 )

@@ -1,0 +1,10 @@
+[Unit]
+Description=Offer a malware scan when the Cyberbeest boot stick is inserted
+
+[Service]
+Type=simple
+ExecStart=%h/bin/cyberbeest-scan-stick-watch.sh
+Restart=on-failure
+
+[Install]
+WantedBy=default.target

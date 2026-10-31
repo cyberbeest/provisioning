@@ -300,6 +300,32 @@ rm -f "$CHROOT"/root/.bash_history "$CHROOT"/home/*/.bash_history
 rm -rf "$CHROOT"/var/spool/cron/crontabs/* "$CHROOT"/var/mail/* "$CHROOT"/var/spool/mail/*
 rm -rf "$CHROOT"/home/*/.cache "$CHROOT"/root/.cache
 
+echo "--- Boot-stick malware scan mode (autostart + sudo rule) ---"
+# The scan itself (helper, GUI, launcher) came along in the snapshot:
+# 59-cyberbeest-scanner.sh installs them to /usr/local/lib/cyberbeest/. The
+# launcher only acts when the kernel command line has "cyberbeest-scan",
+# which only the stick's first boot menu entry passes (see
+# cyberbeest-tools/combine-live-and-installer.sh), so a plain live boot is
+# unaffected. Fail loudly if provisioning didn't install it -- a stick
+# without it would boot into the scan entry and show a normal desktop.
+for f in cyberbeest-stick-scan.sh cyberbeest-stick-scan-launch.sh cyberbeest_scanner_gui.py cyberbeest-stick-scan.desktop scan_priority.py; do
+	[ -e "$CHROOT/usr/local/lib/cyberbeest/$f" ] || {
+		echo "Missing /usr/local/lib/cyberbeest/$f in the snapshot -- run an up-to-date 59-cyberbeest-scanner.sh on the donor machine first." >&2
+		exit 1
+	}
+done
+install -d "$CHROOT/etc/xdg/autostart"
+install -m 644 "$CHROOT/usr/local/lib/cyberbeest/cyberbeest-stick-scan.desktop" \
+	"$CHROOT/etc/xdg/autostart/cyberbeest-stick-scan.desktop"
+# The live account is not the donor's user; it needs root for exactly these
+# two commands, regardless of what live-config's own sudo component does.
+install -d -m 750 "$CHROOT/etc/sudoers.d"
+cat >"$CHROOT/etc/sudoers.d/cyberbeest-stick-scan" <<'EOF2'
+%sudo ALL=(root) NOPASSWD: /usr/local/lib/cyberbeest/cyberbeest-stick-scan.sh
+%sudo ALL=(root) NOPASSWD: /usr/bin/install -d -m 1777 /run/cyberbeest-scan
+EOF2
+chmod 440 "$CHROOT/etc/sudoers.d/cyberbeest-stick-scan"
+
 echo "--- Installing live-boot/live-config into the copied system ---"
 # The source machine is a normal installed system, so it has no reason to
 # already have these -- without them the squashfs boots but never mounts

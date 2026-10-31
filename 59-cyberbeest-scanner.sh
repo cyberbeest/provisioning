@@ -93,6 +93,18 @@ sed "s|__TARGET_USER__|$TARGET_USER|g; s|__TARGET_HOME__|$TARGET_HOME|g" \
 chmod 755 /usr/local/lib/cyberbeest/cyberbeest-scanner-helper.sh
 install -m 644 "$DIR/lib/com.cyberbeest.scanner.policy" /usr/share/polkit-1/actions/com.cyberbeest.scanner.policy
 
+echo "--- Installing shared scan modules and the boot-stick scan mode ---"
+# scan_priority.py is used by the in-machine helper above too. The rest is
+# what the Cyberbeest boot stick runs: the live image is a snapshot of a
+# provisioned machine, so putting it here is what gets it onto the stick
+# (remaster-live-stick.sh adds only the autostart entry).
+install -m 644 "$DIR/lib/scan_priority.py" "$DIR/lib/interpret_results.py" \
+  "$DIR/lib/manifest_diff.py" /usr/local/lib/cyberbeest/
+install -m 755 "$DIR/lib/cyberbeest-stick-scan.sh" \
+  "$DIR/lib/cyberbeest-stick-scan-launch.sh" \
+  "$DIR/lib/cyberbeest_scanner_gui.py" /usr/local/lib/cyberbeest/
+install -m 644 "$DIR/lib/cyberbeest-stick-scan.desktop" /usr/local/lib/cyberbeest/
+
 echo "--- Installing GUI + support modules to $TARGET_HOME/.local/... ---"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.local/bin"
 install -o "$TARGET_USER" -g "$TARGET_USER" -m 755 \

@@ -1,0 +1,19 @@
+#!/bin/sh
+# Installed as /etc/grub.d/42_cyberbeest_scan_stick. One-time boot target for
+# cyberbeest-scan-stick-helper.sh (grub-reboot): finds the Cyberbeest boot
+# stick by its volume label and loads the scan menu file stored on it. If the
+# stick is gone, GRUB falls back to the normal menu. Nothing here is written
+# to NVRAM, which the bulk-unit firmware handles badly.
+cat <<'GRUBEOF'
+menuentry 'Scan this computer from the Cyberbeest stick' --id cyberbeest-scan-stick {
+	insmod part_gpt
+	insmod part_msdos
+	insmod iso9660
+	if search --no-floppy --label 'Cyberbeest Combined' --set=root; then
+		configfile /boot/grub/scan.cfg
+	else
+		echo 'Cyberbeest stick not found - starting normally.'
+		sleep 3
+	fi
+}
+GRUBEOF

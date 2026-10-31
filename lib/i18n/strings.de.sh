@@ -208,4 +208,13 @@ Claude Code, deine Einstellungen, alle gespeicherten Gespräche und der ganze Or
 	[claude.remove_done_title]="Claude Code entfernt"
 	[claude.remove_done_message]="Claude Code und alles, was dazugehörte, ist entfernt."
 	[claude.remove_none_message]="Claude Code ist in diesem Benutzerkonto nicht installiert."
+	[scan_stick.title]="Cyberbeest-Virenprüfung"
+	[scan_stick.question]="Ein Cyberbeest-Prüfstick wurde eingesteckt.
+
+Jetzt neu starten und diesen Computer vom Stick aus auf Schadsoftware prüfen? Die Festplatte wird nur lesend geöffnet; nichts darauf wird verändert. Speichern Sie vorher Ihre Arbeit."
+	[scan_stick.unprotected]="Hinweis: Der Schreibschutz-Schalter des Sticks ist aus. Die Prüfung funktioniert trotzdem, schieben Sie den Schalter aber auf \"gesperrt\", damit der Stick nie verändert werden kann."
+	[scan_stick.ok]="Neu starten und prüfen"
+	[scan_stick.cancel]="Jetzt nicht"
+	[scan_stick.checking]="Der Stick wird überprüft ..."
+	[scan_stick.failed]="Der Stick kann nicht verwendet werden:"
 )
