@@ -385,8 +385,13 @@ class Prefetcher:
             return
         try:
             nbytes = sum(f.size[0] * f.size[1] * 4 for f, _ in frames)
-            self.cache[path] = (_file_key(path), frames, native_size, nbytes, False)
-        except OSError:
+            # A GIF held as just its preview frame must still load its animation later.
+            partial = False
+            if len(frames) == 1 and path.lower().endswith(".gif"):
+                with Image.open(path) as img:
+                    partial = getattr(img, "n_frames", 1) > 1
+            self.cache[path] = (_file_key(path), frames, native_size, nbytes, partial)
+        except (OSError, UnidentifiedImageError):
             return
         self._announce()
 
