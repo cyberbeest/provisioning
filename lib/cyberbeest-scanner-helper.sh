@@ -11,7 +11,9 @@
 # See 51-fail2ban.sh for the same "install but don't run unless actually
 # needed" pattern applied to a different daemon.
 #
-# Protocol on stdout: lines starting with "@@STAGE@@ " are progress markers
+# Protocol on stdout: lines starting with "@@ALERT@@ " carry a ClamAV hit the
+# moment it is found (files are scanned in scan_priority.py's tier order,
+# sensitive places first); lines starting with "@@STAGE@@ " are progress markers
 # for the GUI (index total name); a "=== <human label> ===" line announces
 # each stage for the log pane; everything else is raw tool output, also
 # appended to the timestamped report file with "===<name>===" separators
@@ -33,6 +35,9 @@ SCANDIR="$TARGET_HOME/.local/share/cyberbeest/scanner"
 MANIFEST="$SCANDIR/.clamscan-manifest.tsv"
 MANIFEST_EXCLUDE_RE='(^/(proc|sys|dev|run)(/|$))|(/\.cache/)|(^/var/cache/)|(\.(qcow2|vdi|vmdk|iso|img)$)'
 LIBDIR="$TARGET_HOME/.local/lib/cyberbeest-scanner"
+PRIORITY_PY="/usr/local/lib/cyberbeest/scan_priority.py"
+CANCEL_FILE="$SCANDIR/cancel"
+rm -f "$CANCEL_FILE"
 STAMP="$(date +%Y%m%d-%H%M%S)"
 REPORT="$SCANDIR/reports/scan-$STAMP.log"
 mkdir -p "$SCANDIR/reports"
@@ -95,8 +100,10 @@ trap 'cleanup; exit 143' INT TERM
 # along with everything else on any exit path.
 GUI_PID=$PPID
 (
-  while kill -0 "$GUI_PID" 2>/dev/null; do
-    sleep 2
+  # The GUI's Cancel button can't signal us either (root vs. unprivileged),
+  # so it drops a file here instead.
+  while kill -0 "$GUI_PID" 2>/dev/null && [ ! -e "$CANCEL_FILE" ]; do
+    sleep 1
   done
   kill -TERM $$ 2>/dev/null
 ) &
@@ -144,7 +151,10 @@ run_clamdscan_with_progress() {
   local nworkers chunkdir counter_file counter_lock
   nworkers="$(nproc)"
   chunkdir="$(mktemp -d)"
-  split -n "l/$nworkers" -d -a3 "$file_list" "$chunkdir/chunk_"
+  # r/N (round-robin), not l/N (contiguous): with contiguous chunks the last
+  # worker would start on the lowest-priority files while the others were
+  # still on the sensitive ones.
+  split -n "r/$nworkers" -d -a3 "$file_list" "$chunkdir/chunk_"
   counter_file="$(mktemp)"
   echo 0 > "$counter_file"
   counter_lock="$(mktemp)"
@@ -168,6 +178,7 @@ run_clamdscan_with_progress() {
               read -r c < "'"$counter_file"'"; c=$((c+1))
               echo "$c" > "'"$counter_file"'"; echo "$c"')"
             echo "$line"
+            echo "@@ALERT@@ $line"
             echo "@@CLAMPROGRESS@@ $n"
             ;;
           *)
@@ -211,6 +222,7 @@ if [ -n "${STAGE_SELECTED[clamscan]:-}" ]; then
     CHANGED_FOR_CLEANUP="$CHANGED"
     python3 "$LIBDIR/manifest_diff.py" diff "$MANIFEST" "$NEW_MANIFEST" "$CHANGED" 2>&1 | tee -a "$REPORT"
     if [ -s "$CHANGED" ]; then
+      python3 "$PRIORITY_PY" order < "$CHANGED" > "$CHANGED.sorted" && mv "$CHANGED.sorted" "$CHANGED"
       run_clamdscan_with_progress "$(wc -l < "$CHANGED")" "$CONFIRMED" "$CHANGED" --fdpass | tee -a "$REPORT"
     else
       echo "no changed files, nothing to scan" | tee -a "$REPORT"
@@ -219,7 +231,7 @@ if [ -n "${STAGE_SELECTED[clamscan]:-}" ]; then
     echo "no prior manifest found, running a full scan" | tee -a "$REPORT"
     FULL_LIST="$(mktemp)"
     CHANGED_FOR_CLEANUP="$FULL_LIST"
-    cut -f1 "$NEW_MANIFEST" > "$FULL_LIST"
+    cut -f1 "$NEW_MANIFEST" | python3 "$PRIORITY_PY" order > "$FULL_LIST"
     run_clamdscan_with_progress "$(wc -l < "$FULL_LIST")" "$CONFIRMED" "$FULL_LIST" --fdpass | tee -a "$REPORT"
   fi
   mv "$NEW_MANIFEST" "$MANIFEST"

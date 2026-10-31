@@ -150,6 +150,28 @@
       "id": "open-source",
       "en": "The Cyberbeest setup scripts are public on GitHub, so anyone can read exactly what a Cyberbeest laptop does.",
       "de": "Die Cyberbeest-Einrichtungsskripte sind öffentlich auf GitHub einsehbar, jeder kann also nachlesen, was ein Cyberbeest-Laptop genau tut."
+    },
+    {
+      "id": "protection-scan-stick",
+      "en": "The Cyberbeest boot stick can scan your laptop for malware from outside: plug it in, accept the offer, and the laptop restarts from the stick, opens its disk read-only with your master password and checks it, so nothing on the disk can hide from the scan.",
+      "de": "Der Cyberbeest-Startstick kann Ihren Laptop von außen auf Schadsoftware prüfen: Stick einstecken, Angebot annehmen, dann startet der Laptop vom Stick, öffnet die Festplatte mit Ihrem Master-Passwort nur lesend und prüft sie, sodass sich nichts auf der Platte der Prüfung entziehen kann.",
+      "ask": {
+        "en": [
+          "how do I scan my laptop for viruses from outside",
+          "can I check my computer for malware from the usb stick",
+          "my laptop might be infected, how do I check it properly"
+        ],
+        "de": [
+          "wie prüfe ich meinen Laptop von außen auf Viren",
+          "kann ich meinen Computer mit dem USB-Stick auf Schadsoftware prüfen",
+          "mein Laptop ist vielleicht infiziert, wie prüfe ich ihn gründlich"
+        ]
+      }
+    },
+    {
+      "id": "protection-scan-stick-switch",
+      "en": "The Cyberbeest boot stick has a write-protect switch; leave it on \"locked\" and nothing, malware included, can ever change what is on the stick.",
+      "de": "Der Cyberbeest-Startstick hat einen Schreibschutz-Schalter; lassen Sie ihn auf \"gesperrt\", dann kann nichts, auch keine Schadsoftware, jemals ändern, was auf dem Stick gespeichert ist."
     }
   ]
 }
