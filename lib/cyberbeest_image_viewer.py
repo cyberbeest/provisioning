@@ -731,6 +731,7 @@ def make_cpu_image_widget(frames):
         state["frames"] = new_frames
         state["idx"] = 0
         state["size"] = None
+        state["pixbufs"] = []
         state["generation"] += 1
         state["paused"] = False
         if len(new_frames) > 1:
@@ -1901,6 +1902,9 @@ class ImageViewerWindow(Gtk.Window):
             frames, _size = load_frames(path)
             self.frames = frames
             self.set_frames(frames)
+            # The widget re-renders its frames at the current size.
+            self._last_fit_size = None
+            self._apply_fit(self.scroller.get_allocation())
             self.copy_frame_item.set_sensitive(len(frames) > 1)
         return False
 
