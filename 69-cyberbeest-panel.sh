@@ -126,6 +126,11 @@ ln -sfn "$LIBDIR/gopanel" "$BINDIR/gopanel"
 chown -h "$TARGET_USER:$TARGET_USER" "$BINDIR/gopanel"
 install -o "$TARGET_USER" -g "$TARGET_USER" -m 755 "$SRC/cyberbeest-panel-choice.sh" "$BINDIR/cyberbeest-panel-choice.sh"
 install -o "$TARGET_USER" -g "$TARGET_USER" -m 755 "$SRC/cyberbeest-whisker-key.sh" "$BINDIR/cyberbeest-whisker-key.sh"
+install -o "$TARGET_USER" -g "$TARGET_USER" -m 755 "$DIR/lib/memory-details.py" "$BINDIR/memory-details.py"
+# memory-details.py resolves its i18n catalogs next to itself
+install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 "$DIR/lib/i18n.py" "$BINDIR/i18n.py"
+install -d -o "$TARGET_USER" -g "$TARGET_USER" "$BINDIR/i18n"
+install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 "$DIR/lib/i18n/strings_en.py" "$DIR/lib/i18n/strings_de.py" "$BINDIR/i18n/"
 cat > "$TARGET_HOME/.config/autostart/cyberbeest-panel-choice.desktop" <<EOF
 [Desktop Entry]
 Type=Application

@@ -13,7 +13,7 @@ exec > >(tee -a "$LOG") 2>&1
 
 echo "=== $(date) : installing VLC ==="
 apt-get -o DPkg::Lock::Timeout=60 update -qq
-apt-get -o DPkg::Lock::Timeout=60 install -y vlc
+apt-get -o DPkg::Lock::Timeout=60 install -y vlc firejail firejail-profiles
 
 echo "--- Removing Parole (redundant with VLC, had seek bugs) ---"
 apt-get -o DPkg::Lock::Timeout=60 remove -y parole
@@ -48,5 +48,16 @@ elif grep -q '^#qt-continue=' "$VLCRC"; then
 else
     echo 'qt-continue=2' >> "$VLCRC"
 fi
+
+echo "--- Jailing VLC: stock firejail profile + read-only home override ---"
+# A crafted movie file can exploit a decoder; the jail keeps VLC from writing
+# anywhere except its own settings and Pictures (see lib/vlc.local).
+install -m 644 "$DIR/lib/vlc.local" /etc/firejail/vlc.local
+APPS="$TARGET_HOME/.local/share/applications"
+install -d -o "$TARGET_USER" -g "$TARGET_USER" "$APPS"
+sed -e 's|^Exec=/usr/bin/vlc|Exec=firejail /usr/bin/vlc|' /usr/share/applications/vlc.desktop > "$APPS/vlc.desktop"
+chown "$TARGET_USER:$TARGET_USER" "$APPS/vlc.desktop"
+grep -q '^Exec=firejail' "$APPS/vlc.desktop" || { echo "ERROR: vlc.desktop override has no firejail Exec"; exit 1; }
+sudo -u "$TARGET_USER" update-desktop-database "$APPS" 2>&1 || true
 
 echo "=== done ==="

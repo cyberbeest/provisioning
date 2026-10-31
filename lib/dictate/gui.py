@@ -643,6 +643,7 @@ class HotwordLabDialog(QWidget):
 
     result = pyqtSignal(int, str, float)   # row, text or error, seconds
     started = pyqtSignal(int)
+    disable_requested = pyqtSignal()
 
     def __init__(self, heard, terms, scores, parent=None):
         super().__init__(parent)
@@ -676,7 +677,10 @@ class HotwordLabDialog(QWidget):
         layout.addLayout(grid)
         close_btn = QPushButton(_("Close"))
         close_btn.clicked.connect(self.close)
+        disable_btn = QPushButton(_("Disable lab mode"))
+        disable_btn.clicked.connect(self.disable_requested.emit)
         row = QHBoxLayout()
+        row.addWidget(disable_btn)
         row.addStretch()
         row.addWidget(close_btn)
         layout.addLayout(row)
@@ -811,6 +815,8 @@ class MainWindow(QMainWindow):
             self.a_hotkey.triggered.connect(self.set_hotkey_enabled)
             self.a_last = QAction(_("Show last transcript"), self)
             self.a_last.triggered.connect(self.show_last_transcript)
+            self.a_again = QAction(_("Paste again"), self)
+            self.a_again.triggered.connect(self.paste_again)
             self.a_replay = QAction(_("Replay last recording"), self)
             self.a_replay.triggered.connect(self.replay_last_recording)
             self.a_test = QAction(_("Test dictation"), self)
@@ -824,6 +830,7 @@ class MainWindow(QMainWindow):
             a_quit = QAction(_("Quit"), self)
             a_quit.triggered.connect(QApplication.quit)
             menu.addAction(self.a_hotkey)
+            menu.addAction(self.a_again)
             menu.addAction(self.a_last)
             menu.addAction(self.a_replay)
             menu.addAction(self.a_test)
@@ -904,6 +911,7 @@ class MainWindow(QMainWindow):
         self.a_hotkey.setText(_("Hotkey {key} enabled").format(key=key))
         self.a_hotkey.setChecked(self.cfg.get("hotkey_enabled", True))
         self.a_last.setEnabled(bool(self.last_text))
+        self.a_again.setEnabled(bool(self.last_text))
         self.a_replay.setEnabled(core.LAST_CLIP.exists())
         for mid, act in self._model_actions.items():
             act.setChecked(mid == self.cfg.get("model"))
@@ -1026,6 +1034,15 @@ class MainWindow(QMainWindow):
         self._test_dialog.activateWindow()
         self._test_dialog.edit.setFocus()
 
+    def disable_hotword_lab(self):
+        """The lab window's button: turns the experimental setting off and closes the window."""
+        self.cfg["hotword_lab"] = False
+        core.save_config(self.cfg)
+        self._lab_input = None
+        self._lab_last = None
+        if self._lab_dialog is not None:
+            self._lab_dialog.close()
+
     def show_hotword_lab(self, heard, audio, speech):
         """Open the lab window at once; a background thread fills in the decodes."""
         import local_stt
@@ -1038,6 +1055,7 @@ class MainWindow(QMainWindow):
         dlg = HotwordLabDialog(heard, terms, local_stt.LAB_SCORES)
         self._lab_dialog = dlg
         self._lab_last = (heard, audio, speech)   # to run again after learning
+        dlg.disable_requested.connect(self.disable_hotword_lab)
         dlg.destroyed.connect(lambda: setattr(self, "_lab_dialog", None) if self._lab_dialog is dlg else None)
         dlg.show()
         threading.Thread(target=self._run_hotword_lab, args=(dlg, audio, speech, terms), daemon=True).start()
@@ -1111,6 +1129,19 @@ class MainWindow(QMainWindow):
         self._last_dialog.raise_()
         self._last_dialog.activateWindow()
 
+    def paste_again(self):
+        """Type the last dictation once more into the window that has focus."""
+        text = self.last_text
+        if not text:
+            return
+        typed = text + " " if text.endswith((".", "!", "?")) else text
+
+        def run():
+            time.sleep(0.3)   # let the tray menu close and hand focus back
+            if not core.type_text(typed):
+                self.bridge.paste_failed.emit(typed)
+        threading.Thread(target=run, daemon=True).start()
+
     def replay_last_recording(self):
         """Play the last clip and show it: waveform, what the speech detector heard, and the take's timing."""
         if not core.LAST_CLIP.exists():
@@ -1140,6 +1171,7 @@ class MainWindow(QMainWindow):
             return
         self.key_held = True
         self.combo = False
+        core.stop_spoken_reply()
         if self._click_session and self.recording_active:
             self.stop_by_click()   # started with a click on the icon: the hotkey stops it too
             return

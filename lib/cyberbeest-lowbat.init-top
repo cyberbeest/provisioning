@@ -1,0 +1,82 @@
+#!/bin/sh
+# Installed as /etc/initramfs-tools/scripts/init-top/cyberbeest-lowbat.
+# Warns on the Plymouth boot screen (before the LUKS prompt) when the
+# battery is low and the charger is not connected. The laptop has no
+# battery display and the panel icon only exists after login, so this is
+# the earliest place we can tell the user. The warning stays up and
+# refreshes until the charger is plugged in or the initramfs finishes.
+PREREQ="plymouth udev"
+prereqs() { echo "$PREREQ"; }
+case "${1:-}" in
+prereqs) prereqs; exit 0 ;;
+esac
+
+THRESHOLD=15
+TEXT_FILE=/etc/cyberbeest/lowbat-text
+PIDFILE=/run/cyberbeest-lowbat.pid
+LOG=/run/cyberbeest-lowbat.log   # /run survives into the real system: read it after boot
+echo "start $(date 2>/dev/null) uptime=$(cut -d' ' -f1 /proc/uptime) text=$([ -r "$TEXT_FILE" ] && echo yes || echo NO)" >> "$LOG" 2>/dev/null
+[ -r "$TEXT_FILE" ] || exit 0
+TEXT="$(cat "$TEXT_FILE")"
+
+# status of the first battery; prints "<percent> <discharging 0/1>" or nothing
+read_battery() {
+	for b in /sys/class/power_supply/BAT*; do
+		[ -r "$b/capacity" ] || continue
+		cap="$(cat "$b/capacity")"
+		st="$(cat "$b/status" 2>/dev/null)"
+		case "$st" in Charging|Full) dis=0 ;; *) dis=1 ;; esac
+		# charger plugged in (even if the battery reports Discharging/Not charging)
+		for a in /sys/class/power_supply/A*; do
+			[ -r "$a/online" ] && [ "$(cat "$a/online")" = 1 ] && dis=0
+		done
+		echo "$cap $dis"
+		return
+	done
+}
+
+show() { plymouth message --text="@lowbat@$1" 2>>"$LOG"; echo "show rc=$? [$1]" >> "$LOG" 2>/dev/null; }
+
+# Runs in the background from the start: plymouthd is only launched later
+# (Debian's plymouth script is in init-premount) and the battery driver is
+# loaded by udev's coldplug, so neither may exist yet. Wait up to ~60s for
+# each. The message is re-sent every pass while the warning applies, since
+# one sent before the splash is drawn would be lost.
+(
+	i=0
+	waited=0
+	seen=""
+	last=""
+	while [ "$i" -lt 3600 ]; do
+		i=$((i + 1))
+		if plymouth --ping 2>/dev/null; then
+			seen=1
+		elif [ -n "$seen" ]; then
+			break	# plymouth went away: boot is finishing
+		else
+			[ "$i" -gt 30 ] && break
+			sleep 2
+			continue
+		fi
+		set -- $(read_battery)
+		echo "t=$(cut -d' ' -f1 /proc/uptime) bat=${1:-none} dis=${2:-} last=[$last]" >> "$LOG" 2>/dev/null
+		if [ -z "${1:-}" ]; then
+			waited=$((waited + 1))
+			[ "$waited" -gt 30 ] && break
+		elif [ "$1" -gt "$THRESHOLD" ]; then
+			# healthy battery: nothing to warn about
+			[ -n "$last" ] && show ""
+			break
+		elif [ "$2" = 1 ]; then
+			last="$(printf "$TEXT" "$1")"
+			show "$last"
+		elif [ -n "$last" ]; then
+			# charger connected: clear, but keep watching in case it is unplugged again
+			show ""
+			last=""
+		fi
+		sleep 2
+	done
+) >> "$LOG" 2>&1 &
+echo $! > "$PIDFILE"
+exit 0

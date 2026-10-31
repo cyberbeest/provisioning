@@ -6,6 +6,8 @@
 #   - Super_L opens the application menu of whichever panel runs, through
 #     ~/.local/bin/cyberbeest-whisker-key.sh (gopanel's menu when gopanel is up,
 #     else xfce4-popup-whiskermenu; installed here, from gopanel).
+#   - Shift+Print / Ctrl+Print copy the screen / active window to the clipboard
+#     and save a JPG in Pictures/Screenshots (lib/cyberbeest-screenshot.sh).
 #   - Ctrl+Alt+Delete and the power key open cyberbeest-logout (installed by
 #     09-cyberbeest-logout-dialog.sh) instead of their Xfce defaults.
 # Everything else in this file is Debian's own stock xfce4-keyboard-shortcuts
@@ -35,6 +37,9 @@ DEST="$XML_DIR/xfce4-keyboard-shortcuts.xml"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.local/bin"
 install -o "$TARGET_USER" -g "$TARGET_USER" -m 755 "$DIR/gopanel/cyberbeest-whisker-key.sh" \
 	"$TARGET_HOME/.local/bin/cyberbeest-whisker-key.sh"
+
+install -o "$TARGET_USER" -g "$TARGET_USER" -m 755 "$DIR/lib/cyberbeest-screenshot.sh" \
+	"$TARGET_HOME/.local/bin/cyberbeest-screenshot.sh"
 
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$XML_DIR"
 if [ -e "$DEST" ] && [ ! -e "$DEST.pre-cyberbeest" ]; then
@@ -66,6 +71,7 @@ cat > "$DEST" <<EOF
       <property name="Print" type="empty"/>
       <property name="&lt;Alt&gt;Print" type="empty"/>
       <property name="&lt;Shift&gt;Print" type="empty"/>
+      <property name="&lt;Primary&gt;Print" type="empty"/>
       <property name="&lt;Super&gt;e" type="empty"/>
       <property name="&lt;Primary&gt;&lt;Alt&gt;f" type="empty"/>
       <property name="&lt;Primary&gt;&lt;Alt&gt;Escape" type="empty"/>
@@ -90,7 +96,8 @@ cat > "$DEST" <<EOF
       </property>
       <property name="Print" type="string" value="xfce4-screenshooter"/>
       <property name="&lt;Primary&gt;Escape" type="string" value="xfdesktop --menu"/>
-      <property name="&lt;Shift&gt;Print" type="string" value="xfce4-screenshooter -r"/>
+      <property name="&lt;Shift&gt;Print" type="string" value="$TARGET_HOME/.local/bin/cyberbeest-screenshot.sh screen"/>
+      <property name="&lt;Primary&gt;Print" type="string" value="$TARGET_HOME/.local/bin/cyberbeest-screenshot.sh window"/>
       <property name="&lt;Primary&gt;&lt;Alt&gt;Delete" type="string" value="$TARGET_HOME/.local/bin/cyberbeest-logout"/>
       <property name="&lt;Alt&gt;&lt;Super&gt;s" type="string" value="orca"/>
       <property name="&lt;Primary&gt;&lt;Alt&gt;t" type="string" value="exo-open --launch TerminalEmulator"/>

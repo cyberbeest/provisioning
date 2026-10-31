@@ -118,6 +118,24 @@
       "manual": "1.9"
     },
     {
+      "id": "browser-without-protection",
+      "en": "If a website sign-in on a Cyberbeest does not hand over to a desktop app, start Firefox without protection from the menu: it runs without its sandbox, with a red toolbar, until you close it.",
+      "de": "Wenn eine Anmeldung auf einer Webseite auf einem Cyberbeest nicht an eine Desktop-App übergeben wird, starte „Firefox ohne Schutz“ aus dem Menü: Er läuft ohne Sandbox und mit roter Werkzeugleiste, bis du ihn schließt.",
+      "tip": true,
+      "ask": {
+        "en": [
+          "the sign-in in my browser does not open the app",
+          "how do I turn off the browser sandbox",
+          "the browser does not hand over the login to the desktop app"
+        ],
+        "de": [
+          "die Anmeldung im Browser öffnet die App nicht",
+          "wie schalte ich die Sandbox des Browsers aus",
+          "der Browser übergibt die Anmeldung nicht an die Desktop-App"
+        ]
+      }
+    },
+    {
       "id": "folders-default",
       "en": "By default, sandboxed apps on a Cyberbeest can see the shared folders Pictures and Downloads.",
       "de": "Standardmäßig sehen Apps in der Sandbox auf einem Cyberbeest die gemeinsamen Ordner Bilder und Downloads.",

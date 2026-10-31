@@ -1,0 +1,7 @@
+[Unit]
+Description=Refresh the IP-to-country list for the network icon's flags (only when the option is on)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 %h/.local/bin/geo.py --update
+Nice=10

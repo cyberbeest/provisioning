@@ -92,6 +92,11 @@ login)
 		# The session starts xfce4-panel before this autostart entry runs, so it shows briefly. Start
 		# gopanel at once, in parallel with the wait below, to keep that overlap as short as possible.
 		bin="$(gopanel_bin)" && { pgrep -x gopanel >/dev/null || launch "$bin"; }
+		# systemd-run returns before the process exists, so without this wait use_gopanel's own
+		# `pgrep -x gopanel || launch` can fire a second instance (seen: two panel-choice-*.service
+		# units 70 ms apart, which split the SNI watcher / XEmbed tray roles and left Telegram without
+		# a tray icon).
+		wait_for 10 gopanel
 		wait_for 40 xfce4-panel # the session starts it; stopping it before it exists would not stick
 		use_gopanel || rm -f "$MARKER"
 	fi ;;

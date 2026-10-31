@@ -1,0 +1,11 @@
+#!/bin/sh
+# Installed as /etc/initramfs-tools/scripts/init-bottom/cyberbeest-lowbat.
+# Stops the low-battery watcher before the real root takes over.
+PREREQ=""
+prereqs() { echo "$PREREQ"; }
+case "${1:-}" in
+prereqs) prereqs; exit 0 ;;
+esac
+[ -r /run/cyberbeest-lowbat.pid ] && kill "$(cat /run/cyberbeest-lowbat.pid)" 2>/dev/null
+plymouth message --text="@lowbat@" 2>/dev/null
+exit 0

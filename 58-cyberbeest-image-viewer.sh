@@ -35,6 +35,9 @@ install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.local/bin"
 install -o "$TARGET_USER" -g "$TARGET_USER" -m 755 \
     "$DIR/lib/cyberbeest_image_viewer.py" \
     "$TARGET_HOME/.local/bin/cyberbeest_image_viewer.py"
+install -o "$TARGET_USER" -g "$TARGET_USER" -m 755 \
+    "$DIR/lib/cyberbeest_image_favorites.py" \
+    "$TARGET_HOME/.local/bin/cyberbeest_image_favorites.py"
 
 # The sandbox can only write the Wastebasket if it already exists.
 install -d -o "$TARGET_USER" -g "$TARGET_USER" -m 700 "$TARGET_HOME/.local/share/Trash"
@@ -67,6 +70,19 @@ Categories=AudioVideo;Viewer;
 MimeType=image/png;image/jpeg;image/gif;image/bmp;image/webp;image/tiff;image/jxl;
 EOF
 chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.local/share/applications/cyberbeest-image-viewer.desktop"
+
+echo "--- Installing Favorite Images menu entry ---"
+cat > "$TARGET_HOME/.local/share/applications/cyberbeest-image-favorites.desktop" <<EOF
+[Desktop Entry]
+Type=Application
+Name=Favorite Images
+Comment=Browse the images you starred in the viewer
+Exec=firejail --quiet --profile=/etc/firejail/cyberbeest-image-viewer.profile python3 $TARGET_HOME/.local/bin/cyberbeest_image_favorites.py
+Icon=starred
+Terminal=false
+Categories=AudioVideo;Viewer;
+EOF
+chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.local/share/applications/cyberbeest-image-favorites.desktop"
 
 echo "--- Refreshing desktop database ---"
 sudo -u "$TARGET_USER" update-desktop-database "$TARGET_HOME/.local/share/applications" >/dev/null 2>&1 || true

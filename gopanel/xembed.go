@@ -269,6 +269,19 @@ func (x *xtray) handle(ev interface{}) bool {
 			x.remove(e.Window)
 			return true
 		}
+	case xproto.PropertyNotifyEvent:
+		// the app flips its XEMBED_MAPPED flag when its icon appears/disappears (nm-applet
+		// docks unmapped, then asks to be shown once it knows the connection state)
+		if x.has(e.Window) && e.Atom == A("_XEMBED_INFO") && !x.hidden[e.Window] {
+			if r := getProp(e.Window, "_XEMBED_INFO", 2); r != nil && len(r.Value) >= 8 {
+				if r.Value[4]&1 != 0 {
+					xproto.MapWindow(xc, e.Window)
+				} else {
+					xproto.UnmapWindow(xc, e.Window)
+				}
+			}
+			return true
+		}
 	case xproto.ReparentNotifyEvent:
 		if x.has(e.Window) && e.Parent != panelWin {
 			x.remove(e.Window)

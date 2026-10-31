@@ -263,7 +263,8 @@ func tooltipLoop(c *proto.Client, stop <-chan struct{}) {
 	for {
 		load := math.Float64frombits(loadBits.Load())
 		base := fmt.Sprintf("CPU load: %.0f%%\n%s", load*100, cpuStatus(load))
-		c.SetTooltip(base)
+		// One SetTooltip per cycle: setting the bare load text first and the
+		// process list after the (slow) scan made the tooltip flicker.
 		top := procinfo.TopCPU(3, true)
 		if len(top) > 0 {
 			var b strings.Builder
@@ -271,8 +272,9 @@ func tooltipLoop(c *proto.Client, stop <-chan struct{}) {
 			for _, p := range top {
 				fmt.Fprintf(&b, "\n%s  %.0f%%", p.Name, p.Percent)
 			}
-			c.SetTooltip(b.String())
+			base = b.String()
 		}
+		c.SetTooltip(base)
 		select {
 		case <-time.After(3 * time.Second):
 		case <-stop:

@@ -102,10 +102,14 @@ func newGenmonItem(command string, periodMs int) *item {
 		return cur.imgCmd != "" || cur.txtCmd != ""
 	}
 
-	refresh := func() {
+	refresh := func(hovered bool) {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		out, err := exec.CommandContext(ctx, "sh", "-c", command).Output()
+		cmd := exec.CommandContext(ctx, "sh", "-c", command)
+		if hovered { // lets a script do costly work only while someone is looking at its tooltip
+			cmd.Env = append(os.Environ(), "PANEL_HOVER=1")
+		}
+		out, err := cmd.Output()
 		if err != nil && len(out) == 0 {
 			return
 		}
@@ -175,10 +179,24 @@ func newGenmonItem(command string, periodMs int) *item {
 		it.post(itemUpdate{img: img, tip: &tip, w: w + 2*edge})
 	}
 
-	go func() {
-		for {
-			refresh()
+	hoverCh := make(chan struct{}, 1)
+	it.hover = func(on bool) {
+		if on {
 			select {
+			case hoverCh <- struct{}{}:
+			default:
+			}
+		}
+	}
+
+	go func() {
+		hovered := false
+		for {
+			refresh(hovered)
+			hovered = false
+			select {
+			case <-hoverCh:
+				hovered = true
 			case <-time.After(time.Duration(periodMs) * time.Millisecond):
 			case <-genmonKicked(): // `gopanel refresh`
 			case <-it.dead:

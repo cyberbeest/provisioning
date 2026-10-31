@@ -21,4 +21,13 @@ export BROWSER_ALLOW_DRM=yes
 # in favor of a working keyboard; see cyberbeest_firefox_x11_isolation memory
 # for the isolation rationale and cyberbeest_firefox_xephyr_spike_not_shipped
 # for why the stronger --x11=xephyr alternative wasn't shipped either.
+# An unsandboxed session is running (browser-unsandboxed.sh): hand the URL to
+# that instance. A second, sandboxed Firefox on the same profile would only
+# fail on the profile lock.
+UNSANDBOXED_MARK="${XDG_RUNTIME_DIR:-/tmp}/browser-unsandboxed.pid"
+if [ -f "$UNSANDBOXED_MARK" ] && kill -0 "$(cat "$UNSANDBOXED_MARK")" 2>/dev/null; then
+	exec /usr/bin/firefox-esr "$@"
+fi
+# Drop the red unsandboxed look (and any stale marker from a crashed session).
+[ -x "$HOME/bin/browser-unsandboxed.sh" ] && "$HOME/bin/browser-unsandboxed.sh" --reset-marker
 exec firejail --profile="${HOME}/.config/firejail/firefox-drm.profile" /usr/bin/firefox-esr "$@"

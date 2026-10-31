@@ -107,6 +107,7 @@ installing 69- there would put the installed build first in `~/.local/bin`, so d
 - Two-line labels (label.go renderStacked): text of the wattage helper and of the status genmon (autolock/
   shutdown timers) is split into two balanced lines, saving ~110 px. Which items: one name/command substring
   per line in ~/.config/gopanel/stacked.conf (default: wattage-panel, panel-status-genmon).
+- Tray icons with a menu get "Hide icon" at the end of their right-click menu. Hidden icons are listed in `~/.config/gopanel/hidden-tray.conf` (lowercase item Id); while one is running, a "..." marker at the end of the tray lists them and "Show X" brings one back.
 - XEmbed icons of apps that also have a StatusNotifier icon (blueman registers both) are hidden, so no blank slot.
 - Volume sliders go up to 150% (orange past the 100% tick) like pavucontrol; wheel over the taskbar cycles windows.
 - Volume popup has a second section for the microphone (default source: slider + mute).

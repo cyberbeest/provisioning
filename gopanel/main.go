@@ -32,7 +32,7 @@ import (
 	"gopanel/proto"
 )
 
-const version = "0.23.4"
+const version = "0.23.8"
 
 // startupQuiet is how long after launch new icons appear without a glow: the panel is still
 // filling up then.
@@ -806,6 +806,8 @@ func main() {
 				if tip.shown && tip.forIt == it {
 					if it.tip == "" {
 						tip.hide()
+					} else if hoverPanel != nil { // the tooltip sits on a replica: stay on that monitor
+						withReplica(hoverPanel, func() { tip.show(it, it.tip, it.x+it.w/2) })
 					} else {
 						tip.show(it, it.tip, it.x+it.w/2)
 					}
@@ -885,7 +887,11 @@ func main() {
 				if it := itemFor(items, he.hc); it != nil {
 					it.tip = he.text
 					if tip.shown && tip.forIt == it {
-						tip.show(it, it.tip, it.x+it.w/2)
+						if hoverPanel != nil { // the tooltip sits on a replica: stay on that monitor
+							withReplica(hoverPanel, func() { tip.show(it, it.tip, it.x+it.w/2) })
+						} else {
+							tip.show(it, it.tip, it.x+it.w/2)
+						}
 					}
 				}
 			case "bye":
@@ -1107,11 +1113,16 @@ func panelMenu(x int, cmds chan<- string, over *item) {
 	if over != nil && over.rc != "" && over.kind != "genmon" { // the plugin's own entry, like the XFCE panel's plugin menu
 		items = append([]*menuItem{{id: 10, label: propsLabel(over.title)}, {sep: true}}, items...)
 	}
+	if over != nil && over.kind == "helper" && over.name == "mem-liquid" {
+		items = append([]*menuItem{{id: 30, label: tr("Memory details…")}, {sep: true}}, items...)
+	}
 	menuReqs <- menuReq{rep: activeRep,
 		items:   items,
 		anchorX: x,
 		onSelect: func(mi *menuItem) {
 			switch mi.id {
+			case 30:
+				run(exec.Command(os.ExpandEnv("$HOME/.local/bin/memory-details.py")))
 			case 20:
 				go removeLauncher(over.lid, over.lfile, over.title, cmds)
 			case 10:

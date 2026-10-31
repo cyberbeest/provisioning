@@ -365,6 +365,18 @@ def paste_target():
     return wid
 
 
+def stop_spoken_reply():
+    """Silence Claude Code's spoken reply (speak-replies mod), if it is installed, the moment
+    the hotkey goes down rather than when the microphone opens."""
+    path = os.path.expanduser("~/.local/share/claude-tts/speak.py")
+    if os.path.exists(path):
+        try:
+            subprocess.Popen(["python3", path, "--stop"], stdin=subprocess.DEVNULL,
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except OSError:
+            pass
+
+
 def focus_window(wid):
     """Bring a remembered window back into focus. False if it is gone or
     refuses, in which case nothing may be typed."""
@@ -406,10 +418,17 @@ def type_text(text, target=None):
         return True
     if target == WHISKER:
         # The menu holds the keyboard grab, so XTEST keys land in its search box. If it was
-        # closed meanwhile, the keys would hit whatever has focus: keep the text instead.
+        # closed meanwhile (a window opened), reopen it so the text always lands there.
         if not whisker_open():
-            log.warning("the menu was closed, text not typed")
-            return False
+            _gopanel_ask("menu")
+            for _ in range(20):
+                if whisker_open():
+                    break
+                time.sleep(0.05)
+            else:
+                log.warning("the menu would not reopen, text not typed")
+                return False
+            time.sleep(0.15)  # let the search box take focus
         target = None
     else:
         dismiss_panel_popups()
@@ -423,7 +442,10 @@ def type_text(text, target=None):
     # therefore wrong for non-US keyboards, but there is no better option
     # for global typing into native Wayland windows today.
     import os
-    on_x11 = os.environ.get("XDG_SESSION_TYPE") == "x11"
+    # A launcher without XDG_SESSION_TYPE (sudo env, autostart) still has DISPLAY on X11.
+    on_x11 = (os.environ.get("XDG_SESSION_TYPE") == "x11"
+              or (os.environ.get("XDG_SESSION_TYPE") in (None, "", "tty")
+                  and bool(os.environ.get("DISPLAY")) and not os.environ.get("WAYLAND_DISPLAY")))
     tools = ["xdotool", "ydotool"] if on_x11 else ["ydotool", "xdotool"]
     for tool in tools:
         try:
@@ -435,10 +457,13 @@ def type_text(text, target=None):
                     check=False,
                     stderr=subprocess.DEVNULL,
                 )
-            if r.returncode != 0:
-                log.error("%s exited with %s — text not typed", tool, r.returncode)
-                notify(_("Typing failed ({tool} exit {code})").format(tool=tool, code=r.returncode), urgency="normal", timeout_ms=5000)   # critical never expires
-            return r.returncode == 0
+            if r.returncode == 0:
+                return True
+            log.error("%s exited with %s — text not typed", tool, r.returncode)
+            if tool != tools[-1]:
+                continue   # try the other tool
+            notify(_("Typing failed ({tool} exit {code})").format(tool=tool, code=r.returncode), urgency="normal", timeout_ms=5000)   # critical never expires
+            return False
         except FileNotFoundError:
             continue
     return False

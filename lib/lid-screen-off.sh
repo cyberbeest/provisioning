@@ -88,6 +88,22 @@ screen_on() {
     xset dpms force on 2>/dev/null
 }
 
+# Watchdog: with the lid closed the panel must stay dark. The forced-off above only holds until the
+# next X activity, and an app that holds a display-sleep inhibitor (Claude Desktop's "keep awake
+# while working") makes xfce4-power-manager disable DPMS, so nothing blanks the screen again and it
+# burns ~3-4 W behind the closed lid. DPMS has to be enabled before "force off" is accepted.
+lid_closed() { grep -q closed /proc/acpi/button/lid/*/state 2>/dev/null; }
+panel_lit() { grep -q '^On$' /sys/class/drm/card*-eDP-*/dpms 2>/dev/null; }
+(
+    while sleep 20; do
+        if lid_closed && panel_lit; then
+            log "Watchdog: panel lit with lid closed, forcing DPMS off"
+            xset +dpms 2>/dev/null
+            xset dpms force off 2>/dev/null
+        fi
+    done
+) &
+
 dbus-monitor --system "type='signal',interface='org.freedesktop.login1.Session',member='Lock'" \
              "type='signal',interface='org.freedesktop.login1.Session',member='Unlock'" 2>/dev/null |
 while read -r line; do

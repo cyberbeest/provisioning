@@ -124,30 +124,9 @@ Name=Quit Telegram
 Icon=application-exit
 EOF
 
-echo "--- Updating Telegram's autostart entry to launch sandboxed too ---"
-install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.config/autostart"
-cat > "$TARGET_HOME/.config/autostart/org.telegram.desktop.desktop" <<EOF
-[Desktop Entry]
-Name=Telegram Desktop
-Comment=Official desktop version of Telegram messaging app
-TryExec=telegram-desktop
-Exec=$TARGET_HOME/bin/telegram-sandbox.sh -autostart
-Icon=telegram
-Terminal=false
-StartupWMClass=TelegramDesktop
-Type=Application
-Categories=Messengers;
-Keywords=tg;chat;im;messaging;messenger;sms;tdesktop;
-Actions=quit;
-SingleMainWindow=true
-X-GNOME-UsesNotifications=true
-X-GNOME-SingleWindow=true
-EOF
-
 for f in signal-desktop.desktop element-desktop.desktop org.telegram.desktop.desktop; do
 	chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.local/share/applications/$f"
 done
-chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.config/autostart/org.telegram.desktop.desktop"
 
 echo "--- Refreshing desktop database ---"
 sudo -u "$TARGET_USER" update-desktop-database "$TARGET_HOME/.local/share/applications" 2>&1 || true

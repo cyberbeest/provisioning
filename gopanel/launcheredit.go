@@ -6,7 +6,69 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"time"
 )
+
+// addLauncher puts an application on the panel as a new launcher plugin, the way the XFCE
+// panel does: a launcher-<id> directory holding a copy of the .desktop file, the plugin's
+// items, and its id in plugin-ids right after the last launcher (the panel's own ordering
+// pulls launchers next to the menu button anyway). Ids below 200 are the user's.
+func addLauncher(src string) {
+	data, err := os.ReadFile(src)
+	if err != nil {
+		return
+	}
+	cfg := xfconfAll()
+	if cfg == nil {
+		return
+	}
+	ids := cfg["/panels/panel-1/plugin-ids"]
+	id, last := 100, -1
+	for i, v := range ids {
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			continue
+		}
+		if n < 200 && n >= id {
+			id = n + 1
+		}
+		if cfg["/plugins/plugin-"+v] != nil && cfg["/plugins/plugin-"+v][0] == "launcher" {
+			last = i
+		}
+	}
+	for cfg["/plugins/plugin-"+strconv.Itoa(id)] != nil {
+		id++
+	}
+	sid := strconv.Itoa(id)
+	home, _ := os.UserHomeDir()
+	dir := filepath.Join(home, ".config/xfce4/panel/launcher-"+sid)
+	file := strconv.FormatInt(time.Now().Unix(), 10) + ".desktop"
+	if os.MkdirAll(dir, 0o755) != nil || os.WriteFile(filepath.Join(dir, file), data, 0o755) != nil {
+		return
+	}
+	xq := func(args ...string) error {
+		return exec.Command("xfconf-query", append([]string{"-c", "xfce4-panel"}, args...)...).Run()
+	}
+	xq("-p", "/plugins/plugin-"+sid, "-n", "-t", "string", "-s", "launcher")
+	xq("-p", "/plugins/plugin-"+sid+"/items", "-n", "-a", "-t", "string", "-s", file)
+	args := []string{"-p", "/panels/panel-1/plugin-ids", "-n", "-a"}
+	add := func() { args = append(args, "-t", "int", "-s", sid) }
+	if last < 0 {
+		last = len(ids) - 1
+	}
+	for i, v := range ids {
+		if n, err := strconv.Atoi(v); err == nil {
+			args = append(args, "-t", "int", "-s", strconv.Itoa(n))
+		}
+		if i == last {
+			add()
+		}
+	}
+	if len(ids) == 0 {
+		add()
+	}
+	xq(args...)
+}
 
 // removeLauncher takes a launcher off the panel, in the xfce4-panel config (the XFCE panel
 // would show the same change): a plugin that launches several programs just loses that

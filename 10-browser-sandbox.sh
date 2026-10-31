@@ -81,6 +81,25 @@ StartupNotify=false
 EOF
 chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.local/share/applications/browser-sandbox.desktop"
 
+echo "--- Installing the one-session unsandboxed browser launcher ---"
+install -o "$TARGET_USER" -g "$TARGET_USER" -m 755 \
+	"$DIR/lib/browser-unsandboxed.sh" \
+	"$TARGET_HOME/bin/browser-unsandboxed.sh"
+cat > "$TARGET_HOME/.local/share/applications/browser-unsandboxed.desktop" <<EOF
+[Desktop Entry]
+Type=Application
+Name=Firefox without protection
+Name[de]=Firefox ohne Schutz
+Comment=One session without the sandbox, for sign-ins that hand off to apps
+Comment[de]=Eine Sitzung ohne Schutzumgebung, für Anmeldungen, die an Apps übergeben
+Exec=$TARGET_HOME/bin/browser-unsandboxed.sh %u
+Icon=firefox-esr
+Terminal=false
+Categories=Network;WebBrowser;
+StartupNotify=false
+EOF
+chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.local/share/applications/browser-unsandboxed.desktop"
+
 # Make the sandboxed wrapper the default browser on every path an app might
 # use to find one, not just the desktop MIME association above:
 #   - x-scheme-handler/http(s) + text/html in mimeapps.list (set via
