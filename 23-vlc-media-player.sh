@@ -51,7 +51,8 @@ fi
 
 echo "--- Jailing VLC: stock firejail profile + read-only home override ---"
 # A crafted movie file can exploit a decoder; the jail keeps VLC from writing
-# anywhere except its own settings and Pictures (see lib/vlc.local).
+# anywhere except its own settings, but it can read movies from any folder
+# (see lib/vlc.local).
 install -m 644 "$DIR/lib/vlc.local" /etc/firejail/vlc.local
 APPS="$TARGET_HOME/.local/share/applications"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$APPS"
