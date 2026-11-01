@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"os/user"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -346,6 +347,7 @@ func (w *whisker) open(anchorX int) {
 		w.loadData()
 	}
 	w.refreshConfig()
+	w.noteInstalls()
 	if w.bc != nil {
 		weatherOpened(w.bc.out)
 	}
@@ -504,7 +506,7 @@ func (w *whisker) setPanes(rows []wrow, split int) {
 		return
 	}
 	w.panes = []pane{
-		{title: tr("Recently Used"), empty: tr("No recently used applications"), y: 0, h: h / 2, to: split},
+		{title: tr("Recently used or installed"), empty: tr("No recently used applications"), y: 0, h: h / 2, to: split},
 		{title: tr("Favorites"), empty: tr("No favorites yet"), y: h / 2, h: h - h/2, from: split, to: len(rows)},
 	}
 }
@@ -1231,6 +1233,47 @@ func (w *whisker) noteLauncherStart(path, exec string) {
 			return
 		}
 	}
+}
+
+// knownAppsFile lists the desktop ids the menu has already seen; one that shows up later was installed since.
+func knownAppsFile() string {
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".config/cyberbeest/whisker-known-apps")
+}
+
+// noteInstalls lists apps installed since the last look under Recently Used. The first run only
+// records what is there, so a machine doesn't start with every app marked as new.
+func (w *whisker) noteInstalls() {
+	path := knownAppsFile()
+	known := map[string]bool{}
+	b, err := os.ReadFile(path)
+	first := err != nil
+	for _, id := range strings.Fields(string(b)) {
+		known[id] = true
+	}
+	var fresh []string
+	for _, e := range w.all {
+		if !known[e.ID] {
+			known[e.ID] = true
+			fresh = append(fresh, e.ID)
+		}
+	}
+	if len(fresh) == 0 {
+		return
+	}
+	if !first {
+		sort.Strings(fresh)
+		for _, id := range fresh {
+			w.noteRecent(id)
+		}
+	}
+	ids := make([]string, 0, len(known))
+	for id := range known {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	os.MkdirAll(filepath.Dir(path), 0o755)
+	os.WriteFile(path, []byte(strings.Join(ids, "\n")+"\n"), 0o644)
 }
 
 func (w *whisker) noteRecent(id string) {

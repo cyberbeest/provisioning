@@ -62,7 +62,7 @@ var deStrings = map[string]string{
 	"Power Manager Settings…":           "Energieverwaltung…",
 	"Extended power options…":           "Erweiterte Energieoptionen…",
 	"Applications":                      "Anwendungen",
-	"Recently Used":                     "Zuletzt benutzt",
+	"Recently used or installed":        "Zuletzt benutzt oder installiert",
 	"Favorites":                         "Favoriten",
 	"Commands":                          "Befehle",
 	"No commands available":             "Keine Befehle verfügbar",
