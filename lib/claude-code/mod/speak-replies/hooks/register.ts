@@ -13,16 +13,17 @@ const INSTRUCTION =
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
-    await $.command.register({ name: 'speak', description: 'Toggle spoken replies, or set volume: /speak 0-100' })
+    await $.command.register({ name: 'speak', description: 'Toggle spoken replies; /speak 0-100 sets volume; /speak <name> picks a voice, /speak voice lists them' })
 
     return next(e)
   })
 
   on('command.run', { command: 'speak' }, async ($, e) => {
     const arg = String((e as any).args ?? (e as any).arguments ?? '').trim()
-    const ran = await $.process.run(['python3', SPEAK, ...(arg ? ['--volume', arg] : ['--toggle'])])
+    const isVoice = arg !== '' && !/^\d+$/.test(arg)
+    const ran = await $.process.run(['python3', SPEAK, ...(isVoice ? ['--voice', ...arg.replace(/^voice\b/i, '').trim().split(/\s+/).filter(Boolean)] : arg ? ['--volume', arg] : ['--toggle'])])
 
-    return { text: `Spoken replies: ${ran.stdout.trim() || 'toggled'}.` }
+    return { text: isVoice ? ran.stdout.trim() : `Spoken replies: ${ran.stdout.trim() || 'toggled'}.` }
   }).catch(() => ({ text: 'Could not toggle spoken replies.' }))
 
   on('turn.complete', async ($, e, next) => {

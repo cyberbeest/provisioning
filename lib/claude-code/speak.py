@@ -4,7 +4,7 @@
 Speaks the <spoken>...</spoken> tag if present, else the first sentences.
 Detaches itself so the caller returns at once; a new call stops the old one.
 """
-import os, re, signal, struct, subprocess, sys, threading, time
+import glob, os, re, signal, struct, subprocess, sys, threading, time
 
 HOME = os.path.expanduser("~/.local/share/claude-tts")
 PIDFILE = os.path.join(HOME, "speaking.pid")
@@ -97,8 +97,38 @@ def voice_for(text):
     words = re.findall(r"[a-zäöüß]+", text.lower())
     de = sum(w in GERMAN_HINTS for w in words)
     if re.search(r"[äöüß]", text.lower()) and de >= 1 or de >= max(3, len(words) // 8):
-        return "de_DE-thorsten-medium"
-    return "en_GB-alan-medium"
+        return chosen_voice("de", "de_DE-thorsten-medium")
+    return chosen_voice("en", "en_GB-alan-medium")
+
+
+def installed_voices():
+    return sorted(os.path.basename(f)[:-5] for f in glob.glob(os.path.join(HOME, "*.onnx")))
+
+
+def chosen_voice(lang, default):
+    """The voice picked with /speak voice for this language, if it is still installed."""
+    try:
+        name = open(os.path.join(HOME, "voice_" + lang)).read().strip()
+    except OSError:
+        return default
+    return name if name in installed_voices() else default
+
+
+def set_voice(query):
+    """Lists the installed voices, or picks one by short name (alan, ryan, thorsten...)."""
+    voices = installed_voices()
+    lang_of = lambda v: v[:2]
+    short = lambda v: v.split("-")[1]
+    if not query:
+        for lang, default in (("en", "en_GB-alan-medium"), ("de", "de_DE-thorsten-medium")):
+            now = chosen_voice(lang, default)
+            print(f"{lang}: " + ", ".join(short(v) + (" (current)" if v == now else "") for v in voices if lang_of(v) == lang))
+        return
+    hits = [v for v in voices if short(v) == query.lower()] or [v for v in voices if query.lower() in v.lower()]
+    if len(hits) != 1:
+        print(f"unknown voice '{query}'; try /speak voice"); return
+    open(os.path.join(HOME, "voice_" + lang_of(hits[0])), "w").write(hits[0])
+    print(f"{lang_of(hits[0])} voice {short(hits[0])}")
 
 
 SENTENCE_SPLIT = re.compile(r"(?<=[.!?:])\s+")
@@ -236,6 +266,10 @@ def main():
         except (IndexError, ValueError):
             print("usage: --volume 0-100"); return
         open(VOLFILE, "w").write(str(pct)); print(f"volume {pct}%")
+        return
+    if "--voice" in sys.argv:
+        i = sys.argv.index("--voice")
+        set_voice(" ".join(sys.argv[i + 1:]).strip())
         return
     if "--toggle" in sys.argv:
         if os.path.exists(MUTE):
