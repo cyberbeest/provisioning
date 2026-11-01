@@ -65,7 +65,7 @@ case " $* " in
 *" -quit "*) ;;
 *" -autostart "*)
 	if [ -e "$AUTOSTART_FILE" ]; then
-		notify_choice 2500 "$T_NOTE" "$T_NOTE_NO" disable_autostart
+		notify_choice 5000 "$T_NOTE" "$T_NOTE_NO" disable_autostart
 	fi
 	;;
 *)
