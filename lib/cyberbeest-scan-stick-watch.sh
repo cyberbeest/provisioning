@@ -17,19 +17,32 @@ LABEL="Cyberbeest Combined"
 HELPER="${CB_SCAN_STICK_HELPER:-/usr/local/lib/cyberbeest/cyberbeest-scan-stick-helper.sh}"
 export DISPLAY="${DISPLAY:-:0}"
 
+# The question dialog's pid, per device, so unplugging the stick can close it
+# (offer runs in a background subshell the main loop can't see into).
+PID_DIR="${XDG_RUNTIME_DIR:-/tmp}/cyberbeest-scan-stick-watch"
+mkdir -p "$PID_DIR"
+
+# zenity's --text is Pango markup: escape what the translated text may contain.
+markup_escape() { local s="$1"; s="${s//&/&amp;}"; s="${s//</&lt;}"; echo "${s//>/&gt;}"; }
+
 offer() {
-	local dev="$1" ro text
+	local dev="$1" ro text pidf="$PID_DIR/${1##*/}.pid"
 	ro="$(cat "/sys/block/${dev#/dev/}/ro" 2>/dev/null || echo 0)"
-	text="$(t scan_stick.question)"
-	# A read-only stick is what makes "the stick stays clean" true; say so if
-	# the write-protect switch is off, but don't block -- the scan still works.
+	text="$(markup_escape "$(t scan_stick.question)")"
+	# A read-only stick is what makes "the stick stays clean" true; say so (in
+	# bold) if the write-protect switch is off, but don't block -- the scan
+	# still works.
 	[ "$ro" = 1 ] || text="$text
 
-$(t scan_stick.unprotected)"
+<b>$(markup_escape "$(t scan_stick.unprotected)")</b>"
 
 	zenity --question --title="$(t scan_stick.title)" --width=420 \
 		--ok-label="$(t scan_stick.ok)" --cancel-label="$(t scan_stick.cancel)" \
-		--text="$text" || return 0
+		--text="$text" &
+	echo $! >"$pidf"
+	wait $!; local qrc=$?
+	rm -f "$pidf"
+	[ "$qrc" -eq 0 ] || return 0   # cancelled, or closed because the stick was unplugged
 
 	local out rc
 	zenity --progress --pulsate --no-cancel --auto-close --title="$(t scan_stick.title)" \
@@ -51,6 +64,8 @@ flush() {
 	local dev="${P[DEVNAME]:-}" action="${P[ACTION]:-}"
 	if [ -n "$dev" ] && [ "$action" = remove ]; then
 		unset "SEEN[$dev]"
+		local pidf="$PID_DIR/${dev##*/}.pid"
+		[ -f "$pidf" ] && kill "$(cat "$pidf")" 2>/dev/null
 	elif [ -n "$dev" ] && [ "${P[DEVTYPE]:-}" = disk ] && [ "${P[ID_FS_TYPE]:-}" = iso9660 ] \
 		&& [ "${P[ID_FS_LABEL]:-}" = "${LABEL// /_}" ] && [ -z "${SEEN[$dev]:-}" ]; then
 		SEEN[$dev]=1
