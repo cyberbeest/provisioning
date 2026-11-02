@@ -326,6 +326,61 @@ cat >"$CHROOT/etc/sudoers.d/cyberbeest-stick-scan" <<'EOF2'
 EOF2
 chmod 440 "$CHROOT/etc/sudoers.d/cyberbeest-stick-scan"
 
+# The scan boot gets a minimal X session -- a window manager and the scan window, nothing else --
+# instead of the full XFCE desktop. On the reference laptop the XFCE session quit about 8 s
+# after autologin (LightDM then showed its login screen, 2026-11-02), and the scan needs none
+# of the desktop anyway: no panel, Welcome tour or background watchers. A one-shot service
+# picks it for LightDM's autologin only when the kernel command line has "cyberbeest-scan";
+# a plain live boot keeps the XFCE desktop.
+install -d "$CHROOT/usr/share/xsessions" "$CHROOT/etc/lightdm/lightdm.conf.d"
+cat >"$CHROOT/usr/local/lib/cyberbeest/cyberbeest-scan-session" <<'EOF3'
+#!/bin/sh
+# Minimal X session for the boot-stick scan: a window manager and the scan window.
+exec dbus-run-session -- /bin/sh -c '
+	xsetroot -solid "#000000" 2>/dev/null
+	xfwm4 --compositor=off >/dev/null 2>&1 &
+	sleep 1
+	exec /usr/local/lib/cyberbeest/cyberbeest-stick-scan-launch.sh
+'
+EOF3
+chmod 755 "$CHROOT/usr/local/lib/cyberbeest/cyberbeest-scan-session"
+cat >"$CHROOT/usr/share/xsessions/cyberbeest-scan.desktop" <<'EOF3'
+[Desktop Entry]
+Name=Cyberbeest scan
+Exec=/usr/local/lib/cyberbeest/cyberbeest-scan-session
+Type=Application
+EOF3
+cat >"$CHROOT/etc/systemd/system/cyberbeest-scan-session-select.service" <<'EOF3'
+[Unit]
+Description=Use the minimal scan session for the boot stick's scan entry
+ConditionKernelCommandLine=cyberbeest-scan
+After=live-config.service
+Before=display-manager.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c 'printf "[Seat:*]\nautologin-session=cyberbeest-scan\n" > /etc/lightdm/lightdm.conf.d/99-cyberbeest-scan-session.conf'
+
+[Install]
+WantedBy=multi-user.target
+EOF3
+install -d "$CHROOT/etc/systemd/system/multi-user.target.wants"
+ln -sf ../cyberbeest-scan-session-select.service \
+	"$CHROOT/etc/systemd/system/multi-user.target.wants/cyberbeest-scan-session-select.service"
+
+# Tap-to-click for the touchpad (the image is provisioned in a VM, where the provisioning step
+# 00a-touchpad-tap-global.sh has no touchpad to tune). Same file that step writes.
+install -d "$CHROOT/etc/X11/xorg.conf.d"
+cat >"$CHROOT/etc/X11/xorg.conf.d/90-touchpad-tap.conf" <<'EOF3'
+Section "InputClass"
+    Identifier "libinput touchpad tap-to-click"
+    MatchIsTouchpad "on"
+    MatchDevicePath "/dev/input/event*"
+    Driver "libinput"
+    Option "Tapping" "on"
+EndSection
+EOF3
+
 echo "--- Installing live-boot/live-config into the copied system ---"
 # The source machine is a normal installed system, so it has no reason to
 # already have these -- without them the squashfs boots but never mounts

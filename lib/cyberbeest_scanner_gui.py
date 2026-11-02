@@ -27,8 +27,9 @@ import time
 
 import gi
 
+gi.require_version("Gdk", "3.0")
 gi.require_version("Gtk", "3.0")
-from gi.repository import GLib, Gtk, Pango
+from gi.repository import Gdk, GLib, Gtk, Pango
 
 sys.path.insert(0, os.path.expanduser("~/.local/lib/cyberbeest-scanner"))
 sys.path.insert(0, "/usr/local/lib/cyberbeest")
@@ -99,6 +100,49 @@ def find_last_report():
 def parse_report_start_time(path):
     m = REPORT_NAME_RE.search(os.path.basename(path))
     return datetime.datetime.strptime(m.group(1) + m.group(2), "%Y%m%d%H%M%S")
+
+
+# Keyboard layouts offered in the unlock dialog: (label, setxkbmap layout, variant). The boot
+# stick comes up with whatever layout its image has, which on a German keyboard can silently
+# turn a correctly typed master password into a wrong one.
+KEYBOARD_LAYOUTS = [
+    ("English (US)", "us", ""),
+    ("English (UK)", "gb", ""),
+    ("Deutsch", "de", ""),
+    ("Deutsch (Schweiz)", "ch", "de"),
+    ("Fran\u00e7ais", "fr", ""),
+    ("Espa\u00f1ol", "es", ""),
+    ("Italiano", "it", ""),
+    ("Portugu\u00eas", "pt", ""),
+    ("Nederlands", "us", "intl"),
+    ("Svenska", "se", ""),
+    ("Dansk", "dk", ""),
+    ("Norsk", "no", ""),
+    ("Suomi", "fi", ""),
+    ("Polski", "pl", ""),
+    ("\u010ce\u0161tina", "cz", ""),
+    ("T\u00fcrk\u00e7e", "tr", ""),
+]
+
+
+def current_keyboard_layout():
+    """The X keyboard layout in effect now, e.g. ("de", "nodeadkeys"); None if unknown."""
+    try:
+        out = subprocess.run(["setxkbmap", "-query"], capture_output=True, text=True).stdout
+    except OSError:
+        return None
+    fields = dict(l.split(":", 1) for l in out.splitlines() if ":" in l)
+    layout = fields.get("layout", "").strip().split(",")[0]
+    variant = fields.get("variant", "").strip().split(",")[0]
+    return (layout, variant) if layout else None
+
+
+def apply_keyboard_layout(layout, variant):
+    cmd = ["setxkbmap", layout] + (["-variant", variant] if variant else [])
+    try:
+        subprocess.run(cmd, check=False)
+    except OSError:
+        pass
 
 
 class PhaseRow(Gtk.ListBoxRow):
@@ -369,7 +413,34 @@ class ScannerWindow(Gtk.Window):
         entry.set_visibility(False)
         entry.set_activates_default(True)
         box.pack_start(entry, False, False, 0)
+
+        show = Gtk.CheckButton(label="Show password")
+        show.connect("toggled", lambda b: entry.set_visibility(b.get_active()))
+        box.pack_start(show, False, False, 0)
+
+        layouts = list(KEYBOARD_LAYOUTS)
+        now = current_keyboard_layout()
+        if now and not any((l, v) == now for _n, l, v in layouts):
+            layouts.insert(0, (f"{now[0]}{'-' + now[1] if now[1] else ''} (current)", now[0], now[1]))
+        kb_row = Gtk.Box(spacing=8)
+        kb_row.pack_start(Gtk.Label(label="Keyboard:"), False, False, 0)
+        kb_combo = Gtk.ComboBoxText()
+        for name, _l, _v in layouts:
+            kb_combo.append_text(name)
+        kb_combo.set_active(next((i for i, (_n, l, v) in enumerate(layouts) if (l, v) == now), 0)
+                            if now else 0)
+        kb_combo.set_can_focus(False)
+        kb_combo.connect("changed", lambda c: apply_keyboard_layout(*layouts[c.get_active()][1:]))
+        kb_row.pack_start(kb_combo, True, True, 0)
+        box.pack_start(kb_row, False, False, 0)
+
         dialog.show_all()
+        # Put the cursor in the password field. In the stick's bare session the window manager
+        # does not always hand focus to a new dialog by itself, so ask for it explicitly.
+        entry.grab_focus()
+        dialog.present()
+        GLib.idle_add(lambda: (dialog.get_window().focus(Gdk.CURRENT_TIME)
+                               if dialog.get_window() else None) and False)
         response = dialog.run()
         passphrase = entry.get_text()
         index = combo.get_active() if combo else 0
