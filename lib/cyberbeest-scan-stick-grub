@@ -12,8 +12,11 @@ menuentry 'Scan this computer from the Cyberbeest stick' --id cyberbeest-scan-st
 	if search --no-floppy --label 'Cyberbeest Combined' --set=root; then
 		configfile /boot/grub/scan.cfg
 	else
-		echo 'Cyberbeest stick not found - starting normally.'
-		sleep 3
+		# GRUB only sees disks the firmware has already set up (it has no xHCI
+		# driver of its own); show what it can see so a photo of the screen tells why.
+		echo 'Cyberbeest stick not found - starting normally. Devices GRUB can see:'
+		ls -l
+		sleep 10
 	fi
 }
 GRUBEOF
