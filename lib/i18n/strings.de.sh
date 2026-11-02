@@ -213,7 +213,7 @@ Claude Code, deine Einstellungen, alle gespeicherten Gespräche und der ganze Or
 
 Jetzt neu starten und diesen Computer vom Stick aus auf Schadsoftware prüfen? Die Festplatte wird nur lesend geöffnet; nichts darauf wird verändert. Speichere vorher deine Arbeit."
 	[scan_stick.unprotected]="Hinweis: Der Schreibschutz-Schalter des Sticks ist aus. Die Prüfung funktioniert trotzdem, schiebe den Schalter aber auf \"gesperrt\", damit der Stick nie verändert werden kann."
-	[scan_stick.boot_order]="Achtung: Dieser Computer startet zuerst von der internen Festplatte und wird deshalb nach dem Neustart nicht von selbst vom Stick starten. Wähle den Stick beim Einschalten im Startmenü aus oder stelle in den Firmware-Einstellungen USB an die erste Stelle."
+	[scan_stick.boot_order]="Achtung: Dieser Computer startet zuerst von der internen Festplatte und wird deshalb nicht vom Stick starten. Ändern Sie die Startreihenfolge im BIOS so, dass USB an erster Stelle steht."
 	[scan_stick.ok]="Neu starten und prüfen"
 	[scan_stick.cancel]="Jetzt nicht"
 	[scan_stick.checking]="Der Stick wird überprüft ..."

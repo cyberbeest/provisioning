@@ -211,7 +211,7 @@ Claude Code, your settings, all saved conversations and the whole ~/claude folde
 
 Restart now and check this computer for malware from the stick? The computer's disk is opened read-only; nothing on it is changed. Save your work first."
 	[scan_stick.unprotected]="Note: the stick's write-protect switch is off. The scan works, but flip the switch to \"locked\" so the stick can never be changed."
-	[scan_stick.boot_order]="Warning: this computer is set to start from its internal disk first, so after the restart it will not start from the stick by itself. Choose the stick in the boot menu while the computer starts, or put USB first in the firmware settings."
+	[scan_stick.boot_order]="Warning: this computer starts from its internal disk first, so it will not start from the stick. Change the boot order in the BIOS so that USB comes first."
 	[scan_stick.ok]="Restart and scan"
 	[scan_stick.cancel]="Not now"
 	[scan_stick.checking]="Checking the stick..."
