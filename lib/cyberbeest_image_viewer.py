@@ -973,6 +973,68 @@ def favorites_list():
         return []
 
 
+class LoadSpinner(Gtk.DrawingArea):
+    """Arrows chasing each other around a circle, drawn while GIF frames load."""
+
+    SIZE = 34
+    ARROWS = 3
+
+    def __init__(self):
+        super().__init__()
+        self.set_size_request(self.SIZE, self.SIZE)
+        self.angle = 0.0
+        self.tick_id = None
+        self.connect("draw", self.on_draw)
+
+    def start(self):
+        if self.tick_id is None:
+            self.last = time.monotonic()
+            self.tick_id = self.add_tick_callback(self._tick)
+        self.show()
+
+    def stop(self):
+        if self.tick_id is not None:
+            self.remove_tick_callback(self.tick_id)
+            self.tick_id = None
+        self.hide()
+
+    def _tick(self, _w, _clock):
+        now = time.monotonic()
+        self.angle = (self.angle + (now - self.last) * 2 * math.pi * 0.9) % (2 * math.pi)
+        self.last = now
+        self.queue_draw()
+        return GLib.SOURCE_CONTINUE
+
+    def on_draw(self, _w, cr):
+        s = self.SIZE
+        cx = cy = s / 2
+        r = s / 2 - 6
+        # Dark disc so the arrows read on any image.
+        cr.arc(cx, cy, s / 2 - 1, 0, 2 * math.pi)
+        cr.set_source_rgba(0, 0, 0, 0.55)
+        cr.fill()
+        cr.set_source_rgba(1, 1, 1, 0.95)
+        cr.set_line_width(2.2)
+        cr.set_line_cap(1)  # round
+        seg = 2 * math.pi / self.ARROWS
+        for i in range(self.ARROWS):
+            a0 = self.angle + i * seg
+            a1 = a0 + seg * 0.6
+            cr.new_path()
+            cr.arc(cx, cy, r, a0, a1)
+            cr.stroke()
+            # Arrowhead at the leading end, pointing along the motion.
+            tx, ty = cx + r * math.cos(a1), cy + r * math.sin(a1)
+            dx, dy = -math.sin(a1), math.cos(a1)
+            nx, ny = math.cos(a1), math.sin(a1)
+            cr.move_to(tx + dx * 4, ty + dy * 4)
+            cr.line_to(tx - dx * 1 + nx * 3.5, ty - dy * 1 + ny * 3.5)
+            cr.line_to(tx - dx * 1 - nx * 3.5, ty - dy * 1 - ny * 3.5)
+            cr.close_path()
+            cr.fill()
+        return False
+
+
 TOOLTIP_TIMEOUT_MS = 1500
 TOOLTIP_REST_MS = 400
 
@@ -1374,6 +1436,15 @@ class ImageViewerWindow(Gtk.Window):
         self.exit_fullscreen_button.set_no_show_all(True)
         overlay.add_overlay(self.exit_fullscreen_button)
 
+        self.load_spinner = LoadSpinner()
+        self.load_spinner.set_halign(Gtk.Align.END)
+        self.load_spinner.set_valign(Gtk.Align.START)
+        self.load_spinner.set_margin_top(44)
+        self.load_spinner.set_margin_end(22)
+        self.load_spinner.set_no_show_all(True)
+        overlay.add_overlay(self.load_spinner)
+        overlay.set_overlay_pass_through(self.load_spinner, True)
+
         self.image_widget = None
         self.set_zoom_size = None
         self.set_frames = None
@@ -1387,6 +1458,7 @@ class ImageViewerWindow(Gtk.Window):
         self.drag_state = None
         self._last_nav_time = 0
         self.frames = None
+        self._gif_loading = False
         self.set_bar_collapsed(os.path.exists(BAR_COLLAPSED_FILE), remember=False)
         self.load_image(path, set_initial_size=True)
 
@@ -1710,11 +1782,21 @@ class ImageViewerWindow(Gtk.Window):
     def _set_title_and_tooltip(self, path):
         filename = path.rsplit("/", 1)[-1]
         title_stem = filename.rsplit(".", 1)[0] if "." in filename else filename
-        self.set_title(f"{title_stem} - Cyberbeest Images")
+        folder = os.path.basename(os.path.dirname(os.path.abspath(path)))
+        where = f" in {folder}" if folder else ""
+        self.set_title(f"{title_stem}{where} - Cyberbeest Images")
         native_w, native_h = self.native_size
         self._tooltip_text = (
             f"{path}\n{native_w} × {native_h}\n{human_file_size(os.path.getsize(path))}"
         )
+        if self.frames and len(self.frames) > 1 and not self._gif_loading:
+            durations = [d for _f, d in self.frames]
+            fps = 1000 * len(durations) / sum(durations)
+            fps_text = f"{fps:.1f}".rstrip("0").rstrip(".")
+            uneven = len(set(durations)) > 1
+            self._tooltip_text += (
+                f"\n{len(durations)} frames, " + (f"average {fps_text} fps" if uneven else f"{fps_text} fps")
+            )
 
     def _show_tooltip(self):
         if not getattr(self.image_widget, "_tooltip_hooked", False):
@@ -1827,11 +1909,12 @@ class ImageViewerWindow(Gtk.Window):
         if entry is not None:
             _key, frames, native_size, _nbytes, partial = entry
         else:
-            frames, native_size = load_frames(path)
+            frames, native_size, partial = load_prefetch(path)
         # A GIF shown from its preloaded first frame gets its animation right after.
         if self.frames and self.shown_path and self.shown_path != path and os.path.exists(self.shown_path) and len(self.frames) == 1:
             self.prefetcher.keep(self.shown_path, self.frames, self.native_size)
         self.shown_path = path
+        self._gif_loading = bool(partial)
         target_w, target_h = target_display_size(native_size)
         self.frames = frames
         self.native_size = native_size
@@ -1893,19 +1976,40 @@ class ImageViewerWindow(Gtk.Window):
         # whatever zoom level was left over from the previous one.
         self.zoom_mode = "fit"
         self._apply_fit(self.scroller.get_allocation())
+        self._gif_loading = bool(partial)
         if partial:
-            GLib.idle_add(self._load_full_animation, path)
+            self._start_full_animation_load(path)
+        else:
+            self.load_spinner.stop()
         self._schedule_prefetch()
 
-    def _load_full_animation(self, path):
-        if self.shown_path == path and self.frames is not None:
-            frames, _size = load_frames(path)
+    def _start_full_animation_load(self, path):
+        self.load_spinner.set_margin_top(6 if not self.expand_button.get_visible() else 44)
+        self.load_spinner.set_margin_end(22 if self.expand_button.get_visible() else 18)
+        self.load_spinner.start()
+
+        def work():
+            try:
+                frames, _size = load_frames(path)
+            except Exception:
+                frames = None
+            GLib.idle_add(self._load_full_animation, path, frames)
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _load_full_animation(self, path, frames=None):
+        if self.shown_path != path:
+            return False  # a newer image owns the spinner now
+        self._gif_loading = False
+        self.load_spinner.stop()
+        if frames is not None and self.frames is not None:
             self.frames = frames
             self.set_frames(frames)
             # The widget re-renders its frames at the current size.
             self._last_fit_size = None
             self._apply_fit(self.scroller.get_allocation())
             self.copy_frame_item.set_sensitive(len(frames) > 1)
+            self._set_title_and_tooltip(path)
         return False
 
     def _schedule_prefetch(self):
