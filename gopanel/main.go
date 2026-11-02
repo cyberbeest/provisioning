@@ -32,7 +32,7 @@ import (
 	"gopanel/proto"
 )
 
-const version = "0.23.8"
+const version = "0.23.9"
 
 // startupQuiet is how long after launch new icons appear without a glow: the panel is still
 // filling up then.
@@ -243,6 +243,18 @@ func main() {
 		}
 	}
 	draw := func(it *item) {
+		if swapped { // it.x/it.w are a replica's right now: the main panel repaints after the swap is undone
+			if activeRep != nil {
+				activeRep.drawItem(it, true)
+			}
+			deferMainDraw(it)
+			for _, r := range replicas {
+				if r != activeRep {
+					r.drawItem(it, true)
+				}
+			}
+			return
+		}
 		drawTo(it, true)
 		drawReplicas(it)
 	}

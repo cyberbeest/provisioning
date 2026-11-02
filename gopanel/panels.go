@@ -3,6 +3,7 @@ package main
 import (
 	"image"
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -45,6 +46,7 @@ var (
 	activeRep       *replica // the replica whose event is being handled, else nil
 	swapped         bool     // inside withReplica: relayouts wait until the swap is undone
 	pendingRelayout bool
+	pendingDraws    []*item // items to repaint on the main panel once withReplica has restored their x/w
 	panelGCs        struct {
 		c    *xgb.Conn
 		scr  *xproto.ScreenInfo
@@ -399,10 +401,25 @@ func withReplica(r *replica, fn func()) {
 			}
 		}
 	}
+	if ds := pendingDraws; len(ds) > 0 {
+		pendingDraws = nil
+		for _, it := range ds {
+			if drawItem != nil {
+				drawItem(it)
+			}
+		}
+	}
 	if pendingRelayout {
 		pendingRelayout = false
 		if reflow != nil {
 			reflow()
 		}
+	}
+}
+
+// deferMainDraw queues a main-panel repaint of it for the end of withReplica.
+func deferMainDraw(it *item) {
+	if !slices.Contains(pendingDraws, it) {
+		pendingDraws = append(pendingDraws, it)
 	}
 }
