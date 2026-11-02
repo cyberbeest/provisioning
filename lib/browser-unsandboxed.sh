@@ -64,11 +64,11 @@ de*)
 	T_CLOSE_TITLE="Browser läuft bereits"
 	T_CLOSE_TEXT="Bitte zuerst den Browser schließen, dann diese Funktion erneut starten."
 	T_ASK_TITLE="Browser ohne Schutz starten?"
-	T_ASK_TEXT="Der Browser läuft dann ohne seine Schutzumgebung (Sandbox). Webseiten haben mehr Möglichkeiten, auf Ihren Computer zuzugreifen.\n\nNur für vertrauenswürdige Seiten verwenden, etwa für eine Anmeldung. Sobald Sie den Browser schließen, ist der Schutz wieder aktiv."
+	T_ASK_TEXT="Der Browser läuft dann ohne seine Schutzumgebung (Sandbox). Webseiten haben mehr Möglichkeiten, auf deinen Computer zuzugreifen.\n\nNur für vertrauenswürdige Seiten verwenden, etwa für eine Anmeldung. Sobald du den Browser schließt, ist der Schutz wieder aktiv."
 	T_START="Ohne Schutz starten"
 	T_CANCEL="Abbrechen"
 	T_BANNER_TITLE="Firefox ohne Schutz"
-	T_BANNER_TEXT="Die rote Werkzeugleiste zeigt: Der Browser läuft ohne Schutzumgebung. Schließen Sie ihn, um den Schutz wieder zu aktivieren."
+	T_BANNER_TEXT="Die rote Werkzeugleiste zeigt: Der Browser läuft ohne Schutzumgebung. Schließe ihn, um den Schutz wieder zu aktivieren."
 	;;
 *)
 	T_CLOSE_TITLE="Browser is already running"

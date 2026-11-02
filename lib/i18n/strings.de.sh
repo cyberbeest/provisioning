@@ -211,8 +211,9 @@ Claude Code, deine Einstellungen, alle gespeicherten Gespräche und der ganze Or
 	[scan_stick.title]="Cyberbeest-Virenprüfung"
 	[scan_stick.question]="Ein Cyberbeest-Prüfstick wurde eingesteckt.
 
-Jetzt neu starten und diesen Computer vom Stick aus auf Schadsoftware prüfen? Die Festplatte wird nur lesend geöffnet; nichts darauf wird verändert. Speichern Sie vorher Ihre Arbeit."
-	[scan_stick.unprotected]="Hinweis: Der Schreibschutz-Schalter des Sticks ist aus. Die Prüfung funktioniert trotzdem, schieben Sie den Schalter aber auf \"gesperrt\", damit der Stick nie verändert werden kann."
+Jetzt neu starten und diesen Computer vom Stick aus auf Schadsoftware prüfen? Die Festplatte wird nur lesend geöffnet; nichts darauf wird verändert. Speichere vorher deine Arbeit."
+	[scan_stick.unprotected]="Hinweis: Der Schreibschutz-Schalter des Sticks ist aus. Die Prüfung funktioniert trotzdem, schiebe den Schalter aber auf \"gesperrt\", damit der Stick nie verändert werden kann."
+	[scan_stick.boot_order]="Achtung: Dieser Computer startet zuerst von der internen Festplatte und wird deshalb nach dem Neustart nicht von selbst vom Stick starten. Wähle den Stick beim Einschalten im Startmenü aus oder stelle in den Firmware-Einstellungen USB an die erste Stelle."
 	[scan_stick.ok]="Neu starten und prüfen"
 	[scan_stick.cancel]="Jetzt nicht"
 	[scan_stick.checking]="Der Stick wird überprüft ..."
