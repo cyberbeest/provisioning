@@ -289,7 +289,12 @@ def active_window():
 
 
 def active_window_center():
-    """(x, y) of the centre of the focused window, or None if it cannot be told."""
+    """(x, y) of the centre of the Go menu while it is open, else of the focused window; None if it cannot be told."""
+    try:
+        x, y = _gopanel_ask("whisker-pos").split()
+        return int(x), int(y)
+    except ValueError:
+        pass
     wid = active_window()
     if not wid:
         return None

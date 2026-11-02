@@ -64,6 +64,12 @@ func ctlServer(cmds chan<- string) {
 			} else {
 				fmt.Fprintln(conn, "closed")
 			}
+		case "whisker-pos":
+			if v, ok := whiskerCenter.Load().(string); ok && whiskerOpen.Load() {
+				fmt.Fprintln(conn, v)
+			} else {
+				fmt.Fprintln(conn, "closed")
+			}
 		case "items": // read-only layout snapshot (one JSON line)
 			reply := make(chan string, 1)
 			select {

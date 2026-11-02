@@ -395,6 +395,7 @@ func (w *whisker) open(anchorX int) {
 	xproto.MapWindow(w.c, wid)
 	w.win, w.isOpen = wid, true
 	whiskerOpen.Store(true)
+	whiskerCenter.Store(fmt.Sprintf("%d %d", w.x+whW/2, w.y+whH/2))
 	w.back, _ = xproto.NewPixmapId(w.c)
 	xproto.CreatePixmap(w.c, w.scr.RootDepth, w.back, xproto.Drawable(wid), whW, whH)
 	w.superArmed, w.superRel = !w.superHeld(), 0
@@ -411,6 +412,9 @@ func (w *whisker) grabKeyboard() {
 
 // whiskerOpen tells the control socket ("whisker?") whether the menu is up: Dictate then types into its search box.
 var whiskerOpen atomic.Bool
+
+// whiskerCenter is the middle of the open menu ("x y"), for the control socket's "whisker-pos": Dictate puts its popup on the same monitor.
+var whiskerCenter atomic.Value
 
 // loadKeymap reads the keyboard mapping of n keycodes; also after a MappingNotify, since xdotool
 // remaps a spare keycode to type characters the layout lacks (umlauts).
