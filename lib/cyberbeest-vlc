@@ -1,16 +1,33 @@
 #!/bin/bash
-# Starts VLC in its Firejail jail and, while it runs, strips the colons VLC puts
-# into snapshot names (still-<video>-00:01:23-<date>.png -> ...-000123-...),
-# because Windows and FAT/exFAT sticks can't hold such files.
+# Starts VLC in its Firejail jail and, while it runs, tidies snapshot names:
+#   still-<video name.mp4>-00:01:23-2026-11-03-00h12m34s.png -> still-<video name>-000123.png
+# (no extension, no [id] tail, shortened, no colons or other characters Windows
+# and FAT/exFAT sticks can't hold). Names that don't match are left alone.
 SNAPDIR="$HOME/Pictures/vlc-snapshots"
+MAXLEN=60
+RE='^still-(.*)-([0-9]{2}):([0-9]{2}):([0-9]{2})-[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{2}h[0-9]{2}m[0-9]{2}s(-[0-9]+)?\.([A-Za-z]+)$'
+
+tidy() {
+    local f="$1" base title new n=1
+    base="${f##*/}"
+    [[ $base =~ $RE ]] || return 0
+    title="${BASH_REMATCH[1]}"
+    title="${title%.[A-Za-z0-9][A-Za-z0-9][A-Za-z0-9]}"       # .mp4 .mkv
+    title="${title%.[A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9]}"   # .webm
+    title="$(sed -E 's/[[:space:]]*[[[(][^])]*[])]$//; s/[<>:"|?*\\]//g' <<<"$title")"
+    title="${title:0:$MAXLEN}"
+    title="$(sed -E 's/[[:space:]._-]+$//' <<<"$title")"
+    new="still-${title}-${BASH_REMATCH[2]}${BASH_REMATCH[3]}${BASH_REMATCH[4]}"
+    local ext="${BASH_REMATCH[6]}" dest="$SNAPDIR/$new.${BASH_REMATCH[6]}"
+    while [ -e "$dest" ]; do n=$((n+1)); dest="$SNAPDIR/$new-$n.$ext"; done
+    mv -n -- "$f" "$dest" 2>/dev/null
+}
 
 renamer() {
     # also stops if the launcher is killed without a chance to clean up
     while kill -0 $$ 2>/dev/null && sleep 1; do
-        for f in "$SNAPDIR"/*:*; do
-            [ -e "$f" ] || continue
-            base="${f##*/}"
-            mv -n -- "$f" "$SNAPDIR/${base//:/}" 2>/dev/null
+        for f in "$SNAPDIR"/still-*.*; do
+            [ -e "$f" ] && tidy "$f"
         done
     done
 }

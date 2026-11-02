@@ -60,7 +60,7 @@ else
     echo "snapshot-path=$SNAPDIR" >> "$VLCRC"
 fi
 
-# Snapshot names: still-<video name>-<hh:mm:ss in the video>-<date/time taken>.png
+# Snapshot names: VLC writes still-<video name>-<hh:mm:ss>-<date/time>.png; the launcher (lib/cyberbeest-vlc) tidies them
 if grep -q '^snapshot-prefix=' "$VLCRC"; then
     sed -i 's|^snapshot-prefix=.*|snapshot-prefix=still-$N-$T-|' "$VLCRC"
 elif grep -q '^#snapshot-prefix=' "$VLCRC"; then
