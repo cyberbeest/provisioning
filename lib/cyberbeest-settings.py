@@ -480,6 +480,7 @@ RC_INFO = {
             "FPS": _FPS,
             "ShowPercent": "Show percentage inside the tank",
             "CountMapped": "Count loaded mmap'd file pages as used (e.g. LLM weights)",
+            "SwapArrows": "Show an up/down arrow while memory is swapped in/out",
             "FriendlyNames": "Use plain-English names in the Top RAM tooltip list (e.g. \"window drawing\" for Xorg)",
             "DiskWarningPercent": "Warn when disk usage reaches, %:",
             "MarginColor": _MARGIN,
@@ -503,6 +504,8 @@ RC_INFO = {
     },
 }
 # longer explanations shown as tooltips
+# keys a plugin understands but whose rc file may not contain yet (shown with this value)
+RC_DEFAULTS = {"mem-liquid": {"SwapArrows": "true"}}
 RC_TIPS = {
     "CountMapped": "On (default): counts resident/loaded mmap'd pages as used, even though clean, because evicting "
     "an actively-read mapping (like a model file mmap'd by llama.cpp) causes real refault stalls. Off: matches "
@@ -535,6 +538,11 @@ class RcPage(Gtk.Box):
         # some rc files (genmon) have no [section] line; give them one for parsing, leave it out on save
         self.headerless = not text.lstrip().startswith("[")
         self.cp.read_string(("[General]\n" + text) if self.headerless else text)
+        for key, value in RC_DEFAULTS.get(kind, {}).items():
+            if not any(self.cp.has_option(sec, key) for sec in self.cp.sections()):
+                if not self.cp.sections():
+                    self.cp.add_section("General")
+                self.cp.set(self.cp.sections()[0], key, value)
 
         head = Gtk.Label(xalign=0)
         head.set_markup("<b>%s</b>" % GLib.markup_escape_text(info.get("title", os.path.basename(path))))

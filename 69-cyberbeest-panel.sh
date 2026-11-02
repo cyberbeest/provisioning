@@ -127,6 +127,8 @@ chown -h "$TARGET_USER:$TARGET_USER" "$BINDIR/gopanel"
 install -o "$TARGET_USER" -g "$TARGET_USER" -m 755 "$SRC/cyberbeest-panel-choice.sh" "$BINDIR/cyberbeest-panel-choice.sh"
 install -o "$TARGET_USER" -g "$TARGET_USER" -m 755 "$SRC/cyberbeest-whisker-key.sh" "$BINDIR/cyberbeest-whisker-key.sh"
 install -o "$TARGET_USER" -g "$TARGET_USER" -m 755 "$DIR/lib/memory-details.py" "$BINDIR/memory-details.py"
+# "Remove from panel" on genmon icons hides them via this and adds a Whisker entry to show them again
+install -o "$TARGET_USER" -g "$TARGET_USER" -m 755 "$DIR/lib/panel-icon.sh" "$BINDIR/panel-icon.sh"
 # memory-details.py resolves its i18n catalogs next to itself
 install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 "$DIR/lib/i18n.py" "$BINDIR/i18n.py"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$BINDIR/i18n"
