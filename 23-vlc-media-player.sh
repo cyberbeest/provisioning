@@ -49,6 +49,17 @@ else
     echo 'qt-continue=2' >> "$VLCRC"
 fi
 
+echo "--- Snapshot folder (the jail lets VLC write only there) ---"
+SNAPDIR="$TARGET_HOME/Pictures/vlc-snapshots"
+install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/Pictures" "$SNAPDIR"
+if grep -q '^snapshot-path=' "$VLCRC"; then
+    sed -i "s|^snapshot-path=.*|snapshot-path=$SNAPDIR|" "$VLCRC"
+elif grep -q '^#snapshot-path=' "$VLCRC"; then
+    sed -i "s|^#snapshot-path=.*|snapshot-path=$SNAPDIR|" "$VLCRC"
+else
+    echo "snapshot-path=$SNAPDIR" >> "$VLCRC"
+fi
+
 echo "--- Jailing VLC: stock firejail profile + read-only home override ---"
 # A crafted movie file can exploit a decoder; the jail keeps VLC from writing
 # anywhere except its own settings, but it can read movies from any folder
