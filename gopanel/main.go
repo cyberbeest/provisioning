@@ -1122,6 +1122,9 @@ func panelMenu(x int, cmds chan<- string, over *item) {
 	if over != nil && over.kind == "launcher" && over.lid != "" {
 		items = append([]*menuItem{{id: 20, label: tr("Remove from panel")}, {sep: true}}, items...)
 	}
+	if over != nil && over.kind == "genmon" && over.pid != "" { // undoable: panel-icon.sh adds a Whisker entry to show it again
+		items = append([]*menuItem{{id: 21, label: tr("Remove from panel")}, {sep: true}}, items...)
+	}
 	if over != nil && over.rc != "" && over.kind != "genmon" { // the plugin's own entry, like the XFCE panel's plugin menu
 		items = append([]*menuItem{{id: 10, label: propsLabel(over.title)}, {sep: true}}, items...)
 	}
@@ -1135,6 +1138,15 @@ func panelMenu(x int, cmds chan<- string, over *item) {
 			switch mi.id {
 			case 30:
 				run(exec.Command(os.ExpandEnv("$HOME/.local/bin/memory-details.py")))
+			case 21:
+				pid, title := over.pid, over.title
+				go func() {
+					bin := os.ExpandEnv("$HOME/.local/bin/panel-icon.sh")
+					if exec.Command(bin, "hide", pid, title).Run() == nil {
+						exec.Command("notify-send", "--urgency=low", "--app-name=Cyberbeest Panel", fmt.Sprintf(tr("Removed from panel: %s"), title),
+							tr("Show it again from the menu")).Run()
+					}
+				}()
 			case 20:
 				go removeLauncher(over.lid, over.lfile, over.title, cmds)
 			case 10:

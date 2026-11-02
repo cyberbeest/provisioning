@@ -22,19 +22,22 @@ import (
 )
 
 const (
-	memSampleEvery = 2 * time.Second
-	levelTimeConst = 1.4
-	tankMargin     = 0.10
-	tankCorner     = 0.16
-	waveAmp        = 0.028
-	wave1Freq      = 1.0
-	wave2Freq      = 2.3
-	wave1Speed     = 0.55
-	wave2Speed     = 0.87
-	warningLevel   = 0.80
-	warnPulseSpeed = 4.2
-	colorMidStop   = 0.75
-	minFPS, maxFPS = 1, 6
+	memSampleEvery  = 2 * time.Second
+	levelTimeConst  = 1.4
+	tankMargin      = 0.10
+	tankCorner      = 0.16
+	waveAmp         = 0.028
+	wave1Freq       = 1.0
+	wave2Freq       = 2.3
+	wave1Speed      = 0.55
+	wave2Speed      = 0.87
+	warningLevel    = 0.80
+	warnPulseSpeed  = 4.2
+	colorMidStop    = 0.75
+	minFPS, maxFPS  = 1, 6
+	arrowHold       = 5.0 // seconds an arrow stays fully lit after the last swap activity in its direction
+	arrowFade       = 1.0 // then it fades out over this long
+	swapSampleEvery = 500 * time.Millisecond
 )
 
 var (
@@ -58,12 +61,13 @@ type settings struct {
 	showPercent bool
 	enabled     bool
 	countMapped bool
+	swapArrows  bool
 	friendly    bool
 	diskWarnPct int
 }
 
 func loadSettings() settings {
-	s := settings{fps: 6, showPercent: true, enabled: true, countMapped: true, friendly: true, diskWarnPct: 80}
+	s := settings{fps: 6, showPercent: true, enabled: true, countMapped: true, swapArrows: true, friendly: true, diskWarnPct: 80}
 	home, _ := os.UserHomeDir()
 	m, _ := filepath.Glob(filepath.Join(home, ".config/xfce4/panel/mem-liquid-*.rc"))
 	if len(m) == 0 {
@@ -89,6 +93,8 @@ func loadSettings() settings {
 			s.enabled = v == "true"
 		case "CountMapped":
 			s.countMapped = v == "true"
+		case "SwapArrows":
+			s.swapArrows = v == "true"
 		case "FriendlyNames":
 			s.friendly = v == "true"
 		case "DiskWarningPercent":
@@ -143,11 +149,59 @@ type state struct {
 	level, target            float64
 	warnLevel, warnTarget    float64
 	swapFrac                 float64
+	prevOut, prevIn          uint64 // swap counters at the last sample
+	swapPagesOK              bool
+	outAt, inAt              time.Time // last time pages were swapped out / in
 	swapTotal, swapUsed      uint64
 	memTotal, memUsed        uint64
+	memUsedLo, memUsedHi     uint64 // used excluding / including mmapped file cache, ordered
 	diskFrac                 float64
 	diskTotal, diskUsed      uint64
 	phase1, phase2, animTime float64
+}
+
+// swapCounters returns the cumulative pages swapped out and in (/proc/vmstat).
+func swapCounters() (out, in uint64, ok bool) {
+	b, err := os.ReadFile("/proc/vmstat")
+	if err != nil {
+		return 0, 0, false
+	}
+	for _, ln := range strings.Split(string(b), "\n") {
+		k, v, _ := strings.Cut(ln, " ")
+		switch k {
+		case "pswpout":
+			out, _ = strconv.ParseUint(v, 10, 64)
+		case "pswpin":
+			in, _ = strconv.ParseUint(v, 10, 64)
+		}
+	}
+	return out, in, true
+}
+
+// sampleSwap lights the arrows when pages were swapped out/in since the last sample.
+func (s *state) sampleSwap() {
+	out, in, ok := swapCounters()
+	if !ok {
+		return
+	}
+	if s.swapPagesOK {
+		if out > s.prevOut {
+			s.outAt = time.Now()
+		}
+		if in > s.prevIn {
+			s.inAt = time.Now()
+		}
+	}
+	s.prevOut, s.prevIn, s.swapPagesOK = out, in, true
+}
+
+// arrowStrength is 1 while swapping in that direction is ongoing (activity within arrowHold),
+// then fades to 0 over arrowFade.
+func arrowStrength(at time.Time) float64 {
+	if at.IsZero() {
+		return 0
+	}
+	return clamp01((arrowHold + arrowFade - time.Since(at).Seconds()) / arrowFade)
 }
 
 func (s *state) sample() {
@@ -155,6 +209,8 @@ func (s *state) sample() {
 		used := usedKiB(mi, s.set.countMapped)
 		s.target = math.Min(1, float64(used)/float64(mi.total))
 		s.memTotal, s.memUsed = mi.total, used
+		a, b := usedKiB(mi, false), usedKiB(mi, true)
+		s.memUsedLo, s.memUsedHi = min(a, b), max(a, b)
 		s.warnTarget = math.Min(1, float64(usedKiB(mi, false))/float64(mi.total))
 		s.swapFrac = 0
 		if mi.swapTotal > 0 {
@@ -288,6 +344,12 @@ func (s *state) render(img *image.RGBA) {
 		fill := color.RGBA{uint8(m[0] * 255), uint8(m[1] * 255), uint8(m[2] * 255), 255}
 		drawCentered(layer, "!", th*0.85, tx+tw/2, ty+th/2, true, color.RGBA{0, 0, 0, 204}, fill, math.Max(1, th*0.035))
 	}
+	if s.set.swapArrows {
+		aw, ah := tw*0.26, th*0.40
+		// fixed slots: swapped in (memory coming back up) left, swapped out (going down to disk) right
+		drawArrow(layer, tx+tw*0.32, ty+th*0.5, aw, ah, true, arrowStrength(s.inAt))
+		drawArrow(layer, tx+tw*0.68, ty+th*0.5, aw, ah, false, arrowStrength(s.outAt))
+	}
 	for y := 0; y < b.Dy(); y++ {
 		for x := 0; x < b.Dx(); x++ {
 			lo := y*layer.Stride + x*4
@@ -305,6 +367,64 @@ func (s *state) render(img *image.RGBA) {
 				img.Pix[o+i] = byte(clamp01(v)*255 + .5)
 			}
 			img.Pix[o+3] = byte(clamp01(a+float64(img.Pix[o+3])/255*(1-a))*255 + .5)
+		}
+	}
+}
+
+// arrowIn reports whether (x,y) lies inside an arrow of width aw and height ah centred on
+// (cx,cy), pointing up or down.
+func arrowIn(x, y, cx, cy, aw, ah float64, up bool) bool {
+	x, y = x-cx, y-cy
+	if !up {
+		y = -y
+	}
+	if y < -ah/2 || y > ah/2 {
+		return false
+	}
+	if y <= 0 { // head: triangle, apex at the top
+		return math.Abs(x) <= aw/2*(y+ah/2)/(ah/2)
+	}
+	return math.Abs(x) <= aw*0.2 // stem
+}
+
+// drawArrow draws a white arrow with a dark outline into the premultiplied layer; strength
+// (0..1) scales its opacity, 0 draws nothing.
+func drawArrow(layer *image.RGBA, cx, cy, aw, ah float64, up bool, strength float64) {
+	if strength <= 0 {
+		return
+	}
+	str := math.Min(1, strength*1.5)
+	b := layer.Bounds()
+	x0, x1 := int(cx-aw/2)-2, int(cx+aw/2)+3
+	y0, y1 := int(cy-ah/2)-2, int(cy+ah/2)+3
+	cover := func(px, py float64) float64 { // 3x3 supersampled coverage of the arrow
+		n := 0
+		for i := 0; i < 3; i++ {
+			for j := 0; j < 3; j++ {
+				if arrowIn(px+(float64(i)+.5)/3-.5, py+(float64(j)+.5)/3-.5, cx, cy, aw, ah, up) {
+					n++
+				}
+			}
+		}
+		return float64(n) / 9
+	}
+	for y := y0; y < y1; y++ {
+		for x := x0; x < x1; x++ {
+			if !image.Pt(x, y).In(b) {
+				continue
+			}
+			px, py := float64(x)+.5, float64(y)+.5
+			fa := cover(px, py)
+			oa := fa
+			for _, o := range [][2]float64{{-1, 0}, {1, 0}, {0, -1}, {0, 1}, {-1, -1}, {1, -1}, {-1, 1}, {1, 1}} {
+				oa = math.Max(oa, cover(px+o[0], py+o[1]))
+			}
+			fa *= 235.0 / 255 * str
+			oa *= 160.0 / 255 * str
+			a := fa + oa*(1-fa)
+			v := byte(235*fa + .5) // outline is black: contributes alpha only
+			o := y*layer.Stride + x*4
+			layer.Pix[o], layer.Pix[o+1], layer.Pix[o+2], layer.Pix[o+3] = v, v, v, byte(a*255+.5)
 		}
 	}
 }
@@ -382,9 +502,29 @@ func readUnloadables() []unloadable {
 func (s *state) tooltip(top []procinfo.MemProc) string {
 	var b strings.Builder
 	gib := func(kib uint64) float64 { return float64(kib) / 1048576 }
-	fmt.Fprintf(&b, "RAM: %.0f%% used (%.1f / %.1f GiB)", s.target*100, gib(s.memUsed), gib(s.memTotal))
+	// Both readings are shown (excluding and including mmapped file cache), since
+	// which one counts as "used" is a constant source of confusion.
+	rng := func(lo, hi float64, f string) string {
+		l, h := fmt.Sprintf(f, lo), fmt.Sprintf(f, hi)
+		if l == h {
+			return l
+		}
+		return l + "-" + h
+	}
+	memTotalF := float64(max(s.memTotal, 1))
+	fmt.Fprintf(&b, "RAM: %s%% used (%s / %.1f GiB)",
+		rng(float64(s.memUsedLo)/memTotalF*100, float64(s.memUsedHi)/memTotalF*100, "%.0f"),
+		rng(gib(s.memUsedLo), gib(s.memUsedHi), "%.1f"), gib(s.memTotal))
 	if s.swapTotal > 0 {
 		fmt.Fprintf(&b, "\nSwap: %.0f%% used (%.1f / %.1f GiB)", s.swapFrac*100, gib(s.swapUsed), gib(s.swapTotal))
+		if s.set.swapArrows { // the same condition that shows the arrows
+			if arrowStrength(s.outAt) > 0 {
+				b.WriteString("\nSwapping out")
+			}
+			if arrowStrength(s.inAt) > 0 {
+				b.WriteString("\nSwapping in")
+			}
+		}
 	}
 	if s.diskTotal > 0 {
 		fmt.Fprintf(&b, "\nDisk: %.0f%% used (%.1f / %.1f GiB)", s.diskFrac*100, float64(s.diskUsed)/1073741824, float64(s.diskTotal)/1073741824)
@@ -472,13 +612,18 @@ func run(c *proto.Client) {
 
 	sampleT := time.NewTicker(memSampleEvery)
 	defer sampleT.Stop()
+	swapT := time.NewTicker(swapSampleEvery)
+	defer swapT.Stop()
 	tickT := time.NewTicker(time.Second / time.Duration(s.set.fps))
 	defer tickT.Stop()
 	paused, last := false, time.Now()
 	for {
-		var tickC <-chan time.Time
+		var tickC, swapC <-chan time.Time
 		if s.set.enabled && !paused {
 			tickC = tickT.C
+		}
+		if !paused {
+			swapC = swapT.C
 		}
 		select {
 		case ev, ok := <-c.Events:
@@ -490,6 +635,8 @@ func run(c *proto.Client) {
 				paused = true
 			case "resume":
 				paused, last = false, time.Now()
+				s.swapPagesOK = false // swapping while paused is not news: re-baseline the counters
+				s.sampleSwap()
 			case "hover on":
 				if stopTip == nil {
 					stopTip = make(chan struct{})
@@ -499,6 +646,14 @@ func run(c *proto.Client) {
 				if stopTip != nil {
 					close(stopTip)
 					stopTip = nil
+				}
+			}
+		case <-swapC:
+			s.sampleSwap()
+			publish()
+			if !s.set.enabled && !paused && s.set.swapArrows { // no animation ticks: redraw so arrows appear and fade
+				if !send() {
+					return
 				}
 			}
 		case <-sampleT.C:

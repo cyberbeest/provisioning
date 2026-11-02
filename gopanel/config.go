@@ -225,6 +225,7 @@ func genmonTitle(command string) string {
 	base := filepath.Base(strings.Fields(command + " x")[0])
 	base = strings.TrimSuffix(base, filepath.Ext(base))
 	base = strings.NewReplacer("-", " ", "_", " ").Replace(base)
+	base = strings.TrimSuffix(base, " genmon")
 	if base == "" {
 		return "Generic Monitor"
 	}

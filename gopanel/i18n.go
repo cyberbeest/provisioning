@@ -36,6 +36,8 @@ var deStrings = map[string]string{
 	"Hidden icons":                      "Ausgeblendete Symbole",
 	"Show %s":                           "%s anzeigen",
 	"Remove from panel":                 "Aus der Leiste entfernen",
+	"Removed from panel: %s":            "Aus der Leiste entfernt: %s",
+	"Show it again from the menu":       "Im Menü wieder einblenden",
 	"Remove \"%s\" from the panel?":     "„%s“ aus der Leiste entfernen?",
 	"Remove":                            "Entfernen",
 	"Cancel":                            "Abbrechen",
