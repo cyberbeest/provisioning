@@ -60,6 +60,15 @@ else
     echo "snapshot-path=$SNAPDIR" >> "$VLCRC"
 fi
 
+# Snapshot names: still-<video name>-<hh:mm:ss in the video>-<date/time taken>.png
+if grep -q '^snapshot-prefix=' "$VLCRC"; then
+    sed -i 's|^snapshot-prefix=.*|snapshot-prefix=still-$N-$T-|' "$VLCRC"
+elif grep -q '^#snapshot-prefix=' "$VLCRC"; then
+    sed -i 's|^#snapshot-prefix=.*|snapshot-prefix=still-$N-$T-|' "$VLCRC"
+else
+    echo 'snapshot-prefix=still-$N-$T-' >> "$VLCRC"
+fi
+
 echo "--- Jailing VLC: stock firejail profile + read-only home override ---"
 # A crafted movie file can exploit a decoder; the jail keeps VLC from writing
 # anywhere except its own settings, but it can read movies from any folder
@@ -67,9 +76,14 @@ echo "--- Jailing VLC: stock firejail profile + read-only home override ---"
 install -m 644 "$DIR/lib/vlc.local" /etc/firejail/vlc.local
 APPS="$TARGET_HOME/.local/share/applications"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$APPS"
-sed -e 's|^Exec=/usr/bin/vlc|Exec=firejail /usr/bin/vlc|' /usr/share/applications/vlc.desktop > "$APPS/vlc.desktop"
+# The launcher starts VLC in the jail and renames snapshots (colons -> none)
+# while VLC runs (see lib/cyberbeest-vlc).
+BIN="$TARGET_HOME/.local/bin"
+install -d -o "$TARGET_USER" -g "$TARGET_USER" "$BIN"
+install -m 755 -o "$TARGET_USER" -g "$TARGET_USER" "$DIR/lib/cyberbeest-vlc" "$BIN/cyberbeest-vlc"
+sed -e "s|^Exec=/usr/bin/vlc|Exec=$BIN/cyberbeest-vlc|" /usr/share/applications/vlc.desktop > "$APPS/vlc.desktop"
 chown "$TARGET_USER:$TARGET_USER" "$APPS/vlc.desktop"
-grep -q '^Exec=firejail' "$APPS/vlc.desktop" || { echo "ERROR: vlc.desktop override has no firejail Exec"; exit 1; }
+grep -q "^Exec=$BIN/cyberbeest-vlc" "$APPS/vlc.desktop" || { echo "ERROR: vlc.desktop override has no launcher Exec"; exit 1; }
 sudo -u "$TARGET_USER" update-desktop-database "$APPS" 2>&1 || true
 
 echo "=== done ==="

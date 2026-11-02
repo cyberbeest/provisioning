@@ -1,0 +1,21 @@
+#!/bin/bash
+# Starts VLC in its Firejail jail and, while it runs, strips the colons VLC puts
+# into snapshot names (still-<video>-00:01:23-<date>.png -> ...-000123-...),
+# because Windows and FAT/exFAT sticks can't hold such files.
+SNAPDIR="$HOME/Pictures/vlc-snapshots"
+
+renamer() {
+    # also stops if the launcher is killed without a chance to clean up
+    while kill -0 $$ 2>/dev/null && sleep 1; do
+        for f in "$SNAPDIR"/*:*; do
+            [ -e "$f" ] || continue
+            base="${f##*/}"
+            mv -n -- "$f" "$SNAPDIR/${base//:/}" 2>/dev/null
+        done
+    done
+}
+
+renamer &
+RENAMER=$!
+trap 'kill "$RENAMER" 2>/dev/null' EXIT
+firejail /usr/bin/vlc "$@"

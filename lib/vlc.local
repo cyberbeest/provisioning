@@ -19,9 +19,6 @@ read-write ${HOME}/.config/vlc
 read-write ${HOME}/.cache/vlc
 read-write ${HOME}/.local/share/vlc
 # Snapshots (the only thing VLC may save for the user) go to their own folder.
-# It has to be whitelisted too: the Whitelisted Folders list in globals.local
-# puts the jail in whitelist mode, which hides everything not listed.
-whitelist ${HOME}/Pictures/vlc-snapshots
 read-write ${HOME}/Pictures/vlc-snapshots
 # Files owned by another account's group (e.g. a mounted old home) need our
 # supplementary groups; noroot's user namespace and nogroups both drop them.
