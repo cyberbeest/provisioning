@@ -827,9 +827,20 @@ def build_facts(deck):
     return box
 
 
+def _booted_for_scan():
+    """The boot stick's "Scan this computer for malware" entry gets the scan window alone."""
+    try:
+        with open("/proc/cmdline") as f:
+            return "cyberbeest-scan" in f.read().split()
+    except OSError:
+        return False
+
+
 def main():
     force = "--force" in sys.argv
     if not force and os.path.exists(DISMISS_FILE):
+        return
+    if not force and _booted_for_scan():
         return
     facts = load_tips()
     if not force:
