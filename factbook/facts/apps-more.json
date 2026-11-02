@@ -9,7 +9,7 @@
     {
       "id": "apps-signal-sandboxed",
       "en": "Signal on a Cyberbeest laptop runs in its own sandbox, receives updates from Signal's own repository and can see only its own data and your whitelisted folders.",
-      "de": "Signal läuft auf einem Cyberbeest-Laptop in einer eigenen Sandbox, bezieht Updates aus Signals eigener Paketquelle und sieht nur eigene Daten und Ihre zugelassenen Ordner."
+      "de": "Signal läuft auf einem Cyberbeest-Laptop in einer eigenen Sandbox, bezieht Updates aus Signals eigener Paketquelle und sieht nur eigene Daten und deine zugelassenen Ordner."
     },
     {
       "id": "apps-element-flagship",
@@ -19,22 +19,22 @@
     {
       "id": "apps-tor-browser",
       "en": "Tor Browser on a Cyberbeest laptop routes your web traffic through the Tor network, which hides where you connect from.",
-      "de": "Der Tor-Browser auf einem Cyberbeest-Laptop leitet Ihren Webverkehr über das Tor-Netzwerk, das verbirgt, von wo aus Sie sich verbinden."
+      "de": "Der Tor-Browser auf einem Cyberbeest-Laptop leitet deinen Webverkehr über das Tor-Netzwerk, das verbirgt, von wo aus du dich verbindest."
     },
     {
       "id": "apps-i2p",
       "en": "Cyberbeest includes I2P (i2pd), an anonymous network, but it stays off until you start it from the Darknet menu.",
-      "de": "Cyberbeest enthält I2P (i2pd), ein anonymes Netzwerk, das aber aus bleibt, bis Sie es im Menü Darknet starten."
+      "de": "Cyberbeest enthält I2P (i2pd), ein anonymes Netzwerk, das aber aus bleibt, bis du es im Menü Darknet startest."
     },
     {
       "id": "apps-i2p-icon",
       "en": "After you start I2P from the Darknet menu, a panel icon appears that shows its status and lets you stop it again.",
-      "de": "Nach dem Start von I2P im Menü Darknet erscheint ein Panel-Symbol, das den Status anzeigt und mit dem Sie es wieder beenden können."
+      "de": "Nach dem Start von I2P im Menü Darknet erscheint ein Panel-Symbol, das den Status anzeigt und mit dem du es wieder beenden kannst."
     },
     {
       "id": "apps-i2p-browser",
       "en": "I2P sites open in a separate Firefox profile called Firefox (I2P), kept apart from your normal browsing.",
-      "de": "I2P-Seiten öffnen sich in einem eigenen Firefox-Profil namens Firefox (I2P), getrennt von Ihrem normalen Surfen."
+      "de": "I2P-Seiten öffnen sich in einem eigenen Firefox-Profil namens Firefox (I2P), getrennt von deinem normalen Surfen."
     },
     {
       "id": "apps-darknet-tor-or-i2p",
@@ -112,7 +112,7 @@
     {
       "id": "apps-update-app",
       "en": "Cyberbeest Update fetches the latest Cyberbeest improvements after one confirmation and then opens the installer window, where you choose what to run.",
-      "de": "Cyberbeest-Update holt nach einer Bestätigung die neuesten Cyberbeest-Verbesserungen und öffnet dann das Installationsfenster, in dem Sie wählen, was ausgeführt wird."
+      "de": "Cyberbeest-Update holt nach einer Bestätigung die neuesten Cyberbeest-Verbesserungen und öffnet dann das Installationsfenster, in dem du wählst, was ausgeführt wird."
     },
     {
       "id": "apps-claude-optin",
@@ -127,12 +127,12 @@
     {
       "id": "apps-kvm",
       "en": "The Cyberbeest VM runs on QEMU/KVM, and Virtual Machine Manager shows all your VMs, including the backup left by a VM update.",
-      "de": "Die Cyberbeest-VM läuft auf QEMU/KVM, und der Virtual Machine Manager zeigt alle Ihre VMs, auch die Sicherung, die ein VM-Update hinterlässt."
+      "de": "Die Cyberbeest-VM läuft auf QEMU/KVM, und der Virtual Machine Manager zeigt alle deine VMs, auch die Sicherung, die ein VM-Update hinterlässt."
     },
     {
       "id": "apps-bluetooth-manager",
       "en": "The Bluetooth Manager on a Cyberbeest laptop pairs phones and headsets, and can share your phone's mobile data over Bluetooth.",
-      "de": "Der Bluetooth-Manager auf einem Cyberbeest-Laptop koppelt Handys und Headsets und kann die mobilen Daten Ihres Handys über Bluetooth nutzen."
+      "de": "Der Bluetooth-Manager auf einem Cyberbeest-Laptop koppelt Handys und Headsets und kann die mobilen Daten deines Handys über Bluetooth nutzen."
     },
     {
       "id": "apps-firefox-esr",

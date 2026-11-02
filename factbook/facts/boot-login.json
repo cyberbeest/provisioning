@@ -54,7 +54,7 @@
     {
       "id": "lock-warning-10s",
       "en": "A Cyberbeest laptop shows a notification 10 seconds before auto-lock, so moving the mouse keeps you logged in.",
-      "de": "Ein Cyberbeest-Laptop zeigt 10 Sekunden vor der automatischen Sperre eine Benachrichtigung, eine Mausbewegung hält Sie dann angemeldet.",
+      "de": "Ein Cyberbeest-Laptop zeigt 10 Sekunden vor der automatischen Sperre eine Benachrichtigung, eine Mausbewegung hält dich dann angemeldet.",
       "tip": true
     },
     {
@@ -80,7 +80,7 @@
     {
       "id": "timer-change-panel",
       "en": "To change the auto-shutdown time, click the timer text in the Cyberbeest panel and pick a preset.",
-      "de": "Um die Zeit bis zum automatischen Herunterfahren zu ändern, klicken Sie im Cyberbeest-Panel auf den Timer-Text und wählen eine Voreinstellung.",
+      "de": "Um die Zeit bis zum automatischen Herunterfahren zu ändern, klicke im Cyberbeest-Panel auf den Timer-Text und wählen eine Voreinstellung.",
       "tip": true,
       "ask": {
         "en": [
@@ -113,7 +113,7 @@
     {
       "id": "pw-change-app",
       "en": "You change the master password and the short password in the Cyberbeest Passwords & Boot app from the menu.",
-      "de": "Das Master-Passwort und das kurze Passwort ändern Sie im Menü in der App Cyberbeest-Passwörter & Start.",
+      "de": "Das Master-Passwort und das kurze Passwort änderst du im Menü in der App Cyberbeest-Passwörter & Start.",
       "tip": true,
       "ask": {
         "en": [
@@ -136,7 +136,7 @@
     {
       "id": "setup-language",
       "en": "During setup you choose your country, which picks the language (English or German), the keyboard layout and the time zone.",
-      "de": "Bei der Einrichtung wählen Sie Ihr Land, das Sprache (Englisch oder Deutsch), Tastaturbelegung und Zeitzone vorschlägt."
+      "de": "Bei der Einrichtung wählst du dein Land, das Sprache (Englisch oder Deutsch), Tastaturbelegung und Zeitzone vorschlägt."
     },
     {
       "id": "setup-languages-only",

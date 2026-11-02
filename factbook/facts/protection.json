@@ -19,7 +19,7 @@
     {
       "id": "scan-manual",
       "en": "The Cyberbeest Malware Scanner runs only when you start it, because its virus database needs about 1 GB of RAM while scanning.",
-      "de": "Der Cyberbeest-Malware-Scanner läuft nur, wenn Sie ihn starten, weil seine Virendatenbank beim Scannen etwa 1 GB Arbeitsspeicher braucht."
+      "de": "Der Cyberbeest-Malware-Scanner läuft nur, wenn du ihn startest, weil seine Virendatenbank beim Scannen etwa 1 GB Arbeitsspeicher braucht."
     },
     {
       "id": "scan-signatures",
@@ -39,7 +39,7 @@
     {
       "id": "intrusion-manual",
       "en": "Intrusion Watch scans when you press Scan Now, or on a timer if you switch the automatic scan on.",
-      "de": "Intrusion Watch prüft, wenn Sie auf Jetzt scannen drücken, oder nach einem Zeitplan, wenn Sie die automatische Prüfung einschalten."
+      "de": "Intrusion Watch prüft, wenn du auf Jetzt scannen drückst, oder nach einem Zeitplan, wenn du die automatische Prüfung einschaltest."
     },
     {
       "id": "news-tabs",
@@ -89,7 +89,7 @@
     {
       "id": "net-vpn-icon",
       "en": "The Cyberbeest VPN panel icon connects and disconnects a VPN with one click, once you have imported a WireGuard file.",
-      "de": "Das VPN-Symbol im Cyberbeest-Panel verbindet und trennt ein VPN mit einem Klick, sobald Sie eine WireGuard-Datei importiert haben."
+      "de": "Das VPN-Symbol im Cyberbeest-Panel verbindet und trennt ein VPN mit einem Klick, sobald du eine WireGuard-Datei importiert hast."
     },
     {
       "id": "net-vpn-dns-leak",
@@ -119,7 +119,7 @@
     {
       "id": "net-bluetooth-risk",
       "en": "Bluetooth stays off until you enable it, so no one can pair with a Cyberbeest laptop by default.",
-      "de": "Bluetooth bleibt aus, bis Sie es einschalten, sodass sich standardmäßig niemand mit einem Cyberbeest-Laptop koppeln kann."
+      "de": "Bluetooth bleibt aus, bis du es einschaltest, sodass sich standardmäßig niemand mit einem Cyberbeest-Laptop koppeln kann."
     },
     {
       "id": "updates-vendor-repos",
@@ -134,7 +134,7 @@
     {
       "id": "sandbox-firejail",
       "en": "Cyberbeest sandboxes are made with Firejail, which hides everything except an app's own data and your whitelisted folders.",
-      "de": "Cyberbeest-Sandboxen bestehen aus Firejail, das alles außer den eigenen Daten einer App und Ihren zugelassenen Ordnern verbirgt."
+      "de": "Cyberbeest-Sandboxen bestehen aus Firejail, das alles außer den eigenen Daten einer App und deinen zugelassenen Ordnern verbirgt."
     },
     {
       "id": "sandbox-firefox-nag",
@@ -154,7 +154,7 @@
     {
       "id": "protection-scan-stick",
       "en": "The Cyberbeest boot stick can scan your laptop for malware from outside: plug it in, accept the offer, and the laptop restarts from the stick, opens its disk read-only with your master password and checks it, so nothing on the disk can hide from the scan.",
-      "de": "Der Cyberbeest-Startstick kann Ihren Laptop von außen auf Schadsoftware prüfen: Stick einstecken, Angebot annehmen, dann startet der Laptop vom Stick, öffnet die Festplatte mit Ihrem Master-Passwort nur lesend und prüft sie, sodass sich nichts auf der Platte der Prüfung entziehen kann.",
+      "de": "Der Cyberbeest-Startstick kann deinen Laptop von außen auf Schadsoftware prüfen: Stick einstecken, Angebot annehmen, dann startet der Laptop vom Stick, öffnet die Festplatte mit deinem Master-Passwort nur lesend und prüft sie, sodass sich nichts auf der Platte der Prüfung entziehen kann.",
       "ask": {
         "en": [
           "how do I scan my laptop for viruses from outside",
@@ -171,7 +171,7 @@
     {
       "id": "protection-scan-stick-switch",
       "en": "The Cyberbeest boot stick has a write-protect switch; leave it on \"locked\" and nothing, malware included, can ever change what is on the stick.",
-      "de": "Der Cyberbeest-Startstick hat einen Schreibschutz-Schalter; lassen Sie ihn auf \"gesperrt\", dann kann nichts, auch keine Schadsoftware, jemals ändern, was auf dem Stick gespeichert ist."
+      "de": "Der Cyberbeest-Startstick hat einen Schreibschutz-Schalter; lass ihn auf \"gesperrt\", dann kann nichts, auch keine Schadsoftware, jemals ändern, was auf dem Stick gespeichert ist."
     }
   ]
 }

@@ -80,7 +80,7 @@
     {
       "id": "hw-sound-volume",
       "en": "A Cyberbeest laptop starts with speaker and microphone volume at 100%, and you can turn them down for good.",
-      "de": "Ein Cyberbeest-Laptop startet mit Lautsprecher- und Mikrofonlautstärke auf 100 %, und Sie können beides dauerhaft leiser stellen."
+      "de": "Ein Cyberbeest-Laptop startet mit Lautsprecher- und Mikrofonlautstärke auf 100 %, und du kannst beides dauerhaft leiser stellen."
     },
     {
       "id": "hw-display-off",
@@ -118,7 +118,7 @@
     {
       "id": "hw-battery-screen-on",
       "en": "The 36-hour battery figure of a Cyberbeest laptop applies with the screen off, for example when you only wait for message notifications, and actively using the screen drains the battery faster.",
-      "de": "Die Akkulaufzeit von 36 Stunden bei einem Cyberbeest-Laptop gilt bei ausgeschaltetem Bildschirm, etwa wenn Sie nur auf Nachrichten warten, und aktive Nutzung entleert den Akku schneller."
+      "de": "Die Akkulaufzeit von 36 Stunden bei einem Cyberbeest-Laptop gilt bei ausgeschaltetem Bildschirm, etwa wenn du nur auf Nachrichten wartest, und aktive Nutzung entleert den Akku schneller."
     }
   ]
 }

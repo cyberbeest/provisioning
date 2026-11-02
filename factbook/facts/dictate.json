@@ -9,13 +9,13 @@
     {
       "id": "dictate-what",
       "en": "Dictate types what you say into whichever window has the focus, with no need to copy and paste.",
-      "de": "Dictate tippt das, was Sie sagen, in das Fenster, das gerade den Fokus hat, ohne dass Sie kopieren und einfügen müssen.",
+      "de": "Dictate tippt das, was du sagst, in das Fenster, das gerade den Fokus hat, ohne dass du kopieren und einfügen musst.",
       "tip": true
     },
     {
       "id": "dictate-f9",
       "en": "To dictate on a Cyberbeest laptop, hold the F9 key while you speak and release it when you are done.",
-      "de": "Zum Diktieren auf einem Cyberbeest-Laptop halten Sie die Taste F9 gedrückt, während Sie sprechen, und lassen sie danach los.",
+      "de": "Zum Diktieren auf einem Cyberbeest-Laptop hältst du die Taste F9 gedrückt, während du sprichst, und lässt sie danach los.",
       "tip": true,
       "ask": {
         "en": [
@@ -66,7 +66,7 @@
     {
       "id": "dictate-autostart",
       "en": "Dictate starts at login as a small panel icon without a window, and you can turn this off in its Settings.",
-      "de": "Dictate startet bei der Anmeldung als kleines Panel-Symbol ohne Fenster, und Sie können das in den Einstellungen abschalten."
+      "de": "Dictate startet bei der Anmeldung als kleines Panel-Symbol ohne Fenster, und du kannst das in den Einstellungen abschalten."
     },
     {
       "id": "dictate-ram",
@@ -76,7 +76,7 @@
     {
       "id": "dictate-first-press",
       "en": "The first F9 press after login takes a few seconds longer, because Dictate loads its speech model while you start speaking.",
-      "de": "Der erste F9-Druck nach der Anmeldung dauert einige Sekunden länger, weil Dictate sein Sprachmodell lädt, während Sie zu sprechen beginnen."
+      "de": "Der erste F9-Druck nach der Anmeldung dauert einige Sekunden länger, weil Dictate sein Sprachmodell lädt, während du zu sprechen beginnst."
     },
     {
       "id": "dictate-mic-dot",

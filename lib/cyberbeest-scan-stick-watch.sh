@@ -25,6 +25,17 @@ mkdir -p "$PID_DIR"
 # zenity's --text is Pango markup: escape what the translated text may contain.
 markup_escape() { local s="$1"; s="${s//&/&amp;}"; s="${s//</&lt;}"; echo "${s//>/&gt;}"; }
 
+# True unless the firmware's boot order is known and doesn't start from USB first
+# (the restart only boots the stick by itself if it does). Without EFI or
+# efibootmgr there is nothing to check, so no warning.
+usb_boot_first() {
+	local out first
+	out="$(LC_ALL=C efibootmgr 2>/dev/null)" || return 0
+	first="$(sed -n 's/^BootOrder: *\([0-9A-Fa-f]\{4\}\).*/\1/p' <<<"$out")"
+	[ -n "$first" ] || return 0
+	grep -iE "^Boot${first}\*? " <<<"$out" | grep -qiE 'usb|removable'
+}
+
 offer() {
 	local dev="$1" ro text pidf="$PID_DIR/${1##*/}.pid"
 	ro="$(cat "/sys/block/${dev#/dev/}/ro" 2>/dev/null || echo 0)"
@@ -35,6 +46,9 @@ offer() {
 	[ "$ro" = 1 ] || text="$text
 
 <b>$(markup_escape "$(t scan_stick.unprotected)")</b>"
+	usb_boot_first || text="$text
+
+<b>$(markup_escape "$(t scan_stick.boot_order)")</b>"
 
 	zenity --question --title="$(t scan_stick.title)" --width=420 \
 		--ok-label="$(t scan_stick.ok)" --cancel-label="$(t scan_stick.cancel)" \

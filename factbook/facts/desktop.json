@@ -35,7 +35,7 @@
     {
       "id": "desktop-wallpaper",
       "en": "A Cyberbeest laptop shows a Cyberbeest wallpaper by default, and you can pick another in the Desktop settings.",
-      "de": "Ein Cyberbeest-Laptop zeigt standardmäßig einen Cyberbeest-Hintergrund, in den Desktop-Einstellungen können Sie einen anderen wählen."
+      "de": "Ein Cyberbeest-Laptop zeigt standardmäßig einen Cyberbeest-Hintergrund, in den Desktop-Einstellungen kannst du einen anderen wählen."
     },
     {
       "id": "desktop-panel-color",
@@ -80,7 +80,7 @@
     {
       "id": "panel-clipboard",
       "en": "The clipboard icon in the Cyberbeest panel shows what the clipboard holds (text, image, files or nothing) and lets you view, edit or clear it.",
-      "de": "Das Zwischenablage-Symbol im Cyberbeest-Panel zeigt, was die Zwischenablage enthält (Text, Bild, Dateien oder nichts), und lässt Sie den Inhalt ansehen, bearbeiten oder löschen."
+      "de": "Das Zwischenablage-Symbol im Cyberbeest-Panel zeigt, was die Zwischenablage enthält (Text, Bild, Dateien oder nichts), und lässt dich den Inhalt ansehen, bearbeiten oder löschen."
     },
     {
       "id": "panel-clipboard-autoclear",
@@ -147,7 +147,7 @@
     {
       "id": "weather-menu",
       "en": "A Cyberbeest laptop can show the current temperature of a city you choose at the top of the menu; it is off until you pick a place in Settings under Weather.",
-      "de": "Ein Cyberbeest-Laptop kann oben im Menü die aktuelle Temperatur eines Ortes Ihrer Wahl anzeigen; das ist aus, bis Sie in den Einstellungen unter Wetter einen Ort wählen.",
+      "de": "Ein Cyberbeest-Laptop kann oben im Menü die aktuelle Temperatur eines Ortes deiner Wahl anzeigen; das ist aus, bis du in den Einstellungen unter Wetter einen Ort wählst.",
       "ask": {
         "en": [
           "how do I show the weather",
@@ -164,7 +164,7 @@
     {
       "id": "weather-privacy",
       "en": "When the weather is on, opening the menu sends your IP address and your chosen place, rounded to about 1 km, to the German Weather Service data service Bright Sky; nothing is sent while it is off.",
-      "de": "Ist das Wetter eingeschaltet, gehen beim Öffnen des Menüs Ihre IP-Adresse und der gewählte Ort, auf etwa 1 km gerundet, an den Datendienst Bright Sky des Deutschen Wetterdienstes; solange es aus ist, wird nichts gesendet."
+      "de": "Ist das Wetter eingeschaltet, gehen beim Öffnen des Menüs deine IP-Adresse und der gewählte Ort, auf etwa 1 km gerundet, an den Datendienst Bright Sky des Deutschen Wetterdienstes; solange es aus ist, wird nichts gesendet."
     },
     {
       "id": "weather-accuracy",
