@@ -6,12 +6,9 @@
 #
 # Installs:
 #  - the user service lib/cyberbeest-scan-stick-watch.sh (the popup);
-#  - the root helper + polkit policy (verifies the stick, arms the one-time
-#    boot, reboots);
-#  - a GRUB entry (/etc/grub.d/42_cyberbeest_scan_stick) that loads the scan
-#    menu off the stick. GRUB_DEFAULT becomes "saved" because grub-reboot only
-#    works with it; with no saved entry that still boots entry 0, exactly as
-#    before.
+#  - the root helper + polkit policy (verifies the stick, reboots). The
+#    firmware's boot order (USB first) makes the computer start the stick; the
+#    popup warns when it isn't;
 #  - /etc/cyberbeest/scan-allowed-signers (the public key stick manifests are
 #    signed with), if lib/cyberbeest-scan-allowed-signers exists in this
 #    checkout. Without it the helper warns and boots unauthenticated sticks.
@@ -44,15 +41,14 @@ else
 	echo "NOTE: lib/cyberbeest-scan-allowed-signers not present -- sticks will NOT be authenticated yet."
 fi
 
-echo "--- GRUB: one-time boot entry for the stick ---"
-install -m 755 "$DIR/lib/cyberbeest-scan-stick-grub" /etc/grub.d/42_cyberbeest_scan_stick
-if grep -q '^GRUB_DEFAULT=' /etc/default/grub; then
-	sed -i 's/^GRUB_DEFAULT=.*/GRUB_DEFAULT=saved/' /etc/default/grub
-else
-	echo 'GRUB_DEFAULT=saved' >> /etc/default/grub
+echo "--- GRUB: removing the old one-time boot entry, if an earlier version installed it ---"
+# Earlier versions handed over through GRUB (grub-reboot), which fails on
+# firmware that doesn't show USB storage to GRUB. GRUB_DEFAULT=saved, which that
+# needed, still boots entry 0 when nothing is saved, so it stays as it is.
+if [ -e /etc/grub.d/42_cyberbeest_scan_stick ]; then
+	rm -f /etc/grub.d/42_cyberbeest_scan_stick
+	update-grub
 fi
-update-grub
-grep -q cyberbeest-scan-stick /boot/grub/grub.cfg || { echo "GRUB entry missing after update-grub" >&2; exit 1; }
 
 echo "--- Installing the popup watcher for $TARGET_USER ---"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/bin" "$TARGET_HOME/bin/i18n"
