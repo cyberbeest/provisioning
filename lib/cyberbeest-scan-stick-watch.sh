@@ -6,8 +6,9 @@
 # and reboots into its "Scan this computer" entry.
 #
 # The stick is recognised by its filesystem label ("Cyberbeest Combined", the
-# volume id combine-live-and-installer.sh gives it). Label alone is not
-# trusted: the helper checks a signed manifest before booting anything.
+# volume id combine-live-and-installer.sh gives it). udev's ID_FS_LABEL has
+# spaces turned into underscores, so the comparison is done in that form.
+# Label alone is not trusted: the helper checks a signed manifest before booting anything.
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 . "$SELF_DIR/i18n.sh"
@@ -51,7 +52,7 @@ flush() {
 	if [ -n "$dev" ] && [ "$action" = remove ]; then
 		unset "SEEN[$dev]"
 	elif [ -n "$dev" ] && [ "${P[DEVTYPE]:-}" = disk ] && [ "${P[ID_FS_TYPE]:-}" = iso9660 ] \
-		&& [ "${P[ID_FS_LABEL]:-}" = "$LABEL" ] && [ -z "${SEEN[$dev]:-}" ]; then
+		&& [ "${P[ID_FS_LABEL]:-}" = "${LABEL// /_}" ] && [ -z "${SEEN[$dev]:-}" ]; then
 		SEEN[$dev]=1
 		offer "$dev" &
 	fi
