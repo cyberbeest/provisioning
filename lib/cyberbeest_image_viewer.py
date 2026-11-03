@@ -306,6 +306,40 @@ def estimated_decoded_mb(path):
         return None
 
 
+def _decode_to_file(path, out_path):
+    """Child-process side of load_frames_subprocess: header line, then raw RGBA frames."""
+    import json
+
+    frames, size = load_frames(path)
+    with open(out_path, "wb") as f:
+        f.write(json.dumps({"size": list(size), "durations": [d for _i, d in frames]}).encode() + b"\n")
+        for img, _d in frames:
+            f.write(img.tobytes())
+
+
+def load_frames_subprocess(path):
+    """load_frames() with the decoding done in a child process (no GIL sharing)."""
+    import json
+    import tempfile
+
+    with tempfile.TemporaryDirectory(prefix="cyberbeest-frames-") as tmp:
+        out = os.path.join(tmp, "frames.raw")
+        subprocess.run(
+            [sys.executable, os.path.abspath(sys.argv[0]), "--decode-frames", path, out],
+            check=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+        )
+        with open(out, "rb") as f:
+            header = json.loads(f.readline())
+            data = f.read()
+    w, h = header["size"]
+    step = w * h * 4
+    view = memoryview(data)
+    return [
+        (Image.frombuffer("RGBA", (w, h), view[i * step:(i + 1) * step], "raw", "RGBA", 0, 1), d)
+        for i, d in enumerate(header["durations"])
+    ]
+
+
 def load_prefetch(path):
     """Like load_frames, but an animated GIF yields only its first frame.
 
@@ -1989,8 +2023,10 @@ class ImageViewerWindow(Gtk.Window):
         self.load_spinner.start()
 
         def work():
+            # Decoded in a child process: a Python decode thread in this one
+            # holds the GIL and makes the spinner stall.
             try:
-                frames, _size = load_frames(path)
+                frames = load_frames_subprocess(path)
             except Exception:
                 frames = None
             GLib.idle_add(self._load_full_animation, path, frames)
@@ -2278,6 +2314,9 @@ def _check_self_modified(self_path, initial_mtime):
 
 
 def main():
+    if len(sys.argv) == 4 and sys.argv[1] == "--decode-frames":
+        _decode_to_file(sys.argv[2], sys.argv[3])
+        return
     if len(sys.argv) != 2:
         print(f"usage: {sys.argv[0]} <image path>", file=sys.stderr)
         sys.exit(1)
