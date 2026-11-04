@@ -381,6 +381,36 @@ Section "InputClass"
 EndSection
 EOF3
 
+# "Scan this computer's disk" in the live desktop's menu: the same scan window as the stick's
+# scan boot, for someone who started "try Cyberbeest" and then wants a scan without restarting.
+# The scan boot's launcher only acts on the "cyberbeest-scan" kernel parameter, so this has its
+# own small wrapper (state folder + keeping the machine awake during a scan that can take hours).
+cat >"$CHROOT/usr/local/lib/cyberbeest/cyberbeest-scan-from-desktop.sh" <<'EOF3'
+#!/bin/sh
+# Scan window for the live desktop (the scan boot starts it through cyberbeest-stick-scan-launch.sh).
+sudo -n install -d -m 1777 /run/cyberbeest-scan || exit 1
+exec systemd-inhibit --what=sleep:idle:handle-lid-switch --who="Cyberbeest scan" \
+	--why="Malware scan in progress" \
+	python3 /usr/local/lib/cyberbeest/cyberbeest_scanner_gui.py --stick
+EOF3
+chmod 755 "$CHROOT/usr/local/lib/cyberbeest/cyberbeest-scan-from-desktop.sh"
+cat >"$CHROOT/usr/share/applications/cyberbeest-scan-this-computer.desktop" <<'EOF3'
+[Desktop Entry]
+Type=Application
+Name=Scan this computer's disk
+Name[de]=Festplatte dieses Computers prüfen
+Comment=Unlock the internal disk read-only and scan it for malware from outside
+Comment[de]=Interne Festplatte nur lesend öffnen und von außen auf Schadsoftware prüfen
+Exec=/usr/local/lib/cyberbeest/cyberbeest-scan-from-desktop.sh
+Icon=security-high
+Categories=Cyberbeest;Settings;
+Terminal=false
+EOF3
+# The older per-user "Cyberbeest Malware Scanner" entry scans the RUNNING system, which on a live
+# stick is the stick itself; next to "Scan this computer's disk" it only confuses. Removed from
+# this image's copy of the donor's home only (59-cyberbeest-scanner.sh creates it on real machines).
+rm -f "$CHROOT"/home/*/.local/share/applications/cyberbeest-malware-scanner.desktop
+
 echo "--- Installing live-boot/live-config into the copied system ---"
 # The source machine is a normal installed system, so it has no reason to
 # already have these -- without them the squashfs boots but never mounts

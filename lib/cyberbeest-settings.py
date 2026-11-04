@@ -709,7 +709,7 @@ class ConnectionsPage(Gtk.Box):
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=12)
         self.set_border_width(16)
         self.settings_path = os.path.join(CONFIG_DIR, "connections", "settings.json")
-        self.settings = {"notify": True, "flags": False, "dnsnames": False, **read_json(self.settings_path, {})}
+        self.settings = {"notify": True, "notify_countries": True, "flags": False, "dnsnames": False, **read_json(self.settings_path, {})}
 
         info = Gtk.Label(wrap=True, max_width_chars=60, xalign=0, label=t("connections.setting_info"))
         self.pack_start(info, False, False, 0)
@@ -720,6 +720,14 @@ class ConnectionsPage(Gtk.Box):
         note = Gtk.Label(wrap=True, xalign=0, label=t("connections.setting_note"))
         note.get_style_context().add_class("dim-label")
         self.pack_start(note, False, False, 0)
+
+        countries = Gtk.CheckButton(label=t("connections.setting_countries"))
+        countries.set_active(bool(self.settings["notify_countries"]))
+        countries.connect("toggled", self.on_countries)
+        self.pack_start(countries, False, False, 0)
+        cnote = Gtk.Label(wrap=True, max_width_chars=60, xalign=0, label=t("connections.setting_countries_note"))
+        cnote.get_style_context().add_class("dim-label")
+        self.pack_start(cnote, False, False, 0)
 
         flags = Gtk.CheckButton(label=t("connections.setting_flags"))
         flags.set_active(bool(self.settings["flags"]))
@@ -742,6 +750,10 @@ class ConnectionsPage(Gtk.Box):
 
     def on_notify(self, check):
         self.settings["notify"] = check.get_active()
+        write_json(self.settings_path, self.settings)
+
+    def on_countries(self, check):
+        self.settings["notify_countries"] = check.get_active()
         write_json(self.settings_path, self.settings)
 
     def on_names(self, check):
