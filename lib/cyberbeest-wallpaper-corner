@@ -1,0 +1,281 @@
+#!/usr/bin/env python3
+"""Fades in a small wallpaper-settings button when the mouse rests in the
+bottom-right corner of the bare desktop; clicking it opens Cyberbeest Settings
+on the "Wallpaper rotation" tab.
+
+Cost: one pointer query every POLL_MS (a single X round trip, nothing else).
+Window lookups and the screensaver check only happen while the pointer is
+inside the corner zone.
+
+There is no compositor, so real window transparency is not available. The
+fade is drawn by hand instead: the button window shows a screenshot of the
+wallpaper behind it with the icon blended in at the current opacity.
+"""
+import fcntl
+import os
+import subprocess
+import sys
+import urllib.parse
+
+import gi
+gi.require_version("Gtk", "3.0")
+gi.require_version("Gdk", "3.0")
+gi.require_version("Wnck", "3.0")
+from gi.repository import Gdk, Gio, GLib, Gtk, Wnck
+import cairo
+
+sys.path.insert(0, os.path.expanduser("~/.local/bin"))
+try:
+    from i18n import t
+except Exception:
+    def t(key):
+        return key
+
+TIP_FALLBACK = "Wallpaper rotation settings"
+PACKS = ("nature", "space", "architecture", "cars", "cities", "coast", "art")
+MARKER = os.path.expanduser("~/.config/cyberbeest/wallpaper-rotation")
+
+
+CREDITS = "/usr/share/backgrounds/cyberbeest/CREDITS.md"
+
+
+def current_image(display, x, y):
+    """Path of the picture on the monitor at (x, y), from xfdesktop's settings."""
+    mon = display.get_monitor_at_point(x, y)
+    names = [mon.get_model() or ""]
+    base = "/backdrop/screen0/monitor{}/workspace0/last-image"
+    for name in names:
+        r = subprocess.run(["xfconf-query", "-c", "xfce4-desktop", "-p", base.format(name)],
+                           capture_output=True, text=True)
+        if r.returncode == 0 and r.stdout.strip():
+            return r.stdout.strip()
+    return ""
+
+
+def credit_for(image):
+    """(title, author, license) of a pack picture from CREDITS.md, or None."""
+    name = os.path.basename(image)
+    try:
+        lines = open(CREDITS).read().splitlines()
+    except OSError:
+        return None
+    for line in lines:
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if len(cells) >= 4 and cells[0] == name:
+            title = urllib.parse.unquote(cells[3].rsplit("File:", 1)[-1])
+            title = os.path.splitext(title)[0].replace("_", " ")
+            return title, cells[1], cells[2]
+    return None
+
+
+def tip_text(display=None, x=0, y=0):
+    """Tooltip: the active photo pack, read fresh each time the button appears."""
+    try:
+        pack = open(MARKER).read().strip()
+    except OSError:
+        pack = ""
+    key = "wallpaper.corner_tip_on" if pack in PACKS else "wallpaper.corner_tip_off"
+    text = t(key)
+    if text == key:
+        return TIP_FALLBACK
+    if pack not in PACKS:
+        return text
+    name = t("wallpaper." + pack)
+    text = text.format(pack=name if name != "wallpaper." + pack else pack)
+    credit = credit_for(current_image(display, x, y)) if display else None
+    now = t("wallpaper.corner_now")
+    if credit and now != "wallpaper.corner_now":
+        text += "\n" + now.format(title=credit[0], author=credit[1], license=credit[2])
+    return text
+
+
+SETTINGS = os.path.expanduser("~/.local/bin/cyberbeest-settings.py")
+RUNTIME = os.environ.get("XDG_RUNTIME_DIR") or "/tmp"
+LOCK = os.path.join(RUNTIME, "cyberbeest-wallpaper-corner.lock")
+
+POLL_MS = 300       # pointer check interval
+ZONE = 140          # px: hover zone edge, measured from the work-area corner
+SIZE = 48           # px: button window edge
+MARGIN = 12         # px: gap between button and the screen/panel edge
+FADE_MS = 220
+FADE_FRAME_MS = 30
+LEAVE_GRACE = 2     # polls the pointer may stay outside the zone before fading out
+
+
+class Corner:
+    def __init__(self):
+        self.display = Gdk.Display.get_default()
+        self.pointer = self.display.get_default_seat().get_pointer()
+        self.screen = Wnck.Screen.get_default()
+        self.bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+        self.win = None
+        self.alpha = 0.0
+        self.target = 0.0
+        self.fade_id = 0
+        self.outside = 0
+        self.bg = None          # pixbuf of the wallpaper behind the button
+        self.icon = None
+        self.hover = False
+
+    # -- geometry / visibility checks (only run while the pointer is in the zone)
+
+    def work_area(self, x, y):
+        mon = self.display.get_monitor_at_point(x, y)
+        return mon.get_workarea()
+
+    def screensaver_active(self):
+        try:
+            r = self.bus.call_sync("org.xfce.ScreenSaver", "/org/xfce/ScreenSaver",
+                                   "org.xfce.ScreenSaver", "GetActive", None,
+                                   GLib.VariantType("(b)"), Gio.DBusCallFlags.NONE, 1000, None)
+            return r.unpack()[0]
+        except GLib.Error:
+            return False
+
+    def covered(self, x, y):
+        """True if a normal window sits under the point (desktop not bare)."""
+        self.screen.force_update()
+        ws = self.screen.get_active_workspace()
+        for w in self.screen.get_windows():
+            if w.is_minimized():
+                continue
+            if w.get_window_type() in (Wnck.WindowType.DESKTOP, Wnck.WindowType.DOCK):
+                continue
+            if ws is not None and not w.is_on_workspace(ws):
+                continue
+            gx, gy, gw, gh = w.get_geometry()
+            if gx <= x < gx + gw and gy <= y < gy + gh:
+                return True
+        return False
+
+    # -- button window
+
+    def build_window(self, wa, x, y):
+        win = Gtk.Window(type=Gtk.WindowType.POPUP)
+        win.set_default_size(SIZE, SIZE)
+        win.set_app_paintable(True)
+        win.add_events(Gdk.EventMask.BUTTON_PRESS_MASK | Gdk.EventMask.ENTER_NOTIFY_MASK
+                       | Gdk.EventMask.LEAVE_NOTIFY_MASK)
+        win.set_tooltip_text(tip_text(self.display, x, y))
+        win.connect("draw", self.on_draw)
+        win.connect("button-press-event", self.on_click)
+        win.connect("enter-notify-event", lambda *_: setattr(self, "hover", True))
+        win.connect("leave-notify-event", lambda *_: setattr(self, "hover", False))
+        win.move(wa.x + wa.width - SIZE - MARGIN, wa.y + wa.height - SIZE - MARGIN)
+        return win
+
+    def grab_background(self, wa):
+        """Screenshot of the wallpaper where the button will sit."""
+        x, y = wa.x + wa.width - SIZE - MARGIN, wa.y + wa.height - SIZE - MARGIN
+        root = Gdk.get_default_root_window()
+        return Gdk.pixbuf_get_from_window(root, x, y, SIZE, SIZE)
+
+    def load_icon(self):
+        theme = Gtk.IconTheme.get_default()
+        for name in ("preferences-desktop-wallpaper", "preferences-desktop-display",
+                     "preferences-system"):
+            try:
+                return theme.load_icon(name, SIZE - 20, Gtk.IconLookupFlags.FORCE_SIZE)
+            except GLib.Error:
+                continue
+        return None
+
+    def on_draw(self, _win, cr):
+        if self.bg is not None:
+            Gdk.cairo_set_source_pixbuf(cr, self.bg, 0, 0)
+            cr.paint()
+        a = self.alpha
+        # Round dark badge, brighter under the pointer.
+        cr.arc(SIZE / 2, SIZE / 2, SIZE / 2 - 2, 0, 6.2832)
+        shade = 0.30 if self.hover else 0.12
+        cr.set_source_rgba(shade, shade, shade + 0.04, 0.85 * a)
+        cr.fill_preserve()
+        cr.set_source_rgba(1, 1, 1, 0.55 * a)
+        cr.set_line_width(1.5)
+        cr.stroke()
+        if self.icon is not None:
+            off = (SIZE - self.icon.get_width()) / 2
+            Gdk.cairo_set_source_pixbuf(cr, self.icon, off, off)
+            cr.paint_with_alpha(a)
+        return True
+
+    def on_click(self, _win, _ev):
+        subprocess.Popen([SETTINGS, "--tab=wallpaper"], start_new_session=True)
+        self.set_target(0.0)
+        return True
+
+    # -- fading
+
+    def set_target(self, target):
+        if target == self.target:
+            return
+        self.target = target
+        if target > 0 and self.win is None:
+            return
+        if not self.fade_id:
+            self.fade_id = GLib.timeout_add(FADE_FRAME_MS, self.fade_step)
+
+    def fade_step(self):
+        step = FADE_FRAME_MS / FADE_MS
+        if self.alpha < self.target:
+            self.alpha = min(self.target, self.alpha + step)
+        else:
+            self.alpha = max(self.target, self.alpha - step)
+        if self.win is not None:
+            self.win.queue_draw()
+        if self.alpha == self.target:
+            self.fade_id = 0
+            if self.alpha == 0 and self.win is not None:
+                self.win.destroy()
+                self.win = None
+                self.bg = None
+            return False
+        return True
+
+    def show(self, wa, x, y):
+        if self.win is None:
+            self.bg = self.grab_background(wa)
+            if self.icon is None:
+                self.icon = self.load_icon()
+            self.alpha = 0.0
+            self.win = self.build_window(wa, x, y)
+            self.win.show_all()
+        self.outside = 0
+        self.set_target(1.0)
+
+    # -- poll
+
+    def poll(self):
+        _, x, y = self.pointer.get_position()
+        wa = self.work_area(x, y)
+        in_zone = x >= wa.x + wa.width - ZONE and y >= wa.y + wa.height - ZONE \
+            and x < wa.x + wa.width and y < wa.y + wa.height
+        if in_zone:
+            if self.win is None or self.target == 0.0:
+                if not self.covered(x, y) and not self.screensaver_active():
+                    self.show(wa, x, y)
+            else:
+                self.outside = 0
+        elif self.win is not None and self.target > 0:
+            self.outside += 1
+            if self.outside >= LEAVE_GRACE and not self.hover:
+                self.set_target(0.0)
+        return True
+
+    def run(self):
+        GLib.timeout_add(POLL_MS, self.poll)
+        Gtk.main()
+
+
+def main():
+    lock = open(LOCK, "a+")
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        return 0  # already running
+    Corner().run()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

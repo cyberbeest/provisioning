@@ -4,7 +4,8 @@
 # helper (lib/cyberbeest-wallpaper-theme.sh, driven by the Wallpaper tab in
 # Cyberbeest Settings) that turns on hourly rotation with a short crossfade
 # (lib/cyberbeest-wallpaper-fade, autostarted; it exits at once when no pack
-# is active) for one of the packs. Rotation is off by default:
+# is active) for one of the packs. A small watcher (lib/cyberbeest-wallpaper-corner)
+# fades in a settings button when the mouse rests in the bottom-right corner. Rotation is off by default:
 # nothing here changes the wallpaper a machine already shows.
 # Idempotent: safe to re-run.
 set -euo pipefail
@@ -42,6 +43,19 @@ Type=Application
 Name=Cyberbeest wallpaper rotation
 Comment=Hourly wallpaper rotation with a crossfade; exits at once when no photo pack is chosen
 Exec=/usr/local/bin/cyberbeest-wallpaper-fade
+NoDisplay=true
+OnlyShowIn=XFCE;
+X-XFCE-Autostart-Phase=Application
+EOF
+
+echo "--- Installing the corner settings button ---"
+install -m 755 "$DIR/lib/cyberbeest-wallpaper-corner" /usr/local/bin/cyberbeest-wallpaper-corner
+cat > /etc/xdg/autostart/cyberbeest-wallpaper-corner.desktop <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=Cyberbeest wallpaper settings button
+Comment=Fades in a settings button when the mouse rests in the bottom-right desktop corner
+Exec=/usr/local/bin/cyberbeest-wallpaper-corner
 NoDisplay=true
 OnlyShowIn=XFCE;
 X-XFCE-Autostart-Phase=Application

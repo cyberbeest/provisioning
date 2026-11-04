@@ -11,7 +11,7 @@ Tabs:
   panel  Which panel runs: the stock XFCE panel or the experimental Go panel.
          Only shown where the panel switcher (cyberbeest-panel-choice.sh) is
          installed, i.e. on the dev machine for now.
-  wallpaper  Single picture or an hourly-rotating nature/space photo pack
+  wallpaper  Wallpaper rotation: single picture or an hourly-rotating nature/space photo pack
          (70-rotating-wallpapers.sh; applied by cyberbeest-wallpaper-theme).
 
 Launch with --tab=<name> to open on a given tab (the shutdown timer menu's
@@ -41,13 +41,14 @@ import gi
 
 gi.require_version("Gtk", "3.0")
 gi.require_version("Gdk", "3.0")
-from gi.repository import Gdk, GLib, Gtk
+from gi.repository import Gdk, GdkPixbuf, GLib, Gtk
 
 import i18n
 from i18n import t
 
 CONFIG_DIR = os.path.expanduser("~/.config/cyberbeest")
 CONFIG_PATH = os.path.join(CONFIG_DIR, "power-settings.conf")
+ICONS_DIR = os.path.expanduser("~/.local/share/cyberbeest/icons")
 
 # Must match this machine's live panel plugin id (~/.config/xfce4/panel/genmon-211.rc,
 # the merged security-status/shutdown-timer widget -- see panel-status-genmon.sh).
@@ -976,12 +977,12 @@ class WallpaperPage(Gtk.Box):
 
 
 PAGES = [
-    ("power", "settings.tab_power", lambda: PowerPage()),
-    ("panel", "settings.tab_panel", lambda: PanelPage(panel_choice_script()) if panel_choice_script() else None),
     ("wallpaper", "settings.tab_wallpaper", lambda: WallpaperPage() if os.access(WALLPAPER_HELPER, os.X_OK) and os.path.isdir(WALLPAPER_PACK) else None),
     ("weather", "settings.tab_weather", lambda: WeatherPage()),
-    ("connections", "connections.setting_tab", lambda: ConnectionsPage() if os.path.exists(os.path.expanduser("~/.local/bin/connections-genmon.sh")) else None),
     ("butler", "settings.tab_butler", lambda: ButlerPage() if butler_catalog_dir() else None),
+    ("connections", "connections.setting_tab", lambda: ConnectionsPage() if os.path.exists(os.path.expanduser("~/.local/bin/connections-genmon.sh")) else None),
+    ("panel", "settings.tab_panel", lambda: PanelPage(panel_choice_script()) if panel_choice_script() else None),
+    ("power", "settings.tab_power", lambda: PowerPage()),
 ]
 
 
@@ -998,7 +999,13 @@ class SettingsWindow(Gtk.Window):
         stack.set_transition_type(Gtk.StackTransitionType.NONE)
         sidebar = Gtk.StackSidebar()
         sidebar.set_stack(stack)
-        paned.pack_start(sidebar, False, False, 0)
+        side = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        side.set_size_request(230, -1)
+        logo = self.load_logo()
+        if logo is not None:
+            side.pack_start(logo, False, False, 0)
+        side.pack_start(sidebar, True, True, 0)
+        paned.pack_start(side, False, False, 0)
         paned.pack_start(Gtk.Separator(orientation=Gtk.Orientation.VERTICAL), False, False, 0)
         paned.pack_start(stack, True, True, 0)
 
@@ -1007,6 +1014,29 @@ class SettingsWindow(Gtk.Window):
             if page is not None:
                 stack.add_titled(page, name, t(title_key))
         self.tab = tab
+
+    def load_logo(self):
+        """Window icon (title bar) plus a decorative logo for above the tab list."""
+        path = os.path.join(ICONS_DIR, "Cyberbeest-black.png")
+        try:
+            self.set_icon_from_file(path)
+            pb = GdkPixbuf.Pixbuf.new_from_file_at_size(path, 96, 96)
+        except GLib.Error:
+            return None
+        img = Gtk.Image.new_from_pixbuf(pb)
+        sub = Gtk.Label(label=t("settings.subtitle"))
+        sub.set_line_wrap(True)
+        sub.set_justify(Gtk.Justification.CENTER)
+        sub.set_max_width_chars(30)
+        sub.set_opacity(0.65)
+        sub.set_margin_start(10)
+        sub.set_margin_end(10)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        box.set_margin_top(14)
+        box.set_margin_bottom(12)
+        box.pack_start(img, False, False, 0)
+        box.pack_start(sub, False, False, 0)
+        return box
 
     def select_tab(self):
         # Only works once the pages are shown, so call after show_all().
