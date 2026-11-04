@@ -61,12 +61,16 @@ needs_fallback() {
 	return 0
 }
 
-echo "$monitors" | while read -r mon; do
+# Set when a slot had to be filled, i.e. on a fresh account (or a broken
+# wallpaper key): that is when a photo rotation is made the default below.
+filled=0
+while read -r mon; do
 	base="/backdrop/screen0/monitor$mon"
 	ws=0
 	while [ "$ws" -lt "$workspace_count" ]; do
 		wsbase="$base/workspace$ws"
 		if needs_fallback "$wsbase/last-image"; then
+			filled=1
 			xfconf-query -c xfce4-desktop -p "$wsbase/last-image" -n -t string -s "$IMAGE"
 			xfconf-query -c xfce4-desktop -p "$wsbase/image-style" -n -t int -s 5
 			xfconf-query -c xfce4-desktop -p "$wsbase/color-style" -n -t int -s 0
@@ -76,11 +80,21 @@ echo "$monitors" | while read -r mon; do
 	# Pre-workspace-support xfdesktop versions only look at the monitor-level
 	# keys, not any workspace<N> sub-property -- keep both in sync.
 	if needs_fallback "$base/image-path"; then
+		filled=1
 		xfconf-query -c xfce4-desktop -p "$base/image-path" -n -t string -s "$IMAGE"
 		xfconf-query -c xfce4-desktop -p "$base/last-image" -n -t string -s "$IMAGE"
 		xfconf-query -c xfce4-desktop -p "$base/image-style" -n -t int -s 5
 		xfconf-query -c xfce4-desktop -p "$base/image-show" -n -t bool -s true
 	fi
-done
+done <<< "$monitors"
 
 xfdesktop --reload 2>/dev/null || true
+
+# Default wallpaper: hourly rotation through the city photos (70-rotating-
+# wallpapers.sh), instead of staying on the single fallback picture. Only on
+# a fresh account -- a machine whose wallpaper is already set is left alone.
+HELPER=/usr/local/bin/cyberbeest-wallpaper-theme
+if [ "$filled" = 1 ] && [ -x "$HELPER" ] && [ -d /usr/share/backgrounds/cyberbeest/cities ] \
+		&& [ ! -e "$HOME/.config/cyberbeest/wallpaper-rotation" ]; then
+	"$HELPER" cities || true
+fi

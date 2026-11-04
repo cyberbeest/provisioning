@@ -316,28 +316,37 @@ class Corner:
         if ev.button == 3:
             self.show_menu(ev)
             return True
-        subprocess.Popen([SETTINGS, "--tab=wallpaper"], start_new_session=True)
+        self.open_settings()
         self.set_target(0.0)
         return True
 
     def show_menu(self, ev):
-        """Right-click: reveal the current picture; for pack photos also open its source page."""
+        """Right-click: settings, and for the current picture: reveal it (any
+        picture) or open its source page (pack photos)."""
+        entries = []
         image = current_image(self.display, int(ev.x_root), int(ev.y_root))
-        if not image or not os.path.isfile(image) or image.startswith(RUNTIME):
-            return
-        credit = credit_for(image)
+        if image and os.path.isfile(image) and not image.startswith(RUNTIME):
+            entries.append((t("wallpaper.corner_menu_folder"), lambda *_: self.reveal(image)))
+            credit = credit_for(image)
+            if credit:
+                entries.append((t("wallpaper.corner_menu_site"), lambda *_: self.open_url(credit[3])))
+            entries.append((None, None))
+        entries.append((t("wallpaper.corner_tip"), self.open_settings))
         menu = Gtk.Menu()
-        entries = [("wallpaper.corner_menu_folder", lambda *_: self.reveal(image))]
-        if credit:
-            entries.append(("wallpaper.corner_menu_site", lambda *_: self.open_url(credit[3])))
-        for key, action in entries:
-            item = Gtk.MenuItem(label=t(key))
+        for label, action in entries:
+            if label is None:
+                menu.append(Gtk.SeparatorMenuItem())
+                continue
+            item = Gtk.MenuItem(label=label)
             item.connect("activate", action)
             menu.append(item)
         menu.show_all()
         self.menu_open = True
         menu.connect("deactivate", lambda *_: setattr(self, "menu_open", False))
         menu.popup_at_pointer(ev)
+
+    def open_settings(self, *_):
+        subprocess.Popen([SETTINGS, "--tab=wallpaper"], start_new_session=True)
 
     def reveal(self, image):
         uri = GLib.filename_to_uri(image, None)

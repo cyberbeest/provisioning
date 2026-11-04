@@ -5,8 +5,10 @@
 # Cyberbeest Settings) that turns on hourly rotation with a short crossfade
 # (lib/cyberbeest-wallpaper-fade, autostarted; it exits at once when no pack
 # is active) for one of the packs. A small watcher (lib/cyberbeest-wallpaper-corner)
-# fades in a settings button when the mouse rests in the bottom-right corner. Rotation is off by default:
-# nothing here changes the wallpaper a machine already shows.
+# fades in a settings button when the mouse rests in the bottom-right corner.
+# A fresh account gets the city photos as its default (done at login by
+# lib/set-fallback-wallpaper.sh); nothing here changes the wallpaper a machine
+# already shows.
 # Idempotent: safe to re-run.
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"

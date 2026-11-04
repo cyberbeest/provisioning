@@ -935,8 +935,10 @@ def wallpaper_choice_now():
 
 
 class WallpaperPage(Gtk.Box):
-    """Standard picture, the user's own picture, or an hourly-rotating photo pack
-    (cyberbeest-wallpaper-fade)."""
+    """Two modes as radio buttons: an hourly-rotating photo pack
+    (cyberbeest-wallpaper-fade), or the user's own image (picked in the desktop
+    background settings). A machine still showing the old single standard
+    picture counts as the second mode."""
 
     def __init__(self):
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=12)
@@ -944,36 +946,59 @@ class WallpaperPage(Gtk.Box):
         self.pack_start(Gtk.Label(wrap=True, max_width_chars=60, xalign=0,
                                   label=t("wallpaper.info")), False, False, 0)
         current = wallpaper_choice_now()
-        has_saved = os.path.exists(WALLPAPER_SAVED) and os.path.getsize(WALLPAPER_SAVED) > 0
+        self.has_saved = os.path.exists(WALLPAPER_SAVED) and os.path.getsize(WALLPAPER_SAVED) > 0
+        self.loading = True
+
         self.combo = Gtk.ComboBoxText()
-        self.combo.append("standard", t("wallpaper.standard"))
-        # Only meaningful when a picture of the user's is shown or was saved.
-        if current == "previous" or has_saved:
-            self.combo.append("previous", t("wallpaper.previous"))
         for pk in WALLPAPER_PACKS:
             if os.path.isdir(os.path.join(WALLPAPER_PACK, pk)):
                 self.combo.append(pk, t("wallpaper." + pk))
-        self.combo.set_active_id(current)
-        self.combo.connect("changed", self.on_changed)
-        self.combo.set_halign(Gtk.Align.START)
-        self.pack_start(self.combo, False, False, 0)
-        settings = Gtk.LinkButton.new_with_label("", t("wallpaper.desktop_settings"))
-        settings.connect("activate-link", self.on_desktop_settings)
-        settings.set_halign(Gtk.Align.START)
-        self.pack_start(settings, False, False, 0)
-        credits = Gtk.LinkButton.new_with_label("file://" + WALLPAPER_PACK + "/CREDITS.md",
-                                                t("wallpaper.credits"))
-        credits.set_halign(Gtk.Align.START)
-        self.pack_start(credits, False, False, 0)
+        self.combo.set_active_id(current if current in WALLPAPER_PACKS else WALLPAPER_PACKS[0])
+        self.combo.connect("changed", self.on_pack_changed)
 
-    def on_changed(self, combo):
-        choice = combo.get_active_id()
-        if choice:
-            subprocess.Popen([WALLPAPER_HELPER, choice])
+        self.rb_rotate = Gtk.RadioButton.new_with_label_from_widget(None, t("wallpaper.mode_rotate"))
+        self.rb_own = Gtk.RadioButton.new_with_label_from_widget(self.rb_rotate, t("wallpaper.mode_own"))
+        settings = self.own_button = Gtk.Button(label=t("wallpaper.own_settings"))
+        settings.connect("clicked", self.on_desktop_settings)
 
-    def on_desktop_settings(self, button):
+        for radio, extra in ((self.rb_rotate, self.combo), (self.rb_own, settings)):
+            row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+            row.pack_start(radio, False, False, 0)
+            if extra is not None:
+                row.pack_start(extra, False, False, 0)
+            self.pack_start(row, False, False, 0)
+
+        (self.rb_rotate if current in WALLPAPER_PACKS else self.rb_own).set_active(True)
+        self.update_sensitivity()
+        for radio in (self.rb_rotate, self.rb_own):
+            radio.connect("toggled", self.on_mode_toggled)
+        self.loading = False
+
+    def update_sensitivity(self):
+        self.combo.set_sensitive(self.rb_rotate.get_active())
+        self.own_button.set_sensitive(self.rb_own.get_active())
+
+    def apply(self, choice):
+        subprocess.Popen([WALLPAPER_HELPER, choice])
+
+    def on_mode_toggled(self, radio):
+        self.update_sensitivity()
+        if self.loading or not radio.get_active():
+            return
+        if radio is self.rb_rotate:
+            self.apply(self.combo.get_active_id() or WALLPAPER_PACKS[0])
+        elif self.has_saved:
+            self.apply("previous")
+        else:
+            # Nothing of the user's to go back to yet: let them pick a picture.
+            self.on_desktop_settings(None)
+
+    def on_pack_changed(self, combo):
+        if not self.loading and self.rb_rotate.get_active() and combo.get_active_id():
+            self.apply(combo.get_active_id())
+
+    def on_desktop_settings(self, _button):
         subprocess.Popen(["xfdesktop-settings"])
-        return True
 
 
 PAGES = [
