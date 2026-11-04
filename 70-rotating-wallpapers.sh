@@ -61,4 +61,39 @@ OnlyShowIn=XFCE;
 X-XFCE-Autostart-Phase=Application
 EOF
 
+# (Re)start the corner button and the fade daemon in the running desktop
+# session, so an update takes effect without logging out again. The new
+# instances need the session's environment (DISPLAY, XAUTHORITY, DBus), which
+# this root shell lacks, so it is read from a running desktop process.
+echo "--- Reloading the wallpaper helpers in the running session ---"
+TARGET_USER="${SUDO_USER:-}"
+SESSION_PID=""
+if [ -n "$TARGET_USER" ]; then
+	for proc in xfdesktop xfce4-panel xfce4-session; do
+		SESSION_PID="$(pgrep -u "$TARGET_USER" -x "$proc" | head -n1 || true)"
+		[ -n "$SESSION_PID" ] && break
+	done
+fi
+if [ -n "$SESSION_PID" ] && [ -r "/proc/$SESSION_PID/environ" ]; then
+	SESSION_ENV="$(tr '\0' '\n' < "/proc/$SESSION_PID/environ" | grep -E '^(DISPLAY|XAUTHORITY|DBUS_SESSION_BUS_ADDRESS|XDG_RUNTIME_DIR|LANG)=' || true)"
+	for helper in cyberbeest-wallpaper-corner cyberbeest-wallpaper-fade; do
+		OLD_PID="$(pgrep -u "$TARGET_USER" -f "^python3 /usr/local/bin/$helper\$" | head -n1 || true)"
+		# The corner button always runs; the fade daemon only if it already was
+		# (it exits by itself when no photo pack is chosen).
+		if [ -z "$OLD_PID" ] && [ "$helper" != cyberbeest-wallpaper-corner ]; then
+			continue
+		fi
+		if [ -n "$OLD_PID" ]; then
+			kill "$OLD_PID" 2>/dev/null || true
+			for _ in 1 2 3 4 5 6 7 8 9 10; do kill -0 "$OLD_PID" 2>/dev/null || break; sleep 0.5; done
+		fi
+		# shellcheck disable=SC2086
+		sudo -u "$TARGET_USER" -H env $(echo $SESSION_ENV) setsid nohup "/usr/local/bin/$helper" >/dev/null 2>&1 </dev/null &
+		echo "$helper (re)started"
+	done
+	sleep 1
+else
+	echo "No desktop session found -- the helpers start at next login"
+fi
+
 echo "=== $(date) : done. ==="
