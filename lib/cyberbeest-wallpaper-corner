@@ -100,6 +100,7 @@ ZONE = 140          # px: hover zone edge, measured from the work-area corner
 SIZE = 48           # px: button window edge
 MARGIN = 12         # px: gap between button and the screen/panel edge
 FADE_MS = 220
+WA_CACHE_S = 5       # how long a monitor's panel-adjusted work area is reused
 TIP_DELAY_MS = 1500   # the tooltip is big, so it should not pop up on a stray hover
 TIP_SHOW_MS = 7000    # ...and it goes away by itself
 FADE_FRAME_MS = 30
@@ -121,14 +122,49 @@ class Corner:
         self.icon = None
         self.hover = False
         self.menu_open = False
+        self.wa_cache = {}
         self.tip_win = None
         self.tip_timer = 0
 
     # -- geometry / visibility checks (only run while the pointer is in the zone)
 
     def work_area(self, x, y):
+        """Usable area of the monitor at (x, y), minus panels (dock windows).
+
+        GTK only subtracts panels on the primary monitor, so on a second
+        monitor the corner would land under its panel and the window manager
+        would nudge the button away from the spot its background was grabbed
+        from. Cached for a few seconds: this runs on every poll.
+        """
         mon = self.display.get_monitor_at_point(x, y)
-        return mon.get_workarea()
+        key = mon.get_geometry().x, mon.get_geometry().y
+        now = GLib.get_monotonic_time() // 1000000
+        hit = self.wa_cache.get(key)
+        if hit and now - hit[0] < WA_CACHE_S:
+            return hit[1]
+        g = mon.get_geometry()
+        left, top, right, bottom = g.x, g.y, g.x + g.width, g.y + g.height
+        self.screen.force_update()
+        for w in self.screen.get_windows():
+            if w.get_window_type() != Wnck.WindowType.DOCK or w.is_minimized():
+                continue
+            dx, dy, dw, dh = w.get_geometry()
+            if dx >= g.x + g.width or dx + dw <= g.x or dy >= g.y + g.height or dy + dh <= g.y:
+                continue  # on another monitor
+            if dw >= dh:  # horizontal panel
+                if dy + dh / 2 > (top + bottom) / 2:
+                    bottom = min(bottom, dy)
+                else:
+                    top = max(top, dy + dh)
+            else:         # vertical panel
+                if dx + dw / 2 > (left + right) / 2:
+                    right = min(right, dx)
+                else:
+                    left = max(left, dx + dw)
+        area = Gdk.Rectangle()
+        area.x, area.y, area.width, area.height = left, top, right - left, bottom - top
+        self.wa_cache[key] = (now, area)
+        return area
 
     def screensaver_active(self):
         try:
