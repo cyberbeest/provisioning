@@ -1252,8 +1252,10 @@ func (w *whisker) noteInstalls() {
 	known := map[string]bool{}
 	b, err := os.ReadFile(path)
 	first := err != nil
-	for _, id := range strings.Fields(string(b)) {
-		known[id] = true
+	for _, id := range strings.Split(string(b), "\n") {
+		if id != "" {
+			known[id] = true
+		}
 	}
 	var fresh []string
 	for _, e := range w.all {
@@ -1268,7 +1270,7 @@ func (w *whisker) noteInstalls() {
 	if !first {
 		sort.Strings(fresh)
 		for _, id := range fresh {
-			w.noteRecent(id)
+			w.noteInstalled(id)
 		}
 	}
 	ids := make([]string, 0, len(known))
@@ -1280,13 +1282,33 @@ func (w *whisker) noteInstalls() {
 	os.WriteFile(path, []byte(strings.Join(ids, "\n")+"\n"), 0o644)
 }
 
-func (w *whisker) noteRecent(id string) {
-	max := 10
+func (w *whisker) recentMax() int {
 	if v := w.prop("recent-items-max"); len(v) == 1 {
 		if n := atoi(v, 10); n > 0 {
-			max = n
+			return n
 		}
 	}
+	return 10
+}
+
+// noteInstalled lists a freshly installed app below the launches, so opening the menu never
+// pushes an app the user just started out of the top spot.
+func (w *whisker) noteInstalled(id string) {
+	for _, r := range w.recentIDs {
+		if r == id {
+			return
+		}
+	}
+	ids := append(append([]string{}, w.recentIDs...), id)
+	if max := w.recentMax(); len(ids) > max {
+		ids = append(ids[:max-1], id)
+	}
+	w.recentIDs = ids
+	go setXfconfArray("/plugins/plugin-"+whiskerID+"/recent", ids)
+}
+
+func (w *whisker) noteRecent(id string) {
+	max := w.recentMax()
 	ids := []string{id}
 	for _, r := range w.recentIDs {
 		if r != id && len(ids) < max {
