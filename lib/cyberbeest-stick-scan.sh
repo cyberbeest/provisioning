@@ -204,10 +204,14 @@ timeout 60 freshclam --quiet 2>&1 | tail -n 2 | tee -a "$REPORT" || true
 
 systemctl start clamav-daemon
 CLAMD_STARTED=1
-for _ in $(seq 1 60); do
-	[ -S /var/run/clamav/clamd.ctl ] && break
-	sleep 1
-done
+# The socket file exists at once (systemd socket activation) while clamd is still loading its
+# signatures, which takes minutes on the stick's laptops; connections made before that are
+# dropped and the files behind them silently go unscanned. Wait until clamd really answers.
+echo "waiting for ClamAV to load its signatures (this can take a few minutes)..." | tee -a "$REPORT"
+if ! clamdscan --wait --ping 120:2 >/dev/null 2>&1; then
+	echo "@@ERROR@@ ClamAV did not start (no answer after 4 minutes), so no malware scan was done."
+	exit 1
+fi
 
 FILE_LIST="$(mktemp)"
 echo "building the file list (sensitive locations first)..." | tee -a "$REPORT"
@@ -216,18 +220,18 @@ TOTAL="$(wc -l < "$FILE_LIST")"
 echo "@@CLAMTOTAL@@ $TOTAL"
 
 {
-nworkers="$(nproc)"
-chunkdir="$(mktemp -d)"
-# Round-robin, not contiguous: every worker walks the tiers in order.
-split -n "r/$nworkers" -d -a3 "$FILE_LIST" "$chunkdir/chunk_"
-counter_file="$(mktemp)"; echo 0 > "$counter_file"
-counter_lock="$(mktemp)"
-pids=()
-for chunk in "$chunkdir"/chunk_*; do
-	[ -s "$chunk" ] || continue
-	(
+# Scans one chunk of the file list. A connection error (clamd gone, or not answering yet) makes
+# it wait for clamd and try the chunk again; a chunk that still cannot be scanned is flagged so
+# the scan is never reported as complete.
+scan_chunk() {
+	local chunk="$1" attempt=0 line n
+	while :; do
+		attempt=$((attempt+1))
+		rm -f "$chunk.connfail"
 		stdbuf -oL clamdscan -v --fdpass --file-list="$chunk" 2>&1 | while IFS= read -r line; do
 			case "$line" in
+				"ERROR: "*clamd*|*"onnection refused"*|*"onnection reset"*)
+					: > "$chunk.connfail" ;;
 				*": OK"|*FOUND)
 					n="$(flock "$counter_lock" bash -c '
 						read -r c < "'"$counter_file"'"; c=$((c+1))
@@ -243,13 +247,40 @@ for chunk in "$chunkdir"/chunk_*; do
 				*) echo "$line" ;;
 			esac
 		done
-	) &
+		[ -e "$chunk.connfail" ] || return 0
+		if [ "$attempt" -ge 3 ]; then
+			echo "WARNING: part of the disk could not be scanned, ClamAV stopped answering."
+			: > "$chunk.incomplete"
+			return 0
+		fi
+		echo "ClamAV did not answer; waiting for it and trying this part again (attempt $attempt of 3)..."
+		systemctl start clamav-daemon 2>/dev/null
+		clamdscan --wait --ping 60:2 >/dev/null 2>&1
+	done
+}
+
+nworkers="$(nproc)"
+chunkdir="$(mktemp -d)"
+# Round-robin, not contiguous: every worker walks the tiers in order.
+split -n "r/$nworkers" -d -a3 "$FILE_LIST" "$chunkdir/chunk_"
+counter_file="$(mktemp)"; echo 0 > "$counter_file"
+counter_lock="$(mktemp)"
+pids=()
+for chunk in "$chunkdir"/chunk_*; do
+	[ -s "$chunk" ] || continue
+	scan_chunk "$chunk" &
 	pids+=("$!")
 done
 wait "${pids[@]}" 2>/dev/null
+INCOMPLETE=0
+ls "$chunkdir"/*.incomplete >/dev/null 2>&1 && INCOMPLETE=1
 rm -rf "$chunkdir" "$counter_file" "$counter_lock"
 } | tee -a "$REPORT"
 rm -f "$FILE_LIST"
 
+if [ "${INCOMPLETE:-0}" = 1 ]; then
+	echo "@@ERROR@@ The malware scan is incomplete: ClamAV stopped answering for part of the disk. Do not treat this disk as clean."
+	exit 1
+fi
 FINISHED=1
 echo "@@DONE@@ $REPORT"
