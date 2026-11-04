@@ -53,7 +53,9 @@ def current_image(display, x, y):
 
 
 def credit_for(image):
-    """(title, author, license) of a pack picture from CREDITS.md, or None."""
+    """(title, author, license, url) of a pack picture from CREDITS.md, or None."""
+    if not image.startswith("/usr/share/backgrounds/cyberbeest/"):
+        return None
     name = os.path.basename(image)
     try:
         lines = open(CREDITS).read().splitlines()
@@ -64,7 +66,7 @@ def credit_for(image):
         if len(cells) >= 4 and cells[0] == name:
             title = urllib.parse.unquote(cells[3].rsplit("File:", 1)[-1])
             title = os.path.splitext(title)[0].replace("_", " ")
-            return title, cells[1], cells[2]
+            return title, cells[1], cells[2], cells[3]
     return None
 
 
@@ -98,6 +100,8 @@ ZONE = 140          # px: hover zone edge, measured from the work-area corner
 SIZE = 48           # px: button window edge
 MARGIN = 12         # px: gap between button and the screen/panel edge
 FADE_MS = 220
+TIP_DELAY_MS = 1500   # the tooltip is big, so it should not pop up on a stray hover
+TIP_SHOW_MS = 7000    # ...and it goes away by itself
 FADE_FRAME_MS = 30
 LEAVE_GRACE = 2     # polls the pointer may stay outside the zone before fading out
 
@@ -116,6 +120,9 @@ class Corner:
         self.bg = None          # pixbuf of the wallpaper behind the button
         self.icon = None
         self.hover = False
+        self.menu_open = False
+        self.tip_win = None
+        self.tip_timer = 0
 
     # -- geometry / visibility checks (only run while the pointer is in the zone)
 
@@ -151,16 +158,27 @@ class Corner:
     # -- button window
 
     def build_window(self, wa, x, y):
-        win = Gtk.Window(type=Gtk.WindowType.POPUP)
+        # A managed (not override-redirect) window, so it can be stacked below
+        # the normal windows like a desktop icon instead of floating above them.
+        win = Gtk.Window(type=Gtk.WindowType.TOPLEVEL)
+        win.set_decorated(False)
+        win.set_resizable(False)
+        win.set_skip_taskbar_hint(True)
+        win.set_skip_pager_hint(True)
+        win.set_accept_focus(False)
+        win.set_focus_on_map(False)
+        win.set_keep_below(True)
+        win.set_type_hint(Gdk.WindowTypeHint.UTILITY)
+        win.set_size_request(SIZE, SIZE)
         win.set_default_size(SIZE, SIZE)
         win.set_app_paintable(True)
         win.add_events(Gdk.EventMask.BUTTON_PRESS_MASK | Gdk.EventMask.ENTER_NOTIFY_MASK
                        | Gdk.EventMask.LEAVE_NOTIFY_MASK)
-        win.set_tooltip_text(tip_text(self.display, x, y))
+        self.tip = tip_text(self.display, x, y)
         win.connect("draw", self.on_draw)
         win.connect("button-press-event", self.on_click)
-        win.connect("enter-notify-event", lambda *_: setattr(self, "hover", True))
-        win.connect("leave-notify-event", lambda *_: setattr(self, "hover", False))
+        win.connect("enter-notify-event", self.on_enter)
+        win.connect("leave-notify-event", self.on_leave)
         win.move(wa.x + wa.width - SIZE - MARGIN, wa.y + wa.height - SIZE - MARGIN)
         return win
 
@@ -199,10 +217,104 @@ class Corner:
             cr.paint_with_alpha(a)
         return True
 
-    def on_click(self, _win, _ev):
+    # The tooltip is our own window rather than a GTK tooltip: it is large, so it
+    # appears only after the pointer has rested on the button for a while and
+    # disappears again by itself.
+
+    def on_enter(self, win, *_):
+        self.hover = True
+        self.cancel_tip()
+        self.tip_timer = GLib.timeout_add(TIP_DELAY_MS, self.show_tip, win)
+
+    def on_leave(self, _win, *_):
+        self.hover = False
+        self.cancel_tip()
+
+    def show_tip(self, win):
+        self.tip_timer = GLib.timeout_add(TIP_SHOW_MS, self.hide_tip)
+        # Managed window in the "below" layer, like the button: other windows
+        # cover it instead of it covering them.
+        tip = self.tip_win = Gtk.Window(type=Gtk.WindowType.TOPLEVEL)
+        tip.set_decorated(False)
+        tip.set_resizable(False)
+        tip.set_skip_taskbar_hint(True)
+        tip.set_skip_pager_hint(True)
+        tip.set_accept_focus(False)
+        tip.set_focus_on_map(False)
+        tip.set_keep_below(True)
+        tip.set_type_hint(Gdk.WindowTypeHint.UTILITY)
+        label = Gtk.Label(label=self.tip)
+        label.set_margin_top(6)
+        label.set_margin_bottom(6)
+        label.set_margin_start(10)
+        label.set_margin_end(10)
+        tip.add(label)
+        css = Gtk.CssProvider()
+        css.load_from_data(b"window { background: #1c1c1c; border-radius: 4px; }"
+                           b"label { color: #f2f2f2; }")
+        tip.get_style_context().add_provider(css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+        label.get_style_context().add_provider(css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+        label.show()
+        w, h = tip.get_preferred_size()[1].width, tip.get_preferred_size()[1].height
+        tip.set_size_request(w, h)
+        wx, wy = win.get_position()
+        tip.move(max(0, wx + SIZE - w), max(0, wy - h - 6))
+        tip.show_all()
+        return False
+
+    def hide_tip(self):
+        self.tip_timer = 0
+        if self.tip_win is not None:
+            self.tip_win.destroy()
+            self.tip_win = None
+        return False
+
+    def cancel_tip(self):
+        if self.tip_timer:
+            GLib.source_remove(self.tip_timer)
+            self.tip_timer = 0
+        self.hide_tip()
+
+    def on_click(self, _win, ev):
+        self.cancel_tip()
+        if ev.button == 3:
+            self.show_menu(ev)
+            return True
         subprocess.Popen([SETTINGS, "--tab=wallpaper"], start_new_session=True)
         self.set_target(0.0)
         return True
+
+    def show_menu(self, ev):
+        """Right-click: reveal the current picture; for pack photos also open its source page."""
+        image = current_image(self.display, int(ev.x_root), int(ev.y_root))
+        if not image or not os.path.isfile(image) or image.startswith(RUNTIME):
+            return
+        credit = credit_for(image)
+        menu = Gtk.Menu()
+        entries = [("wallpaper.corner_menu_folder", lambda *_: self.reveal(image))]
+        if credit:
+            entries.append(("wallpaper.corner_menu_site", lambda *_: self.open_url(credit[3])))
+        for key, action in entries:
+            item = Gtk.MenuItem(label=t(key))
+            item.connect("activate", action)
+            menu.append(item)
+        menu.show_all()
+        self.menu_open = True
+        menu.connect("deactivate", lambda *_: setattr(self, "menu_open", False))
+        menu.popup_at_pointer(ev)
+
+    def reveal(self, image):
+        uri = GLib.filename_to_uri(image, None)
+        r = subprocess.run(["gdbus", "call", "--session", "--dest", "org.freedesktop.FileManager1",
+                            "--object-path", "/org/freedesktop/FileManager1",
+                            "--method", "org.freedesktop.FileManager1.ShowItems",
+                            f"['{uri}']", ""], capture_output=True)
+        if r.returncode != 0:
+            subprocess.Popen(["thunar", os.path.dirname(image)], start_new_session=True)
+
+    def open_url(self, url):
+        if url.startswith("https://"):
+            subprocess.Popen(["firefox", url], start_new_session=True)
 
     # -- fading
 
@@ -226,6 +338,7 @@ class Corner:
         if self.alpha == self.target:
             self.fade_id = 0
             if self.alpha == 0 and self.win is not None:
+                self.cancel_tip()
                 self.win.destroy()
                 self.win = None
                 self.bg = None
@@ -258,7 +371,7 @@ class Corner:
                 self.outside = 0
         elif self.win is not None and self.target > 0:
             self.outside += 1
-            if self.outside >= LEAVE_GRACE and not self.hover:
+            if self.outside >= LEAVE_GRACE and not self.hover and not self.menu_open:
                 self.set_target(0.0)
         return True
 

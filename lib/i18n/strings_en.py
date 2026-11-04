@@ -65,6 +65,8 @@ STRINGS = {
     "wallpaper.corner_tip": "Wallpaper rotation settings",
     "wallpaper.corner_tip_on": "Wallpaper rotation: {pack}",
     "wallpaper.corner_now": "Showing now: {title} by {author} ({license})",
+    "wallpaper.corner_menu_folder": "Show picture in folder",
+    "wallpaper.corner_menu_site": "Show picture's website",
     "wallpaper.corner_tip_off": "Wallpaper rotation is off",
     "wallpaper.info": "Choose Cyberbeest's picture, your own, or a set of photos that changes every hour.",
     "wallpaper.standard": "Cyberbeest standard",
