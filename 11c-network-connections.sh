@@ -50,6 +50,8 @@ install -o "$TARGET_USER" -g "$TARGET_USER" -m 755 \
 	"$DIR/lib/geo.py" "$TARGET_HOME/.local/bin/geo.py"
 install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 \
 	"$DIR/lib/connections-names.txt" "$TARGET_HOME/.local/bin/connections-names.txt"
+install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 \
+	"$DIR/lib/connections-context.txt" "$TARGET_HOME/.local/bin/connections-context.txt"
 
 # i18n.sh/i18n.py only resolve their catalogs relative to their own
 # location, so they need a copy next to the scripts -- same per-installed-

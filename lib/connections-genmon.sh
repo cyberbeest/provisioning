@@ -29,10 +29,21 @@ mapfile -t rows < <(
             dir = (index(ports, " " a[n] " ") > 0) ? "in" : "out"
             if (match($0, /\(\("[^"]+"/)) name = substr($0, RSTART + 3, RLENGTH - 4)
             else if (match($0, /uid:[0-9]+/)) name = "uid " substr($0, RSTART + 4, RLENGTH - 4)
+            else if (dir == "in" && a[n] == 22) name = "sshd"  # root session: no process/uid shown
             else name = "(unknown)"
             print dir " " name
         }' | sort | uniq -c | sort -rn
 )
+
+# Generic helpers (curl, apt, ...) are named after what runs them (Viber update
+# check, ...) by connections_lookup.py, so a tooltip row for one of them comes
+# from there too. Only then, to keep the common refresh cheap.
+if printf '%s\n' "${rows[@]}" | grep -qE ' (in|out) (curl|wget|python3?|apt(-get)?|dpkg|gpg|rsync|git(-remote-http)?|bash|sh|gopanel)$'; then
+    if mapfile -t named < <(timeout 5 python3 "$(dirname "${BASH_SOURCE[0]}")/connections_lookup.py" 2>/dev/null |
+        sort | uniq -c | sort -rn) && [ "${#named[@]}" -gt 0 ]; then
+        rows=("${named[@]}")
+    fi
+fi
 
 # Sandboxed apps show up as "uid <n>" here. connections_lookup.py names them
 # from a per-socket cache. Filling the cache means joining every firejail
@@ -79,6 +90,7 @@ done < "$(dirname "${BASH_SOURCE[0]}")/connections-names.txt" 2>/dev/null
 
 in_total=0
 out_total=0
+out_apps=0
 declare -A app_seen=()
 unidentified=0
 in_list=""
@@ -108,14 +120,18 @@ for line in "${rows[@]}"; do
     app_seen[$name]=1
     if [ "$dir" = in ]; then
         in_total=$(( in_total + count ))
-        in_list+="$(row_label "$count" "$name" "$flags")"$'\n'
+        in_list+="$name"$'\t'"$(row_label "$count" "$name" "$flags")"$'\n'
     else
         out_total=$(( out_total + count ))
-        out_list+="$(row_label "$count" "$name" "$flags")"$'\n'
+        out_apps=$(( out_apps + 1 ))
+        out_list+="$name"$'\t'"$(row_label "$count" "$name" "$flags")"$'\n'
     fi
 done
 
-# "15 outgoing connections:" / "1 incoming connection:"
+# Tooltip rows ("<name>\t<label>" lines) sorted by app name, label only.
+by_name() { printf '%s' "$1" | sort -f -t$'\t' -k1,1 | cut -f2-; }
+
+# "3 apps have open network connections:" / "1 incoming connection:"
 count_header() {
     local key=connections_genmon.$1_n
     [ "$2" -eq 1 ] && key=connections_genmon.$1_1
@@ -130,10 +146,10 @@ if [ "$total" -eq 0 ]; then
 else
     tooltip=""
     if [ "$in_total" -gt 0 ]; then
-        tooltip+="⬇ $(count_header in "$in_total")"$'\n'"${in_list}"$'\n'
+        tooltip+="⬇ $(count_header in "$in_total")"$'\n'"$(by_name "$in_list")"$'\n\n'
     fi
     if [ "$out_total" -gt 0 ]; then
-        tooltip+="$(count_header out "$out_total")"$'\n'"${out_list%$'\n'}"
+        tooltip+="$(count_header out "$out_apps")"$'\n'"$(by_name "$out_list")"
     else
         tooltip+="$(count_header out 0)"
     fi

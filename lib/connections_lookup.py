@@ -21,6 +21,7 @@ import sys
 RUN_DIR = f"/run/user/{os.getuid()}"
 CACHE_PATH = f"{RUN_DIR}/cyberbeest-connections-names.json"
 NOTIFIED_PATH = f"{RUN_DIR}/cyberbeest-connections-notified.json"
+COUNTRIES_PATH = f"{RUN_DIR}/cyberbeest-connections-countries.json"
 SPARKLE_PATH = f"{RUN_DIR}/cyberbeest-connections-sparkle"
 SETTINGS_PATH = os.path.expanduser("~/.config/cyberbeest/connections/settings.json")
 
@@ -45,6 +46,54 @@ def display_name(proc):
             pass
         _display.setdefault("", "")
     return _display.get(proc, proc)
+
+
+GENERIC_HELPERS = {"curl", "wget", "python3", "python", "apt", "apt-get", "dpkg",
+                   "gpg", "rsync", "git", "git-remote-http", "bash", "sh", "gopanel"}
+_context = []
+LAST_PIDS = {}  # app -> pids with connections, filled by read_connections
+
+
+def context_label(comm, pid):
+    """For a generic helper (curl, apt, ...), a label naming what runs it, from
+    its systemd unit or parent processes (connections-context.txt); None when
+    nothing known matches."""
+    if comm not in GENERIC_HELPERS or not pid:
+        return None
+    if not _context:
+        try:
+            with open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                   "connections-context.txt"), encoding="utf-8") as f:
+                for line in f:
+                    parts = line.split()
+                    if len(parts) == 2 and not line.startswith("#"):
+                        _context.append(tuple(parts))
+        except OSError:
+            pass
+        _context.append(("", ""))  # marks the table as loaded
+    texts = []
+    try:
+        with open(f"/proc/{pid}/cgroup", encoding="utf-8") as f:
+            texts.append(f.read())
+    except OSError:
+        pass
+    cur, hops = pid, 0
+    while cur > 1 and hops < 12:
+        try:
+            with open(f"/proc/{cur}/cmdline", "rb") as f:
+                texts.append(f.read().replace(b"\0", b" ").decode("utf-8", "replace"))
+            with open(f"/proc/{cur}/stat", encoding="utf-8") as f:
+                cur = int(f.read().rsplit(")", 1)[1].split()[1])
+        except (OSError, ValueError, IndexError):
+            break
+        hops += 1
+    # Nearest process first; the cgroup (systemd unit) is the most reliable
+    # and goes first.
+    for text in texts:
+        for needle, key in _context:
+            if needle and needle in text:
+                return t(f"connections.ctx_{key}")
+    return None
 
 
 def split_endpoint(ep):
@@ -120,6 +169,7 @@ def read_connections(mark_sandboxed=True, scan=True):
         capture_output=True, text=True, env=env,
     ).stdout
     apps = {}
+    LAST_PIDS.clear()
     cache = load_cache()
     seen = set(re.findall(r"ino:(\d+)", out))
     scanned = False
@@ -140,11 +190,18 @@ def read_connections(mark_sandboxed=True, scan=True):
         rip, rport = split_endpoint(cols[3])
         if is_loopback(lip) or is_loopback(rip):
             continue
-        m = re.search(r'\(\("([^"]+)"', line)
+        m = re.search(r'\(\("([^"]+)",pid=(\d+)', line)
         if m:
-            app = display_name(m.group(1))
+            app = context_label(m.group(1), int(m.group(2))) or display_name(m.group(1))
+            LAST_PIDS.setdefault(app, set()).add(int(m.group(2)))
         else:
             u = re.search(r"uid:(\d+)", line)
+            if not u and lport == "22" and lport in listening:
+                # root's sshd session: ss shows neither process nor uid for it
+                app = display_name("sshd")
+                apps.setdefault(app, []).append((rip, rport, True, lport, None, None))
+                last = (app, len(apps[app]) - 1)
+                continue
             if not u or int(u.group(1)) >= 1000:
                 ino = re.search(r"ino:(\d+)", line)
                 name = cache.get(ino.group(1)) if ino else None
@@ -333,6 +390,39 @@ def read_settings():
         return {}
 
 
+def new_country_lines(app, conns, geo, state):
+    """Notification texts for countries an app reaches that it had not reached
+    earlier in its current run. state is COUNTRIES_PATH's content, updated in
+    place. A new run (none of the recorded pids is still connected) starts a
+    fresh list silently, and so does the first sighting of an app; sandboxed
+    apps have no pid and count as one run per session."""
+    codes = []
+    for rip, *_ in conns:
+        cc = None if is_lan(rip) else geo.country(rip)
+        if cc and cc not in codes:
+            codes.append(cc)
+    pids = LAST_PIDS.get(app, set())
+    rec = state.get(app)
+    if rec and (not pids or set(rec["pids"]) & pids):
+        new = [cc for cc in codes if cc not in rec["countries"]]
+        rec["countries"] += new
+        rec["pids"] = sorted(set(rec["pids"]) | pids)
+    else:
+        new = []
+        state[app] = {"pids": sorted(pids), "countries": codes}
+    if not new:
+        return None
+    names = [country_name(cc) for cc in new]
+    more = len(names) - 3
+    if more > 0:
+        names = names[:3] + [t("connections.where_more").format(n=more)]
+    where = names[0] if len(names) == 1 else ", ".join(names[:-1]) + t("connections.where_and") + names[-1]
+    from geo import flag_emoji
+    flags = "".join(flag_emoji(cc) for cc in new[:3])
+    text = t("connections.notify_new_country").format(app=friendly_name(app), where=where)
+    return (flags + " " + text).strip()
+
+
 def notify_new_apps():
     """Pops up one notification for apps that talk on the network for the first
     time this session, saying whether it reaches the Internet, the local
@@ -353,12 +443,27 @@ def notify_new_apps():
     except ImportError:
         geo = None
     fresh = []
+    country_lines = []
+    track = geo is not None and read_settings().get("notify_countries", True)
+    try:
+        with open(COUNTRIES_PATH, encoding="utf-8") as f:
+            cstate = json.load(f)
+    except (OSError, ValueError):
+        cstate = {}
     for app, conns in read_connections(mark_sandboxed=False, scan=False).items():
         if app == unknown or app.startswith("uid ") or app.endswith(service):
             continue
+        if track:
+            # before the first-contact check: a first contact records the
+            # countries silently, the message for it already names them
+            line = new_country_lines(app, conns, geo, cstate)
+        else:
+            line = None
         seen = {"lan" if is_lan(rip) else "wan" for rip, *_ in conns}
         known = set(notified.get(app, []))
         if seen <= known:
+            if line:
+                country_lines.append(line)
             continue
         known |= seen
         notified[app] = sorted(known)
@@ -366,7 +471,10 @@ def notify_new_apps():
         wan = [c for c in conns if not is_lan(c[0])]
         fresh.append((app, scope, flags_for(wan, geo) if geo else "",
                       country_names(wan, geo) if geo else []))
-    if not fresh:
+    if track:
+        with open(COUNTRIES_PATH, "w", encoding="utf-8") as f:
+            json.dump(cstate, f)
+    if not fresh and not country_lines:
         return
     with open(NOTIFIED_PATH, "w", encoding="utf-8") as f:
         json.dump(notified, f)
@@ -386,6 +494,7 @@ def notify_new_apps():
         else:
             text = t(f"connections.notify_{scope}").format(app=friendly_name(app))
         lines.append((flags + " " + text).strip())
+    lines += country_lines
     if len(lines) > 5:
         lines = lines[:5] + [t("connections.notify_more").format(n=len(lines) - 5)]
     try:

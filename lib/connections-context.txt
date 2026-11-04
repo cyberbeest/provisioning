@@ -1,0 +1,21 @@
+# Labels for generic helper programs (curl, wget, apt, python3, ...) in the
+# network icon: "<text to find> <i18n key suffix>". The text is searched in the
+# helper's systemd unit name and in the command lines of its parent processes,
+# nearest first; the first matching line wins. The label is the catalog string
+# connections.ctx_<key suffix>.
+viber-update-check viber_update
+security-update-check security_updates
+unattended-upgrade security_updates
+cyberbeest-update cyberbeest_update
+cyberbeest-pkg-helper app_install
+cyberbeest-claude-install claude_install
+geo.py geo_update
+fwupd firmware_update
+apt-daily system_updates
+packagekit system_updates
+freshclam virus_signatures
+rkhunter rootkit_scan
+chkrootkit rootkit_scan
+lynis security_audit
+beestify beestify
+gopanel weather_update
