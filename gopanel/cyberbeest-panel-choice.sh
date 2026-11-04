@@ -42,6 +42,23 @@ wait_for() { # wait_for <seconds> <process name>
 	return 1
 }
 
+# `xfce4-panel --quit` is itself a GTK app: if the running panel has not registered org.xfce.Panel on
+# the session bus yet (right after login the process exists well before the name does), it pops a
+# "Failed to send D-Bus message ... ServiceUnknown" dialog. So wait for the name; if it never shows
+# up, kill the process instead of asking it.
+stop_xfce_panel() {
+	pgrep -x xfce4-panel >/dev/null || return 0
+	for _ in $(seq 40); do
+		if gdbus call --session --dest org.freedesktop.DBus --object-path /org/freedesktop/DBus \
+			--method org.freedesktop.DBus.NameHasOwner org.xfce.Panel 2>/dev/null | grep -q true; then
+			xfce4-panel --quit >/dev/null 2>&1
+			return 0
+		fi
+		sleep 0.5
+	done
+	pkill -x xfce4-panel
+}
+
 use_gopanel() {
 	local bin
 	bin="$(gopanel_bin)" || { echo "gopanel binary not found"; return 1; }
@@ -55,7 +72,7 @@ use_gopanel() {
 	done
 	sleep 0.3
 	touch "$MARKER"
-	pgrep -x xfce4-panel >/dev/null && xfce4-panel --quit
+	stop_xfce_panel
 	return 0
 }
 
@@ -89,6 +106,10 @@ set)
 	esac ;;
 login)
 	if [ "$(saved)" = gopanel ]; then
+		# The session already started gopanel directly (cyberbeest-session-panel.sh): nothing to switch.
+		if pgrep -x gopanel >/dev/null && [ -e "$MARKER" ] && ! pgrep -x xfce4-panel >/dev/null; then
+			exit 0
+		fi
 		# The session starts xfce4-panel before this autostart entry runs, so it shows briefly. Start
 		# gopanel at once, in parallel with the wait below, to keep that overlap as short as possible.
 		bin="$(gopanel_bin)" && { pgrep -x gopanel >/dev/null || launch "$bin"; }

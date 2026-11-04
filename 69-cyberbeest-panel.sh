@@ -125,6 +125,7 @@ install -d -o "$TARGET_USER" -g "$TARGET_USER" "$BINDIR" "$CONF_DIR" "$TARGET_HO
 ln -sfn "$LIBDIR/gopanel" "$BINDIR/gopanel"
 chown -h "$TARGET_USER:$TARGET_USER" "$BINDIR/gopanel"
 install -o "$TARGET_USER" -g "$TARGET_USER" -m 755 "$SRC/cyberbeest-panel-choice.sh" "$BINDIR/cyberbeest-panel-choice.sh"
+install -o "$TARGET_USER" -g "$TARGET_USER" -m 755 "$SRC/cyberbeest-session-panel.sh" "$BINDIR/cyberbeest-session-panel.sh"
 install -o "$TARGET_USER" -g "$TARGET_USER" -m 755 "$SRC/cyberbeest-whisker-key.sh" "$BINDIR/cyberbeest-whisker-key.sh"
 install -o "$TARGET_USER" -g "$TARGET_USER" -m 755 "$DIR/lib/memory-details.py" "$BINDIR/memory-details.py"
 # "Remove from panel" on genmon icons hides them via this and adds a Whisker entry to show them again
@@ -143,6 +144,22 @@ Terminal=false
 X-GNOME-Autostart-enabled=true
 EOF
 chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.config/autostart/cyberbeest-panel-choice.desktop"
+
+# xfce4-session starts its panel from the Failsafe session list (there is no saved session): point
+# that entry at the wrapper, which starts gopanel (or the XFCE panel, per the saved choice) directly.
+# Through xfconf-query, so a running xfconfd cannot revert it; without a session bus (provisioning
+# before the first login) a private one is started just for this write.
+echo "--- Session panel entry ---"
+SESSION_PANEL="$BINDIR/cyberbeest-session-panel.sh"
+XQ=(xfconf-query -c xfce4-session -p /sessions/Failsafe/Client2_Command)
+if [ -S "/run/user/$TARGET_UID/bus" ]; then
+	RUN=(sudo -u "$TARGET_USER" env "XDG_RUNTIME_DIR=/run/user/$TARGET_UID" "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$TARGET_UID/bus")
+else
+	RUN=(sudo -u "$TARGET_USER" dbus-run-session --)
+fi
+"${RUN[@]}" "${XQ[@]}" -r 2>/dev/null || true
+"${RUN[@]}" "${XQ[@]}" -n -a -t string -s "$SESSION_PANEL" \
+	|| echo "could not set the session panel entry; the XFCE panel starts and the autostart switch handles it" >&2
 
 # A panel that is already running moves to the new binary. Switching panels is the user's choice
 # in Settings, never done here.

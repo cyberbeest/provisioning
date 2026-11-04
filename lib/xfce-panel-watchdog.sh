@@ -211,7 +211,10 @@ while true; do
     else
         gopanel_missing=0
     fi
-    if ! panel_alive && [ ! -e "$PANEL_STOPPED_MARKER" ]; then
+    # Right after login the session is still starting its panel (cyberbeest-session-panel.sh may be
+    # about to create the marker): give it a moment before taking over.
+    session_age="$(ps -o etimes= -p "$(pgrep -x xfce4-session | head -n1)" 2>/dev/null | tr -d ' ')"
+    if ! panel_alive && [ ! -e "$PANEL_STOPPED_MARKER" ] && [ "${session_age:-999}" -ge 30 ]; then
         restart_panel
     fi
     sleep "$POLL_INTERVAL"
