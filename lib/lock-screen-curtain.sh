@@ -198,10 +198,17 @@ ensure_curtain_impl() {
 
     # Created tiny and far off-screen as a second safety net; the real
     # geometry is applied below once the WM manages the window.
+    # stdout/stderr must be detached: callers capture ensure_curtain via
+    # id=$(ensure_curtain), and a long-lived xterm holding that pipe's write
+    # end open makes the substitution (and the flock held inside it) hang
+    # forever (it also must not inherit the flock fd 200, or the lock is held
+    # for the xterm's whole lifetime) -- confirmed live 2026-11-04: watchdog and dbus handler both
+    # wedged after the xterm was re-created, curtain left mapped while
+    # unlocked.
     xterm -iconic -geometry 10x2+30000+30000 -class "$CURTAIN_CLASS" -name "$CURTAIN_CLASS" -title "$CURTAIN_CLASS" \
         -bg "$CURTAIN_COLOR" -fg "$CURTAIN_COLOR" -cr "$CURTAIN_COLOR" \
         -xrm "${CURTAIN_CLASS}*internalBorder: 0" -bw 0 +sb \
-        -e /bin/sh -c 'exec sleep infinity' &
+        -e /bin/sh -c 'exec sleep infinity' </dev/null >/dev/null 2>&1 200>&- &
     disown
 
     local waited=0
