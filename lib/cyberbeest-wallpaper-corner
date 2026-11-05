@@ -71,24 +71,27 @@ def credit_for(image):
 
 
 def tip_text(display=None, x=0, y=0):
-    """Tooltip: the active photo pack, read fresh each time the button appears."""
+    """Tooltip markup, read fresh each time the button appears: the picture's
+    caption (pack photos only), then a dimmer line about the rotation."""
+    esc = GLib.markup_escape_text
     try:
         pack = open(MARKER).read().strip()
     except OSError:
         pack = ""
     key = "wallpaper.corner_tip_on" if pack in PACKS else "wallpaper.corner_tip_off"
-    text = t(key)
-    if text == key:
-        return TIP_FALLBACK
-    if pack not in PACKS:
-        return text
-    name = t("wallpaper." + pack)
-    text = text.format(pack=name if name != "wallpaper." + pack else pack)
+    info = t(key)
+    if info == key:
+        return esc(TIP_FALLBACK)
+    if pack in PACKS:
+        name = t("wallpaper." + pack)
+        info = info.format(pack=name if name != "wallpaper." + pack else pack)
+    lines = []
     credit = credit_for(current_image(display, x, y)) if display else None
-    now = t("wallpaper.corner_now")
-    if credit and now != "wallpaper.corner_now":
-        text += "\n" + now.format(title=credit[0], author=credit[1], license=credit[2])
-    return text
+    caption = t("wallpaper.corner_now")
+    if credit and caption != "wallpaper.corner_now":
+        lines.append(esc(caption.format(title=credit[0], author=credit[1], license=credit[2])))
+    lines.append('<span alpha="70%">' + esc(info) + "</span>")
+    return "\n\n".join(lines)
 
 
 SETTINGS = os.path.expanduser("~/.local/bin/cyberbeest-settings.py")
@@ -279,7 +282,10 @@ class Corner:
         tip.set_focus_on_map(False)
         tip.set_keep_below(True)
         tip.set_type_hint(Gdk.WindowTypeHint.UTILITY)
-        label = Gtk.Label(label=self.tip)
+        label = Gtk.Label()
+        label.set_markup(self.tip)
+        label.set_line_wrap(True)
+        label.set_max_width_chars(60)
         label.set_margin_top(6)
         label.set_margin_bottom(6)
         label.set_margin_start(10)
