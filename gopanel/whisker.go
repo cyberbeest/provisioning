@@ -1282,14 +1282,9 @@ func (w *whisker) noteInstalls() {
 	os.WriteFile(path, []byte(strings.Join(ids, "\n")+"\n"), 0o644)
 }
 
-func (w *whisker) recentMax() int {
-	if v := w.prop("recent-items-max"); len(v) == 1 {
-		if n := atoi(v, 10); n > 0 {
-			return n
-		}
-	}
-	return 10
-}
+// recentMax is the length of the Recently Used list; the old Xfce Whisker recent-items-max
+// setting (10) is deliberately ignored.
+func (w *whisker) recentMax() int { return 50 }
 
 // noteInstalled lists a freshly installed app below the launches, so opening the menu never
 // pushes an app the user just started out of the top spot.
