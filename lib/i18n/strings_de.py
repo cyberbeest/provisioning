@@ -68,7 +68,7 @@ STRINGS = {
     "settings.tab_wallpaper": "Hintergrundwechsel",
     "wallpaper.corner_tip": "Einstellungen für den Hintergrundwechsel",
     "wallpaper.corner_tip_on": "Hintergrundwechsel: {pack}",
-    "wallpaper.corner_now": "Aktuell: {title} von {author} ({license})",
+    "wallpaper.corner_now": "{title} von {author} ({license})",
     "wallpaper.corner_menu_folder": "Bild im Ordner zeigen",
     "wallpaper.corner_menu_site": "Webseite des Bildes zeigen",
     "wallpaper.corner_tip_off": "Hintergrundwechsel ist aus",
