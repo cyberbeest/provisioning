@@ -52,6 +52,32 @@ GENERIC_HELPERS = {"curl", "wget", "python3", "python", "apt", "apt-get", "dpkg"
                    "gpg", "rsync", "git", "git-remote-http", "bash", "sh", "gopanel"}
 _context = []
 LAST_PIDS = {}  # app -> pids with connections, filled by read_connections
+LAST_COMMS = {}  # app -> process names behind it (before any relabelling)
+LAST_CHAINS = {}  # pid -> process hierarchy; only filled while COLLECT_CHAINS is set
+COLLECT_CHAINS = False
+DEBUG_LOG = os.path.expanduser("~/.local/state/cyberbeest/connections-debug.log")
+
+
+def ancestry(pid, hops=12):
+    """The process and its parents, nearest first: pid, parent pid, name,
+    command line and systemd unit (last cgroup path component)."""
+    chain = []
+    cur = pid
+    while cur > 1 and len(chain) < hops:
+        try:
+            with open(f"/proc/{cur}/stat", encoding="utf-8") as f:
+                head, _, rest = f.read().rpartition(")")
+            ppid = int(rest.split()[1])
+            comm = head.partition("(")[2]
+            with open(f"/proc/{cur}/cmdline", "rb") as f:
+                cmd = f.read().replace(b"\0", b" ").decode("utf-8", "replace").strip()[:300]
+            with open(f"/proc/{cur}/cgroup", encoding="utf-8") as f:
+                unit = f.read().strip().splitlines()[0].rsplit("/", 1)[-1]
+        except (OSError, ValueError, IndexError):
+            break
+        chain.append({"pid": cur, "ppid": ppid, "comm": comm, "cmdline": cmd, "unit": unit})
+        cur = ppid
+    return chain
 
 
 def context_label(comm, pid):
@@ -170,6 +196,8 @@ def read_connections(mark_sandboxed=True, scan=True):
     ).stdout
     apps = {}
     LAST_PIDS.clear()
+    LAST_COMMS.clear()
+    LAST_CHAINS.clear()
     cache = load_cache()
     seen = set(re.findall(r"ino:(\d+)", out))
     scanned = False
@@ -194,6 +222,9 @@ def read_connections(mark_sandboxed=True, scan=True):
         if m:
             app = context_label(m.group(1), int(m.group(2))) or display_name(m.group(1))
             LAST_PIDS.setdefault(app, set()).add(int(m.group(2)))
+            LAST_COMMS.setdefault(app, set()).add(m.group(1))
+            if COLLECT_CHAINS and int(m.group(2)) not in LAST_CHAINS:
+                LAST_CHAINS[int(m.group(2))] = ancestry(int(m.group(2)))
         else:
             u = re.search(r"uid:(\d+)", line)
             if not u and lport == "22" and lport in listening:
@@ -423,6 +454,40 @@ def new_country_lines(app, conns, geo, state):
     return (flags + " " + text).strip()
 
 
+def log_debug(entries):
+    """Appends one JSON line per pop-up message to the debug log (Settings >
+    Network icon > debug), with the process hierarchy captured when the
+    connection was seen. Keeps the log below about 1 MB."""
+    import datetime
+    try:
+        os.makedirs(os.path.dirname(DEBUG_LOG), exist_ok=True)
+        if os.path.getsize(DEBUG_LOG) > 512 * 1024:
+            os.replace(DEBUG_LOG, DEBUG_LOG + ".1")
+    except OSError:
+        pass
+    now = datetime.datetime.now().astimezone().isoformat(timespec="seconds")
+    try:
+        with open(DEBUG_LOG, "a", encoding="utf-8") as f:
+            for e in entries:
+                f.write(json.dumps({"time": now, **e}, ensure_ascii=False) + "\n")
+    except OSError:
+        pass
+
+
+def debug_entry(app, kind, text, conns, geo):
+    """What the debug log records about one message."""
+    pids = sorted(LAST_PIDS.get(app, ()))
+    return {
+        "message": text, "app": app, "kind": kind,
+        "process_names": sorted(LAST_COMMS.get(app, ())),
+        "connections": [{"ip": rip, "port": rport, "incoming": is_in,
+                         "country": (None if is_lan(rip) or not geo else geo.country(rip)),
+                         "lan": is_lan(rip)}
+                        for rip, rport, is_in, *_ in conns],
+        "processes": [{"pid": pid, "hierarchy": LAST_CHAINS.get(pid) or ancestry(pid)} for pid in pids],
+    }
+
+
 def notify_new_apps():
     """Pops up one notification for apps that talk on the network for the first
     time this session, saying whether it reaches the Internet, the local
@@ -450,7 +515,13 @@ def notify_new_apps():
             cstate = json.load(f)
     except (OSError, ValueError):
         cstate = {}
-    for app, conns in read_connections(mark_sandboxed=False, scan=False).items():
+    global COLLECT_CHAINS
+    debug = bool(read_settings().get("debug", False))
+    COLLECT_CHAINS = debug
+    all_conns = read_connections(mark_sandboxed=False, scan=False)
+    COLLECT_CHAINS = False
+    debug_log = []
+    for app, conns in all_conns.items():
         if app == unknown or app.startswith("uid ") or app.endswith(service):
             continue
         if track:
@@ -464,6 +535,8 @@ def notify_new_apps():
         if seen <= known:
             if line:
                 country_lines.append(line)
+                if debug:
+                    debug_log.append(debug_entry(app, "new_country", line, conns, geo))
             continue
         known |= seen
         notified[app] = sorted(known)
@@ -471,6 +544,8 @@ def notify_new_apps():
         wan = [c for c in conns if not is_lan(c[0])]
         fresh.append((app, scope, flags_for(wan, geo) if geo else "",
                       country_names(wan, geo) if geo else []))
+        if debug:
+            debug_log.append(debug_entry(app, "first_contact_" + scope, "", conns, geo))
     if track:
         with open(COUNTRIES_PATH, "w", encoding="utf-8") as f:
             json.dump(cstate, f)
@@ -494,6 +569,11 @@ def notify_new_apps():
         else:
             text = t(f"connections.notify_{scope}").format(app=friendly_name(app))
         lines.append((flags + " " + text).strip())
+        for e in debug_log:
+            if e["app"] == app and not e["message"]:
+                e["message"] = lines[-1]
+    if debug_log:
+        log_debug(debug_log)
     lines += country_lines
     if len(lines) > 5:
         lines = lines[:5] + [t("connections.notify_more").format(n=len(lines) - 5)]

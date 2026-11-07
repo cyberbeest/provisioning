@@ -710,7 +710,7 @@ class ConnectionsPage(Gtk.Box):
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=12)
         self.set_border_width(16)
         self.settings_path = os.path.join(CONFIG_DIR, "connections", "settings.json")
-        self.settings = {"notify": True, "notify_countries": True, "flags": False, "dnsnames": False, **read_json(self.settings_path, {})}
+        self.settings = {"notify": True, "notify_countries": True, "flags": False, "dnsnames": False, "debug": False, "interval": 10, **read_json(self.settings_path, {})}
 
         info = Gtk.Label(wrap=True, max_width_chars=60, xalign=0, label=t("connections.setting_info"))
         self.pack_start(info, False, False, 0)
@@ -740,6 +740,18 @@ class ConnectionsPage(Gtk.Box):
         self.flags_status = Gtk.Label(wrap=True, xalign=0)
         self.pack_start(self.flags_status, False, False, 0)
 
+        row = Gtk.Box(spacing=8)
+        row.pack_start(Gtk.Label(label=t("connections.setting_interval")), False, False, 0)
+        self.interval = Gtk.SpinButton.new_with_range(2, 120, 1)
+        self.interval.set_value(self.current_interval())
+        self.interval.connect("value-changed", self.on_interval)
+        row.pack_start(self.interval, False, False, 0)
+        row.pack_start(Gtk.Label(label=t("connections.setting_interval_unit")), False, False, 0)
+        self.pack_start(row, False, False, 0)
+        inote = Gtk.Label(wrap=True, max_width_chars=60, xalign=0, label=t("connections.setting_interval_note"))
+        inote.get_style_context().add_class("dim-label")
+        self.pack_start(inote, False, False, 0)
+
         names = Gtk.CheckButton(label=t("connections.setting_names"))
         names.set_active(bool(self.settings["dnsnames"]))
         names.set_sensitive(os.path.exists("/etc/systemd/system/cyberbeest-dns-watch.service"))
@@ -749,8 +761,57 @@ class ConnectionsPage(Gtk.Box):
         nnote.get_style_context().add_class("dim-label")
         self.pack_start(nnote, False, False, 0)
 
+        debug = Gtk.CheckButton(label=t("connections.setting_debug"))
+        debug.set_active(bool(self.settings["debug"]))
+        debug.connect("toggled", self.on_debug)
+        self.pack_start(debug, False, False, 0)
+        dnote = Gtk.Label(wrap=True, max_width_chars=60, xalign=0, label=t("connections.setting_debug_note"))
+        dnote.get_style_context().add_class("dim-label")
+        self.pack_start(dnote, False, False, 0)
+
     def on_notify(self, check):
         self.settings["notify"] = check.get_active()
+        write_json(self.settings_path, self.settings)
+
+    @staticmethod
+    def genmon_rc():
+        """The panel plugin's settings file for the network icon, or None."""
+        import glob
+        for f in sorted(glob.glob(os.path.expanduser("~/.config/xfce4/panel/genmon-*.rc"))):
+            try:
+                if "connections-genmon.sh" in open(f, encoding="utf-8").read():
+                    return f
+            except OSError:
+                pass
+        return None
+
+    def current_interval(self):
+        rc = self.genmon_rc()
+        try:
+            for line in open(rc, encoding="utf-8"):
+                if line.startswith("UpdatePeriod="):
+                    return max(2, min(120, int(line.split("=", 1)[1]) // 1000))
+        except (OSError, ValueError, TypeError):
+            pass
+        return int(self.settings["interval"])
+
+    def on_interval(self, spin):
+        """Writes the plugin's UpdatePeriod; gopanel picks the change up on its own."""
+        secs = int(spin.get_value())
+        self.settings["interval"] = secs
+        write_json(self.settings_path, self.settings)
+        rc = self.genmon_rc()
+        if not rc:
+            return
+        lines = open(rc, encoding="utf-8").read().splitlines()
+        lines = [f"UpdatePeriod={secs * 1000}" if l.startswith("UpdatePeriod=") else l for l in lines]
+        tmp = rc + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines) + "\n")
+        os.replace(tmp, rc)
+
+    def on_debug(self, check):
+        self.settings["debug"] = check.get_active()
         write_json(self.settings_path, self.settings)
 
     def on_countries(self, check):
