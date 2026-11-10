@@ -19,3 +19,4 @@ chkrootkit rootkit_scan
 lynis security_audit
 beestify beestify
 gopanel weather_update
+cyberbeest-fasttrack update_check

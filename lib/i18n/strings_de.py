@@ -710,6 +710,7 @@ STRINGS = {
     "connections.ctx_rootkit_scan": "Rootkit-Prüfung",
     "connections.ctx_security_audit": "Sicherheitsprüfung",
     "connections.ctx_beestify": "Cyberbeest-Einrichtung",
+    "connections.ctx_update_check": "Cyberbeest-Update-Prüfung",
     "connections.ctx_weather_update": "Wetter-Aktualisierung",
     "connections.status": "{total} Verbindungen ({incoming} eingehend), {apps} Apps. Aktualisiert alle {secs} s.",
     "connections.notify_title": "Netzwerk",
