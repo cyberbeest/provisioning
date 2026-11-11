@@ -386,7 +386,40 @@ watchdog() {
 }
 watchdog &
 WATCHDOG_PID=$!
-trap 'kill "$WATCHDOG_PID" 2>/dev/null; rm -f "$CURTAIN_STATE_FILE" "$CURTAIN_EVENT_FILE"' EXIT
+
+# Event-driven guard against the curtain being mapped by something other
+# than curtain_up() while unlocked -- confirmed on tower 2026-11-11: the
+# curtain sat visible for ~3 minutes after login (mapped between two slow
+# watchdog ticks, by an actor that never logged), because the idle tick is
+# 120s. xev on the curtain window costs nothing while idle and lets us
+# unmap it the moment a MapNotify arrives with no lock active. A real lock
+# maps the curtain only after the screensaver reports active, so is_locked
+# is already true by then and the guard leaves it alone.
+curtain_guard() {
+    local id line
+    while true; do
+        id=$(find_curtain_id)
+        if [ -z "$id" ]; then
+            sleep 5
+            continue
+        fi
+        xev -id "$id" -event structure 2>/dev/null |
+        while read -r line; do
+            case "$line" in
+                MapNotify*)
+                    if ! is_locked; then
+                        xdotool windowunmap "$id" 2>/dev/null
+                        logger -t lock-screen-curtain "Guard unmapped curtain mapped while unlocked"
+                    fi
+                    ;;
+            esac
+        done
+        sleep 1
+    done
+}
+curtain_guard &
+GUARD_PID=$!
+trap 'kill "$WATCHDOG_PID" "$GUARD_PID" 2>/dev/null; rm -f "$CURTAIN_STATE_FILE" "$CURTAIN_EVENT_FILE"' EXIT
 
 dbus-monitor --session "type='signal',interface='org.xfce.ScreenSaver',member='ActiveChanged'" 2>/dev/null |
 while read -r line; do
