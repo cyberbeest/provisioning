@@ -126,8 +126,7 @@
       },
       "run": {
         "argv": [
-          "xfce4-screensaver-command",
-          "--lock"
+          "xflock4"
         ]
       }
     },

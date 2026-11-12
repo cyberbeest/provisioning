@@ -90,7 +90,11 @@ enforce_idle_lock() {
     idle_ms=$(xprintidle 2>/dev/null) || return
     if [ "$idle_ms" -ge $(( delay_min * 60000 + 5000 )) ]; then
         logger -t lock-shutdown-watcher "Idle ${idle_ms}ms >= ${delay_min}min but not locked (inhibited?), locking"
-        xfce4-screensaver-command -l
+        if [ -x "$HOME/bin/cyberbeest-lock" ]; then
+            "$HOME/bin/cyberbeest-lock"
+        else
+            xfce4-screensaver-command -l
+        fi
     fi
 }
 

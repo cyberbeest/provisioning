@@ -1,0 +1,21 @@
+#!/bin/bash
+# The one way to lock the screen: paint the lock-screen curtain first, then
+# lock. Every lock path (xflock4 via xfce4-session's LockCommand, idle lock,
+# lid close, panel/menu entries) ends up here, so the last desktop frame can
+# never flash before the lock dialog is up. See lock-screen-curtain.py.
+#
+# Never blocks or prevents the lock: if the curtain daemon is missing or
+# slow, the lock goes ahead after at most CURTAIN_TIMEOUT seconds.
+
+CURTAIN_TIMEOUT=2
+
+export DISPLAY="${DISPLAY:-:0}"
+export XAUTHORITY="${XAUTHORITY:-$HOME/.Xauthority}"
+
+if ! xfce4-screensaver-command -q 2>/dev/null | grep -q "is active"; then
+    gdbus call --session --timeout "$CURTAIN_TIMEOUT" \
+        --dest com.cyberbeest.Curtain --object-path /com/cyberbeest/Curtain \
+        --method com.cyberbeest.Curtain.Show >/dev/null 2>&1
+fi
+
+exec xfce4-screensaver-command --lock

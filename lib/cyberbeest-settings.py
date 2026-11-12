@@ -6,7 +6,7 @@ another dialog means writing one more page and registering it in PAGES.
 Tabs:
   power  Extended power options: the power-saving-while-locked settings (window
          minimizing + browser CPU throttling) used by lock-shutdown-watcher.sh,
-         the instant-cover curtain toggle (see lock-screen-curtain.sh), and the
+         the instant-cover curtain toggle (see lock-screen-curtain.py), and the
          pre-lock warning notification (see lock-warning-watcher.sh).
   panel  Which panel runs: the stock XFCE panel or the experimental Go panel.
          Only shown where the panel switcher (cyberbeest-panel-choice.sh) is

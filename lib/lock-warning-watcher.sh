@@ -6,7 +6,7 @@
 # doesn't touch the lock timer itself, which xfce4-screensaver owns via its
 # own xfconf channel (see 16-power-lock-config.sh) -- except when "no mercy"
 # mode (NO_MERCY_LOCK_ENABLED) is on, in which case this script also forces
-# the lock through via `xfce4-screensaver-command --lock` once the idle
+# the lock through via cyberbeest-lock once the idle
 # delay is reached and xfce4-screensaver is being inhibited, since an
 # inhibit (video playback, a presentation, or a stuck/orphaned one) would
 # otherwise silently defeat xfce4-screensaver's own idle timer.
@@ -22,6 +22,9 @@ DEFAULT_WARN_ENABLED=true
 DEFAULT_WARN_SECONDS=10
 DEFAULT_NO_MERCY_ENABLED=false
 POLL_INTERVAL=1
+# Must exceed xfce4-screensaver's own up-to-1s-early idle check plus the time
+# the curtain needs to paint, or its own timer would win the race.
+IDLE_LOCK_LEAD_SECONDS=3
 POWER_SETTINGS="$HOME/.config/cyberbeest/power-settings.conf"
 export DISPLAY=:0
 export XAUTHORITY="$HOME/.Xauthority"
@@ -44,6 +47,23 @@ is_locked() {
     dbus-send --session --dest=org.xfce.ScreenSaver --type=method_call \
         --print-reply /org/xfce/ScreenSaver org.xfce.ScreenSaver.GetActive \
         2>/dev/null | grep -q "boolean true"
+}
+
+# Every lock goes through cyberbeest-lock (paints the lock-screen curtain
+# first, then locks); fall back to the plain screensaver command if it isn't
+# installed. A failed lock is retried at most every LOCK_RETRY_SECONDS.
+LOCK_RETRY_SECONDS=30
+next_lock_attempt=0
+lock_now() {
+    local now
+    now=$(date +%s)
+    [ "$now" -ge "$next_lock_attempt" ] || return
+    next_lock_attempt=$(( now + LOCK_RETRY_SECONDS ))
+    if [ -x "$SELF_DIR/cyberbeest-lock" ]; then
+        "$SELF_DIR/cyberbeest-lock" >/dev/null 2>&1
+    else
+        xfce4-screensaver-command --lock >/dev/null 2>&1
+    fi
 }
 
 is_inhibited() {
@@ -113,7 +133,17 @@ while true; do
     # deliberately no extra warning beyond the notification below.
     no_mercy=$(read_setting NO_MERCY_LOCK_ENABLED "$DEFAULT_NO_MERCY_ENABLED")
     if [ "$no_mercy" = "true" ] && [ "$remaining" -le 0 ] && is_inhibited; then
-        xfce4-screensaver-command --lock >/dev/null 2>&1
+        lock_now
+    fi
+
+    # Idle lock, curtain first: xfce4-screensaver's own idle timer locks
+    # without any hook before it, so the lock is triggered here a few
+    # seconds ahead of it (it lands up to a second before the delay itself).
+    # Its timer stays as the backstop in case this watcher is not running.
+    # Skipped while the screensaver is inhibited (video, presentation); the
+    # no-mercy setting above covers forcing the lock in that case.
+    if [ "$remaining" -le "$IDLE_LOCK_LEAD_SECONDS" ] && ! is_inhibited; then
+        lock_now
     fi
 
     warn_enabled=$(read_setting WARN_BEFORE_LOCK_ENABLED "$DEFAULT_WARN_ENABLED")
@@ -124,8 +154,14 @@ while true; do
         # with a whole-second g_timeout_add_seconds timer (gs-listener-x11.c),
         # so the lock lands up to a second early -- unshifted, the screen
         # went black while the countdown still said 2.
-        shown=$(( remaining - 1 ))
-        if [ "$shown" -gt 0 ] && [ "$remaining" -le "$warn_seconds" ]; then
+        #
+        # Our own idle lock fires IDLE_LOCK_LEAD_SECONDS ahead of the
+        # screensaver's, so the countdown is shifted by the lead as well
+        # (the one second above is already part of it, plus one more): it ends when the
+        # curtain goes up, not a couple of seconds after.
+        countdown=$(( remaining - IDLE_LOCK_LEAD_SECONDS ))
+        shown=$(( countdown - 1 ))
+        if [ "$shown" -gt 0 ] && [ "$countdown" -le "$warn_seconds" ]; then
             # Re-sent every second (replacing the previous one in place
             # via -r) so the title counts down the remaining seconds.
             if [ "$shown" -ne "$warned_remaining" ]; then
@@ -141,7 +177,7 @@ while true; do
                     "$(t lockwarning.body)")
                 warned_remaining=$shown
             fi
-        elif [ "$remaining" -gt "$warn_seconds" ]; then
+        elif [ "$countdown" -gt "$warn_seconds" ]; then
             warned_remaining=0
             close_notification
         fi
