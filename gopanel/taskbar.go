@@ -167,6 +167,11 @@ func (tb *taskbar) scan() {
 	for _, id := range propU32s(xroot, "_NET_CLIENT_LIST", 512) {
 		w := xproto.Window(id)
 		if tw := known[w]; tw != nil {
+			// A window can gain skip-taskbar after we first saw it (the
+			// lock-screen curtain gets it set by wmctrl after mapping).
+			if tb.skipped(w) {
+				continue
+			}
 			tb.wins = append(tb.wins, tw)
 			continue
 		}
@@ -270,6 +275,10 @@ func (tb *taskbar) onProperty(e xproto.PropertyNotifyEvent) {
 		if tw.id == e.Window {
 			switch name {
 			case "_NET_WM_NAME", "WM_NAME", "_NET_WM_STATE", "_NET_WM_ICON", "WM_HINTS", "_NET_WM_DESKTOP":
+				if name == "_NET_WM_STATE" && tb.skipped(tw.id) {
+					tb.scan()
+					return
+				}
 				tb.refresh(tw)
 				tb.render()
 			}
