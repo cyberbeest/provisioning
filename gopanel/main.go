@@ -1106,19 +1106,9 @@ func unbindHelper(it *item) {
 	it.w, it.img, it.tip, it.click, it.hover = 0, nil, "", nil, nil
 }
 
-// xfcePanelRunning reports whether the stock xfce4-panel is up.
-func xfcePanelRunning() bool {
-	return exec.Command("pgrep", "-x", "xfce4-panel").Run() == nil
-}
-
-// panelMenu is the right-click menu of the panel background: switch the stock
-// XFCE panel on or off, restart or quit this panel.
+// panelMenu is the right-click menu of the panel background.
 func panelMenu(x int, cmds chan<- string, over *item) {
-	xfce := &menuItem{id: 1, label: tr("Start XFCE panel")}
-	if xfcePanelRunning() {
-		xfce = &menuItem{id: 1, label: tr("Stop XFCE panel")}
-	}
-	items := []*menuItem{{id: 4, label: tr("Panel settings…")}, {sep: true}, xfce, {sep: true}, {id: 2, label: tr("Restart this panel")}, {id: 3, label: tr("Quit this panel")}}
+	items := []*menuItem{{id: 4, label: tr("Panel settings…")}}
 	if over != nil && over.kind == "launcher" && over.lid != "" {
 		items = append([]*menuItem{{id: 20, label: tr("Remove from panel")}, {sep: true}}, items...)
 	}
@@ -1157,50 +1147,7 @@ func panelMenu(x int, cmds chan<- string, over *item) {
 				run(exec.Command(os.ExpandEnv("$HOME/.local/bin/cyberbeest-settings.py"), "--rc", over.rc, "--title", title, "--kind", over.ptype))
 			case 4:
 				run(exec.Command(os.ExpandEnv("$HOME/.local/bin/cyberbeest-settings.py"), "--tab=panel"))
-			case 1:
-				go toggleXfcePanel()
-			case 2:
-				go func() { cmds <- "restart" }()
-			case 3:
-				go func() {
-					if !xfcePanelRunning() { // never leave the desktop without a panel
-						toggleXfcePanel()
-					}
-					cmds <- "quit"
-				}()
 			}
 		},
 	}
-}
-
-// toggleXfcePanel stops or starts the stock panel. The xfce-panel-watchdog user
-// service relaunches a dead panel within seconds, so a stop leaves a marker file
-// it respects; a start removes the marker and lets the watchdog bring the panel
-// up with the proper session environment, launching it directly only if the
-// watchdog (not installed everywhere) does not.
-func toggleXfcePanel() {
-	if !xfcePanelRunning() {
-		ctlCmds <- "yield" // so its systray can own the XEmbed tray selection
-		time.Sleep(300 * time.Millisecond)
-	}
-	dir := os.Getenv("XDG_RUNTIME_DIR")
-	if dir == "" {
-		dir = os.TempDir()
-	}
-	marker := filepath.Join(dir, "cyberbeest-xfce-panel-stopped")
-	if xfcePanelRunning() {
-		os.WriteFile(marker, nil, 0o600)
-		exec.Command("xfce4-panel", "--quit").Run()
-		return
-	}
-	os.Remove(marker)
-	for i := 0; i < 14; i++ {
-		time.Sleep(500 * time.Millisecond)
-		if xfcePanelRunning() {
-			return
-		}
-	}
-	exec.Command("systemd-run", "--user", "--collect", "--quiet", "-p", "KillMode=process", // see cyberbeest-panel-choice.sh
-		"--setenv=DISPLAY", "--setenv=XAUTHORITY", "--setenv=XDG_CURRENT_DESKTOP", "--setenv=XDG_SESSION_TYPE",
-		"xfce4-panel").Run()
 }

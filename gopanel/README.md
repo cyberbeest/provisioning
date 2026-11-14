@@ -34,10 +34,9 @@ See PROTOCOL.md. Shared code: `scanner/` (vertical LED scanners), `procinfo/` (t
 
 ## Running next to the XFCE panel
 
-Right-click on empty panel space (separators, launchers, clock) opens a menu: Start/Stop XFCE
-panel, Restart/Quit this panel. `xfce-panel-watchdog` (lib/xfce-panel-watchdog.sh) relaunches
-a dead xfce4-panel, so Stop writes `$XDG_RUNTIME_DIR/cyberbeest-xfce-panel-stopped`, which the
-watchdog respects until Start removes it (or the next login). Scripts that reload the panel
+Right-click on empty panel space (separators, launchers, clock) opens a menu with Panel settings. `xfce-panel-watchdog` (lib/xfce-panel-watchdog.sh) relaunches
+a dead xfce4-panel unless `$XDG_RUNTIME_DIR/cyberbeest-xfce-panel-stopped` exists (gopanel no longer
+offers a menu entry to create it). Scripts that reload the panel
 (lib/xfce-panel-reload.sh, panel-icon toggles) ignore the marker. The Whisker entry
 "Cyberbeest Panel (experimental)" (cyberbeest-gopanel.desktop) starts this panel; a second
 instance refuses to start.

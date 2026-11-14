@@ -27,9 +27,6 @@ func detectGerman() bool {
 }
 
 var deStrings = map[string]string{
-	"Start XFCE panel":                  "XFCE-Leiste starten",
-	"Stop XFCE panel":                   "XFCE-Leiste beenden",
-	"Restart this panel":                "Diese Leiste neu starten",
 	"Panel settings…":                   "Leisten-Einstellungen …",
 	"Memory details…":                   "Speicherdetails …",
 	"Hide icon":                         "Symbol ausblenden",
@@ -41,7 +38,6 @@ var deStrings = map[string]string{
 	"Remove \"%s\" from the panel?":     "„%s“ aus der Leiste entfernen?",
 	"Remove":                            "Entfernen",
 	"Cancel":                            "Abbrechen",
-	"Quit this panel":                   "Diese Leiste beenden",
 	"Minimize":                          "Minimieren",
 	"Restore":                           "Wiederherstellen",
 	"Maximize":                          "Maximieren",
