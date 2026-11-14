@@ -71,6 +71,7 @@ STRINGS = {
     "wallpaper.corner_now": "{title} von {author} ({license})",
     "wallpaper.corner_menu_folder": "Bild im Ordner zeigen",
     "wallpaper.corner_menu_site": "Webseite des Bildes zeigen",
+    "wallpaper.corner_loading": "Hintergrund wird geladen\u2026",
     "wallpaper.corner_tip_off": "Hintergrundwechsel ist aus",
     "wallpaper.mode_rotate": "Wechselnde Fotos",
     "wallpaper.mode_own": "Eigenes Bild",

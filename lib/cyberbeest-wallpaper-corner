@@ -108,6 +108,10 @@ TIP_DELAY_MS = 1000   # the tooltip is big, so it should not pop up on a stray h
 TIP_SHOW_MS = 7000    # ...and it goes away by itself
 FADE_FRAME_MS = 30
 LEAVE_GRACE = 2     # polls the pointer may stay outside the zone before fading out
+LOADING_TICK_MS = 500
+LOADING_GRACE_S = 3   # after xfdesktop appears: time it gets to paint the first picture
+LOADING_MAX_S = 90    # give up showing the loading pill after this long
+LOADING_FALLBACK = "Loading wallpaper\u2026"
 
 
 class Corner:
@@ -128,6 +132,10 @@ class Corner:
         self.wa_cache = {}
         self.tip_win = None
         self.tip_timer = 0
+        self.loading = False
+        self.load_wins = []
+        self.load_start = 0
+        self.load_seen = 0
 
     # -- geometry / visibility checks (only run while the pointer is in the zone)
 
@@ -407,9 +415,83 @@ class Corner:
         self.outside = 0
         self.set_target(1.0)
 
+    # -- "loading wallpaper" pill: at login xfdesktop starts a while after the
+    # panel, so until it has painted the corner shows a small pill instead.
+
+    def xfdesktop_up(self):
+        return subprocess.run(["pgrep", "-x", "xfdesktop"],
+                              capture_output=True).returncode == 0
+
+    def start_loading(self):
+        self.loading = True
+        self.load_start = GLib.get_monotonic_time() // 1000000
+        self.loading_tick()
+        GLib.timeout_add(LOADING_TICK_MS, self.loading_tick)
+
+    def loading_windows(self):
+        text = t("wallpaper.corner_loading")
+        if text == "wallpaper.corner_loading":
+            text = LOADING_FALLBACK
+        css = Gtk.CssProvider()
+        css.load_from_data(b"window { background: rgba(28,28,30,0.88); border-radius: 16px;"
+                           b" border: 1px solid rgba(255,255,255,0.35); }"
+                           b"label { color: #f2f2f2; }")
+        wins = []
+        for i in range(self.display.get_n_monitors()):
+            g = self.display.get_monitor(i).get_geometry()
+            wa = self.work_area(g.x + g.width // 2, g.y + g.height // 2)
+            win = Gtk.Window(type=Gtk.WindowType.TOPLEVEL)
+            win.set_decorated(False)
+            win.set_resizable(False)
+            win.set_skip_taskbar_hint(True)
+            win.set_skip_pager_hint(True)
+            win.set_accept_focus(False)
+            win.set_focus_on_map(False)
+            win.set_keep_below(True)
+            win.set_type_hint(Gdk.WindowTypeHint.UTILITY)
+            label = Gtk.Label(label=text)
+            label.set_margin_top(6)
+            label.set_margin_bottom(6)
+            label.set_margin_start(14)
+            label.set_margin_end(14)
+            win.add(label)
+            for w in (win, label):
+                w.get_style_context().add_provider(css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+            win.show_all()
+            width, height = win.get_size()
+            win.move(wa.x + wa.width - width - MARGIN, wa.y + wa.height - height - MARGIN)
+            wins.append((win, wa))
+        return wins
+
+    def loading_tick(self):
+        now = GLib.get_monotonic_time() // 1000000
+        if self.xfdesktop_up():
+            self.load_seen = self.load_seen or now
+        done = (self.load_seen and now - self.load_seen >= LOADING_GRACE_S) \
+            or now - self.load_start >= LOADING_MAX_S
+        if done:
+            for win, _ in self.load_wins:
+                win.destroy()
+            self.load_wins = []
+            self.loading = False
+            return False
+        if not self.load_wins:
+            self.load_wins = self.loading_windows()
+        else:
+            # A panel may have appeared since the pill was placed: re-place it.
+            self.wa_cache = {}
+            for win, wa in self.load_wins:
+                g = self.display.get_monitor_at_point(wa.x + 1, wa.y + 1).get_geometry()
+                new = self.work_area(g.x + g.width // 2, g.y + g.height // 2)
+                width, height = win.get_size()
+                win.move(new.x + new.width - width - MARGIN, new.y + new.height - height - MARGIN)
+        return True
+
     # -- poll
 
     def poll(self):
+        if self.loading:
+            return True
         _, x, y = self.pointer.get_position()
         wa = self.work_area(x, y)
         in_zone = x >= wa.x + wa.width - ZONE and y >= wa.y + wa.height - ZONE \
@@ -427,6 +509,8 @@ class Corner:
         return True
 
     def run(self):
+        if not self.xfdesktop_up():
+            self.start_loading()
         GLib.timeout_add(POLL_MS, self.poll)
         Gtk.main()
 

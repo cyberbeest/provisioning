@@ -67,6 +67,7 @@ STRINGS = {
     "wallpaper.corner_now": "{title} by {author} ({license})",
     "wallpaper.corner_menu_folder": "Show picture in folder",
     "wallpaper.corner_menu_site": "Show picture's website",
+    "wallpaper.corner_loading": "Loading wallpaper\u2026",
     "wallpaper.corner_tip_off": "Wallpaper rotation is off",
     "wallpaper.mode_rotate": "Rotating photos",
     "wallpaper.mode_own": "Your own image",
