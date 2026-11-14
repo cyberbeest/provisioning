@@ -56,11 +56,11 @@ cat > /etc/xdg/autostart/cyberbeest-wallpaper-corner.desktop <<'EOF'
 [Desktop Entry]
 Type=Application
 Name=Cyberbeest wallpaper settings button
-Comment=Fades in a settings button when the mouse rests in the bottom-right desktop corner
+Comment=Shows "Loading wallpaper" until the desktop has painted, then fades in a settings button when the mouse rests in the bottom-right desktop corner
 Exec=/usr/local/bin/cyberbeest-wallpaper-corner
 NoDisplay=true
 OnlyShowIn=XFCE;
-X-XFCE-Autostart-Phase=Application
+X-XFCE-Autostart-Phase=Panel
 EOF
 
 # (Re)start the corner button and the fade daemon in the running desktop
