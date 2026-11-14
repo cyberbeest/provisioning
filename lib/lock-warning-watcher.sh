@@ -143,6 +143,7 @@ while true; do
     # Skipped while the screensaver is inhibited (video, presentation); the
     # no-mercy setting above covers forcing the lock in that case.
     if [ "$remaining" -le "$IDLE_LOCK_LEAD_SECONDS" ] && ! is_inhibited; then
+        logger -t lock-warning-watcher "Idle lock: idle ${idle_ms}ms, delay ${delay_seconds}s"
         lock_now
     fi
 
@@ -175,9 +176,11 @@ while true; do
                     -t $(( (shown + 1) * 1000 )) \
                     "$title" \
                     "$(t lockwarning.body)")
+                [ "$warned_remaining" -eq 0 ] && logger -t lock-warning-watcher "Countdown started: idle ${idle_ms}ms, delay ${delay_seconds}s, remaining ${remaining}s"
                 warned_remaining=$shown
             fi
         elif [ "$countdown" -gt "$warn_seconds" ]; then
+            [ "$warned_remaining" -ne 0 ] && logger -t lock-warning-watcher "Countdown cancelled by activity: idle ${idle_ms}ms, remaining ${remaining}s"
             warned_remaining=0
             close_notification
         fi
