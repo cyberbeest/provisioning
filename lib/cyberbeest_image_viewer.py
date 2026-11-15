@@ -1423,11 +1423,18 @@ class ImageViewerWindow(Gtk.Window):
         # On the label itself, ahead of its own handler (which would select a word).
         self.caption_label.connect("button-press-event", self.on_caption_click)
         self.caption_event.connect("button-press-event", self.on_caption_click)
-        self.caption_entry = Gtk.Entry(placeholder_text="Caption (Enter to save, Esc to cancel)", xalign=0.5)
-        self.caption_entry.connect("activate", lambda _e: self.finish_caption_edit(save=True))
-        self.caption_entry.connect("key-press-event", self.on_caption_key)
-        self.caption_entry.connect("focus-out-event", self.on_caption_focus_out)
-        self.caption_entry.connect("populate-popup", self.on_caption_popup)
+        # Multi-line: Enter inserts a newline, Ctrl+Enter saves, Esc cancels.
+        # caption_entry is the scrolled container (what gets shown/hidden);
+        # caption_view is the text view inside it.
+        self.caption_view = Gtk.TextView(wrap_mode=Gtk.WrapMode.WORD_CHAR, justification=Gtk.Justification.CENTER)
+        self.caption_view.connect("key-press-event", self.on_caption_key)
+        self.caption_view.connect("focus-out-event", self.on_caption_focus_out)
+        self.caption_view.connect("populate-popup", self.on_caption_popup)
+        self.caption_entry = Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER,
+                                                vscrollbar_policy=Gtk.PolicyType.AUTOMATIC,
+                                                propagate_natural_height=True, max_content_height=160)
+        self.caption_entry.add(self.caption_view)
+        self.caption_view.show()
         self._caption_menu_open = False
         self._caption_confirming = False
         self._caption_closing = False
@@ -1600,16 +1607,20 @@ class ImageViewerWindow(Gtk.Window):
 
     def edit_caption(self):
         self.caption_event.hide()
-        self.caption_entry.set_text(self.caption)
+        self.caption_view.get_buffer().set_text(self.caption)
         self.caption_bar.show()
         self.caption_entry.show()
-        self.caption_entry.grab_focus()
-        self.caption_entry.set_position(-1)
+        self.caption_view.grab_focus()
+        self.caption_view.get_buffer().place_cursor(self.caption_view.get_buffer().get_end_iter())
+
+    def _caption_text(self):
+        buf = self.caption_view.get_buffer()
+        return buf.get_text(buf.get_start_iter(), buf.get_end_iter(), False)
 
     def finish_caption_edit(self, save):
         if not self.caption_entry.get_visible():
             return
-        text = self.caption_entry.get_text()
+        text = self._caption_text()
         # Hiding the focused entry fires its focus-out synchronously, while it
         # still counts as visible; without this that would save a discard.
         self._caption_closing = True
@@ -1636,7 +1647,7 @@ class ImageViewerWindow(Gtk.Window):
             def restore():
                 self._caption_menu_open = False
                 if self.caption_entry.get_visible():
-                    self.caption_entry.grab_focus_without_selecting()
+                    self.caption_view.grab_focus()
                 return False
             GLib.idle_add(restore)
         menu.connect("hide", closed)
@@ -1651,16 +1662,19 @@ class ImageViewerWindow(Gtk.Window):
         if event.keyval == Gdk.KEY_Escape:
             self.discard_caption_edit()
             return True
+        if event.keyval in (Gdk.KEY_Return, Gdk.KEY_KP_Enter) and event.state & Gdk.ModifierType.CONTROL_MASK:
+            self.finish_caption_edit(save=True)
+            return True
         return False
 
     def discard_caption_edit(self):
         # Nothing typed: just leave. Otherwise ask before throwing it away.
-        if self.caption_entry.get_text().strip() == self.caption:
+        if self._caption_text().strip() == self.caption:
             self.finish_caption_edit(save=False)
         elif self._confirm_discard_caption():
             self.finish_caption_edit(save=False)
         else:
-            self.caption_entry.grab_focus_without_selecting()
+            self.caption_view.grab_focus()
 
     def _confirm_discard_caption(self):
         # The dialog takes focus; _caption_confirming keeps that from
@@ -2054,9 +2068,41 @@ class ImageViewerWindow(Gtk.Window):
         neighbours.discard(self.shown_path)
         self.prefetcher.schedule(neighbours)
 
+    def _rescan_folder(self):
+        """Re-read the folder so new, removed and renamed files show up. The
+        position stays at the current image, or where it was if that is gone."""
+        current = self.current_path()
+        try:
+            fresh = folder_images_by_date(current)
+        except OSError:
+            return
+        if not fresh:
+            return
+        if current in fresh:
+            self.index = fresh.index(current)
+        else:
+            # Current file vanished: land on the first image that was after it.
+            old_mtime = None
+            try:
+                old_mtime = os.path.getmtime(current)
+            except OSError:
+                pass
+            self.index = min(self.index, len(fresh) - 1)
+            if old_mtime is not None:
+                def mtime(q):
+                    try:
+                        return os.path.getmtime(q)
+                    except OSError:
+                        return 0
+                self.index = next((i for i, q in enumerate(fresh) if mtime(q) >= old_mtime), len(fresh) - 1)
+        self.folder_images = fresh
+        # Cached neighbours are checked against the file on take(); entries
+        # for files no longer in the folder go with the next schedule().
+
     def show_offset(self, offset):
         if not self.folder_images:
             return
+        self._rescan_folder()
         self.index = (self.index + offset) % len(self.folder_images)
         self.load_image(self.folder_images[self.index])
 
