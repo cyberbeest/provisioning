@@ -2226,6 +2226,12 @@ class ImageViewerWindow(Gtk.Window):
         menu.popup_at_pointer(event)
 
     def on_image_button_press(self, widget, event):
+        # The image takes no keyboard focus, so a click on it would not end the
+        # caption edit by itself.
+        if self.caption_entry.get_visible():
+            self.finish_caption_edit(save=True)
+            if event.button == 1:
+                return True
         if event.button == 1:
             if event.type == Gdk.EventType._2BUTTON_PRESS:
                 self.toggle_fullscreen()
