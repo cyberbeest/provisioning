@@ -128,6 +128,7 @@ STRINGS = {
     "lockpower.warn_seconds": "Warn this many seconds ahead:",
     "lockpower.never": "Never",
     "lockpower.off": "Off",
+    "lockpower.debug_idle_reset": "Debug: notify whenever idle time resets",
     "lockpower.no_mercy_enabled": "No mercy: force-lock even if an app requests to stay awake",
     "lockpower.no_mercy_info": (
         "Ignores video playback, presentations, and any other app's request "

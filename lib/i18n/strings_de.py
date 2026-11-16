@@ -133,6 +133,7 @@ STRINGS = {
     "lockpower.warn_seconds": "So viele Sekunden vorher warnen:",
     "lockpower.never": "Nie",
     "lockpower.off": "Aus",
+    "lockpower.debug_idle_reset": "Debug: bei jedem Zurücksetzen der Leerlaufzeit benachrichtigen",
     "lockpower.no_mercy_enabled": "Keine Gnade: Sperre erzwingen, auch wenn eine App wach bleiben möchte",
     "lockpower.no_mercy_info": (
         "Ignoriert Videowiedergabe, Präsentationen und jede andere "
