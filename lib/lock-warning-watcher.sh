@@ -20,7 +20,7 @@
 
 DEFAULT_WARN_ENABLED=true
 DEFAULT_WARN_SECONDS=10
-DEFAULT_NO_MERCY_ENABLED=false
+DEFAULT_NO_MERCY_ENABLED=true
 POLL_INTERVAL=1
 # Must exceed xfce4-screensaver's own up-to-1s-early idle check plus the time
 # the curtain needs to paint, or its own timer would win the race.
@@ -104,9 +104,51 @@ idle_delay_seconds() {
 
 warned_remaining=0
 
+# Debug aid (DEBUG_IDLE_RESET_NOTIFY, toggled in the extended settings dialog):
+# a notification whenever the X idle clock resets, at most every 10 s,
+# to find out what keeps the screen from auto-locking. Rate-limited so a
+# flapping source can't flood the screen.
+IDLE_RESET_NOTIFY_INTERVAL=10
+prev_idle_ms=0
+prev_mouse=""
+next_idle_reset_notify=0
+
+fmt_idle() {
+    local s=$(( $1 / 1000 ))
+    if [ "$s" -ge 60 ]; then echo "$(( s / 60 ))m$(( s % 60 ))s"; else echo "${s}s"; fi
+}
+
+check_idle_reset() {
+    # check_idle_reset IDLE_MS
+    local idle_ms=$1 mouse="" now body title
+    if [ "$(read_setting DEBUG_IDLE_RESET_NOTIFY false)" != "true" ]; then
+        prev_idle_ms=$idle_ms
+        return
+    fi
+    command -v xdotool >/dev/null 2>&1 && mouse=$(xdotool getmouselocation 2>/dev/null | cut -d' ' -f1,2)
+    if [ "$idle_ms" -lt "$prev_idle_ms" ]; then
+        now=$(date +%s)
+        if [ "$now" -ge "$next_idle_reset_notify" ]; then
+            next_idle_reset_notify=$(( now + IDLE_RESET_NOTIFY_INTERVAL ))
+            title=$(t idlereset.title)
+            title=${title//IDLE/$(fmt_idle "$prev_idle_ms")}
+            body=""
+            if [ -n "$mouse" ]; then
+                if [ "$mouse" != "$prev_mouse" ]; then body=$(t idlereset.mouse_moved); else body=$(t idlereset.mouse_still); fi
+            fi
+            body="$body $(t idlereset.window) $(xdotool getactivewindow getwindowname 2>/dev/null)"
+            logger -t lock-warning-watcher "Idle reset: ${prev_idle_ms}ms -> ${idle_ms}ms, mouse ${prev_mouse} -> ${mouse}"
+            notify-send -t 15000 "$title" "$body"
+        fi
+    fi
+    prev_idle_ms=$idle_ms
+    prev_mouse=$mouse
+}
+
 while true; do
     if is_locked; then
         warned_remaining=0
+        prev_idle_ms=0
         close_notification
         sleep 2
         continue
@@ -123,12 +165,13 @@ while true; do
         sleep "$POLL_INTERVAL"
         continue
     fi
+    check_idle_reset "$idle_ms"
     remaining=$(( delay_seconds - idle_ms / 1000 ))
 
     # No-mercy: force the lock through even though an app is inhibiting
     # xfce4-screensaver's own idle timer (video playback, a presentation,
     # or a stuck/orphaned inhibit -- see the 2026-09-14 postmortem where an
-    # orphaned inhibit silently defeated auto-lock for hours). Opt-in via
+    # orphaned inhibit silently defeated auto-lock for hours). On by default; switch off via
     # cyberbeest-extended-power-options.py's "Extended Power Options" window;
     # deliberately no extra warning beyond the notification below.
     no_mercy=$(read_setting NO_MERCY_LOCK_ENABLED "$DEFAULT_NO_MERCY_ENABLED")

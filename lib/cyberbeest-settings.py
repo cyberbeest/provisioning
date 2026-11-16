@@ -87,7 +87,8 @@ DEFAULTS = {
     "CURTAIN_ENABLED": "true",
     "WARN_BEFORE_LOCK_ENABLED": "true",
     "WARN_SECONDS_BEFORE_LOCK": "10",
-    "NO_MERCY_LOCK_ENABLED": "false",
+    "NO_MERCY_LOCK_ENABLED": "true",
+    "DEBUG_IDLE_RESET_NOTIFY": "false",
 }
 
 
@@ -193,6 +194,11 @@ class PowerPage(Gtk.Box):
         no_mercy_info.get_style_context().add_class("dim-label")
         box.pack_start(no_mercy_info, False, False, 0)
 
+        self.debug_idle_check = Gtk.CheckButton(label=t("lockpower.debug_idle_reset"))
+        self.debug_idle_check.set_active(settings["DEBUG_IDLE_RESET_NOTIFY"] == "true")
+        self.debug_idle_check.connect("toggled", self.on_debug_idle_toggled)
+        box.pack_start(self.debug_idle_check, False, False, 0)
+
     def on_minimize_changed(self, spin):
         write_setting("MINIMIZE_MINUTES", spin.get_value_as_int())
 
@@ -210,6 +216,9 @@ class PowerPage(Gtk.Box):
 
     def on_warn_seconds_changed(self, spin):
         write_setting("WARN_SECONDS_BEFORE_LOCK", spin.get_value_as_int())
+
+    def on_debug_idle_toggled(self, check):
+        write_setting("DEBUG_IDLE_RESET_NOTIFY", "true" if check.get_active() else "false")
 
     def on_no_mercy_toggled(self, check):
         write_setting("NO_MERCY_LOCK_ENABLED", "true" if check.get_active() else "false")
