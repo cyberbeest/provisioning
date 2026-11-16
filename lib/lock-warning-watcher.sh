@@ -136,7 +136,6 @@ check_idle_reset() {
             if [ -n "$mouse" ]; then
                 if [ "$mouse" != "$prev_mouse" ]; then body=$(t idlereset.mouse_moved); else body=$(t idlereset.mouse_still); fi
             fi
-            body="$body $(t idlereset.window) $(xdotool getactivewindow getwindowname 2>/dev/null)"
             logger -t lock-warning-watcher "Idle reset: ${prev_idle_ms}ms -> ${idle_ms}ms, mouse ${prev_mouse} -> ${mouse}"
             notify-send -t 15000 "$title" "$body"
         fi
