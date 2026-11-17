@@ -51,6 +51,8 @@ CATALOGS = {
         "Speak now": "Jetzt sprechen",
         "Filter mains hum": "Netzbrummen filtern",
         "Mains hum (a low buzz, often from the charger) can hide quiet words from the\nspeech detector, so they get cut out. This hides everything below 150 Hz from the\ndetector only; the recording itself is not changed.": "Netzbrummen (ein tiefes Summen, oft vom Netzteil) kann leise Wörter vor der\nSpracherkennung verbergen, sodass sie herausgeschnitten werden. Dies blendet alles\nunter 150 Hz nur für die Erkennung aus; die Aufnahme selbst bleibt unverändert.",
+        "Turn other sound down while dictating": "Andere Wiedergabe beim Diktieren leiser stellen",
+        "Music, videos and the like fade down while you hold the key and fade back in afterwards.": "Musik, Videos und Ähnliches werden leiser, solange du die Taste hältst, und danach wieder eingeblendet.",
         "Show a level meter while dictating": "Beim Diktieren eine Pegelanzeige zeigen",
         "A small meter in the top right corner that moves while the program hears you speak.\nClick it to stop dictating.": "Eine kleine Anzeige oben rechts, die sich bewegt, solange das Programm dich sprechen hört.\nKlicke darauf, um das Diktieren zu beenden.",
         "Stop": "Stopp",

@@ -79,6 +79,7 @@ DEFAULT_CONFIG = {
     "language":              "auto",  # UI language: auto (desktop locale), en, de; no Settings field, provisioning sets the locale
     "input_source":          "",     # PulseAudio source name; empty = automatic
     "trim_silence":          True,   # cut pauses before decoding (local_stt silence trimming); no Settings field
+    "duck_audio":            True,   # fade other audio down while dictating, back up afterwards
     "recording_meter":       True,   # small level meter while recording (replaces the "Speak now" notification)
     "vad_highpass":          True,   # speech detection ignores hum below 150 Hz (mains buzz hides quiet speech from it)
     "save_clips":            False,  # keep every take with its transcript in CLIP_ARCHIVE (voice recordings: off unless set by hand; no Settings field)
@@ -368,6 +369,145 @@ def paste_target():
     if any(c in p.lower() for c in ('"xfdesktop"', '"xfce4-panel"')):
         return ""
     return wid
+
+
+DUCK_STATE_PATH = CONFIG_DIR / "ducked.json"
+
+
+class Ducker:
+    """Fades every playing audio stream down while a dictation is recorded and back up
+    afterwards (PulseAudio/PipeWire per-stream volume through pactl, so the speaker
+    or headphone volume and other users of the sink are untouched). Streams that
+    start during the dictation are ducked too. duck() and restore() return at once;
+    a worker thread does the fading."""
+
+    GAIN = 0.25         # loudness while dictating (-12 dB), relative to the stream's own;
+                        # the sound server's volume is the cube root of the loudness, hence _scale
+    DOWN_S = 0.06       # fade-down time (two steps)
+    UP_S = 0.15         # fade-up time
+    STEP_S = 0.03
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._want = False
+        self._thread = None
+        self._dmap = {}   # ducked volumes -> the full volumes they came from (see _apply)
+        self._orig = {}   # sink-input id -> its volumes (raw values per channel) before ducking
+
+    def duck(self):
+        with self._lock:
+            self._want = True
+            if self._thread is None:
+                self._thread = threading.Thread(target=self._run, daemon=True)
+                self._thread.start()
+
+    def restore(self):
+        with self._lock:
+            self._want = False
+
+    def restore_now(self):
+        """Synchronous: volumes back at full right away (program exit, or a crash left them down)."""
+        with self._lock:
+            self._want = False
+        t = self._thread
+        if t is not None:
+            t.join(2)
+        self._recover()
+
+    @staticmethod
+    def _streams():
+        """{sink-input id: raw volume per channel}; empty without pactl."""
+        try:
+            out = subprocess.run(["pactl", "-f", "json", "list", "sink-inputs"], capture_output=True,
+                                 text=True, timeout=3, env=dict(os.environ, LC_ALL="C")).stdout
+            return {int(s["index"]): [int(v["value"]) for v in s["volume"].values()]
+                    for s in json.loads(out) if s.get("volume")}
+        except (OSError, subprocess.SubprocessError, ValueError, KeyError, TypeError):
+            return {}
+
+    @staticmethod
+    def _set(sid, vols):
+        try:
+            subprocess.run(["pactl", "set-sink-input-volume", str(sid)] + [str(v) for v in vols],
+                           capture_output=True, timeout=3, check=False)
+        except (OSError, subprocess.SubprocessError):
+            pass
+
+    def _save_state(self):
+        try:
+            if self._orig:
+                CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+                DUCK_STATE_PATH.write_text(json.dumps({str(k): v for k, v in self._orig.items()}))
+            else:
+                DUCK_STATE_PATH.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+    def _recover(self):
+        """Put back the volumes saved in DUCK_STATE_PATH (left over if Dictate died mid-dictation)."""
+        try:
+            saved = json.loads(DUCK_STATE_PATH.read_text())
+        except (OSError, ValueError):
+            return
+        live = self._streams()
+        for sid, vols in saved.items():
+            if int(sid) in live:
+                self._set(int(sid), vols)
+        DUCK_STATE_PATH.unlink(missing_ok=True)
+
+    @staticmethod
+    def _scale(gain):
+        """Server volume factor that gives `gain` times the loudness (volumes are cubic)."""
+        return gain ** (1 / 3)
+
+    def _apply(self, level, rescan=True):
+        """Set every stream to `level` (loudness gain). The stream list is read only when
+        `rescan` is set (not on each fade step: listing costs a process per call)."""
+        if rescan:
+            live = self._streams()
+            for sid in [s for s in self._orig if s not in live]:
+                del self._orig[sid]
+        else:
+            live = {}
+        for sid, vols in live.items():
+            if sid not in self._orig:
+                # A new stream normally starts at its own full volume, but the sound server
+                # restores the last volume it knew for the app, which may be our ducked one.
+                full = self._dmap.get(tuple(vols), vols)
+                self._orig[sid] = list(full)
+                self._dmap[tuple(int(v * self._scale(self.GAIN)) for v in full)] = tuple(full)
+                self._save_state()
+        for sid, vols in self._orig.items():
+            self._set(sid, [int(v * self._scale(level)) for v in vols])
+
+    def _run(self):
+        level = 1.0
+        try:
+            while True:
+                with self._lock:
+                    want = self._want
+                    if not want and level >= 1.0:
+                        self._thread = None
+                        break
+                at_end = level in (self.GAIN, 1.0)
+                if want:
+                    nxt = max(self.GAIN, level - (1 - self.GAIN) * self.STEP_S / self.DOWN_S)
+                else:
+                    nxt = min(1.0, level + (1 - self.GAIN) * self.STEP_S / self.UP_S)
+                if nxt != level or want:
+                    level = nxt
+                    self._apply(level, rescan=at_end)   # the first step of a fade, or a tick while held
+                time.sleep(self.STEP_S if level not in (self.GAIN, 1.0) else 0.4)
+        finally:
+            with self._lock:
+                if self._thread is threading.current_thread():
+                    self._thread = None
+            if level >= 1.0:
+                self._orig.clear()
+                self._save_state()
+
+
+ducker = Ducker()
 
 
 def stop_spoken_reply():

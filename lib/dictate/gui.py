@@ -168,6 +168,10 @@ class SettingsDialog(QDialog):
         ))
         self.form.addRow(_("Unload when idle:"), self.local_idle_box)
 
+        self.duck_box = QCheckBox(_("Turn other sound down while dictating"))
+        self.duck_box.setChecked(bool(self.cfg.get("duck_audio", True)))
+        self.duck_box.setToolTip(_("Music, videos and the like fade down while you hold the key and fade back in afterwards."))
+        self.form.addRow("", self.duck_box)
         self.meter_box = QCheckBox(_("Show a level meter while dictating"))
         self.meter_box.setChecked(bool(self.cfg.get("recording_meter", True)))
         self.meter_box.setToolTip(_("A small meter in the top right corner that moves while the program hears you speak.\nClick it to stop dictating."))
@@ -276,6 +280,7 @@ class SettingsDialog(QDialog):
             "local_stt_num_threads": int(self.local_threads_box.value()),
             "local_stt_idle_minutes": int(self.local_idle_box.value()),
             "dictation_notifications": self.notify_box.isChecked(),
+            "duck_audio":            self.duck_box.isChecked(),
             "recording_meter":       self.meter_box.isChecked(),
             "vad_highpass":          self.hum_box.isChecked(),
             "corrections":           self.corr_box.currentData(),
@@ -1267,6 +1272,8 @@ class MainWindow(QMainWindow):
         requested = time.monotonic()
         if self._lab_dialog is not None:
             self._lab_dialog.cancel.set()   # the lab must not slow down a dictation
+        if self.cfg.get("duck_audio", True):
+            core.ducker.duck()
         self._ensure_model()   # a missing model downloads while the user speaks
         # Reload the model if it was unloaded while idle; the load runs while
         # the user speaks. Also restarts the idle countdown.
@@ -1279,6 +1286,7 @@ class MainWindow(QMainWindow):
             self.recorder.start(tap=meter.feed if meter else None, requested=requested)
         except Exception as e:
             core.log.exception("could not open the microphone")
+            core.ducker.restore()
             if meter:
                 meter.close()
             self.on_error(_("Microphone: {err}").format(err=e))
@@ -1307,6 +1315,7 @@ class MainWindow(QMainWindow):
         return local_stt.VAD_MODEL.exists()
 
     def _hide_meter(self):
+        core.ducker.restore()   # every way a recording ends passes here
         self._meter_window.stop()
         meter, self._meter = self._meter, None
         if meter:
@@ -1658,8 +1667,10 @@ def main():
     app.setQuitOnLastWindowClosed(False)   # the panel icon is the whole UI
     if not QSystemTrayIcon.isSystemTrayAvailable():
         core.log.warning("no system tray: Dictate works through its hotkey only")
+    core.ducker.restore_now()   # volumes a crashed run left turned down
     win = MainWindow()  # noqa: F841 (kept alive by the event loop)
     rc = app.exec()
+    core.ducker.restore_now()
     # A transcription still running on its worker thread (native onnx code)
     # would keep the process alive through interpreter shutdown, so leave
     # without waiting for it.
