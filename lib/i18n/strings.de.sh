@@ -71,6 +71,7 @@ Fahre nur fort, wenn du einen Installations-Link auf einer vertrauenswürdigen S
 	[panel_status_genmon.ip_unknown]="keine Netzwerkverbindung"
 	[panel_status_genmon.ports_line]="Offene Ports: PORTS"
 	[panel_status_genmon.ports_none]="keine"
+	[panel_status_genmon.blocked_line]="Von der Firewall blockierte offene Ports: PORTS"
 	[update.title]="Cyberbeest-Update"
 	[update.no_repo_message]="Kein Provisioning-Checkout unter ~/provisioning oder ~/provisioning-bleeding gefunden.
 

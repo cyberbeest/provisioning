@@ -69,6 +69,7 @@ Only continue if you clicked an install link on a page you trust."
 	[panel_status_genmon.ip_unknown]="no network connection"
 	[panel_status_genmon.ports_line]="Listening ports: PORTS"
 	[panel_status_genmon.ports_none]="none"
+	[panel_status_genmon.blocked_line]="Listening ports blocked by firewall: PORTS"
 	[update.title]="Cyberbeest Update"
 	[update.no_repo_message]="No provisioning checkout found at ~/provisioning or ~/provisioning-bleeding.
 
