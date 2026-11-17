@@ -63,6 +63,7 @@ fi
 
 declare -A _seen_ports=()
 _open_ports=()
+_blocked_ports=()
 while read -r proto local_addr; do
 	port="${local_addr##*:}"
 	addr="${local_addr%:*}"
@@ -72,15 +73,18 @@ while read -r proto local_addr; do
 	case "$addr" in
 		127.*|::1|fe80:*|"") continue ;;
 	esac
-	# With an active firewall, a listening socket the ruleset doesn't
-	# admit isn't actually reachable -- don't show it as if it were.
-	if [ "$firewall_active" = true ] && [ ${#_allowed_ports[@]} -gt 0 ] \
-		&& [ -z "${_allowed_ports[${proto}:${port}]+x}" ]; then
-		continue
-	fi
 	key="${proto}:${port}"
 	[ -n "${_seen_ports[$key]+x}" ] && continue
 	_seen_ports[$key]=1
+	# With an active firewall, a listening socket the ruleset doesn't
+	# admit isn't actually reachable -- list it separately, so a program
+	# that is listening but unreachable (e.g. LocalSend on 53317) doesn't
+	# just vanish from the tooltip without explanation.
+	if [ "$firewall_active" = true ] && [ ${#_allowed_ports[@]} -gt 0 ] \
+		&& [ -z "${_allowed_ports[$key]+x}" ]; then
+		_blocked_ports+=("$key")
+		continue
+	fi
 	_open_ports+=("$key")
 done < <(ss -tulnH 2>/dev/null | awk '{print $1, $5}')
 
@@ -98,8 +102,16 @@ done < <(printf '%s\n' "${_open_ports[@]}" | sort -t: -k2 -n)
 ports_line="$(t panel_status_genmon.ports_line)"
 ports_line="${ports_line//PORTS/$ports_value}"
 
+# Distinct port numbers only (tcp and udp on the same port collapse to one).
+blocked_value="$(printf '%s\n' "${_blocked_ports[@]}" | awk -F: 'NF {print $2}' | sort -un | paste -sd, - | sed 's/,/, /g')"
+blocked_line=""
+if [ -n "$blocked_value" ]; then
+	blocked_line="$(t panel_status_genmon.blocked_line)"
+	blocked_line="&#10;${blocked_line//PORTS/$blocked_value}"
+fi
+
 echo "<img>${SECURITY_STATUS_IMG}</img>"
 echo "<txt>${SHUTDOWN_TIMER_TXT}</txt>"
-echo "<tool>${ip_line}&#10;${ports_line}&#10;&#10;${lock_heading}&#10;${SHUTDOWN_TIMER_TOOL}&#10;&#10;${security_heading}&#10;${SECURITY_STATUS_TOOL}</tool>"
+echo "<tool>${ip_line}&#10;${ports_line}${blocked_line}&#10;&#10;${lock_heading}&#10;${SHUTDOWN_TIMER_TOOL}&#10;&#10;${security_heading}&#10;${SECURITY_STATUS_TOOL}</tool>"
 echo "<click>${SECURITY_STATUS_CLICK}</click>"
 echo "<txtclick>${SHUTDOWN_TIMER_TXTCLICK}</txtclick>"
