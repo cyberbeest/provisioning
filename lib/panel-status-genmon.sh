@@ -54,11 +54,20 @@ systemctl is-active --quiet nftables.service 2>/dev/null && firewall_active=true
 
 declare -A _allowed_ports=()
 allowed_ports_file=/etc/cyberbeest/firewall-allowed-ports
+# Ports the user opened in the Firewall tool (63b-firewall-gui.sh), same format;
+# kept in a separate file so re-running 63-firewall.sh can't drop them.
+user_ports_file=/etc/cyberbeest/firewall-user-ports
 if [ "$firewall_active" = true ] && [ -r "$allowed_ports_file" ]; then
 	while read -r a_proto a_port a_name; do
 		[ -n "$a_proto" ] || continue
 		_allowed_ports["${a_proto}:${a_port}"]="$a_name"
 	done < "$allowed_ports_file"
+	if [ -r "$user_ports_file" ]; then
+		while read -r a_proto a_port a_name; do
+			[ -n "$a_proto" ] || continue
+			_allowed_ports["${a_proto}:${a_port}"]="$a_name"
+		done < "$user_ports_file"
+	fi
 fi
 
 declare -A _seen_ports=()
