@@ -1776,14 +1776,31 @@ class ImageViewerWindow(Gtk.Window):
         try:
             Gio.File.new_for_path(path).trash(None)
         except GLib.Error as e:
-            error = Gtk.MessageDialog(
-                transient_for=self, modal=True, message_type=Gtk.MessageType.ERROR,
-                buttons=Gtk.ButtonsType.CLOSE, text=f"Couldn't delete \"{name}\"",
-                secondary_text=e.message,
+            # No Wastebasket here (some mounted volumes): offer to delete for good.
+            ask = Gtk.MessageDialog(
+                transient_for=self, modal=True, message_type=Gtk.MessageType.WARNING,
+                text=f"\"{name}\" can't be moved to the Wastebasket",
+                secondary_text=f"{e.message}\n\nDelete it permanently instead? "
+                               "This can't be undone.",
             )
-            error.run()
-            error.destroy()
-            return
+            ask.add_button("Cancel", Gtk.ResponseType.CANCEL)
+            ask.add_button("Delete permanently", Gtk.ResponseType.OK)
+            ask.set_default_response(Gtk.ResponseType.CANCEL)
+            response = ask.run()
+            ask.destroy()
+            if response != Gtk.ResponseType.OK:
+                return
+            try:
+                os.remove(path)
+            except OSError as e2:
+                error = Gtk.MessageDialog(
+                    transient_for=self, modal=True, message_type=Gtk.MessageType.ERROR,
+                    buttons=Gtk.ButtonsType.CLOSE, text=f"Couldn't delete \"{name}\"",
+                    secondary_text=e2.strerror,
+                )
+                error.run()
+                error.destroy()
+                return
         favorite_bury(path, "deleted")
         del self.folder_images[self.index]
         if not self.folder_images:
