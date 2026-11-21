@@ -6,6 +6,7 @@ import logging
 import math
 import os
 import sys
+import queue
 import threading
 import time
 
@@ -770,6 +771,11 @@ class MainWindow(QMainWindow):
         self.bridge.model_done.connect(self.on_model_done)
         self._model_downloading = False
         self._download_event = None     # set when the running download has finished
+        self._turn_cond = threading.Condition()   # dictations are transcribed and pasted in recording order
+        self._next_ticket = 0
+        self._serving = 0
+        self._paste_queue = queue.Queue()   # one consumer, so pastes also keep their order
+        threading.Thread(target=self._paste_loop, daemon=True).start()
         self._waiting_dictations = 0    # recordings waiting for that download
         self.key_held = False
         self.combo = False
@@ -1483,7 +1489,7 @@ class MainWindow(QMainWindow):
             if target == "":
                 self.keep_in_test_window(typed)   # nothing to type into
             else:
-                threading.Thread(target=self._paste, args=(typed, target), daemon=True).start()
+                self._paste_queue.put((typed, target))
             self.last_text = text
             self._clear_timer.start()   # restarts the countdown
         self.set_status("ready", _("Ready"))
@@ -1495,6 +1501,14 @@ class MainWindow(QMainWindow):
         if note is not None and key == "default" and not note.cancelled.is_set():
             note.cancelled.set()
             threading.Thread(target=note.close, daemon=True).start()
+
+    def _paste_loop(self):
+        while True:
+            typed, target = self._paste_queue.get()
+            try:
+                self._paste(typed, target)
+            except Exception:
+                core.log.exception("paste failed")
 
     def _paste(self, typed, target):
         if not core.type_text(typed, target):
