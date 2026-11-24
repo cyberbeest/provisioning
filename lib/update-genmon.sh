@@ -13,27 +13,39 @@ STATUS_FILE=/var/lib/security-update-status
 APPS_STATUS_FILE=/var/lib/security-update-apps-status
 PHASE_FILE=/run/security-update-check.phase
 
-# Renders as "N min ago" / "in N min" of now, in whole minutes.
+# Renders as "N min ago" / "in N min" of now: whole minutes, then hours
+# from 2 h on, then days from 2 d on.
 minutes_label() {
-    local target_epoch="$1" now_epoch="$2" diff mins
+    local target_epoch="$1" now_epoch="$2" diff secs mins unit n label
     diff=$(( now_epoch - target_epoch ))
-    if [ "$diff" -ge 0 ]; then
-        mins=$(( diff / 60 ))
-        if [ "$mins" -eq 0 ]; then
-            t update_genmon.right_now
-        else
-            local label; label="$(t update_genmon.min_ago)"
-            echo "${label//N/$mins}"
-        fi
-    else
-        mins=$(( (-diff) / 60 ))
-        if [ "$mins" -eq 0 ]; then
-            t update_genmon.right_now
-        else
-            local label; label="$(t update_genmon.in_min)"
-            echo "${label//N/$mins}"
-        fi
+    secs=$diff
+    [ "$secs" -ge 0 ] || secs=$(( -diff ))
+    mins=$(( secs / 60 ))
+    if [ "$mins" -eq 0 ]; then
+        t update_genmon.right_now
+        return
     fi
+    if [ "$mins" -ge 2880 ]; then
+        unit=d; n=$(( mins / 1440 ))
+    elif [ "$mins" -ge 120 ]; then
+        unit=h; n=$(( mins / 60 ))
+    else
+        unit=min; n=$mins
+    fi
+    if [ "$diff" -ge 0 ]; then
+        case "$unit" in
+            d) label="$(t update_genmon.days_ago)" ;;
+            h) label="$(t update_genmon.hours_ago)" ;;
+            *) label="$(t update_genmon.min_ago)" ;;
+        esac
+    else
+        case "$unit" in
+            d) label="$(t update_genmon.in_days)" ;;
+            h) label="$(t update_genmon.in_hours)" ;;
+            *) label="$(t update_genmon.in_min)" ;;
+        esac
+    fi
+    echo "${label//N/$n}"
 }
 
 now_epoch="$(date +%s)"
