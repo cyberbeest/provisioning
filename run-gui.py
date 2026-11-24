@@ -2171,6 +2171,11 @@ class RunGuiWindow(Gtk.Window):
             self.status_label.set_text(t("run_gui.status_stopped"))
         elif failed_script:
             self.status_label.set_text(t("run_gui.status_failed").format(script=failed_script))
+            # Add the failed script to the selection (keeping whatever else
+            # is selected) so "Run selected" re-runs it right away.
+            row = self.rows.get(failed_script)
+            if row is not None:
+                self.listbox.select_row(row)
         else:
             self.status_label.set_text(t("run_gui.status_finished"))
             if self.current_run_is_batch:
