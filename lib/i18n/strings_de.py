@@ -1064,4 +1064,17 @@ STRINGS = {
     'cpm.app.chrome.desc': 'Googles eigener Browser – nur optional; aus Datenschutzgründen ist Firefox der Standard (siehe cyberbeest.com). Die Installation fügt auch Googles apt-Quelle hinzu, über die sich Chrome selbst aktualisiert.',
     'cpm.app.zoom.desc': 'Zoom Workplace für Videokonferenzen, aus Zooms eigenem .deb (es gibt keine apt-Quelle). Eine tägliche Prüfung installiert neue Versionen und lädt nur herunter, wenn sich die Version geändert hat',
     'cpm.app.kdenlive.desc': 'Voll ausgestatteter Videoeditor (Mehrspur-Zeitleiste, Effekte, Titel, Proxy-Schnitt). Wird aus Debians eigenem Paketarchiv installiert; zieht einige KDE-Bibliotheken als Abhängigkeiten nach',
+    # Word passphrase entry (Boot Screen tab)
+    'pw.word_mode_label': 'Master-Passwort als Wörter eingeben',
+    'pw.word_mode_desc': 'Beim Entsperren gibst du das Master-Passwort als einzelne Wörter ein: Groß-/Kleinschreibung, Leerzeichen und Satzzeichen zwischen den Wörtern spielen keine Rolle, und jedes fertige Wort erscheint als Etikett. Dafür muss das Master-Passwort aus kleingeschriebenen, mit Bindestrichen verbundenen Wörtern bestehen (die Schaltfläche „Erzeugen“ macht eines). Ab jetzt gilt das auch für das Ändern des Master-Passworts.',
+    'pw.word_mode_ask_title': 'Master-Passwort bestätigen',
+    'pw.word_mode_ask_text': 'Zum Einschalten gib dein aktuelles Master-Passwort ein. Es wird auf das Wortformat geprüft, denn ein Passwort in einem anderen Format würde die Festplatte nicht mehr entsperren.',
+    'pw.word_mode_working': 'Wird angewendet … dabei werden die Startdateien neu erstellt, das dauert einen Moment.',
+    'pw.word_mode_on': 'Die Worteingabe ist ab dem nächsten Start aktiv. Beim Entsperren kannst du die Wörter mit beliebigen Trennzeichen eingeben.',
+    'pw.word_mode_off': 'Die Worteingabe ist aus. Der Entsperrbildschirm zeigt wieder einen Punkt pro Taste.',
+    'pw.word_mode_auth_cancelled': 'Die Authentifizierung wurde abgebrochen, daher wurde die Worteingabe nicht geändert.',
+    'pw.word_mode_other_keyscript': 'Die Startkonfiguration dieses Rechners nutzt eine Funktion, die sich noch nicht mit der Worteingabe kombinieren lässt. Es wurde nichts geändert.',
+    'pw.word_mode_not_canonical': 'Dein aktuelles Master-Passwort hat nicht die Wortform (kleingeschriebene Wörter, mit Bindestrichen verbunden), die Festplatte würde sich nicht mehr entsperren lassen. Ändere zuerst das Master-Passwort auf ein erzeugtes und schalte dies dann ein. Es wurde nichts geändert.',
+    'pw.word_mode_failed': 'Die Worteingabe konnte nicht geändert werden.',
+    'pw.too_few_words': 'Bei eingeschalteter Worteingabe braucht das Master-Passwort mindestens {min_words} Wörter.',
 }

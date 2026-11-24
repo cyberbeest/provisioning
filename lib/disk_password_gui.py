@@ -43,6 +43,8 @@ BOOT_NAME_FILE = "/etc/cyberbeest/machine-name"
 BOOT_NAME_MAX_LENGTH = 40
 SET_BOOT_BRIGHT_MODE = "/usr/local/sbin/cyberbeest-set-boot-bright-mode"
 BOOT_BRIGHT_MODE_FILE = "/etc/cyberbeest/plymouth-bright-mode"
+SET_WORD_MODE = "/usr/local/sbin/cyberbeest-set-word-mode"
+WORD_MODE_FILE = "/etc/cyberbeest/word-passphrase-mode"
 
 
 LOGO_PATH = os.path.expanduser("~/.local/share/cyberbeest/icons/Cyberbeest-black.png")
@@ -337,9 +339,11 @@ PASSWORD_TYPES = {
         "change": lambda old, new: change_luks_passphrase(DEVICE, 0, old, new),
         "word_count": 3,
         "min_length": 12,
-        # Stored in canonical word form so it matches whatever the boot
-        # prompt's keyscript turns the typed text into.
-        "normalize": True,
+        # With word entry switched on (Boot Screen tab) the boot prompt's
+        # keyscript normalizes what is typed, so the new passphrase is stored
+        # in that canonical word form and must consist of several words.
+        "word_mode_normalize": True,
+        "min_words": 2,
     },
     "short": {
         "title": t("pw.short_title"),
@@ -418,6 +422,49 @@ def set_boot_bright_mode(enabled):
 
     detail = (proc.stderr or proc.stdout or "").strip()
     return False, f"{t('pw.boot_bright_mode_failed')}\n\n{t('pw.details')}: {detail or t('pw.unknown_error')}"
+
+
+def read_word_mode():
+    """True when word passphrase entry is on, i.e. the boot prompt normalizes
+    what is typed (see cyberbeest-set-word-mode)."""
+    try:
+        with open(WORD_MODE_FILE, encoding="utf-8") as f:
+            return f.read().strip() == "1"
+    except OSError:
+        return False
+
+
+def set_word_mode(enabled, passphrase=""):
+    """Run cyberbeest-set-word-mode via pkexec. Switching on needs the current
+    master password (stdin): it has to be in word form and unlock the disk, or
+    the disk would stop unlocking at the next boot.
+
+    Returns (success, message).
+    """
+    try:
+        proc = subprocess.run(
+            ["pkexec", SET_WORD_MODE, "1" if enabled else "0"],
+            input=passphrase + "\n" if enabled else None,
+            capture_output=True,
+            text=True,
+        )
+    except FileNotFoundError as e:
+        return False, f"{t('pw.pkexec_error')} {e}"
+
+    if proc.returncode == 0:
+        return True, t("pw.word_mode_on") if enabled else t("pw.word_mode_off")
+
+    if proc.returncode in (126, 127):
+        return False, t("pw.word_mode_auth_cancelled")
+    if proc.returncode == 3:
+        return False, t("pw.word_mode_other_keyscript")
+    if proc.returncode == 4:
+        return False, t("pw.word_mode_not_canonical")
+    if proc.returncode == 5:
+        return False, t("pw.wrong_current")
+
+    detail = (proc.stderr or proc.stdout or "").strip()
+    return False, f"{t('pw.word_mode_failed')}\n\n{t('pw.details')}: {detail or t('pw.unknown_error')}"
 
 
 def convert_to_wav(src_path):
@@ -894,6 +941,19 @@ class PasswordWindow(Gtk.Window):
         self.bright_mode_status_label.set_no_show_all(True)
         section.pack_start(self.bright_mode_status_label, False, False, 0)
 
+        section.pack_start(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL), False, False, 4)
+
+        self.word_mode_check = Gtk.CheckButton(label=t("pw.word_mode_label"))
+        self.word_mode_check.connect("toggled", self.on_word_mode_toggled)
+        section.pack_start(self.word_mode_check, False, False, 0)
+
+        word_mode_desc = Gtk.Label(label=t("pw.word_mode_desc"), wrap=True, xalign=0)
+        section.pack_start(word_mode_desc, False, False, 0)
+
+        self.word_mode_status_label = Gtk.Label(label="", wrap=True, xalign=0)
+        self.word_mode_status_label.set_no_show_all(True)
+        section.pack_start(self.word_mode_status_label, False, False, 0)
+
         return section
 
     def _build_sound_section(self):
@@ -926,6 +986,11 @@ class PasswordWindow(Gtk.Window):
         self.bright_mode_check.handler_unblock_by_func(self.on_bright_mode_toggled)
         self.bright_mode_status_label.set_no_show_all(True)
         self.bright_mode_status_label.hide()
+        self.word_mode_check.handler_block_by_func(self.on_word_mode_toggled)
+        self.word_mode_check.set_active(read_word_mode())
+        self.word_mode_check.handler_unblock_by_func(self.on_word_mode_toggled)
+        self.word_mode_status_label.set_no_show_all(True)
+        self.word_mode_status_label.hide()
 
     def set_boot_name_status(self, text, is_error=True):
         self.boot_name_status_label.set_markup(
@@ -981,6 +1046,60 @@ class PasswordWindow(Gtk.Window):
             self.bright_mode_check.handler_block_by_func(self.on_bright_mode_toggled)
             self.bright_mode_check.set_active(not enabled)
             self.bright_mode_check.handler_unblock_by_func(self.on_bright_mode_toggled)
+        return False
+
+    def set_word_mode_status(self, text, is_error=True):
+        self.word_mode_status_label.set_markup(
+            f'<span foreground="{"red" if is_error else "green"}">{GLib.markup_escape_text(text)}</span>'
+        )
+        self.word_mode_status_label.set_no_show_all(False)
+        self.word_mode_status_label.show()
+
+    def _ask_master_password(self):
+        """The current master password, or None if the dialog is cancelled."""
+        dialog = Gtk.MessageDialog(
+            transient_for=self,
+            modal=True,
+            message_type=Gtk.MessageType.QUESTION,
+            buttons=Gtk.ButtonsType.OK_CANCEL,
+            text=t("pw.word_mode_ask_title"),
+        )
+        dialog.format_secondary_text(t("pw.word_mode_ask_text"))
+        entry = Gtk.Entry(visibility=False, activates_default=True)
+        entry.connect("activate", lambda _e: dialog.response(Gtk.ResponseType.OK))
+        dialog.get_content_area().pack_start(entry, False, False, 6)
+        dialog.show_all()
+        response = dialog.run()
+        text = entry.get_text()
+        dialog.destroy()
+        return text if response == Gtk.ResponseType.OK and text else None
+
+    def _revert_word_mode_check(self, enabled):
+        self.word_mode_check.handler_block_by_func(self.on_word_mode_toggled)
+        self.word_mode_check.set_active(not enabled)
+        self.word_mode_check.handler_unblock_by_func(self.on_word_mode_toggled)
+
+    def on_word_mode_toggled(self, _checkbox):
+        enabled = self.word_mode_check.get_active()
+        passphrase = ""
+        if enabled:
+            passphrase = self._ask_master_password()
+            if passphrase is None:
+                self._revert_word_mode_check(enabled)
+                return
+        self.word_mode_check.set_sensitive(False)
+        self.set_word_mode_status(t("pw.word_mode_working"), is_error=False)
+        threading.Thread(target=self._run_set_word_mode, args=(enabled, passphrase), daemon=True).start()
+
+    def _run_set_word_mode(self, enabled, passphrase):
+        success, message = set_word_mode(enabled, passphrase)
+        GLib.idle_add(self._on_set_word_mode_done, success, message, enabled)
+
+    def _on_set_word_mode_done(self, success, message, enabled):
+        self.set_word_mode_status(message, is_error=not success)
+        self.word_mode_check.set_sensitive(True)
+        if not success:
+            self._revert_word_mode_check(enabled)
         return False
 
     def _add_row(self, grid, row, label_text):
@@ -1085,7 +1204,8 @@ class PasswordWindow(Gtk.Window):
         current = self.current_entry.get_text()
         new = self.new_entry.get_text()
         confirm = self.confirm_entry.get_text()
-        if info.get("normalize"):
+        word_mode = bool(info.get("word_mode_normalize")) and read_word_mode()
+        if word_mode:
             new = normalize_passphrase(new)
             confirm = normalize_passphrase(confirm)
 
@@ -1100,6 +1220,9 @@ class PasswordWindow(Gtk.Window):
             return
         if len(new) < info["min_length"]:
             self.set_status(t("pw.too_short").format(min_length=info["min_length"]))
+            return
+        if word_mode and len(new.split("-")) < info["min_words"]:
+            self.set_status(t("pw.too_few_words").format(min_words=info["min_words"]))
             return
 
         if not self._confirm_written_down(info["title"], new):

@@ -1034,4 +1034,17 @@ STRINGS = {
     'cpm.app.chrome.desc': "Google's own browser build -- opt-in only; Firefox is the default for privacy reasons (see cyberbeest.com). Installing this also adds Google's apt repo, which Chrome uses to auto-update itself.",
     'cpm.app.zoom.desc': "Zoom Workplace video meetings, from Zoom's own .deb (no apt repo exists). A daily check installs new versions, downloading only when the version changed",
     'cpm.app.kdenlive.desc': "Full-featured video editor (multi-track timeline, effects, titles, proxy editing). Installed from Debian's own repository; pulls in a fair number of KDE libraries as dependencies",
+    # Word passphrase entry (Boot Screen tab)
+    'pw.word_mode_label': 'Enter the master password as words',
+    'pw.word_mode_desc': "At the unlock screen, type the master password as separate words: capital letters, spaces and punctuation between the words don't matter, and every finished word shows as a tag. This needs a master password made of lower-case words joined by hyphens (the Generate button makes one), and it applies to the master password from now on.",
+    'pw.word_mode_ask_title': 'Confirm your master password',
+    'pw.word_mode_ask_text': 'To switch this on, enter your current master password. It is checked against the word format, because a password in another format would no longer unlock the disk.',
+    'pw.word_mode_working': 'Applying... this rebuilds the boot files and takes a moment.',
+    'pw.word_mode_on': 'Word entry is on from the next start. At the unlock screen you can type the words with any separators.',
+    'pw.word_mode_off': 'Word entry is off. The unlock screen shows one bullet per key again.',
+    'pw.word_mode_auth_cancelled': 'Authentication was cancelled, so word entry was not changed.',
+    'pw.word_mode_other_keyscript': "This machine's boot setup uses a feature that cannot be combined with word entry yet, so nothing was changed.",
+    'pw.word_mode_not_canonical': 'Your current master password is not in word form (lower-case words joined by hyphens), so the disk would stop unlocking. Change the master password to a generated one first, then switch this on. Nothing was changed.',
+    'pw.word_mode_failed': 'Word entry could not be changed.',
+    'pw.too_few_words': 'With word entry on, the master password needs at least {min_words} words.',
 }

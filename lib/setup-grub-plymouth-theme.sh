@@ -85,6 +85,16 @@ install -m 755 "$THEME_SRC/set-boot-name.sh" /usr/local/sbin/cyberbeest-set-boot
 echo "--- Installing the boot-bright-mode tool used by disk_password_gui.py ---"
 install -m 755 "$THEME_SRC/set-boot-bright-mode.sh" /usr/local/sbin/cyberbeest-set-boot-bright-mode
 
+echo "--- Installing the word-passphrase tool used by disk_password_gui.py ---"
+# Sources stay under /usr/local/lib so the tool can switch word entry on without
+# a provisioning checkout; it copies them to their real places (and wires the
+# crypttab keyscript) only when the owner ticks the box.
+install -m 755 "$THEME_SRC/set-word-mode.sh" /usr/local/sbin/cyberbeest-set-word-mode
+install -d -m 755 /usr/local/lib/cyberbeest/word-passphrase
+install -m 644 "$THEME_SRC/../cyberbeest-passphrase-filter" /usr/local/lib/cyberbeest/word-passphrase/cyberbeest-passphrase-filter
+install -m 755 "$THEME_SRC/../cyberbeest-askpass-words" /usr/local/lib/cyberbeest/word-passphrase/cyberbeest-askpass-words
+install -m 755 "$THEME_SRC/../cyberbeest-passphrase-filter.hook" /usr/local/lib/cyberbeest/word-passphrase/cyberbeest-passphrase-filter.hook
+
 # Bright mode ships on by default (a poor man's flashlight, and it makes the
 # unlock screen stand out) -- record that in the state file disk_password_gui.py
 # reads, so the "Boot Screen" tab's checkbox matches the theme's actual
