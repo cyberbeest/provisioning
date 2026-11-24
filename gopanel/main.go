@@ -32,7 +32,7 @@ import (
 	"gopanel/proto"
 )
 
-const version = "0.23.9"
+const version = "0.23.10"
 
 // startupQuiet is how long after launch new icons appear without a glow: the panel is still
 // filling up then.
@@ -339,6 +339,7 @@ func main() {
 		rebuildReplicas(monRect{x: monX, y: monY, w: monW, h: monH})
 		relayout()
 		redrawAll()
+		updateFullscreenPanels()
 	}
 	hit := func(x int16) *item {
 		for _, it := range items {
@@ -704,6 +705,9 @@ func main() {
 			}
 			for _, tb := range taskbars {
 				tb.onProperty(e)
+			}
+			if fullscreenRelevant(e) {
+				updateFullscreenPanels()
 			}
 		case xproto.MotionNotifyEvent:
 			ptrX = int(e.EventX)
