@@ -562,9 +562,11 @@ def script_lib_dependencies(script):
     # Scripts that build a whole source tree on the machine (69- gopanel, 69a- butler):
     # their sources count as dependencies too, but not the built binaries.
     for tree in set(re.findall(r'\$DIR/(gopanel|butler)\b', text)):
-        for root, _dirs, files in os.walk(os.path.join(DIR, tree)):
+        for root, dirs, files in os.walk(os.path.join(DIR, tree)):
+            # butler/ holds its own venv and downloaded model next to the sources
+            dirs[:] = [d for d in dirs if d not in ("venv", "__pycache__", ".cache")]
             deps.update(os.path.join(root, f) for f in files
-                        if f.endswith((".go", ".mod", ".sum", ".png", ".svg", ".sh", ".desktop", ".json")))
+                        if f.endswith((".go", ".mod", ".sum", ".png", ".svg", ".sh", ".desktop", ".json", ".py", ".npz")))
     return deps
 
 
