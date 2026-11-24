@@ -39,7 +39,7 @@ read -r _ ident _ _ <<<"${1:-}"
 STATE_TIME_FILE=/run/cyberbeest-powerbtn-last-press
 STATE_COUNT_FILE=/run/cyberbeest-powerbtn-press-count
 WINDOW_MS=6000
-DEBOUNCE_MS=250
+DEBOUNCE_MS=40
 REQUIRED_PRESSES=4
 
 now=$(date +%s%3N)
