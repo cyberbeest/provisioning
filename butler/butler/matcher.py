@@ -9,6 +9,8 @@ MODEL_TAG = "paraphrase-multilingual-MiniLM-L12-v2-q8-numnorm1"   # tag changes 
 CACHE = Path.home() / ".cache/cyberbeest/butler"
 SEED = Path(__file__).resolve().parent.parent / "seed" / f"sentences-{MODEL_TAG}.npz"   # shipped with the catalog and factbook
 
+_MODEL = []   # [(tokenizer, session, input names)] once loaded
+
 _NUM = re.compile(r"\d+(?:[.,]\d+)?")
 
 def normalize(text):
@@ -21,11 +23,16 @@ def normalize(text):
 
 class Matcher:
     def __init__(self, cmds, on_index=None):
-        self.tok = Tokenizer.from_file(str(MODEL_DIR / "tokenizer.json"))
-        self.tok.enable_padding(); self.tok.enable_truncation(64)
-        so = ort.SessionOptions(); so.intra_op_num_threads = 2
-        self.sess = ort.InferenceSession(str(MODEL_DIR / "onnx/model_quantized.onnx"), so, providers=["CPUExecutionProvider"])
-        self._in = {i.name for i in self.sess.get_inputs()}
+        # The server rebuilds the Matcher whenever a catalog file changes. A second model session next to the
+        # first one meant ~400 MB more at the peak, and the allocator kept most of it afterwards, so tokenizer and
+        # session are loaded once per process and shared by every Matcher.
+        if not _MODEL:
+            tok = Tokenizer.from_file(str(MODEL_DIR / "tokenizer.json"))
+            tok.enable_padding(); tok.enable_truncation(64)
+            so = ort.SessionOptions(); so.intra_op_num_threads = 2
+            sess = ort.InferenceSession(str(MODEL_DIR / "onnx/model_quantized.onnx"), so, providers=["CPUExecutionProvider"])
+            _MODEL.append((tok, sess, {i.name for i in sess.get_inputs()}))
+        self.tok, self.sess, self._in = _MODEL[0]
         self.cmds = cmds
         self.owner, self.neg, texts = [], [], []
         for i, c in enumerate(cmds):
