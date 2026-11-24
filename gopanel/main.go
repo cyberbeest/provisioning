@@ -32,7 +32,7 @@ import (
 	"gopanel/proto"
 )
 
-const version = "0.23.10"
+const version = "0.23.11"
 
 // startupQuiet is how long after launch new icons appear without a glow: the panel is still
 // filling up then.

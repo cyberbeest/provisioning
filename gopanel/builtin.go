@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"image"
+	"math"
 	"os"
 	"os/exec"
 	"strconv"
@@ -118,6 +120,10 @@ func newVolumeItem() *item {
 		case vol < 67:
 			name = "audio-volume-medium-symbolic"
 		}
+		icon := loadIcon(name)
+		if vol > 100 && !muted {
+			icon = bulgeIcon(icon, 0.45) // over 100%: the loud icon swells
+		}
 		volPct.Store(int32(vol))
 		if muted {
 			volMuted.Store(1)
@@ -128,7 +134,7 @@ func newVolumeItem() *item {
 		if muted {
 			tip = tr("Volume muted")
 		}
-		it.post(itemUpdate{img: iconText(loadIcon(name), "", 0), tip: &tip, w: panelH})
+		it.post(itemUpdate{img: iconText(icon, "", 0), tip: &tip, w: panelH})
 	}
 	it.click = func(x, y, btn int) {
 		switch btn {
@@ -247,4 +253,47 @@ func sweepStaleSubscribers() {
 			syscall.Kill(pid, syscall.SIGKILL)
 		}
 	}
+}
+
+// bulgeIcon returns img with a fisheye bulge: the centre is magnified by 1/a (0 < a <= 1)
+// and the magnification fades to none at the edge of the box, so the shape swells
+// outwards. Each output pixel averages 4x4 bilinear samples of the source.
+func bulgeIcon(img *image.RGBA, a float64) *image.RGBA {
+	b := img.Bounds()
+	w, h := b.Dx(), b.Dy()
+	out := image.NewRGBA(b)
+	cx, cy := float64(w)/2, float64(h)/2
+	at := func(x, y int) (r, g, bl, al float64) {
+		if x < 0 || y < 0 || x >= w || y >= h {
+			return
+		}
+		i := img.PixOffset(b.Min.X+x, b.Min.Y+y)
+		return float64(img.Pix[i]), float64(img.Pix[i+1]), float64(img.Pix[i+2]), float64(img.Pix[i+3])
+	}
+	const n = 4
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			var sr, sg, sb, sa float64
+			for j := 0; j < n; j++ {
+				for i := 0; i < n; i++ {
+					dx := (float64(x) + (float64(i)+0.5)/n - cx) / cx
+					dy := (float64(y) + (float64(j)+0.5)/n - cy) / cy
+					if r2 := dx*dx + dy*dy; r2 < 1 {
+						f := a + (1-a)*r2
+						dx, dy = dx*f, dy*f
+					}
+					px, py := dx*cx+cx-0.5, dy*cy+cy-0.5
+					x0, y0 := int(math.Floor(px)), int(math.Floor(py))
+					fx, fy := px-float64(x0), py-float64(y0)
+					for k, wt := range [4]float64{(1 - fx) * (1 - fy), fx * (1 - fy), (1 - fx) * fy, fx * fy} {
+						r, g, bl, al := at(x0+k&1, y0+k>>1)
+						sr, sg, sb, sa = sr+r*wt, sg+g*wt, sb+bl*wt, sa+al*wt
+					}
+				}
+			}
+			o := out.PixOffset(b.Min.X+x, b.Min.Y+y)
+			out.Pix[o], out.Pix[o+1], out.Pix[o+2], out.Pix[o+3] = byte(sr/(n*n)+0.5), byte(sg/(n*n)+0.5), byte(sb/(n*n)+0.5), byte(sa/(n*n)+0.5)
+		}
+	}
+	return out
 }
