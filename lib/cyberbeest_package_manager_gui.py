@@ -107,6 +107,16 @@ APPS = [
         "extra_install_steps": ["setup-zoom-updater"],
         "extra_remove_steps": ["teardown-zoom-updater"],
     },
+    {
+        "id": "kdenlive",
+        "name": "Kdenlive",
+        "description": "Full-featured video editor (multi-track timeline, effects, titles, proxy editing). Installed from Debian's own repository; pulls in a fair number of KDE libraries as dependencies",
+        "category": "Video & Audio",
+        "check_pkg": "kdenlive",
+        "install_pkg": "kdenlive",
+        "remove_pkg": "kdenlive",
+        "repo": None,
+    },
 ]
 
 LIST_HEIGHT = 100
