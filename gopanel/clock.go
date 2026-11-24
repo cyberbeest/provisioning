@@ -13,7 +13,11 @@ func newClockItem() *item {
 	it := newItem("clock")
 	ink := color.RGBA{0, 0, 0, 255}
 	render := func(now time.Time) (*image.RGBA, string) {
-		lines := []string{now.Format("15:04"), now.Format("2006-01-02")}
+		date := now.Format("2006-01-02")
+		if german {
+			date = now.Format("02.01.2006")
+		}
+		lines := []string{now.Format("15:04"), date}
 		px := 11.5 // Sans ~8.6pt: the clock was the biggest text in the panel
 		var ws [2]int
 		var spans [2][]gfx.Span
