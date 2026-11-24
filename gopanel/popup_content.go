@@ -103,6 +103,15 @@ func readPactlVolume(kind, dev string) (int, bool) {
 	return vol, muted
 }
 
+// hasMicrophone reports whether PulseAudio's default source (as printed by
+// `pactl get-default-source`) is a real input. With no microphone left, the
+// default falls back to the monitor of an output, which is not one: the popup
+// would show a "Microphone" slider that records nothing.
+func hasMicrophone(defaultSource string) bool {
+	name := strings.TrimSpace(defaultSource)
+	return name != "" && !strings.HasSuffix(name, ".monitor")
+}
+
 func openVolumePopup(anchorX int) {
 	const w, pad, secH = 240, 16, 96
 	const maxPct = 150 // like pavucontrol: up to 150% amplification
@@ -112,7 +121,7 @@ func openVolumePopup(anchorX int) {
 	out.pct, out.muted = readPactlVolume("sink", "@DEFAULT_SINK@") // not the cached value: it can lag a moment
 	volPct.Store(int32(out.pct))
 	secs := []*mixerSlider{out}
-	if pactl("get-default-source") != "" {
+	if hasMicrophone(pactl("get-default-source")) {
 		mic := &mixerSlider{title: tr("Microphone"), last: -1,
 			setPct: func(v int) {
 				exec.Command("pactl", "set-source-volume", "@DEFAULT_SOURCE@", fmt.Sprintf("%d%%", v)).Run()
@@ -121,12 +130,19 @@ func openVolumePopup(anchorX int) {
 		mic.pct, mic.muted = readPactlVolume("source", "@DEFAULT_SOURCE@")
 		secs = append(secs, mic)
 	}
+	micShown := len(secs) > 1
 	for i, sl := range secs {
 		sl.top = 10 + i*secH
 	}
 	h := 10 + len(secs)*secH + 26
 	mixerY := h - 30
 	p := &popup{w: w, h: h}
+	// A microphone appearing or going away while the popup is open: build it again.
+	p.refresh = func() {
+		if hasMicrophone(pactl("get-default-source")) != micShown {
+			openVolumePopup(anchorX)
+		}
+	}
 	trackY := func(sl *mixerSlider) int { return sl.top + 38 }
 	muteY := func(sl *mixerSlider) int { return sl.top + 62 }
 	set := func(sl *mixerSlider, x int) {

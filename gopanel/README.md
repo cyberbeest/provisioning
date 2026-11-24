@@ -78,7 +78,7 @@ installing 69- there would put the installed build first in `~/.local/bin`, so d
   desynchronise and hang the next reply.
 - Control and helper sockets are reachable by same-uid jailed apps: commands carry no data,
   nothing can launch anything. Helpers can draw into the panel, though.
-- Popups (popup.go, popups_ui.go): clock click = month calendar, volume click = slider + mute + mixer
+- Popups (popup.go, popup_content.go): clock click = month calendar, volume click = slider + mute + mixer
   (right click = pavucontrol). `gopanel calendar|volume` toggles them, e.g. for testing.
 - Power button click = battery text + brightness slider (logind SetBrightness; scroll on the button
   also changes it) + links to power settings; `gopanel power` toggles it.

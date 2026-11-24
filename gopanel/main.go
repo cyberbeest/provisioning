@@ -800,6 +800,10 @@ func main() {
 			if !wh.loaded {
 				wh.setData(d)
 			}
+		case <-popupRefresh:
+			if curPop != nil && curPop.refresh != nil {
+				curPop.refresh()
+			}
 		case req := <-menuReqs:
 			cancelTip()
 			closePopup()

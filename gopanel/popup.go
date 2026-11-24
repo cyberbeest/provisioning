@@ -23,7 +23,12 @@ type popup struct {
 	release func()                    // button released
 	key     func(code xproto.Keycode) // evdev code + 8
 	closed  func()                    // called when the popup goes away
+	refresh func()                    // something outside changed (see popupRefresh): rebuild if the content is stale
 }
+
+// popupRefresh asks the main goroutine to let the open popup check whether it is
+// still up to date (the volume popup hides or shows its microphone section).
+var popupRefresh = make(chan struct{}, 1)
 
 var (
 	curPop *popup

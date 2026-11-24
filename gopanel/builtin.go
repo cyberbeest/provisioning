@@ -92,7 +92,9 @@ func newPowerItem() *item {
 
 // pactl runs a pactl command and returns its output.
 func pactl(args ...string) string {
-	out, _ := exec.Command("pactl", args...).Output()
+	cmd := exec.Command("pactl", args...)
+	cmd.Env = append(os.Environ(), "LC_ALL=C") // the output is parsed: not "Stumm: ja" on a German machine
+	out, _ := cmd.Output()
 	return string(out)
 }
 
@@ -148,6 +150,7 @@ func newVolumeItem() *item {
 		refresh()
 		for !it.isDead() {
 			cmd := exec.Command("pactl", "subscribe")
+			cmd.Env = append(os.Environ(), "LC_ALL=C") // matched against "sink" / "source" / "server"
 			cmd.SysProcAttr = &syscall.SysProcAttr{Pdeathsig: syscall.SIGKILL}
 			out, err := cmd.StdoutPipe()
 			if err != nil || cmd.Start() != nil {
@@ -168,6 +171,12 @@ func newVolumeItem() *item {
 					break
 				}
 				s := string(buf[:n])
+				if strings.Contains(s, "source") || strings.Contains(s, "server") {
+					select {
+					case popupRefresh <- struct{}{}:
+					default:
+					}
+				}
 				if (strings.Contains(s, "sink") || strings.Contains(s, "server")) && time.Since(last) > 100*time.Millisecond {
 					last = time.Now()
 					refresh()
