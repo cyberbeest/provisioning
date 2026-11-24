@@ -57,6 +57,12 @@ install -o "$TARGET_USER" -g "$TARGET_USER" -m 755 \
 install -o "$TARGET_USER" -g "$TARGET_USER" -m 755 \
 	"$DIR/lib/protonvpn_post_install.py" "$TARGET_HOME/.local/bin/protonvpn_post_install.py"
 
+# The GUI does `from i18n import t` relative to its own location, so the
+# shared runtime and its catalogs sit next to it -- see lib/i18n.py.
+install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 "$DIR/lib/i18n.py" "$TARGET_HOME/.local/bin/i18n.py"
+install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.local/bin/i18n"
+install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 "$DIR"/lib/i18n/strings_*.py "$TARGET_HOME/.local/bin/i18n/"
+
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.local/share/cyberbeest"
 
 echo "--- Installing icon ---"

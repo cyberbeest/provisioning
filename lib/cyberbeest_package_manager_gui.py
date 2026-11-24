@@ -22,6 +22,9 @@ import sys
 import threading
 from datetime import datetime
 
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+from i18n import t
+
 import gi
 
 gi.require_version("Gtk", "3.0")
@@ -54,8 +57,7 @@ APPS = [
     {
         "id": "qbittorrent",
         "name": "qBittorrent",
-        "description": "BitTorrent client. I2P (installed by default -- see the Darknet menu) is enabled automatically so .i2p torrents work over it alongside normal torrenting",
-        "category": "Privacy & Anonymity",
+        "category": "cpm.cat.privacy",
         "check_pkg": "qbittorrent",
         "install_pkg": "qbittorrent",
         "remove_pkg": "qbittorrent",
@@ -65,8 +67,7 @@ APPS = [
     {
         "id": "mullvad",
         "name": "Mullvad VPN",
-        "description": "Mullvad's own Linux app -- account-number login (no email), built-in kill switch. Installs and enables a persistent background daemon (mullvad-daemon), which is why this is opt-in rather than default.",
-        "category": "VPN & Networking",
+        "category": "cpm.cat.vpn",
         "check_pkg": "mullvad-vpn",
         "install_pkg": "mullvad-vpn",
         "remove_pkg": "mullvad-vpn",
@@ -75,8 +76,7 @@ APPS = [
     {
         "id": "protonvpn",
         "name": "Proton VPN",
-        "description": "Proton's own Linux app -- also installs and enables a persistent background daemon, same reason it's opt-in. Officially targets GNOME; works on Xfce but pulls in some GNOME libraries as dependencies. After installing, the standard kill switch is turned on by default and you'll be asked whether to start it automatically at login -- Proton's own app has no setting for either.",
-        "category": "VPN & Networking",
+        "category": "cpm.cat.vpn",
         "check_pkg": "proton-vpn-gnome-desktop",
         "install_pkg": "proton-vpn-gnome-desktop",
         "remove_pkg": "proton-vpn-gnome-desktop",
@@ -87,8 +87,7 @@ APPS = [
     {
         "id": "chrome",
         "name": "Google Chrome",
-        "description": "Google's own browser build -- opt-in only; Firefox is the default for privacy reasons (see cyberbeest.com). Installing this also adds Google's apt repo, which Chrome uses to auto-update itself.",
-        "category": "Web Browsers",
+        "category": "cpm.cat.browsers",
         "check_pkg": "google-chrome-stable",
         "install_pkg": "google-chrome-stable",
         "remove_pkg": "google-chrome-stable",
@@ -97,8 +96,7 @@ APPS = [
     {
         "id": "zoom",
         "name": "Zoom",
-        "description": "Zoom Workplace video meetings, from Zoom's own .deb (no apt repo exists). A daily check installs new versions, downloading only when the version changed",
-        "category": "Communication",
+        "category": "cpm.cat.communication",
         "check_pkg": "zoom",
         "install_pkg": "zoom",
         "remove_pkg": "zoom",
@@ -110,8 +108,7 @@ APPS = [
     {
         "id": "kdenlive",
         "name": "Kdenlive",
-        "description": "Full-featured video editor (multi-track timeline, effects, titles, proxy editing). Installed from Debian's own repository; pulls in a fair number of KDE libraries as dependencies",
-        "category": "Video & Audio",
+        "category": "cpm.cat.video",
         "check_pkg": "kdenlive",
         "install_pkg": "kdenlive",
         "remove_pkg": "kdenlive",
@@ -161,16 +158,16 @@ def run_helper_batch(steps):
             text=True,
         )
     except FileNotFoundError as e:
-        return False, f"Could not start pkexec: {e}"
+        return False, t("cpm.pkexec_failed").format(error=e)
 
     if proc.returncode == 0:
-        return True, "All changes applied"
+        return True, t("cpm.all_applied")
     if proc.returncode in (126, 127):
-        return False, "Authentication was cancelled. No changes were made"
+        return False, t("cpm.auth_cancelled")
     detail = (proc.stderr or proc.stdout or "").strip()
     if detail:
-        return False, f"{detail} (see cyberbeest_pkg_helper.log for details)"
-    return False, f"Failed (exit code {proc.returncode})"
+        return False, t("cpm.failed_detail").format(detail=detail)
+    return False, t("cpm.failed_exit").format(code=proc.returncode)
 
 
 class AppRow(Gtk.Box):
@@ -193,7 +190,7 @@ class AppRow(Gtk.Box):
         name_label.set_markup(f"<b>{GLib.markup_escape_text(app['name'])}</b>")
         text_box.pack_start(name_label, False, False, 0)
 
-        desc_label = Gtk.Label(label=app["description"], xalign=0, wrap=True)
+        desc_label = Gtk.Label(label=t(f"cpm.app.{app['id']}.desc"), xalign=0, wrap=True)
         desc_label.get_style_context().add_class("dim-label")
         text_box.pack_start(desc_label, False, False, 0)
 
@@ -227,7 +224,7 @@ class AppRow(Gtk.Box):
         self.check.set_sensitive(not busy)
         if busy:
             action = self.pending_action()
-            text = {"install": "INSTALLING", "remove": "REMOVING"}.get(action, "")
+            text = {"install": t("cpm.installing"), "remove": t("cpm.removing")}.get(action, "")
             self.state_label.set_markup(f"<b>{text}</b>")
             self.state_label.show()
             self.spinner.start()
@@ -248,9 +245,11 @@ class TaskRow(Gtk.Box):
         super().__init__(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         self.app_row = app_row
 
-        verb = "Install" if app_row.pending_action() == "install" else "Remove"
+        key = "cpm.task_install" if app_row.pending_action() == "install" else "cpm.task_remove"
         label = Gtk.Label(xalign=0)
-        label.set_markup(f"{verb} <b>{GLib.markup_escape_text(app_row.app['name'])}</b>")
+        label.set_markup(
+            t(key).format(name=f"<b>{GLib.markup_escape_text(app_row.app['name'])}</b>")
+        )
         self.pack_start(label, True, True, 0)
 
         self.spinner = Gtk.Spinner()
@@ -262,7 +261,7 @@ class TaskRow(Gtk.Box):
         self.cancel_button.add(
             Gtk.Image.new_from_icon_name("window-close-symbolic", Gtk.IconSize.MENU)
         )
-        self.cancel_button.set_tooltip_text("Remove from queue")
+        self.cancel_button.set_tooltip_text(t("cpm.remove_from_queue"))
         self.cancel_button.connect("clicked", lambda _b: on_cancel(app_row))
         self.pack_start(self.cancel_button, False, False, 0)
 
@@ -307,13 +306,13 @@ class PackagesPage(Gtk.Box):
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
 
         heading = Gtk.Label(xalign=0)
-        heading.set_markup('<span size="large"><b>Applications</b></span>')
+        heading.set_markup(f'<span size="large"><b>{GLib.markup_escape_text(t("cpm.applications"))}</b></span>')
         box.pack_start(heading, False, False, 0)
 
         info = Gtk.Label(
             wrap=True,
             xalign=0,
-            label="Check a box to install. Uncheck to uninstall",
+            label=t("cpm.check_to_install"),
         )
         info.get_style_context().add_class("dim-label")
         box.pack_start(info, False, False, 0)
@@ -322,7 +321,7 @@ class PackagesPage(Gtk.Box):
         box.pack_start(filter_box, False, False, 0)
 
         filter_box.pack_start(Gtk.Box(), True, True, 0)
-        filter_box.pack_start(Gtk.Label(label="Show installed only"), False, False, 0)
+        filter_box.pack_start(Gtk.Label(label=t("cpm.show_installed_only")), False, False, 0)
 
         self.installed_only_switch = Gtk.Switch()
         self.installed_only_switch.set_valign(Gtk.Align.CENTER)
@@ -347,7 +346,7 @@ class PackagesPage(Gtk.Box):
             if app["category"] != current_category:
                 current_category = app["category"]
                 cat_label = Gtk.Label(xalign=0)
-                cat_label.set_markup(f"<b>{GLib.markup_escape_text(current_category)}</b>")
+                cat_label.set_markup(f"<b>{GLib.markup_escape_text(t(current_category))}</b>")
                 cat_label.get_style_context().add_class("dim-label")
                 list_box.pack_start(cat_label, False, False, 0)
                 cat_rows = []
@@ -375,14 +374,14 @@ class PackagesPage(Gtk.Box):
         self.tasks_list.set_border_width(2)
         scroller.add(self.tasks_list)
 
-        self.tasks_empty_label = Gtk.Label(xalign=0, label="Nothing queued yet")
+        self.tasks_empty_label = Gtk.Label(xalign=0, label=t("cpm.nothing_queued"))
         self.tasks_empty_label.get_style_context().add_class("dim-label")
 
         self.status_label = Gtk.Label(xalign=1, wrap=True)
         self.status_label.set_no_show_all(True)
         box.pack_start(self.status_label, False, False, 0)
 
-        self.go_button = Gtk.Button(label="GO")
+        self.go_button = Gtk.Button(label=t("cpm.go"))
         self.go_button.get_style_context().add_class("suggested-action")
         self.go_button.connect("clicked", self.on_go_clicked)
         box.pack_start(self.go_button, False, False, 0)
@@ -390,7 +389,7 @@ class PackagesPage(Gtk.Box):
         warning_label = Gtk.Label(
             wrap=True,
             xalign=0,
-            label="You may be asked for your short password multiple times",
+            label=t("cpm.multi_password"),
         )
         warning_label.get_style_context().add_class("dim-label")
         box.pack_start(warning_label, False, False, 0)
@@ -405,7 +404,7 @@ class PackagesPage(Gtk.Box):
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
 
         heading = Gtk.Label(xalign=0)
-        heading.set_markup("<b>History</b>")
+        heading.set_markup(f'<b>{GLib.markup_escape_text(t("cpm.history"))}</b>')
         box.pack_start(heading, False, False, 0)
 
         self.log_scroller = Gtk.ScrolledWindow()
@@ -456,7 +455,8 @@ class PackagesPage(Gtk.Box):
 
         count = len(pending)
         self.tasks_heading.set_markup(
-            '<span size="large"><b>Tasks</b></span>' + (f" ({count})" if count else "")
+            f'<span size="large"><b>{GLib.markup_escape_text(t("cpm.tasks"))}</b></span>'
+            + (f" ({count})" if count else "")
         )
         self.go_button.set_sensitive(count > 0)
 
@@ -468,7 +468,7 @@ class PackagesPage(Gtk.Box):
         for child in self.log_list.get_children():
             self.log_list.remove(child)
 
-        entries = read_recent_log() or ["No history yet"]
+        entries = read_recent_log() or [t("cpm.no_history")]
         for line in entries:
             label = Gtk.Label(xalign=0)
             label.set_markup(
@@ -498,10 +498,12 @@ class PackagesPage(Gtk.Box):
             return
 
         summary_lines = [
-            f"{'Install' if row.pending_action() == 'install' else 'Remove'} {row.app['name']}"
+            t("cpm.summary_install" if row.pending_action() == "install" else "cpm.summary_remove").format(
+                name=row.app["name"]
+            )
             for row in pending
         ]
-        if not self._confirm("Apply these changes?\n\n" + "\n".join(summary_lines)):
+        if not self._confirm(t("cpm.confirm_apply") + "\n\n" + "\n".join(summary_lines)):
             return
 
         steps = []
@@ -563,11 +565,11 @@ class PackagesPage(Gtk.Box):
             if action == "install":
                 script = row.app.get("post_install_script")
                 args = ["python3", script] if script else None
-                verb, gerund = "installed", "setup"
+                fail_key = "cpm.post_install_failed"
             elif action == "remove":
                 script = row.app.get("post_remove_script")
                 args = ["python3", script, "remove"] if script else None
-                verb, gerund = "removed", "cleanup"
+                fail_key = "cpm.post_remove_failed"
             else:
                 continue
             if not args:
@@ -577,7 +579,7 @@ class PackagesPage(Gtk.Box):
             proc = subprocess.run(args, capture_output=True, text=True, timeout=600)
             if proc.returncode != 0:
                 detail = (proc.stderr or proc.stdout or "").strip()
-                return f"{row.app['name']} {verb}, but {gerund} failed: {detail}"
+                return t(fail_key).format(name=row.app["name"], detail=detail)
         return None
 
     def _on_batch_done(self, ok, message, pending_rows):
@@ -589,9 +591,9 @@ class PackagesPage(Gtk.Box):
             row.sync_to_actual()
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             if desired == "install" and not pre_installed and row.installed:
-                log_entries.append(f"{timestamp}  Installed {row.app['name']}")
+                log_entries.append(f"{timestamp}  " + t("cpm.log_installed").format(name=row.app["name"]))
             elif desired == "remove" and pre_installed and not row.installed:
-                log_entries.append(f"{timestamp}  Removed {row.app['name']}")
+                log_entries.append(f"{timestamp}  " + t("cpm.log_removed").format(name=row.app["name"]))
 
         if log_entries:
             append_log(log_entries)
@@ -605,7 +607,7 @@ class PackagesPage(Gtk.Box):
 
 class PackagesWindow(Gtk.Window):
     def __init__(self, preselect_id=None):
-        super().__init__(title="Cyberbeest Package Manager")
+        super().__init__(title=t("cpm.window_title"))
         self.set_default_size(760, 380)
         self.set_position(Gtk.WindowPosition.CENTER)
         self.connect("destroy", Gtk.main_quit)
