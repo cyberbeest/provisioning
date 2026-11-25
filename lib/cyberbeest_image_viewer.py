@@ -1527,7 +1527,6 @@ class ImageViewerWindow(Gtk.Window):
         self.star_button.get_style_context().add_provider(_STAR_CSS, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
         bar.pack_start(self.star_button, False, False, 0)
         bar.pack_start(_icon_button("document-edit-symbolic", "Edit Caption (C)", self.edit_caption), False, False, 0)
-        bar.pack_start(_icon_button("user-trash-symbolic", "Delete (Del)", self.show_delete_dialog), False, False, 0)
 
         bar.pack_end(_icon_button("pan-up-symbolic", "Hide control bar", lambda: self.set_bar_collapsed(True)), False, False, 0)
 
@@ -1551,6 +1550,10 @@ class ImageViewerWindow(Gtk.Window):
 
         self.fullscreen_button = _icon_button("view-fullscreen-symbolic", "Enter Fullscreen (F11)", self.toggle_fullscreen)
         bar.pack_end(self.fullscreen_button, False, False, 0)
+
+        delete_button = _icon_button("user-trash-symbolic", "Delete (Del)", self.show_delete_dialog)
+        delete_button.set_margin_end(12)
+        bar.pack_end(delete_button, False, False, 0)
 
         for child in bar.get_children():
             child.show_all()
