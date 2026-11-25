@@ -1527,6 +1527,7 @@ class ImageViewerWindow(Gtk.Window):
         self.star_button.get_style_context().add_provider(_STAR_CSS, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
         bar.pack_start(self.star_button, False, False, 0)
         bar.pack_start(_icon_button("document-edit-symbolic", "Edit Caption (C)", self.edit_caption), False, False, 0)
+        bar.pack_start(_icon_button("user-trash-symbolic", "Delete (Del)", self.show_delete_dialog), False, False, 0)
 
         bar.pack_end(_icon_button("pan-up-symbolic", "Hide control bar", lambda: self.set_bar_collapsed(True)), False, False, 0)
 
