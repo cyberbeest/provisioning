@@ -25,6 +25,7 @@ import (
 const (
 	butlerDebounce = 90 * time.Millisecond
 	butlerIdle     = 30 * time.Second // unload after this long idle when memory is short
+	butlerMaxIdle  = 5 * time.Minute  // unload after this long idle whatever the memory situation (it reloads fast)
 	memPressurePct = 10.0             // PSI memory "some" avg60 at/above which RAM is not comfortable
 	butlerKeepRAM  = 2000             // MB available (MemAvailable): at least this much and the matcher stays loaded; default for ~/.config/cyberbeest/low-ram-mb
 )
@@ -385,13 +386,13 @@ func memoryPressured() bool {
 }
 
 // reaper stops the server (and frees its ~480 MB) after butlerIdle without use, unless memory is plentiful:
-// then it stays loaded and the next search starts instantly. Checked every few seconds, so memory that
+// then it stays loaded and the next search starts instantly, but never longer than butlerMaxIdle. Checked every few seconds, so memory that
 // becomes scarce later still gets it unloaded.
 func (b *butlerClient) reaper() {
 	for {
 		time.Sleep(5 * time.Second)
 		b.mu.Lock()
-		if b.cmd != nil && time.Since(b.lastUse) > butlerIdle && !ramComfortable() {
+		if idle := time.Since(b.lastUse); b.cmd != nil && (idle > butlerMaxIdle || idle > butlerIdle && !ramComfortable()) {
 			b.stopLocked()
 		}
 		b.mu.Unlock()
