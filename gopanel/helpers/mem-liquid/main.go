@@ -38,6 +38,9 @@ const (
 	arrowHold       = 5.0 // seconds an arrow stays fully lit after the last swap activity in its direction
 	arrowFade       = 1.0 // then it fades out over this long
 	swapSampleEvery = 500 * time.Millisecond
+	// swapArrowMinRate is the swap traffic (bytes/s, per sample) an arrow needs to light: a few stray
+	// pages being swapped in or out are noise, not pressure.
+	swapArrowMinRate = 1 << 20
 )
 
 var (
@@ -155,6 +158,7 @@ type state struct {
 	warnLevel, warnTarget    float64
 	swapFrac                 float64
 	prevOut, prevIn          uint64 // swap counters at the last sample
+	prevSwapAt               time.Time
 	swapPagesOK              bool
 	outAt, inAt              time.Time // last time pages were swapped out / in
 	swapTotal, swapUsed      uint64
@@ -184,21 +188,25 @@ func swapCounters() (out, in uint64, ok bool) {
 	return out, in, true
 }
 
-// sampleSwap lights the arrows when pages were swapped out/in since the last sample.
+// sampleSwap lights the arrows when swapping out/in since the last sample reached swapArrowMinRate.
 func (s *state) sampleSwap() {
 	out, in, ok := swapCounters()
 	if !ok {
 		return
 	}
+	now := time.Now()
 	if s.swapPagesOK {
-		if out > s.prevOut {
-			s.outAt = time.Now()
-		}
-		if in > s.prevIn {
-			s.inAt = time.Now()
+		if dt := now.Sub(s.prevSwapAt).Seconds(); dt > 0 {
+			page := float64(os.Getpagesize())
+			if out > s.prevOut && float64(out-s.prevOut)*page/dt >= swapArrowMinRate {
+				s.outAt = now
+			}
+			if in > s.prevIn && float64(in-s.prevIn)*page/dt >= swapArrowMinRate {
+				s.inAt = now
+			}
 		}
 	}
-	s.prevOut, s.prevIn, s.swapPagesOK = out, in, true
+	s.prevOut, s.prevIn, s.prevSwapAt, s.swapPagesOK = out, in, now, true
 }
 
 // arrowStrength is 1 while swapping in that direction is ongoing (activity within arrowHold),
