@@ -516,7 +516,7 @@ RC_INFO = {
 }
 # longer explanations shown as tooltips
 # keys a plugin understands but whose rc file may not contain yet (shown with this value)
-RC_DEFAULTS = {"mem-liquid": {"SwapArrows": "true", "DiskScope": "main"}}
+RC_DEFAULTS = {"mem-liquid": {"SwapArrows": "true", "DiskScope": "all+removable"}}
 CHOICES = {"DiskScope": [("main", "Main disk only"), ("all", "All disks"), ("all+removable", "All disks and removable volumes")]}
 RC_TIPS = {
     "CountMapped": "On (default): counts resident/loaded mmap'd pages as used, even though clean, because evicting "

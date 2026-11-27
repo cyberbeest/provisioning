@@ -68,7 +68,7 @@ type settings struct {
 }
 
 func loadSettings() settings {
-	s := settings{fps: 6, showPercent: true, enabled: true, countMapped: true, swapArrows: true, friendly: true, diskWarnPct: 90, diskScope: "main"}
+	s := settings{fps: 6, showPercent: true, enabled: true, countMapped: true, swapArrows: true, friendly: true, diskWarnPct: 90, diskScope: "all+removable"}
 	home, _ := os.UserHomeDir()
 	m, _ := filepath.Glob(filepath.Join(home, ".config/xfce4/panel/mem-liquid-*.rc"))
 	if len(m) == 0 {
@@ -579,6 +579,21 @@ func readUnloadables() []unloadable {
 	return out
 }
 
+// memoryPressured reports recent memory stalls (PSI "some" avg60 >= 10%); same rule as the Butler reaper's.
+func memoryPressured() bool {
+	data, err := os.ReadFile("/proc/pressure/memory")
+	if err != nil {
+		return false
+	}
+	for _, f := range strings.Fields(strings.SplitN(string(data), "\n", 2)[0]) {
+		if v, ok := strings.CutPrefix(f, "avg60="); ok {
+			pct, _ := strconv.ParseFloat(v, 64)
+			return pct >= 10
+		}
+	}
+	return false
+}
+
 func (s *state) tooltip(top []procinfo.MemProc) string {
 	var b strings.Builder
 	gib := func(kib uint64) float64 { return float64(kib) / 1048576 }
@@ -645,7 +660,11 @@ func (s *state) tooltip(top []procinfo.MemProc) string {
 		}
 	}
 	if ul := readUnloadables(); len(ul) > 0 {
-		b.WriteString("\n\nCan be freed when RAM runs short:")
+		if memWarn || memoryPressured() {
+			b.WriteString("\n\nWill be freed if RAM stays short:")
+		} else {
+			b.WriteString("\n\nCan be freed when RAM runs short:")
+		}
 		for _, u := range ul {
 			if u.kib > 0 {
 				fmt.Fprintf(&b, "\n%s  %.1f GB", u.label, math.Max(float64(u.kib)/1048576, 0.1))
