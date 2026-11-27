@@ -268,6 +268,39 @@ if [ -n "$apps_check_epoch" ]; then
     tool="${tool}&#10;${apps_line}"
 fi
 
+# Packages with a newer version available, security or not -- the updater
+# only installs security fixes, so this shows what is left. Cached against the
+# apt lists/dpkg status mtimes: genmon runs often and `apt list` is slow.
+upg_cache="${XDG_CACHE_HOME:-$HOME/.cache}/update-genmon-upgradable"
+upg_key="$(stat -c %Y /var/lib/dpkg/status /var/lib/apt/lists 2>/dev/null | paste -sd-)"
+upgradable_count=""
+upgradable_names=""
+if [ -r "$upg_cache" ] && [ "$(sed -n 1p "$upg_cache")" = "$upg_key" ]; then
+    upgradable_count="$(sed -n 2p "$upg_cache")"
+    upgradable_names="$(sed -n 3p "$upg_cache")"
+else
+    upg_all="$(LC_ALL=C apt list --upgradable 2>/dev/null | grep '/' | cut -d/ -f1)"
+    upgradable_count="$(printf '%s' "$upg_all" | grep -c .)"
+    upgradable_names="$(printf '%s\n' "$upg_all" | grep . | head -3 | paste -sd, | sed 's/,/, /g')"
+    mkdir -p "${upg_cache%/*}" 2>/dev/null
+    printf '%s\n%s\n%s\n' "$upg_key" "$upgradable_count" "$upgradable_names" > "$upg_cache" 2>/dev/null
+fi
+case "$upgradable_count" in
+    ''|*[!0-9]*) ;;
+    *)
+        upg_line="$(t update_genmon.upgradable)"
+        tool="${tool}&#10;${upg_line//COUNT/$upgradable_count}"
+        if [ "$upgradable_count" -gt 0 ] && [ -n "$upgradable_names" ]; then
+            upg_names_line="  $upgradable_names"
+            if [ "$upgradable_count" -gt 3 ]; then
+                upg_more="$(t update_genmon.upgradable_more)"
+                upg_names_line="${upg_names_line} ${upg_more//N/$(( upgradable_count - 3 ))}"
+            fi
+            tool="${tool}&#10;${upg_names_line}"
+        fi
+        ;;
+esac
+
 SECURITY_STATUS_IMG="$img"
 SECURITY_STATUS_TOOL="$tool"
 SECURITY_STATUS_CLICK="${SELF_DIR}/update-genmon-view-log.py"

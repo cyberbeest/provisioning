@@ -126,6 +126,15 @@ install -o "$TARGET_USER" -g "$TARGET_USER" -m 755 \
 install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 "$DIR/lib/i18n.sh" "$TARGET_HOME/.local/bin/i18n.sh"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.local/bin/i18n"
 install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 "$DIR"/lib/i18n/strings.*.sh "$TARGET_HOME/.local/bin/i18n/"
+# "Run feature updates..." in the same menu: the GUI, the module both it and the menu
+# use, and the pkexec helper + polkit policy that do the privileged install.
+install -o "$TARGET_USER" -g "$TARGET_USER" -m 755 \
+	"$DIR/lib/cyberbeest-feature-upgrade.py" "$TARGET_HOME/.local/bin/cyberbeest-feature-upgrade.py"
+install -o "$TARGET_USER" -g "$TARGET_USER" -m 644 \
+	"$DIR/lib/feature_upgrades.py" "$TARGET_HOME/.local/bin/feature_upgrades.py"
+install -d /usr/local/lib/cyberbeest
+install -m 755 "$DIR/lib/cyberbeest-feature-upgrade-helper.sh" /usr/local/lib/cyberbeest/cyberbeest-feature-upgrade-helper.sh
+install -m 644 "$DIR/lib/com.cyberbeest.featureupgrade.policy" /usr/share/polkit-1/actions/com.cyberbeest.featureupgrade.policy
 install -o "$TARGET_USER" -g "$TARGET_USER" -m 755 \
 	"$DIR/lib/shutdown-timer-genmon.sh" "$TARGET_HOME/.local/bin/shutdown-timer-genmon.sh"
 # panel-status-genmon.sh sources update-genmon.sh and shutdown-timer-genmon.sh

@@ -42,7 +42,6 @@ fmt() {
 
 ac_min=$(shutdown_minutes_for AC)
 bat_min=$(shutdown_minutes_for BATTERY)
-linked=$(read_setting LINK_AC_BATTERY "true")
 
 # xfce4-screensaver owns idle-lock timing through its own xfconf channel --
 # the delay property has a 1-minute floor and no "Never" value of its own,
@@ -76,25 +75,14 @@ fi
 
 click_line="$(t shutdown_genmon.click_to_change)"
 
-if [ "$linked" = "true" ] || [ "$ac_min" = "$bat_min" ]; then
-    SHUTDOWN_TIMER_TXT="🔒 $(fmt "$idle_delay_min")
+SHUTDOWN_TIMER_TXT="🔒 $(fmt "$idle_delay_min")
 ⏻ $(fmt "$ac_min")${warn_txt}"
-    if [ "$ac_min" -eq 0 ]; then
-        SHUTDOWN_TIMER_TOOL="${warn_line}${lock_line}&#10;$(t shutdown_genmon.disabled_both)&#10;${click_line}"
-    else
-        after_both="$(t shutdown_genmon.after_both)"
-        after_both="${after_both//DURATION/$(fmt "$ac_min")}"
-        SHUTDOWN_TIMER_TOOL="${warn_line}${lock_line}&#10;${after_both}&#10;${click_line}"
-    fi
+if [ "$ac_min" -eq 0 ]; then
+    SHUTDOWN_TIMER_TOOL="${warn_line}${lock_line}&#10;$(t shutdown_genmon.disabled_both)&#10;${click_line}"
 else
-    SHUTDOWN_TIMER_TXT="🔒 $(fmt "$idle_delay_min")
-⏻ $(fmt "$ac_min")/$(fmt "$bat_min")${warn_txt}"
-    ac_line="$(t shutdown_genmon.ac_label)"
-    ac_line="${ac_line//DURATION/$(fmt "$ac_min")}"
-    bat_line="$(t shutdown_genmon.battery_label)"
-    bat_line="${bat_line//DURATION/$(fmt "$bat_min")}"
-    SHUTDOWN_TIMER_TOOL="$(printf '%s%s&#10;  %s&#10;  %s&#10;%s' \
-        "${warn_line}${lock_line}&#10;" "$(t shutdown_genmon.after_locked_header)" "$ac_line" "$bat_line" "$click_line")"
+    after_both="$(t shutdown_genmon.after_both)"
+    after_both="${after_both//DURATION/$(fmt "$ac_min")}"
+    SHUTDOWN_TIMER_TOOL="${warn_line}${lock_line}&#10;${after_both}&#10;${click_line}"
 fi
 SHUTDOWN_TIMER_TXTCLICK="$HOME/.local/bin/shutdown-timer-menu.py"
 
