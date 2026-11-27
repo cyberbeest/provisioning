@@ -25,6 +25,7 @@ import (
 const (
 	butlerDebounce = 90 * time.Millisecond
 	butlerIdle     = 30 * time.Second // unload after this long idle when memory is short
+	memPressurePct = 10.0             // PSI memory "some" avg60 at/above which RAM is not comfortable
 	butlerKeepRAM  = 2000             // MB available (MemAvailable): at least this much and the matcher stays loaded; default for ~/.config/cyberbeest/low-ram-mb
 )
 
@@ -355,7 +356,29 @@ func ramComfortable() bool {
 	for _, line := range strings.Split(string(data), "\n") {
 		if f := strings.Fields(line); len(f) >= 2 && f[0] == "MemAvailable:" {
 			kb, _ := strconv.Atoi(f[1])
-			return kb/1024 >= lowRAMMB()
+			return kb/1024 >= lowRAMMB() && !memoryPressured()
+		}
+	}
+	return false
+}
+
+// memoryPressured reports whether tasks have recently been stalling on memory (PSI "some" average
+// over 60 s). MemAvailable counts page cache as spare, which is wrong while something like a big
+// build keeps mmapped files hot: the machine then thrashes with gigabytes "available".
+func memoryPressured() bool {
+	data, err := os.ReadFile("/proc/pressure/memory")
+	if err != nil {
+		return false
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		if !strings.HasPrefix(line, "some ") {
+			continue
+		}
+		for _, f := range strings.Fields(line) {
+			if v, ok := strings.CutPrefix(f, "avg60="); ok {
+				pct, _ := strconv.ParseFloat(v, 64)
+				return pct >= memPressurePct
+			}
 		}
 	}
 	return false
