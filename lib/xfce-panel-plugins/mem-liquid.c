@@ -69,7 +69,7 @@
 #define WARNING_PULSE_SPEED 4.2 /* rad/s -- a slow, deliberate blink, not a strobe */
 
 #define DISK_PATH "/"
-#define DEFAULT_DISK_WARNING_PERCENT 80 /* disk-used percent at/above which we flag low free space */
+#define DEFAULT_DISK_WARNING_PERCENT 90 /* disk-used percent at/above which we flag low free space */
 #define MIN_DISK_WARNING_PERCENT 50
 #define MAX_DISK_WARNING_PERCENT 99
 

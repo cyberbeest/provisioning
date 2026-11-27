@@ -64,10 +64,11 @@ type settings struct {
 	swapArrows  bool
 	friendly    bool
 	diskWarnPct int
+	diskScope   string // tooltip disks: "main", "all" or "all+removable"
 }
 
 func loadSettings() settings {
-	s := settings{fps: 6, showPercent: true, enabled: true, countMapped: true, swapArrows: true, friendly: true, diskWarnPct: 80}
+	s := settings{fps: 6, showPercent: true, enabled: true, countMapped: true, swapArrows: true, friendly: true, diskWarnPct: 90, diskScope: "main"}
 	home, _ := os.UserHomeDir()
 	m, _ := filepath.Glob(filepath.Join(home, ".config/xfce4/panel/mem-liquid-*.rc"))
 	if len(m) == 0 {
@@ -99,6 +100,10 @@ func loadSettings() settings {
 			s.friendly = v == "true"
 		case "DiskWarningPercent":
 			s.diskWarnPct = min(max(n, 50), 99)
+		case "DiskScope":
+			if v == "all" || v == "all+removable" {
+				s.diskScope = v
+			}
 		}
 	}
 	return s
@@ -157,6 +162,7 @@ type state struct {
 	memUsedLo, memUsedHi     uint64 // used excluding / including mmapped file cache, ordered
 	diskFrac                 float64
 	diskTotal, diskUsed      uint64
+	extraDisks               []diskInfo // other mounted volumes, per set.diskScope
 	phase1, phase2, animTime float64
 }
 
@@ -225,6 +231,67 @@ func (s *state) sample() {
 		s.diskFrac = math.Min(1, float64(used)/float64(total))
 		s.diskTotal, s.diskUsed = total, used
 	}
+	s.extraDisks = nil
+	if s.set.diskScope != "main" {
+		s.extraDisks = otherDisks(s.set.diskScope == "all+removable")
+	}
+}
+
+type diskInfo struct {
+	mount       string
+	total, used uint64
+}
+
+// isRemovable reports whether the block device (e.g. /dev/sdb1) sits on removable media or USB.
+func isRemovable(dev string) bool {
+	name := filepath.Base(dev)
+	real, err := filepath.EvalSymlinks("/sys/class/block/" + name)
+	if err != nil {
+		return false
+	}
+	// partitions live below their disk: .../block/sdb/sdb1
+	disk := real
+	if b, err := os.ReadFile(filepath.Join(real, "partition")); err == nil && len(b) > 0 {
+		disk = filepath.Dir(real)
+	}
+	if b, err := os.ReadFile(filepath.Join(disk, "removable")); err == nil && strings.TrimSpace(string(b)) == "1" {
+		return true
+	}
+	return strings.Contains(disk, "/usb")
+}
+
+// otherDisks lists mounted block-device volumes other than the one holding "/", one per device.
+func otherDisks(removables bool) []diskInfo {
+	b, err := os.ReadFile("/proc/self/mounts")
+	if err != nil {
+		return nil
+	}
+	lines := strings.Split(string(b), "\n")
+	seen := map[string]bool{}
+	for _, ln := range lines { // the main volume may be mounted again elsewhere (subvolumes, binds)
+		if f := strings.Fields(ln); len(f) >= 2 && f[1] == "/" {
+			seen[f[0]] = true
+		}
+	}
+	var out []diskInfo
+	for _, ln := range lines {
+		f := strings.Fields(ln)
+		if len(f) < 2 || !strings.HasPrefix(f[0], "/dev/") || strings.HasPrefix(f[0], "/dev/loop") || seen[f[0]] {
+			continue
+		}
+		mnt := strings.ReplaceAll(f[1], "\\040", " ")
+		if strings.HasPrefix(mnt, "/snap/") || mnt == "/boot" || strings.HasPrefix(mnt, "/boot/") || (!removables && isRemovable(f[0])) {
+			continue
+		}
+		var st syscall.Statfs_t
+		if syscall.Statfs(mnt, &st) != nil || st.Blocks == 0 {
+			continue
+		}
+		seen[f[0]] = true
+		t := st.Blocks * uint64(st.Bsize)
+		out = append(out, diskInfo{mount: mnt, total: t, used: sub(t, st.Bavail*uint64(st.Bsize))})
+	}
+	return out
 }
 
 func (s *state) warning() bool {
@@ -453,18 +520,25 @@ type unloadable struct {
 	kib   uint64
 }
 
-func procRSSKiB(pid int) uint64 {
+// procMemKiB returns the pid's resident and swapped-out sizes from /proc/<pid>/status.
+func procMemKiB(pid int) (rss, swap uint64) {
 	data, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/status")
 	if err != nil {
-		return 0
+		return 0, 0
 	}
 	for _, line := range strings.Split(string(data), "\n") {
-		if f := strings.Fields(line); len(f) >= 2 && f[0] == "VmRSS:" {
-			v, _ := strconv.ParseUint(f[1], 10, 64)
-			return v
+		f := strings.Fields(line)
+		if len(f) < 2 {
+			continue
+		}
+		switch f[0] {
+		case "VmRSS:":
+			rss, _ = strconv.ParseUint(f[1], 10, 64)
+		case "VmSwap:":
+			swap, _ = strconv.ParseUint(f[1], 10, 64)
 		}
 	}
-	return 0
+	return rss, swap
 }
 
 func readUnloadables() []unloadable {
@@ -494,7 +568,13 @@ func readUnloadables() []unloadable {
 			continue // owner is gone: stale file
 		}
 		base, _ := strconv.ParseUint(f[2], 10, 64)
-		out = append(out, unloadable{f[1], sub(procRSSKiB(pid), base)})
+		rss, swap := procMemKiB(pid)
+		// swapped-out pages count: freeing the program releases them from swap too
+		label := f[1]
+		if swap > rss {
+			label += " (mostly in swap)"
+		}
+		out = append(out, unloadable{label, sub(rss+swap, base)})
 	}
 	return out
 }
@@ -528,6 +608,9 @@ func (s *state) tooltip(top []procinfo.MemProc) string {
 	}
 	if s.diskTotal > 0 {
 		fmt.Fprintf(&b, "\nDisk: %.0f%% used (%.1f / %.1f GiB)", s.diskFrac*100, float64(s.diskUsed)/1073741824, float64(s.diskTotal)/1073741824)
+	}
+	for _, d := range s.extraDisks {
+		fmt.Fprintf(&b, "\n%s: %.0f%% used (%.1f / %.1f GiB)", d.mount, float64(d.used)/float64(d.total)*100, float64(d.used)/1073741824, float64(d.total)/1073741824)
 	}
 	memWarn := s.warnTarget >= warningLevel
 	diskWarn := s.diskFrac >= float64(s.set.diskWarnPct)/100

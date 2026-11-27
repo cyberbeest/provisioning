@@ -492,7 +492,8 @@ RC_INFO = {
             "CountMapped": "Count loaded mmap'd file pages as used (e.g. LLM weights)",
             "SwapArrows": "Show an up/down arrow while memory is swapped in/out",
             "FriendlyNames": "Use plain-English names in the Top RAM tooltip list (e.g. \"window drawing\" for Xorg)",
-            "DiskWarningPercent": "Warn when disk usage reaches, %:",
+            "DiskWarningPercent": "Warn when disk usage reaches, % (main disk only):",
+            "DiskScope": "Disks listed in the tooltip:",
             "MarginColor": _MARGIN,
         },
     },
@@ -515,7 +516,8 @@ RC_INFO = {
 }
 # longer explanations shown as tooltips
 # keys a plugin understands but whose rc file may not contain yet (shown with this value)
-RC_DEFAULTS = {"mem-liquid": {"SwapArrows": "true"}}
+RC_DEFAULTS = {"mem-liquid": {"SwapArrows": "true", "DiskScope": "main"}}
+CHOICES = {"DiskScope": [("main", "Main disk only"), ("all", "All disks"), ("all+removable", "All disks and removable volumes")]}
 RC_TIPS = {
     "CountMapped": "On (default): counts resident/loaded mmap'd pages as used, even though clean, because evicting "
     "an actively-read mapping (like a model file mmap'd by llama.cpp) causes real refault stalls. Off: matches "
@@ -577,6 +579,8 @@ class RcPage(Gtk.Box):
             tip = RC_TIPS.get(key)
             if key == "SineSweep" and value in ("true", "false"):
                 self.add_sweep(grid, row, section, key, label, value == "true", tip)
+            elif key in CHOICES:
+                self.add_choice(grid, row, section, key, label, value, CHOICES[key])
             elif value in ("true", "false") or (key in BOOL01 and value in ("0", "1")):
                 on, off = ("1", "0") if value in ("0", "1") else ("true", "false")
                 w = Gtk.CheckButton(label=label)
@@ -612,6 +616,18 @@ class RcPage(Gtk.Box):
         r1.connect("toggled", lambda b: self.save(section, key, "true" if b.get_active() else "false"))
         box.pack_start(r1, False, False, 0)
         box.pack_start(r2, False, False, 0)
+        grid.attach(box, 1, row, 1, 1)
+
+    def add_choice(self, grid, row, section, key, label, value, choices):
+        grid.attach(Gtk.Label(label=label, xalign=0, yalign=0), 0, row, 1, 1)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        first = None
+        for val, text in choices:
+            r = Gtk.RadioButton.new_with_label_from_widget(first, text)
+            first = first or r
+            r.set_active(val == value)
+            r.connect("toggled", lambda b, v=val: b.get_active() and self.save(section, key, v))
+            box.pack_start(r, False, False, 0)
         grid.attach(box, 1, row, 1, 1)
 
     def save(self, section, key, value):
