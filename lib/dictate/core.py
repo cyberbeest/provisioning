@@ -510,6 +510,16 @@ class Ducker:
 ducker = Ducker()
 
 
+def spoken_reply_playing():
+    """True while Claude Code's spoken reply (speak-replies mod) is being played."""
+    try:
+        pid = int(open(os.path.expanduser("~/.local/share/claude-tts/speaking.pid")).read())
+        os.killpg(pid, 0)
+        return True
+    except (OSError, ValueError):
+        return False
+
+
 def stop_spoken_reply():
     """Silence Claude Code's spoken reply (speak-replies mod), if it is installed, the moment
     the hotkey goes down rather than when the microphone opens."""
