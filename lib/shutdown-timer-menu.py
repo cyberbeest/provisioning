@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Quick popup menu for the shutdown-timer panel icon (shutdown-timer-genmon.sh).
 
-Lets you pick a preset auto-shutdown-while-locked time for AC/battery
-(linked or independent). Reads/writes the same config file as
+Lets you pick a preset auto-shutdown-while-locked time (one time for AC and
+battery), and opens the update log / feature-updates dialogs. Reads/writes the same config file as
 lock-shutdown-watcher.sh and duplicates its small read/write helpers rather
 than importing it, matching how the genmon script also keeps its own copy.
 """
@@ -18,6 +18,7 @@ gi.require_version("Gtk", "3.0")
 gi.require_version("Gdk", "3.0")
 from gi.repository import Gdk, Gtk
 
+from feature_upgrades import pending_feature_upgrades
 from i18n import t
 
 CONFIG_DIR = os.path.expanduser("~/.config/cyberbeest")
@@ -290,7 +291,13 @@ def open_power_saving_dialog(_item):
     subprocess.Popen([os.path.expanduser("~/.local/bin/cyberbeest-settings.py"), "--tab=power"])
 
 
-def add_preset_section(menu, label, key, current, linked):
+def open_script(_item, name):
+    # Separate process, same reason as open_power_saving_dialog.
+    Gtk.main_quit()
+    subprocess.Popen([os.path.expanduser(f"~/.local/bin/{name}")])
+
+
+def add_preset_section(menu, label, key, current):
     header = Gtk.MenuItem(label=label)
     header.set_sensitive(False)
     menu.append(header)
@@ -316,13 +323,11 @@ def add_preset_section(menu, label, key, current, linked):
         def on_toggled(item, preset=preset, key=key):
             if not item.get_active():
                 return
-            updates = {key: str(preset)}
-            if linked:
-                other_key = (
-                    "BATTERY_SHUTDOWN_MINUTES" if key == "AC_SHUTDOWN_MINUTES" else "AC_SHUTDOWN_MINUTES"
-                )
-                updates[other_key] = str(preset)
-            write_settings(updates)
+            write_settings({
+                "LINK_AC_BATTERY": "true",
+                "AC_SHUTDOWN_MINUTES": str(preset),
+                "BATTERY_SHUTDOWN_MINUTES": str(preset),
+            })
             Gtk.main_quit()
 
         item.connect("toggled", on_toggled)
@@ -361,9 +366,11 @@ def add_lock_delay_section(menu):
 
 def build_menu():
     settings = read_settings()
-    linked = settings["LINK_AC_BATTERY"] == "true"
     ac_min = int(settings["AC_SHUTDOWN_MINUTES"])
-    bat_min = int(settings["BATTERY_SHUTDOWN_MINUTES"])
+    # AC and battery always share one time. A config from when they could differ
+    # gets folded onto the AC value the first time this menu opens.
+    if settings["LINK_AC_BATTERY"] != "true" or int(settings["BATTERY_SHUTDOWN_MINUTES"]) != ac_min:
+        write_settings({"LINK_AC_BATTERY": "true", "BATTERY_SHUTDOWN_MINUTES": str(ac_min)})
 
     menu = Gtk.Menu()
 
@@ -398,32 +405,21 @@ def build_menu():
 
     menu.append(Gtk.SeparatorMenuItem())
 
-    link_item = Gtk.CheckMenuItem(label=t("timer.use_same_time"))
-    link_item.set_active(linked)
-
-    def on_link_toggled(item):
-        new_linked = item.get_active()
-        updates = {"LINK_AC_BATTERY": "true" if new_linked else "false"}
-        if new_linked:
-            updates["BATTERY_SHUTDOWN_MINUTES"] = str(ac_min)
-        write_settings(updates)
-        Gtk.main_quit()
-
-    link_item.connect("toggled", on_link_toggled)
-    menu.append(link_item)
-    menu.append(Gtk.SeparatorMenuItem())
-
-    if linked:
-        add_preset_section(menu, t("timer.shutdown_after_both"), "AC_SHUTDOWN_MINUTES", ac_min, linked)
-    else:
-        add_preset_section(menu, t("timer.on_ac"), "AC_SHUTDOWN_MINUTES", ac_min, linked)
-        menu.append(Gtk.SeparatorMenuItem())
-        add_preset_section(menu, t("timer.on_battery"), "BATTERY_SHUTDOWN_MINUTES", bat_min, linked)
+    add_preset_section(menu, t("timer.shutdown_after_both"), "AC_SHUTDOWN_MINUTES", ac_min)
 
     menu.append(Gtk.SeparatorMenuItem())
     power_saving_item = Gtk.MenuItem(label=t("timer.power_saving_while_locked"))
     power_saving_item.connect("activate", open_power_saving_dialog)
     menu.append(power_saving_item)
+
+    menu.append(Gtk.SeparatorMenuItem())
+    if pending_feature_upgrades():
+        feature_item = Gtk.MenuItem(label=t("timer.feature_updates"))
+        feature_item.connect("activate", open_script, "cyberbeest-feature-upgrade.py")
+        menu.append(feature_item)
+    log_item = Gtk.MenuItem(label=t("timer.update_log"))
+    log_item.connect("activate", open_script, "update-genmon-view-log.py")
+    menu.append(log_item)
 
     menu.show_all()
     return menu

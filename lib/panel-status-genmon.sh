@@ -3,9 +3,9 @@
 # shutdown-timer-genmon.sh (auto-shutdown-while-locked status) into a single
 # xfce4-genmon-plugin instance -- two separate genmon processes cost an
 # extra wrapper-process worth of RAM each, on every shipped machine, for
-# widgets that are cheap to compute. genmon supports independent click
-# regions for the icon (<click>) and the text (<txtclick>), so each widget
-# keeps its own click handler.
+# widgets that are cheap to compute. The tooltip covers the whole widget, so
+# a click anywhere on it opens the same popup (shutdown-timer-menu.py), which
+# also has the update log and feature-update entries.
 
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
@@ -122,5 +122,5 @@ fi
 echo "<img>${SECURITY_STATUS_IMG}</img>"
 echo "<txt>${SHUTDOWN_TIMER_TXT}</txt>"
 echo "<tool>${ip_line}&#10;${ports_line}${blocked_line}&#10;&#10;${lock_heading}&#10;${SHUTDOWN_TIMER_TOOL}&#10;&#10;${security_heading}&#10;${SECURITY_STATUS_TOOL}</tool>"
-echo "<click>${SECURITY_STATUS_CLICK}</click>"
+echo "<click>${SHUTDOWN_TIMER_TXTCLICK}</click>"
 echo "<txtclick>${SHUTDOWN_TIMER_TXTCLICK}</txtclick>"
