@@ -608,7 +608,25 @@ class LocalRecognizer:
         self.last_used = time.monotonic()
         self._ready = threading.Event()
         self._load_error: Optional[Exception] = None
+        threading.Thread(target=self._prefetch, daemon=True).start()
         threading.Thread(target=self._load, daemon=True).start()
+
+    def _prefetch(self) -> None:
+        """Read the model files once, so they sit in the page cache. The model is mapped
+        lazily, and a first decode that has to fetch its pages from disk one by one took
+        ~2.5 s longer than one on a warm cache. Costs I/O, hardly any CPU, and runs
+        beside the load."""
+        import logging
+        t0 = time.monotonic()
+        try:
+            for f in sorted(self._dir.iterdir(), key=lambda p: p.stat().st_size):
+                if f.is_file() and f.suffix in (".onnx", ".data"):
+                    with open(f, "rb") as fh:
+                        while fh.read(1 << 22):
+                            pass
+            logging.getLogger("dictate").info("model files pre-read in %.1fs", time.monotonic() - t0)
+        except OSError:
+            pass
 
     def _load(self) -> None:
         try:

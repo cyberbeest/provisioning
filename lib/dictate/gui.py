@@ -785,6 +785,9 @@ class MainWindow(QMainWindow):
         self._last_other = None
 
         self.press_time = 0.0
+        self._phys_down = False      # hotkey physically down, stamped in the listener thread
+        self._phys_press_t = 0.0
+        self._phys_release_t = 0.0
 
         self._meter = None           # LiveMeter feeding the meter window while recording
         self._meter_window = MeterWindow(self.stop_by_click)
@@ -984,11 +987,13 @@ class MainWindow(QMainWindow):
             if self.cfg["mode"] == "ptt":
                 hold["started"] = True
                 core.open_whisker_for_hold()
+                self._stamp_phys_press()
                 self.bridge.hotkey_press.emit()
 
         def on_press(k):
             try:
                 if k in self._target_keys:
+                    self._stamp_phys_press()
                     self.bridge.hotkey_press.emit()
                 elif hold_on and k in super_keys:
                     if hold["timer"] is None and not hold["started"]:
@@ -1005,16 +1010,30 @@ class MainWindow(QMainWindow):
         def on_release(k):
             try:
                 if k in self._target_keys:
+                    self._stamp_phys_release()
                     self.bridge.hotkey_release.emit()
                 elif hold_on and k in super_keys:
                     cancel_hold()
                     if hold["started"]:
                         hold["started"] = False
+                        self._stamp_phys_release()
                         self.bridge.hotkey_release.emit()
             except Exception:
                 pass
 
         self.listener = _make_listener(on_press, on_release)
+
+    # The hotkey signals reach on_press/on_release through the Qt event loop, which can be
+    # busy (start_recording blocks for a few hundred ms). The hold length is therefore
+    # measured from these stamps, taken the moment the listener thread sees the key.
+    def _stamp_phys_press(self):
+        if not self._phys_down:
+            self._phys_down = True
+            self._phys_press_t = time.monotonic()
+
+    def _stamp_phys_release(self):
+        self._phys_down = False
+        self._phys_release_t = time.monotonic()
 
     def set_hotkey_enabled(self, on):
         """Tray menu switch: turns the dictation hotkey on or off."""
@@ -1182,11 +1201,15 @@ class MainWindow(QMainWindow):
             return
         self.key_held = True
         self.combo = False
+        # A press that interrupts a spoken reply is often just a tap to silence it, so the
+        # model load waits until the hold proves to be a dictation (see start_recording).
+        self._defer_preload = core.spoken_reply_playing()
         core.stop_spoken_reply()
         if self._click_session and self.recording_active:
             self.stop_by_click()   # started with a click on the icon: the hotkey stops it too
             return
-        self.press_time = time.monotonic()
+        now = time.monotonic()
+        self.press_time = self._phys_press_t if 0 <= now - self._phys_press_t < 2.0 else now
         if self.cfg["mode"] == "ptt":
             if self.start_recording():
                 self.recording_active = True
@@ -1223,7 +1246,9 @@ class MainWindow(QMainWindow):
             return
         if not self.recording_active:
             return
-        duration = time.monotonic() - self.press_time
+        released = self._phys_release_t if self._phys_release_t >= self.press_time else time.monotonic()
+        duration = released - self.press_time
+        core.log.info("hotkey held %.2fs", duration)
         if duration < core.MIN_HOLD_S:
             # Discard branch also blocks on recorder.stop() → freeze. Offload.
             self._discard_take()
@@ -1283,7 +1308,17 @@ class MainWindow(QMainWindow):
         self._ensure_model()   # a missing model downloads while the user speaks
         # Reload the model if it was unloaded while idle; the load runs while
         # the user speaks. Also restarts the idle countdown.
-        self._preload_local_if_needed()
+        if getattr(self, "_defer_preload", False) and not click:
+            pressed = self.press_time
+            def _late_preload():
+                if (self.recording_active and self.press_time == pressed
+                        and (self._phys_down or self.cfg["mode"] != "ptt")):
+                    self._preload_local_if_needed()
+            t = threading.Timer(max(0.0, core.MIN_HOLD_S - (time.monotonic() - pressed)), _late_preload)
+            t.daemon = True
+            t.start()
+        else:
+            self._preload_local_if_needed()
         meter = None
         if self.cfg.get("recording_meter", True) and self._meter_available():
             import local_stt
