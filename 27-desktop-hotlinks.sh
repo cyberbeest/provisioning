@@ -39,6 +39,7 @@ TARGET_UID="$(id -u "$TARGET_USER")"
 DESKTOP_DIR="$(xdg_dir DESKTOP)"
 PICTURES_DIR="$(xdg_dir PICTURES)"
 DOWNLOADS_DIR="$(xdg_dir DOWNLOAD)"
+DOCUMENTS_DIR="$(xdg_dir DOCUMENTS)"
 HAVE_SESSION=0
 if [ -d "/run/user/$TARGET_UID" ]; then
 	HAVE_SESSION=1
@@ -82,7 +83,7 @@ DOWNLOADS_NAME="$(basename "$DOWNLOADS_DIR")"
 write_desktop_link "$PICTURES_NAME" "folder-pictures" "$PICTURES_DIR" "Pictures"
 write_desktop_link "$DOWNLOADS_NAME" "folder-download" "$DOWNLOADS_DIR" "Downloads"
 
-echo "--- Adding Pictures and Downloads to the file manager's Places sidebar ---"
+echo "--- Adding Pictures, Downloads and Documents to the file manager's Places sidebar ---"
 install -d -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.config/gtk-3.0"
 BOOKMARKS="$TARGET_HOME/.config/gtk-3.0/bookmarks"
 sudo -u "$TARGET_USER" touch "$BOOKMARKS"
@@ -101,6 +102,7 @@ sync_bookmark() {
 	fi
 }
 
+sync_bookmark "$DOCUMENTS_DIR" "Documents"
 sync_bookmark "$PICTURES_DIR" "Pictures"
 sync_bookmark "$DOWNLOADS_DIR" "Downloads"
 
