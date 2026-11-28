@@ -16,7 +16,7 @@ for a in $JAIL_ALL_APPS; do
 	esac
 	[ -e "$p" ] || continue
 	total=$((total + 1))
-	if jail_enabled "$a"; then on=$((on + 1)); names="$names ${a^}"; fi
+	if jail_enabled "$a"; then on=$((on + 1)); names="${names:+$names, }${a^}"; fi
 done
 
 mode="$(jail_mode)"
@@ -26,7 +26,7 @@ all) icon="🔒"; tip="$(t jail.tip_all)" ;;
 none) icon="🔓"; tip="$(t jail.tip_none)" ;;
 *) icon="🔒"; badge="<span size='x-small'>${on}/${total}</span>"
 	# shellcheck disable=SC2059
-	tip="$(printf "$(t jail.tip_some)" "${names# }")" ;;
+	tip="$(printf "$(t jail.tip_some)" "$names")" ;;
 esac
 echo "<txt><span size='small'>&#8202;</span><span size='x-large'>${icon}</span>${badge}<span size='small'>&#8202;</span></txt>"
 echo "<tool>${tip}</tool>"

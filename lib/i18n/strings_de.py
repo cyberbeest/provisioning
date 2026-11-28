@@ -1091,7 +1091,7 @@ STRINGS = {
     'pw.word_mode_failed': 'Die Worteingabe konnte nicht geändert werden.',
     'pw.too_few_words': 'Bei eingeschalteter Worteingabe braucht das Master-Passwort mindestens {min_words} Wörter.',
     'jail.title': 'App-Schutz',
-    'jail.intro': 'Geschützte Apps laufen in einer Schutzumgebung (Firejail): Sie sehen nur ihre eigenen Daten sowie Downloads und Bilder. Das begrenzt den Schaden, falls eine App angegriffen wird, aber Dateien an anderen Orten sind für sie nicht sichtbar.',
+    'jail.intro': 'Geschützte Apps laufen in einer Schutzumgebung (Firejail): Sie sehen nur ihre eigenen Daten sowie die zugelassenen Ordner („Zugelassene Ordner“, standardmäßig Downloads und Bilder). Das begrenzt den Schaden, falls eine App angegriffen wird, aber Dateien an anderen Orten sind für sie nicht sichtbar.',
     'jail.mode_all': 'Alle Apps schützen (empfohlen für höchste Sicherheit)',
     'jail.mode_some': 'Nur die angekreuzten Apps schützen',
     'jail.mode_none': 'Keine App schützen',

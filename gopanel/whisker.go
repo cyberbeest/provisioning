@@ -759,14 +759,53 @@ func (w *whisker) search(q string) []scoredEntry {
 			hits = append(hits, scoredEntry{e, s})
 		}
 	}
-	// stable by score (entries are already name-sorted)
+	// by score; within a score the recently used apps come first (most recent first), the rest
+	// keep their name order (entries are already name-sorted)
+	recent := map[string]int{}
+	for i, id := range w.recentIDs {
+		recent[id] = i
+	}
+	rank := func(e *appmenu.Entry) int {
+		if r, ok := recent[e.ID]; ok {
+			return r
+		}
+		return len(recent) + 1
+	}
 	var out []scoredEntry
 	for s := 100; s > 0; s-- {
+		var group []scoredEntry
 		for _, h := range hits {
 			if h.s == s {
-				out = append(out, h)
+				group = append(group, h)
 			}
 		}
+		sort.SliceStable(group, func(i, j int) bool { return rank(group[i].e) < rank(group[j].e) })
+		out = append(out, group...)
+	}
+	return firefoxDefaultFirst(out)
+}
+
+// firefoxDefaultFirst: the two Firefox entries ("protected" / "unprotected", see
+// lib/jail-apply.sh) sort alphabetically, which is unrelated to which one is the user's default.
+// browser-sandbox.desktop is always the default one (its name follows the jail mode), so when both
+// are near the top and the other one comes first, swap them. Only at equal score, so the list
+// stays ordered by score.
+func firefoxDefaultFirst(out []scoredEntry) []scoredEntry {
+	const top = 8
+	def, other := -1, -1
+	for i, h := range out {
+		if i >= top {
+			break
+		}
+		switch h.e.ID {
+		case "browser-sandbox.desktop":
+			def = i
+		case "browser-unsandboxed.desktop":
+			other = i
+		}
+	}
+	if def >= 0 && other >= 0 && other < def && out[def].s == out[other].s {
+		out[def], out[other] = out[other], out[def]
 	}
 	return out
 }

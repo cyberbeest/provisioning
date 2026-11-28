@@ -1061,7 +1061,7 @@ STRINGS = {
     'pw.word_mode_failed': 'Word entry could not be changed.',
     'pw.too_few_words': 'With word entry on, the master password needs at least {min_words} words.',
     'jail.title': 'App protection',
-    'jail.intro': 'Protected apps run in a sandbox (Firejail): they only see their own data plus Downloads and Pictures. This limits the damage if an app is attacked, but files elsewhere are not visible to them.',
+    'jail.intro': 'Protected apps run in a sandbox (Firejail): they only see their own data plus the folders you have whitelisted (Whitelisted Folders, by default Downloads and Pictures). This limits the damage if an app is attacked, but files elsewhere are not visible to them.',
     'jail.mode_all': 'Protect all apps (recommended for maximum security)',
     'jail.mode_some': 'Protect only the apps I tick',
     'jail.mode_none': 'Protect no apps',

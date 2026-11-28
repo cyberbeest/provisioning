@@ -58,12 +58,11 @@ def write(mode, apps):
         subprocess.run([APPLY], check=False)
 
 
-def main():
+def build(app):
     mode, apps = read()
-    win = Gtk.Window(title=t("jail.title"))
+    win = Gtk.ApplicationWindow(application=app, title=t("jail.title"))
     win.set_border_width(12)
     win.set_default_size(440, -1)
-    win.connect("destroy", Gtk.main_quit)
     box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
     win.add(box)
 
@@ -122,8 +121,19 @@ def main():
     btn.connect("clicked", lambda b: win.destroy())
     box.pack_start(btn, False, False, 4)
     win.show_all()
-    Gtk.main()
+
+
+def on_activate(app):
+    # Single instance: a second launch (panel icon clicked again) just raises
+    # the window that is already open.
+    wins = app.get_windows()
+    if wins:
+        wins[0].present()
+    else:
+        build(app)
 
 
 if __name__ == "__main__":
-    main()
+    app = Gtk.Application(application_id="com.cyberbeest.JailSettings")
+    app.connect("activate", on_activate)
+    app.run(None)

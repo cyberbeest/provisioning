@@ -4,7 +4,7 @@
     "de": "Passwörter, Updates und Schutz"
   },
   "source": "Functional-Manual-v2 sections 1.1, 1.6-1.11, 2",
-  "checked": "2026-10-15",
+  "checked": "2026-11-28",
   "facts": [
     {
       "id": "pw-two-passwords",
@@ -113,14 +113,14 @@
     },
     {
       "id": "sandbox-which-apps",
-      "en": "On a Cyberbeest the browser, all messengers and the crypto wallets run in sandboxes.",
-      "de": "Auf einem Cyberbeest laufen der Browser, alle Messenger und die Krypto-Wallets in Sandboxes.",
+      "en": "By default, the browser, all messengers and the crypto wallets on a Cyberbeest run in sandboxes.",
+      "de": "Standardmäßig laufen der Browser, alle Messenger und die Krypto-Wallets auf einem Cyberbeest in Sandboxes.",
       "manual": "1.9"
     },
     {
       "id": "browser-without-protection",
-      "en": "If a website sign-in on a Cyberbeest does not hand over to a desktop app, start Firefox without protection from the menu: it runs without its sandbox, with a red toolbar, until you close it.",
-      "de": "Wenn eine Anmeldung auf einer Webseite auf einem Cyberbeest nicht an eine Desktop-App übergeben wird, starte „Firefox ohne Schutz“ aus dem Menü: Er läuft ohne Sandbox und mit roter Werkzeugleiste, bis du ihn schließt.",
+      "en": "If a website sign-in on a Cyberbeest does not hand over to a desktop app, start \"Firefox (unprotected)\" from the menu: it runs without its sandbox, with a red toolbar, until you close it.",
+      "de": "Wenn eine Anmeldung auf einer Webseite auf einem Cyberbeest nicht an eine Desktop-App übergeben wird, starte „Firefox (ungeschützt)“ aus dem Menü: Er läuft ohne Sandbox und mit roter Werkzeugleiste, bis du ihn schließt.",
       "tip": true,
       "ask": {
         "en": [
@@ -136,6 +136,54 @@
       }
     },
     {
+      "id": "jail-modes",
+      "en": "A Cyberbeest can run all apps in sandboxes, only the apps you tick, or none; the default is all, and the lock icon in the panel opens this setting.",
+      "de": "Ein Cyberbeest kann alle Apps in Sandboxes laufen lassen, nur die angekreuzten oder keine; Standard ist alle, und das Schloss-Symbol in der Leiste öffnet diese Einstellung.",
+      "ask": {
+        "en": [
+          "how do I turn off the sandbox for all apps",
+          "can I run some apps without a sandbox",
+          "where do I change which apps are sandboxed"
+        ],
+        "de": [
+          "wie schalte ich die Sandbox für alle Apps aus",
+          "kann ich einzelne Apps ohne Sandbox laufen lassen",
+          "wo ändere ich, welche Apps in einer Sandbox laufen"
+        ]
+      },
+      "manual": "1.10"
+    },
+    {
+      "id": "jail-icon",
+      "en": "The lock icon in the panel of a Cyberbeest shows whether all, some or no apps are sandboxed, and its tooltip names the protected apps.",
+      "de": "Das Schloss-Symbol in der Leiste eines Cyberbeest zeigt, ob alle, einige oder keine Apps in einer Sandbox laufen, und der Tooltip nennt die geschützten Apps.",
+      "manual": "1.10"
+    },
+    {
+      "id": "jail-firefox-entries",
+      "en": "The menu of a Cyberbeest always lists \"Firefox (protected)\" and \"Firefox (unprotected)\"; the one that matches your sandbox setting opens web links and starts when you type firefox in a terminal.",
+      "de": "Das Menü eines Cyberbeest führt immer „Firefox (geschützt)“ und „Firefox (ungeschützt)“ auf; der zur Sandbox-Einstellung passende öffnet Weblinks und startet, wenn du firefox im Terminal eingibst.",
+      "ask": {
+        "en": [
+          "what is the difference between protected and unprotected Firefox",
+          "which Firefox opens my links",
+          "why are there two Firefox entries"
+        ],
+        "de": [
+          "was ist der Unterschied zwischen geschütztem und ungeschütztem Firefox",
+          "welcher Firefox öffnet meine Links",
+          "warum gibt es zwei Firefox-Einträge"
+        ]
+      },
+      "manual": "1.10"
+    },
+    {
+      "id": "jail-html-files",
+      "en": "HTML files opened from Files on a Cyberbeest always open in the unprotected Firefox, with a warning when sandboxing is on, because a sandboxed Firefox cannot see them.",
+      "de": "HTML-Dateien, die auf einem Cyberbeest aus „Dateien“ geöffnet werden, öffnen immer im ungeschützten Firefox, bei eingeschalteter Sandbox mit Warnung, weil ein Firefox in der Sandbox sie nicht sehen kann.",
+      "manual": "1.10"
+    },
+    {
       "id": "folders-default",
       "en": "By default, sandboxed apps on a Cyberbeest can see the shared folders Pictures and Downloads.",
       "de": "Standardmäßig sehen Apps in der Sandbox auf einem Cyberbeest die gemeinsamen Ordner Bilder und Downloads.",
@@ -145,38 +193,38 @@
       "id": "folders-whitelisted-app",
       "en": "To let sandboxed apps see more folders, open Whitelisted Folders from the menu, then use + to add a folder and − to remove one.",
       "de": "Damit Apps in der Sandbox weitere Ordner sehen können, öffne im Menü „Zugelassene Ordner“ und füge mit + einen Ordner hinzu oder entferne ihn mit −.",
-      "manual": "1.10",
+      "manual": "1.11",
       "tip": true
     },
     {
       "id": "folders-all-apps-read-write",
       "en": "Every sandboxed app on a Cyberbeest sees every folder on the Whitelisted Folders list and can read and change what is inside.",
       "de": "Jede App in der Sandbox auf einem Cyberbeest sieht jeden Ordner der Liste „Zugelassene Ordner“ und kann lesen und ändern, was darin liegt.",
-      "manual": "1.10"
+      "manual": "1.11"
     },
     {
       "id": "folders-restart-apps",
       "en": "After changing the Whitelisted Folders list, click Restart apps… so the sandboxed apps reopen with the change, and save your work first.",
       "de": "Klicke nach einer Änderung der Liste „Zugelassene Ordner“ auf „Apps neu starten…“, damit die Apps in der Sandbox mit der Änderung neu starten, und speichere vorher deine Arbeit.",
-      "manual": "1.10"
+      "manual": "1.11"
     },
     {
       "id": "folders-missing-grey",
       "en": "A whitelisted folder that is missing, such as an unplugged USB drive, stays on the list in grey as “Not found” and works again when the folder returns.",
       "de": "Ein fehlender zugelassener Ordner, zum Beispiel ein nicht angeschlossener USB-Stick, bleibt grau als „Nicht gefunden“ in der Liste und funktioniert wieder, sobald der Ordner zurück ist.",
-      "manual": "1.10"
+      "manual": "1.11"
     },
     {
       "id": "folders-not-allowed",
       "en": "Your whole home folder and hidden folders, whose names start with a dot such as .ssh, cannot be added to the Whitelisted Folders list.",
       "de": "Dein gesamter Persönlicher Ordner und versteckte Ordner, deren Namen mit einem Punkt beginnen wie .ssh, lassen sich nicht zu den zugelassenen Ordnern hinzufügen.",
-      "manual": "1.10"
+      "manual": "1.11"
     },
     {
       "id": "firewall-incoming",
       "en": "A Cyberbeest is completely firewalled in software, and incoming connections on any port are blocked.",
       "de": "Ein Cyberbeest ist softwareseitig vollständig durch eine Firewall geschützt, und eingehende Verbindungen sind auf allen Ports blockiert.",
-      "manual": "1.11"
+      "manual": "1.12"
     },
     {
       "id": "dns-encrypted",
