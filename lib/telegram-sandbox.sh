@@ -77,4 +77,5 @@ case " $* " in
 	;;
 esac
 
-exec firejail /usr/bin/telegram-desktop "$@"
+. "$HOME/bin/jail-lib.sh" 2>/dev/null || jail_exec() { shift; exec firejail "$@"; }
+jail_exec telegram /usr/bin/telegram-desktop "$@"

@@ -10,7 +10,8 @@
 # mouse and some shortcuts still work. Force GTK's built-in input method
 # inside the jail instead. (Unsetting the variables is not enough: GTK then
 # falls back to ibus.)
-exec firejail \
+. "$HOME/bin/jail-lib.sh" 2>/dev/null || jail_exec() { shift; exec firejail "$@"; }
+jail_exec chrome \
 	--env=GTK_IM_MODULE=gtk-im-context-simple \
 	--env=QT_IM_MODULE=simple \
 	--env=XMODIFIERS=@im=none \
