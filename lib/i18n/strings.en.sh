@@ -226,4 +226,7 @@ Restart now and check this computer for malware from the stick? The computer's d
 	[scan_stick.cancel]="Not now"
 	[scan_stick.checking]="Checking the stick..."
 	[scan_stick.failed]="The stick cannot be used:"
+	[jail.tip_all]="All apps are protected"
+	[jail.tip_some]="Some apps are protected: %s"
+	[jail.tip_none]="No apps are protected"
 )

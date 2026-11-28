@@ -24,4 +24,5 @@ EXTRA_ARGS=()
 if ! grep -q '"safeStorageBackend"' "$CONFIG" 2>/dev/null; then
 	EXTRA_ARGS+=(--password-store=basic)
 fi
-exec firejail /opt/Signal/signal-desktop "${EXTRA_ARGS[@]}" "$@"
+. "$HOME/bin/jail-lib.sh" 2>/dev/null || jail_exec() { shift; exec firejail "$@"; }
+jail_exec signal /opt/Signal/signal-desktop "${EXTRA_ARGS[@]}" "$@"

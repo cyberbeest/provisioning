@@ -73,7 +73,8 @@ for _ in $(seq 1 40); do
     sleep 0.25
 done
 
-firejail /usr/bin/feather "$@"
+. "$HOME/bin/jail-lib.sh" 2>/dev/null || jail_run() { shift; firejail "$@"; }
+jail_run feather /usr/bin/feather "$@"
 
 if ! pgrep -x feather >/dev/null; then
     sudo -n /usr/bin/systemctl stop tor

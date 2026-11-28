@@ -1060,4 +1060,13 @@ STRINGS = {
     'pw.word_mode_not_canonical': 'Your current master password is not in word form (lower-case words joined by hyphens), so the disk would stop unlocking. Change the master password to a generated one first, then switch this on. Nothing was changed.',
     'pw.word_mode_failed': 'Word entry could not be changed.',
     'pw.too_few_words': 'With word entry on, the master password needs at least {min_words} words.',
+    'jail.title': 'App protection',
+    'jail.intro': 'Protected apps run in a sandbox (Firejail): they only see their own data plus Downloads and Pictures. This limits the damage if an app is attacked, but files elsewhere are not visible to them.',
+    'jail.mode_all': 'Protect all apps (recommended for maximum security)',
+    'jail.mode_some': 'Protect only the apps I tick',
+    'jail.mode_none': 'Protect no apps',
+    'jail.apps_label': 'Protected apps:',
+    'jail.note_firefox': 'Firefox always offers both a protected and an unprotected entry in the menu, whatever you choose here. Local HTML files from Files always open in the unprotected Firefox.',
+    'jail.close': 'Close',
+    'jail.restart_note': 'Running apps keep their old setting until restarted.',
 }

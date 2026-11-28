@@ -462,6 +462,7 @@ SCRIPT_DURATION_ESTIMATES = {
     "08-xdg-user-dirs.sh": 6,
     "09-cyberbeest-logout-dialog.sh": 9,
     "10-browser-sandbox.sh": 23,
+    "10a-jail-mode.sh": 6,
     "11-xfce-panel-plugins.sh": 99,
     "11a-clipboard-status.sh": 20,
     "11b-mic-recording-indicator.sh": 8,

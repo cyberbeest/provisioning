@@ -228,4 +228,7 @@ Jetzt neu starten und diesen Computer vom Stick aus auf Schadsoftware prüfen? D
 	[scan_stick.cancel]="Jetzt nicht"
 	[scan_stick.checking]="Der Stick wird überprüft ..."
 	[scan_stick.failed]="Der Stick kann nicht verwendet werden:"
+	[jail.tip_all]="Alle Apps sind geschützt"
+	[jail.tip_some]="Einige Apps sind geschützt: %s"
+	[jail.tip_none]="Keine App ist geschützt"
 )

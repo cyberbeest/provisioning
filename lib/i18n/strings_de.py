@@ -1090,4 +1090,13 @@ STRINGS = {
     'pw.word_mode_not_canonical': 'Dein aktuelles Master-Passwort hat nicht die Wortform (kleingeschriebene Wörter, mit Bindestrichen verbunden), die Festplatte würde sich nicht mehr entsperren lassen. Ändere zuerst das Master-Passwort auf ein erzeugtes und schalte dies dann ein. Es wurde nichts geändert.',
     'pw.word_mode_failed': 'Die Worteingabe konnte nicht geändert werden.',
     'pw.too_few_words': 'Bei eingeschalteter Worteingabe braucht das Master-Passwort mindestens {min_words} Wörter.',
+    'jail.title': 'App-Schutz',
+    'jail.intro': 'Geschützte Apps laufen in einer Schutzumgebung (Firejail): Sie sehen nur ihre eigenen Daten sowie Downloads und Bilder. Das begrenzt den Schaden, falls eine App angegriffen wird, aber Dateien an anderen Orten sind für sie nicht sichtbar.',
+    'jail.mode_all': 'Alle Apps schützen (empfohlen für höchste Sicherheit)',
+    'jail.mode_some': 'Nur die angekreuzten Apps schützen',
+    'jail.mode_none': 'Keine App schützen',
+    'jail.apps_label': 'Geschützte Apps:',
+    'jail.note_firefox': 'Firefox erscheint im Menü immer als geschützter und als ungeschützter Eintrag, unabhängig von dieser Einstellung. Lokale HTML-Dateien aus „Dateien“ öffnen immer im ungeschützten Firefox.',
+    'jail.close': 'Schließen',
+    'jail.restart_note': 'Laufende Apps behalten die alte Einstellung bis zum Neustart.',
 }

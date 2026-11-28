@@ -87,15 +87,22 @@ if pgrep -u "$(id -u)" -x firefox-esr >/dev/null; then
 	exit 1
 fi
 
-zenity --question --width=420 --icon-name=dialog-warning \
+# Quiet mode: the user chose "no jail for Firefox" as the default, so there is
+# nothing to warn about and no red toolbar. Warning + red toolbar only appear
+# when this is a one-off exception to a jailed default.
+. "$HOME/bin/jail-lib.sh" 2>/dev/null || jail_enabled() { return 0; }
+QUIET=0
+jail_enabled firefox || QUIET=1
+
+[ "$QUIET" = 1 ] || zenity --question --width=420 --icon-name=dialog-warning \
 	--title="$T_ASK_TITLE" --text="$T_ASK_TEXT" \
 	--ok-label="$T_START" --cancel-label="$T_CANCEL" || exit 0
 
 echo $$ > "$MARK"
-set_marker true
+[ "$QUIET" = 1 ] || set_marker true
 trap 'rm -f "$MARK"; set_marker false' EXIT
 # The red toolbar is the lasting reminder; this just explains it once.
-notify-send --icon=dialog-warning --expire-time=15000 "$T_BANNER_TITLE" "$T_BANNER_TEXT" 2>/dev/null
+[ "$QUIET" = 1 ] || notify-send --icon=dialog-warning --expire-time=15000 "$T_BANNER_TITLE" "$T_BANNER_TEXT" 2>/dev/null
 
 # Not exec: the cleanup above must run when Firefox exits.
 /usr/bin/firefox-esr "$@"

@@ -40,8 +40,10 @@
 # Bumped 2026-10-13: reserves plugin-221 (genmon) for 11c-network-
 # connections.sh, right after the clipboard icon: a globe whose tooltip lists
 # which apps hold network connections.
+# Bumped 2026-11-28: reserves plugin-222 (genmon) for 10a-jail-mode.sh: lock icon
+# showing the app-protection (jail) mode, right after the connections globe.
 # Depends on: 07-security-update-timer.sh, 09-cyberbeest-logout-dialog.sh,
-# 10-browser-sandbox.sh, 11-xfce-panel-plugins.sh, 11a-clipboard-status.sh,
+# 10-browser-sandbox.sh, 10a-jail-mode.sh, 11-xfce-panel-plugins.sh, 11a-clipboard-status.sh,
 # 11b-mic-recording-indicator.sh, 11c-network-connections.sh.
 # Idempotent: safe to re-run (overwrites its own config files; backs up any
 # pre-existing xfce4-panel.xml the first time). Also removes any other panel
@@ -294,7 +296,7 @@ PANEL_XML_TMP="$(mktemp)"
 sed -e "s|__HOME__|$TARGET_HOME|g" -e "s|__ICONS_DIR__|$ICONS_DIR|g" \
 	"$LAYOUT/xfce4-panel.xml.template" > "$PANEL_XML_TMP"
 python3 "$DIR/lib/merge-xfce-panel-plugins.py" "$PANEL_XML_OLD" "$PANEL_XML_TMP" \
-	201 202 203 204 205 206 207 208 211 212 213 214 215 217 218 219 220 221
+	201 202 203 204 205 206 207 208 211 212 213 214 215 217 218 219 220 221 222
 # Icons the user removed from the panel (lib/panel-icon.sh) stay removed.
 python3 "$DIR/lib/drop-hidden-panel-plugins.py" "$PANEL_XML_TMP" "$TARGET_HOME/.config/cyberbeest/panel-hidden"
 install -m 644 "$PANEL_XML_TMP" "$PANEL_XML"

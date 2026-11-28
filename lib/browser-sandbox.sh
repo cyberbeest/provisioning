@@ -28,6 +28,14 @@ UNSANDBOXED_MARK="${XDG_RUNTIME_DIR:-/tmp}/browser-unsandboxed.pid"
 if [ -f "$UNSANDBOXED_MARK" ] && kill -0 "$(cat "$UNSANDBOXED_MARK")" 2>/dev/null; then
 	exec /usr/bin/firefox-esr "$@"
 fi
+# Jail mode (jail-lib.sh / jail-settings.py): unless a menu entry forced the
+# mode via BROWSER_JAIL=on|off, follow the configured one. "Not jailed" hands
+# over to browser-unsandboxed.sh, which stays quiet (no warning, no red
+# toolbar) when that is the user's chosen default.
+. "$HOME/bin/jail-lib.sh" 2>/dev/null || jail_enabled() { return 0; }
+if [ "${BROWSER_JAIL:-}" = off ] || { [ "${BROWSER_JAIL:-}" != on ] && ! jail_enabled firefox; }; then
+	[ -x "$HOME/bin/browser-unsandboxed.sh" ] && exec "$HOME/bin/browser-unsandboxed.sh" "$@"
+fi
 # Drop the red unsandboxed look (and any stale marker from a crashed session).
 [ -x "$HOME/bin/browser-unsandboxed.sh" ] && "$HOME/bin/browser-unsandboxed.sh" --reset-marker
 exec firejail --profile="${HOME}/.config/firejail/firefox-drm.profile" /usr/bin/firefox-esr "$@"

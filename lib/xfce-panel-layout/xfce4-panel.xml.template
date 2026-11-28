@@ -29,6 +29,7 @@
         <value type="int" value="211"/>
         <value type="int" value="219"/>
         <value type="int" value="221"/>
+        <value type="int" value="222"/>
         <value type="int" value="206"/>
       </property>
     </property>
@@ -83,6 +84,7 @@
     <property name="plugin-219" type="string" value="genmon"/>
     <property name="plugin-220" type="string" value="genmon"/>
     <property name="plugin-221" type="string" value="genmon"/>
+    <property name="plugin-222" type="string" value="genmon"/>
     <property name="notes" type="empty">
       <property name="global" type="empty">
         <property name="version" type="string" value="1.11.1"/>
