@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -304,7 +305,67 @@ var whiskerID = "201"
 func (w *whisker) refreshConfig() {
 	w.cfg = xfconfAll()
 	w.favIDs = w.prop("favorites")
-	w.recentIDs = w.prop("recent")
+	w.recentIDs = w.loadRecent()
+}
+
+// recentFile holds the Recently Used list. It lives outside xfce4-panel's xfconf channel, which
+// updates rewrite (wiping the list); nothing in provisioning touches this file.
+func recentFile() string {
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".local/share/gopanel/recent-apps")
+}
+
+// loadRecent reads the list from recentFile: one "unixtime<TAB>desktop-id" per line, newest first.
+// A line without a time (hand-edited) counts as time 0. If the file doesn't exist yet, it adopts
+// the list from the old xfconf property once and writes it out.
+func (w *whisker) loadRecent() []string {
+	b, err := os.ReadFile(recentFile())
+	if err != nil {
+		old := w.prop("recent")
+		if len(old) > 0 && os.IsNotExist(err) {
+			saveRecent(old)
+		}
+		return old
+	}
+	var ids []string
+	times := map[string]int64{}
+	for _, line := range strings.Split(string(b), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		id, ts := line, int64(0)
+		if i := strings.IndexByte(line, '\t'); i >= 0 {
+			ts, _ = strconv.ParseInt(strings.TrimSpace(line[:i]), 10, 64)
+			id = strings.TrimSpace(line[i+1:])
+		}
+		ids = append(ids, id)
+		times[id] = ts
+	}
+	recentMu.Lock()
+	recentTimes = times
+	recentMu.Unlock()
+	return ids
+}
+
+var (
+	recentMu    sync.Mutex
+	recentTimes = map[string]int64{} // when each listed app was last used or installed
+)
+
+func saveRecent(ids []string) {
+	recentMu.Lock()
+	defer recentMu.Unlock()
+	var sb strings.Builder
+	for _, id := range ids {
+		fmt.Fprintf(&sb, "%d\t%s\n", recentTimes[id], id)
+	}
+	path := recentFile()
+	os.MkdirAll(filepath.Dir(path), 0o755)
+	tmp := path + ".tmp"
+	if os.WriteFile(tmp, []byte(sb.String()), 0o644) == nil {
+		os.Rename(tmp, path)
+	}
 }
 
 func (w *whisker) cmdFromCfg(key, def string) string {
@@ -1286,21 +1347,9 @@ func (w *whisker) noteInstalls() {
 // setting (10) is deliberately ignored.
 func (w *whisker) recentMax() int { return 50 }
 
-// noteInstalled lists a freshly installed app below the launches, so opening the menu never
-// pushes an app the user just started out of the top spot.
-func (w *whisker) noteInstalled(id string) {
-	for _, r := range w.recentIDs {
-		if r == id {
-			return
-		}
-	}
-	ids := append(append([]string{}, w.recentIDs...), id)
-	if max := w.recentMax(); len(ids) > max {
-		ids = append(ids[:max-1], id)
-	}
-	w.recentIDs = ids
-	go setXfconfArray("/plugins/plugin-"+whiskerID+"/recent", ids)
-}
+// noteInstalled puts a freshly installed app at the top, stamped with the time it was noticed,
+// so it is easy to find and start.
+func (w *whisker) noteInstalled(id string) { w.noteRecent(id) }
 
 func (w *whisker) noteRecent(id string) {
 	max := w.recentMax()
@@ -1311,7 +1360,10 @@ func (w *whisker) noteRecent(id string) {
 		}
 	}
 	w.recentIDs = ids
-	go setXfconfArray("/plugins/plugin-"+whiskerID+"/recent", ids)
+	recentMu.Lock()
+	recentTimes[id] = time.Now().Unix()
+	recentMu.Unlock()
+	saveRecent(ids)
 }
 
 // setXfconfArray stores a string array property in xfce4-panel's channel.
